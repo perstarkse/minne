@@ -130,11 +130,11 @@ use axum::{
     routing::post,
     Router,
     response::{IntoResponse, Response},
-    Error, Extension, Json,
+     Extension, Json,
 };
 use serde::Deserialize;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use zettle_db::rabbitmq::{RabbitMQProducer, RabbitMQError};
+use zettle_db::rabbitmq::{producer::RabbitMQProducer, RabbitMQConfig};
 use std::sync::Arc;
 
 #[derive(Deserialize)]
@@ -149,7 +149,7 @@ async fn ingress_handler(
     Json(payload): Json<IngressPayload>
 ) -> Response {
     info!("Received payload: {:?}", payload.payload);
-    match producer.publish(&payload.payload).await {
+    match producer.publish(&payload.payload.into_bytes().to_vec()).await {
         Ok(_) => {
             info!("Message published successfully");
             "thank you".to_string().into_response()
@@ -171,7 +171,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
        .ok();
 
     // Set up RabbitMQ
-    let producer = Arc::new(RabbitMQProducer::new("amqp://localhost", "my_exchange", "my_routing_key").await?);
+        let config = RabbitMQConfig {
+        amqp_addr: "amqp://localhost".to_string(),
+        exchange: "my_exchange".to_string(),
+        queue: "my_queue".to_string(),
+        routing_key: "my_key".to_string(),
+    };
+    
+    let producer = Arc::new(RabbitMQProducer::new(&config).await?);
     
     // Create Axum router
     let app = Router::new()
