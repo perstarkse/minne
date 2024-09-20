@@ -2,9 +2,7 @@ pub mod producer;
 pub mod consumer;
 
 use lapin::{
-    Connection, ConnectionProperties, Channel, ExchangeKind,
-    options::ExchangeDeclareOptions,
-    types::FieldTable,
+    options::{ExchangeDeclareOptions, QueueDeclareOptions}, types::FieldTable, Channel, Connection, ConnectionProperties, ExchangeKind, Queue
      
 };
 use thiserror::Error;
@@ -28,6 +26,7 @@ pub enum RabbitMQError {
     QueueError(String),
 }
 
+#[derive(Clone)]
 pub struct RabbitMQConfig {
     pub amqp_addr: String,
     pub exchange: String,
