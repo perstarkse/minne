@@ -71,10 +71,10 @@
 
 //     Ok(())
 // }
-use zettle_db::rabbitmq::{RabbitMQConsumer, RabbitMQError};
 use tokio;
 use tracing::{info, error};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use zettle_db::rabbitmq::{consumer::RabbitMQConsumer, RabbitMQConfig, RabbitMQError};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -86,14 +86,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok();
 
     info!("Starting RabbitMQ consumer");
+// Set up RabbitMQ config
+        let config = RabbitMQConfig {
+        amqp_addr: "amqp://localhost".to_string(),
+        exchange: "my_exchange".to_string(),
+        queue: "my_queue".to_string(),
+        routing_key: "my_key".to_string(),
+    };
+
 
     // Create a RabbitMQ consumer
-    let consumer = RabbitMQConsumer::new(
-        "amqp://localhost",
-        "my_exchange",
-        "my_queue",
-        "my_routing_key"
-    ).await?;
+    let consumer = RabbitMQConsumer::new(&config).await?;
 
     info!("Consumer connected to RabbitMQ");
 
