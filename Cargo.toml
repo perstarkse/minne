@@ -10,6 +10,7 @@ axum = "0.7.5"
 futures-lite = "2.3.0"
 lapin = { version = "2.5.0", features = ["serde_json"] }
 serde = { version = "1.0.210", features = ["derive"] }
+thiserror = "1.0.63"
 tokio = { version = "1.40.0", features = ["full"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
@@ -22,7 +23,3 @@ path = "src/server.rs"
 [[bin]]
 name = "consumer"
 path = "src/consumer.rs"
-
-[[bin]]
-name = "example"
-path = "src/example.rs"
