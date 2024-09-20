@@ -1,13 +1,14 @@
 use lapin::{
-    options::*, types::FieldTable, Channel,   Consumer,  Queue 
+    message::Delivery, options::*, types::FieldTable, Channel, Consumer, Queue 
 };
 use futures_lite::stream::StreamExt;
+use tracing::info;
 
 use super::{RabbitMQCommon, RabbitMQConfig, RabbitMQError};
 
 pub struct RabbitMQConsumer {
     common: RabbitMQCommon,
-    queue: Queue,
+    pub queue: Queue,
     consumer: Consumer,
 }
 
@@ -66,19 +67,23 @@ impl RabbitMQConsumer {
             .map_err(|e| RabbitMQError::QueueError(e.to_string()))
     }
 
-    pub async fn consume(&self) -> Result<String, RabbitMQError> {
+    pub async fn consume(&self) -> Result<(String, Delivery), RabbitMQError> {
         let delivery = self.consumer.clone().next().await
             .ok_or_else(|| RabbitMQError::ConsumeError("No message received".to_string()))?
             .map_err(|e| RabbitMQError::ConsumeError(e.to_string()))?;
 
         let message = String::from_utf8_lossy(&delivery.data).to_string();
 
+        Ok((message, delivery))
+    }
+
+    pub async fn ack_delivery(&self, delivery: Delivery) -> Result<(), RabbitMQError> {
         self.common.channel
             .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
             .await
             .map_err(|e| RabbitMQError::ConsumeError(e.to_string()))?;
 
-        Ok(message)
+        Ok(())
     }
 }
 
