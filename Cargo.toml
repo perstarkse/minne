@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-amqprs = "2.0.0"
 axum = "0.7.5"
+futures-lite = "2.3.0"
+lapin = { version = "2.5.0", features = ["serde_json"] }
 serde = { version = "1.0.210", features = ["derive"] }
 tokio = { version = "1.40.0", features = ["full"] }
 tracing = "0.1.40"
@@ -22,3 +23,6 @@ path = "src/server.rs"
 name = "consumer"
 path = "src/consumer.rs"
 
+[[bin]]
+name = "example"
+path = "src/example.rs"

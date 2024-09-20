@@ -1,0 +1,81 @@
+
+# 2024-09-18 12:16:15.162114
++/help
+
+# 2024-09-18 12:16:20.233100
++/models
+
+# 2024-09-18 12:16:24.809720
++/models gpt
+
+# 2024-09-18 12:16:48.569734
++/models sonett
+
+# 2024-09-18 12:16:51.577488
++/models sonnett
+
+# 2024-09-18 12:17:00.056944
++/models openrouter/anth
+
+# 2024-09-18 12:17:14.809931
++/model openrouter/anthropic/claude-3.5-sonnet
+
+# 2024-09-18 12:17:33.881262
++/map-refresh
+
+# 2024-09-18 12:17:41.641177
++/help
+
+# 2024-09-18 12:17:57.961398
++/map
+
+# 2024-09-18 12:18:05.401158
++/git add .
+
+# 2024-09-18 12:18:07.192985
++/map
+
+# 2024-09-18 12:18:28.009751
++/add src/server.rs src/rabbitmq/mod.rs 
+
+# 2024-09-18 12:19:07.145078
++/git add .
+
+# 2024-09-18 12:19:10.360827
++/add src/consumer.rs
+
+# 2024-09-18 12:19:21.032773
++/help
+
+# 2024-09-18 12:19:29.945442
++/web https://github.com/gftea/amqprs/blob/main/examples/src/basic_pub_sub.rs
+
+# 2024-09-18 12:20:07.212864
++/run cargo run --bin server
+
+# 2024-09-18 12:20:36.696824
++/undo
+
+# 2024-09-18 12:22:06.040133
++/ask Welcome to the project, were setting up a rust server running axum and a ingress route that takes a string for now. The ingress route will publish a message containing the string to the rabbitmq connection. The consumer consumes messages and prints them for now. We should have a rabbitmq module that is usable and testable from both the server and consumer
+
+# 2024-09-18 12:23:21.895428
++/code implement the changes
+
+# 2024-09-18 12:23:59.290161
++/run cargo run --bin server
+
+# 2024-09-18 12:24:03.149084
++/run cargo run --bin consumer
+
+# 2024-09-18 12:24:12.199239
++/code fix the errors
+
+# 2024-09-18 12:24:56.459326
++/run cargo run --bin server
+
+# 2024-09-18 12:25:06.791601
++/undo
+
+# 2024-09-18 12:25:14.774649
++/exit
