@@ -1,8 +1,8 @@
-pub mod producer;
+pub mod publisher;
 pub mod consumer;
 
 use lapin::{
-    options::{ExchangeDeclareOptions, QueueDeclareOptions}, types::FieldTable, Channel, Connection, ConnectionProperties, ExchangeKind, Queue
+    options::ExchangeDeclareOptions, types::FieldTable, Channel, Connection, ConnectionProperties, ExchangeKind 
      
 };
 use thiserror::Error;

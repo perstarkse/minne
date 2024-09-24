@@ -6,14 +6,23 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = "0.7.5"
+axum = { version = "0.7.5", features = ["multipart", "macros"] }
+axum_typed_multipart = "0.12.1"
+bytes = { version = "1.7.2", features = ["serde"] }
 futures-lite = "2.3.0"
 lapin = { version = "2.5.0", features = ["serde_json"] }
+mime = "0.3.17"
+mime_guess = "2.0.5"
 serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+sha2 = "0.10.8"
+tempfile = "3.12.0"
 thiserror = "1.0.63"
 tokio = { version = "1.40.0", features = ["full"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+url = { version = "2.5.2", features = ["serde"] }
+uuid = { version = "1.10.0", features = ["v4", "serde"] }
 
 
 [[bin]]
