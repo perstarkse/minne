@@ -1,40 +1,21 @@
-use axum::extract::Multipart;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::fs;
 use tracing::info;
 use url::Url;
-use uuid::Uuid;
-use sha2::{Digest, Sha256};
-use std::path::Path;
-use mime_guess::from_path;
-use axum_typed_multipart::{FieldData, TryFromMultipart };
-use tempfile::NamedTempFile;
-
-#[derive(Debug, TryFromMultipart)]
-pub struct IngressMultipart {
-    /// JSON content field
-    pub content: Option<String>,
-    pub instructions: String,
-    pub category: String,
-
-    /// Optional file
-    #[form_data(limit = "unlimited")]
-    pub file: Option<FieldData<NamedTempFile>>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FileInfo {
-    pub uuid: Uuid,
-    pub sha256: String,
-    pub path: String,
-    pub mime_type: String,
-}
+use super::files::FileInfo;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Content {
     Url(String),
     Text(String),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IngressInput {
+    pub content: Option<String>,
+    pub instructions: String,
+    pub category: String,
+    pub files: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -65,29 +46,32 @@ pub enum IngressContentError {
 }
 
 impl IngressContent {
-    /// Create a new `IngressContent` from `IngressMultipart`.
+    /// Create a new `IngressContent` from `IngressInput`.
     pub async fn new(
-        content: Option<String>, instructions: String, category: String,
-        file: Option<FileInfo>
+        input: IngressInput
     ) -> Result<IngressContent, IngressContentError> {
-        let content = if let Some(content_str) = content {
+        let content = if let Some(input_content) = input.content {
             // Check if the content is a URL
-            if let Ok(url) = Url::parse(&content_str) {
+            if let Ok(url) = Url::parse(&input_content) {
                 info!("Detected URL: {}", url);
                 Some(Content::Url(url.to_string()))
             } else {
                 info!("Treating input as plain text");
-                Some(Content::Text(content_str))
+                Some(Content::Text(input_content))
             }
         } else {
             None
         };
 
+        // Check if there is files
+        // Use FileInfo.get(id) with all the ids in files vec
+        // Return a vec<FileInfo> as file_info_list
+
         Ok(IngressContent {
             content,
-            instructions,
-            category,
-            files: file.map(|f| vec![f]), // Single file wrapped in a Vec
+            instructions: input.instructions,
+            category: input.category,
+            files: None,
         })
     }
 }
