@@ -1,8 +1,8 @@
 use axum::{
-         extract::DefaultBodyLimit, routing::{get, post}, Extension, Router
+         extract::DefaultBodyLimit, routing::{delete, get, post, put}, Extension, Router
 };
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use zettle_db::{rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig}, routes::{file::upload_handler, ingress::ingress_handler, queue_length::queue_length_handler}};
+use zettle_db::{rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig}, routes::{file::{delete_file_handler, get_file_handler, update_file_handler, upload_handler}, ingress::ingress_handler, queue_length::queue_length_handler}};
 use std::sync::Arc;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -30,8 +30,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/message_count", get(queue_length_handler))
         .layer(Extension(producer))
         .route("/file", post(upload_handler))
-        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024));
-
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
+        .route("/file/:uuid", get(get_file_handler)) 
+        .route("/file/:uuid", put(update_file_handler)) 
+        .route("/file/:uuid", delete(delete_file_handler));
+     
     tracing::info!("Listening on 0.0.0.0:3000");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     axum::serve(listener, app).await?;
