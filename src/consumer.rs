@@ -29,28 +29,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Consumer connected to RabbitMQ");
 
     // Start consuming messages
-    loop {
-        match consumer.consume().await {
-            Ok((message, delivery)) => {
-                info!("Received message: {}", message);
-                // Process the message here
-                // For example, you could insert it into a database
-                // process_message(&message).await?;
+    consumer.process_messages().await?;
+    // loop {
+    //     match consumer.consume().await {
+    //         Ok((message, delivery)) => {
+    //             info!("Received message: {}", message);
+    //             // Process the message here
+    //             // For example, you could insert it into a database
+    //             // process_message(&message).await?;
 
-                info!("Done processing, acking");
-                consumer.ack_delivery(delivery).await?
-            }
-            Err(RabbitMQError::ConsumeError(e)) => {
-                error!("Error consuming message: {}", e);
-                // Optionally add a delay before trying again
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            }
-            Err(e) => {
-                error!("Unexpected error: {}", e);
-                break;
-            }
-        }
-    }
+    //             info!("Done processing, acking");
+    //             consumer.ack_delivery(delivery).await?
+    //         }
+    //         Err(RabbitMQError::ConsumeError(e)) => {
+    //             error!("Error consuming message: {}", e);
+    //             // Optionally add a delay before trying again
+    //             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    //         }
+    //         Err(e) => {
+    //             error!("Unexpected error: {}", e);
+    //             break;
+    //         }
+    //     }
+    // }
 
     Ok(())
 }

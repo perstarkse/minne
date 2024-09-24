@@ -2,10 +2,13 @@ use lapin::{
     message::Delivery, options::*, types::FieldTable, Channel, Consumer, Queue 
 };
 use futures_lite::stream::StreamExt;
-use tracing::info;
+use crate::models::ingress::IngressContent;
 
 use super::{RabbitMQCommon, RabbitMQConfig, RabbitMQError};
+use tracing::{info, error};
+use tokio::fs;
 
+/// Struct to consume messages from RabbitMQ.
 pub struct RabbitMQConsumer {
     common: RabbitMQCommon,
     pub queue: Queue,
@@ -26,7 +29,7 @@ impl RabbitMQConsumer {
         // Initialize the consumer
         let consumer = Self::initialize_consumer(&common.channel, &config).await?;
 
-        Ok(Self { common, queue, consumer})
+        Ok(Self { common, queue, consumer })
     }
 
     async fn initialize_consumer(channel: &Channel, config: &RabbitMQConfig) -> Result<Consumer, RabbitMQError> {
@@ -67,16 +70,21 @@ impl RabbitMQConsumer {
             .map_err(|e| RabbitMQError::QueueError(e.to_string()))
     }
 
-    pub async fn consume(&self) -> Result<(String, Delivery), RabbitMQError> {
+    /// Consumes a message and returns the deserialized IngressContent along with the Delivery
+    pub async fn consume(&self) -> Result<(IngressContent, Delivery), RabbitMQError> {
+        // Receive the next message
         let delivery = self.consumer.clone().next().await
             .ok_or_else(|| RabbitMQError::ConsumeError("No message received".to_string()))?
             .map_err(|e| RabbitMQError::ConsumeError(e.to_string()))?;
 
-        let message = String::from_utf8_lossy(&delivery.data).to_string();
+        // Deserialize the message payload into IngressContent
+        let ingress: IngressContent = serde_json::from_slice(&delivery.data)
+            .map_err(|e| RabbitMQError::ConsumeError(format!("Deserialization Error: {}", e)))?;
 
-        Ok((message, delivery))
+        Ok((ingress, delivery))
     }
 
+    /// Acknowledges the message after processing
     pub async fn ack_delivery(&self, delivery: Delivery) -> Result<(), RabbitMQError> {
         self.common.channel
             .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
@@ -85,5 +93,37 @@ impl RabbitMQConsumer {
 
         Ok(())
     }
-}
 
+    /// Processes messages in a loop
+    pub async fn process_messages(&self) -> Result<(), RabbitMQError> {
+        loop {
+            match self.consume().await {
+                Ok((ingress, delivery)) => {
+                    info!("Received ingress object: {:?}", ingress);
+                    
+                    // Process the ingress object
+                    self.handle_ingress_content(&ingress).await;
+
+                    info!("Processing done, acknowledging message");
+                    self.ack_delivery(delivery).await?;
+                }
+                Err(RabbitMQError::ConsumeError(e)) => {
+                    error!("Error consuming message: {}", e);
+                    // Optionally add a delay before trying again
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
+                Err(e) => {
+                    error!("Unexpected error: {}", e);
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handles the IngressContent based on its type
+    async fn handle_ingress_content(&self, ingress: &IngressContent) {
+        info!("Processing content: {:?}", ingress);
+    }
+}
