@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::info;
 use url::Url;
-use super::files::FileInfo;
+use super::file_info::FileInfo;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Content {

@@ -41,6 +41,9 @@
               languages.rust.enable = true;
 
               services = {
+                redis = {
+                  enable = true;
+                };
                 rabbitmq = {
                   enable = true;
                   plugins = ["tracing"];
