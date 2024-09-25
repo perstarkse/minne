@@ -1,5 +1,3 @@
-// === Contents of ./routes/file.rs ===
-
 use axum::{
     extract::Path,
     response::IntoResponse,
@@ -9,13 +7,12 @@ use axum::{
 use axum_typed_multipart::{TypedMultipart, FieldData, TryFromMultipart};
 use serde_json::json;
 use tempfile::NamedTempFile;
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::{
     models::file_info::{FileError, FileInfo},
     redis::client::RedisClient,
-    rabbitmq::publisher::RabbitMQProducer,
 };
 
 #[derive(Debug, TryFromMultipart)]

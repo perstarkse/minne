@@ -6,7 +6,6 @@ use crate::models::ingress::IngressContent;
 
 use super::{RabbitMQCommon, RabbitMQConfig, RabbitMQError};
 use tracing::{info, error};
-use tokio::fs;
 
 /// Struct to consume messages from RabbitMQ.
 pub struct RabbitMQConsumer {
@@ -16,6 +15,16 @@ pub struct RabbitMQConsumer {
 }
 
 impl RabbitMQConsumer {
+    //// Creates a new 'RabbitMQConsumer' instance which sets up a rabbitmq client,
+    //// declares a exchange if needed, declares and binds a queue and initializes the consumer
+    ////
+    //// # Arguments
+    ////
+    //// * 'config' - RabbitMQConfig
+    ////
+    //// # Returns
+    ////
+    //// * 'Result<Self, RabbitMQError>' - The created client or an error.
     pub async fn new(config: &RabbitMQConfig) -> Result<Self, RabbitMQError> {
         let common = RabbitMQCommon::new(config).await?;
         
@@ -99,7 +108,7 @@ impl RabbitMQConsumer {
         loop {
             match self.consume().await {
                 Ok((ingress, delivery)) => {
-                    info!("Received ingress object: {:?}", ingress);
+                    // info!("Received ingress object: {:?}", ingress);
                     
                     // Process the ingress object
                     self.handle_ingress_content(&ingress).await;
