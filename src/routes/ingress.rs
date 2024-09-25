@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{http::StatusCode, response::IntoResponse, Extension, Json};
 use tracing::{error, info};
 
-use crate::{models::ingress::{IngressContent, IngressInput}, rabbitmq::publisher::RabbitMQProducer};
+use crate::{models::ingress::{IngressContent, IngressInput}, rabbitmq::publisher::RabbitMQProducer, redis::client::RedisClient};
 
 pub async fn ingress_handler(
     Extension(producer): Extension<Arc<RabbitMQProducer>>,
@@ -11,7 +11,8 @@ pub async fn ingress_handler(
 ) -> impl IntoResponse {
     info!("Recieved input: {:?}", input);
 
-    if let Ok(content) = IngressContent::new(input).await {
+    let redis_client = RedisClient::new("redis://127.0.0.1/");
+    if let Ok(content) = IngressContent::new(input, &redis_client).await {
 
     // Publish content to RabbitMQ (or other system)
     match producer.publish(&content).await {
