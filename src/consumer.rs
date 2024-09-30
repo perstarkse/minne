@@ -1,7 +1,7 @@
 use tokio;
-use tracing::{info, error};
+use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use zettle_db::rabbitmq::{consumer::RabbitMQConsumer, RabbitMQConfig, RabbitMQError};
+use zettle_db::rabbitmq::{consumer::RabbitMQConsumer, RabbitMQConfig };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
