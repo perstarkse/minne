@@ -54,7 +54,7 @@ impl IngressObject {
     }
 
     /// Fetches and extracts text from a URL.
-    async fn fetch_text_from_url(url: &str) -> Result<String, IngressContentError> {
+    async fn fetch_text_from_url(_url: &str) -> Result<String, IngressContentError> {
         unimplemented!()
     }
 
@@ -73,6 +73,10 @@ impl IngressObject {
             "image/png" | "image/jpeg" => {
                 // TODO: Implement OCR on image using a crate like `tesseract`
                 Err(IngressContentError::UnsupportedMime(file_info.mime_type.clone()))
+            }
+            "application/octet-stream" => {
+                let content = tokio::fs::read_to_string(&file_info.path).await?;
+                Ok(content)
             }
             // Handle other MIME types as needed
             _ => Err(IngressContentError::UnsupportedMime(file_info.mime_type.clone())),

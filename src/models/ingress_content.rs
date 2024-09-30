@@ -45,6 +45,7 @@ pub async fn create_ingress_objects(
     input: IngressInput,
     redis_client: &RedisClient,
 ) -> Result<Vec<IngressObject>, IngressContentError> {
+    // Initialize list
     let mut object_list = Vec::new();
 
     if let Some(input_content) = input.content {

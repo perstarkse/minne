@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-openai = "0.24.1"
 axum = { version = "0.7.5", features = ["multipart", "macros"] }
 axum_typed_multipart = "0.12.1"
 bytes = { version = "1.7.2", features = ["serde"] }
