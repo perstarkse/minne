@@ -1,7 +1,8 @@
 use lapin::{
-    options::*, publisher_confirm::Confirmation, BasicProperties,    
+    options::*, publisher_confirm::Confirmation, BasicProperties,
 };
-use crate::models::ingress::IngressContent;
+
+use crate::models::ingress_object::IngressObject;
 
 use super::{RabbitMQCommon, RabbitMQConfig, RabbitMQError};
 use tracing::{info, error};
@@ -16,7 +17,7 @@ impl RabbitMQProducer {
     pub async fn new(config: &RabbitMQConfig) -> Result<Self, RabbitMQError> {
         let common = RabbitMQCommon::new(config).await?;
         common.declare_exchange(config, false).await?;
-        
+
         Ok(Self { 
             common,
             exchange_name: config.exchange.clone(),
@@ -24,10 +25,10 @@ impl RabbitMQProducer {
         })
     }
 
-    /// Publishes an IngressContent object to RabbitMQ after serializing it to JSON.
-    pub async fn publish(&self, ingress: &IngressContent) -> Result<Confirmation, RabbitMQError> {
-        // Serialize IngressContent to JSON
-        let payload = serde_json::to_vec(ingress)
+    /// Publishes an IngressObject to RabbitMQ after serializing it to JSON.
+    pub async fn publish(&self, ingress_object: &IngressObject) -> Result<Confirmation, RabbitMQError> {
+        // Serialize IngressObject to JSON
+        let payload = serde_json::to_vec(ingress_object)
             .map_err(|e| {
                 error!("Serialization Error: {}", e);
                 RabbitMQError::PublishError(format!("Serialization Error: {}", e))
@@ -53,7 +54,7 @@ impl RabbitMQProducer {
                 RabbitMQError::PublishError(format!("Publish Confirmation Error: {}", e))
             })?;
         
-        info!("Published message to exchange '{}' with routing key '{}'", self.exchange_name, self.routing_key);
+        info!("Published IngressObject to exchange '{}' with routing key '{}'", self.exchange_name, self.routing_key);
         
         Ok(confirmation)
     }
