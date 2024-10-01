@@ -70,26 +70,61 @@ impl TextContent {
         let client = async_openai::Client::new();
 
         // Define the JSON Schema for the expected response
-        let schema = json!({
-            "type": "object",
-    "properties": {
-        "json_ld": { 
-            "type": "object",
-            "properties": {
-                "@context": { "type": "string" },
-                "@type": { "type": "string" },
-                "name": { "type": "string" }
-                // Define only the essential properties
-            },
-            "required": ["@context", "@type", "name"],
-            "additionalProperties": false
+//         let schema = json!({
+//             "type": "object",
+//     "properties": {
+//         "json_ld": { 
+//             "type": "object",
+//             "properties": {
+//                 "@context": { "type": "string" },
+//                 "@type": { "type": "string" },
+//                 "name": { "type": "string" }
+//                 // Define only the essential properties
+//             },
+//             "required": ["@context", "@type", "name"],
+//             "additionalProperties": false,
+//         },
+//         "description": { "type": "string" },
+//         "related_category": { "type": "string" },
+//         "instructions": { "type": "string" }
+//     },
+//     "required": ["json_ld", "description", "related_category", "instructions"],
+//     "additionalProperties": false
+// });
+let  schema = json!({
+  "type": "object",
+  "properties": {
+    "knowledge_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "type": {"type": "string", "enum": ["Document", "Page", "TextSnippet"]},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "relationships": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {"type": "string", "enum": ["RelatedTo", "RelevantTo", "SimilarTo"]},
+                "target": {"type": "string", "description": "ID of the related knowledge source"}
+              },
+              "required": ["type", "target"],
+              "additionalProperties": false,
+            }
+          }
         },
-        "description": { "type": "string" },
-        "related_category": { "type": "string" },
-        "instructions": { "type": "string" }
+        "required": ["id", "type", "title", "description", "relationships"],
+        "additionalProperties": false,
+      }
     },
-    "required": ["json_ld", "description", "related_category", "instructions"],
-    "additionalProperties": false
+    "category": {"type": "string"},
+    "instructions": {"type": "string"}
+  },
+  "required": ["knowledge_sources", "category", "instructions"],
+  "additionalProperties": false
 });
 
         let response_format = async_openai::types::ResponseFormat::JsonSchema {
@@ -114,7 +149,7 @@ impl TextContent {
         // Build the chat completion request
         let request = CreateChatCompletionRequestArgs::default()
             .model("gpt-4o-mini") 
-            .max_tokens(1024u32)
+            .max_tokens(2048u32)
             .messages([
                 ChatCompletionRequestSystemMessage::from(system_message).into(),
                 ChatCompletionRequestUserMessage::from(user_message).into(),

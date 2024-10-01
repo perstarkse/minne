@@ -3,11 +3,11 @@ pub mod consumer;
 
 use lapin::{
     options::ExchangeDeclareOptions, types::FieldTable, Channel, Connection, ConnectionProperties, ExchangeKind 
-     
 };
 use thiserror::Error;
 use tracing::debug;
 
+/// Possible errors related to RabbitMQ operations.
 #[derive(Error, Debug)]
 pub enum RabbitMQError {
     #[error("Failed to connect to RabbitMQ: {0}")]
@@ -26,6 +26,7 @@ pub enum RabbitMQError {
     QueueError(String),
 }
 
+/// Struct containing the information required to set up a client and connection.
 #[derive(Clone)]
 pub struct RabbitMQConfig {
     pub amqp_addr: String,
@@ -34,18 +35,27 @@ pub struct RabbitMQConfig {
     pub routing_key: String,
 }
 
+/// Struct containing the connection and channel of a client
 pub struct RabbitMQCommon {
     pub connection: Connection,
     pub channel: Channel,
 }
 
 impl RabbitMQCommon {
+    /// Sets up a new RabbitMQ client or error
+    /// 
+    /// # Arguments
+    /// * `RabbitMQConfig` - Configuration object with required information
+    ///
+    /// # Returns
+    /// * `self` - A initialized instance of the client
     pub async fn new(config: &RabbitMQConfig) -> Result<Self, RabbitMQError> {
         let connection = Self::create_connection(config).await?;
         let channel = connection.create_channel().await?;
         Ok(Self { connection, channel })
     }
 
+    /// Function to set up the connection
     async fn create_connection(config: &RabbitMQConfig) -> Result<Connection, RabbitMQError> {
         debug!("Creating connection");
         Connection::connect(&config.amqp_addr, ConnectionProperties::default())
@@ -53,6 +63,7 @@ impl RabbitMQCommon {
             .map_err(RabbitMQError::ConnectionError)
     }
 
+    /// Function to declare the exchange required
     pub async fn declare_exchange(&self, config: &RabbitMQConfig, passive: bool) -> Result<(), RabbitMQError> {
         debug!("Declaring exchange");
         self.channel
