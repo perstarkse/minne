@@ -7,6 +7,7 @@ use crate::redis::client::RedisClient;
 
 use super::{file_info::FileInfo, ingress_object::IngressObject };
 
+/// Struct defining the expected body when ingressing content.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct IngressInput {
     pub content: Option<String>,
@@ -41,6 +42,13 @@ pub enum IngressContentError {
 }
 
 /// Function to create ingress objects from input.
+///
+/// # Arguments
+/// * `input` - IngressInput containing information needed to ingress content.
+/// * `redis_client` - Initialized redis client needed to retrieve file information
+///
+/// # Returns
+/// * `Vec<IngressObject>` - An array containing the ingressed objects, one file/contenttype per object.
 pub async fn create_ingress_objects(
     input: IngressInput,
     redis_client: &RedisClient,
@@ -48,6 +56,7 @@ pub async fn create_ingress_objects(
     // Initialize list
     let mut object_list = Vec::new();
 
+    // Create a IngressObject from input.content if it exists, checking for URL or text
     if let Some(input_content) = input.content {
         match Url::parse(&input_content) {
             Ok(url) => {
@@ -69,6 +78,7 @@ pub async fn create_ingress_objects(
         }
     }
 
+    // Look up FileInfo objects using the redis db and the submitted uuids in input.files
     if let Some(file_uuids) = input.files {
         for uuid_str in file_uuids {
             let uuid = Uuid::parse_str(&uuid_str)?;
@@ -88,6 +98,7 @@ pub async fn create_ingress_objects(
         }
     }
 
+    // If no objects are constructed, we return Err
     if object_list.is_empty() {
         return Err(IngressContentError::MimeDetection(
             "No valid content or files provided".into(),

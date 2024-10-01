@@ -24,6 +24,7 @@ pub struct FileInfo {
     pub mime_type: String,
 }
 
+/// Errors that can occur during FileInfo operations
 #[derive(Error, Debug)]
 pub enum FileError {
     #[error("IO error occurred: {0}")]
@@ -98,11 +99,9 @@ impl FileInfo {
     /// Creates a new `FileInfo` instance from uploaded field data.
     ///
     /// # Arguments
-    ///
     /// * `field_data` - The uploaded file data.
     ///
     /// # Returns
-    ///
     /// * `Result<FileInfo, FileError>` - The created `FileInfo` or an error.
     pub async fn new(field_data: FieldData<NamedTempFile>, redis_client: &RedisClient) -> Result<FileInfo, FileError> {
         let file = field_data.contents; // NamedTempFile
@@ -157,11 +156,9 @@ impl FileInfo {
     /// Retrieves `FileInfo` based on UUID.
     ///
     /// # Arguments
-    ///
     /// * `uuid` - The UUID of the file.
     ///
     /// # Returns
-    ///
     /// * `Result<FileInfo, FileError>` - The `FileInfo` or an error.
     pub async fn get(uuid: Uuid, redis_client: &RedisClient) -> Result<FileInfo, FileError> {
         // Fetch SHA256 from UUID mapping
@@ -178,13 +175,11 @@ impl FileInfo {
     /// Updates an existing file identified by UUID with new file data.
     ///
     /// # Arguments
-    ///
     /// * `uuid` - The UUID of the file to update.
     /// * `new_field_data` - The new file data.
     /// * `redis_client` - Reference to the RedisClient.
     ///
     /// # Returns
-    ///
     /// * `Result<FileInfo, FileError>` - The updated `FileInfo` or an error.
     pub async fn update(uuid: Uuid, new_field_data: FieldData<NamedTempFile>, redis_client: &RedisClient) -> Result<FileInfo, FileError> {
         let new_file = new_field_data.contents;
@@ -237,12 +232,10 @@ impl FileInfo {
     /// Deletes a file and its corresponding metadata based on UUID.
     ///
     /// # Arguments
-    ///
     /// * `uuid` - The UUID of the file to delete.
     /// * `redis_client` - Reference to the RedisClient.
     ///
     /// # Returns
-    ///
     /// * `Result<(), FileError>` - Empty result or an error.
     pub async fn delete(uuid: Uuid, redis_client: &RedisClient) -> Result<(), FileError> {
         // Retrieve FileInfo to get SHA256 and path
@@ -279,13 +272,11 @@ impl FileInfo {
     /// Persists the file to the filesystem under `./data/{uuid}/{file_name}`.
     ///
     /// # Arguments
-    ///
     /// * `uuid` - The UUID of the file.
     /// * `file` - The temporary file to persist.
     /// * `file_name` - The sanitized file name.
     ///
     /// # Returns
-    ///
     /// * `Result<PathBuf, FileError>` - The persisted file path or an error.
     async fn persist_file(uuid: &Uuid, file: NamedTempFile, file_name: &str) -> Result<PathBuf, FileError> {
         let base_dir = Path::new("./data");
@@ -309,11 +300,9 @@ impl FileInfo {
     /// Calculates the SHA256 hash of the given file.
     ///
     /// # Arguments
-    ///
     /// * `file` - The file to hash.
     ///
     /// # Returns
-    ///
     /// * `Result<String, FileError>` - The SHA256 hash as a hex string or an error.
     async fn get_sha(file: &NamedTempFile) -> Result<String, FileError> {
         let mut reader = BufReader::new(file.as_file());
@@ -335,11 +324,9 @@ impl FileInfo {
     /// Guesses the MIME type based on the file extension.
     ///
     /// # Arguments
-    ///
     /// * `path` - The path to the file.
     ///
     /// # Returns
-    ///
     /// * `String` - The guessed MIME type as a string.
     fn guess_mime_type(path: &Path) -> String {
         from_path(path)
