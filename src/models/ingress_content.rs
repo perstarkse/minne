@@ -7,6 +7,7 @@ use crate::redis::client::RedisClient;
 
 use super::{file_info::FileInfo, ingress_object::IngressObject };
 
+
 /// Struct defining the expected body when ingressing content.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct IngressInput {
@@ -107,3 +108,4 @@ pub async fn create_ingress_objects(
 
     Ok(object_list)
 }
+

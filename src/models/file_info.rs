@@ -13,10 +13,11 @@ use thiserror::Error;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::redis::client::RedisClient;
+use crate::redis::client::{RedisClient, RedisClientTrait};
+
 
 /// Represents metadata and storage information for a file.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct FileInfo {
     pub uuid: Uuid,
     pub sha256: String,
