@@ -4,9 +4,10 @@ use lapin::{
 
 use crate::models::ingress_object::IngressObject;
 
-use super::{RabbitMQCommon, RabbitMQConfig, RabbitMQError};
+use super::{RabbitMQCommon, RabbitMQCommonTrait, RabbitMQConfig, RabbitMQError};
 use tracing::{info, error};
 
+/// Struct to publish messages to RabbitMQ.
 pub struct RabbitMQProducer {
     common: RabbitMQCommon,
     exchange_name: String,
@@ -14,6 +15,14 @@ pub struct RabbitMQProducer {
 }
 
 impl RabbitMQProducer {
+    /// Creates a new `RabbitMQProducer` instance which sets up a RabbitMQ client,
+    /// declares a exchange if needed.
+    ///
+    /// # Arguments
+    /// * `config` - A initialized RabbitMQConfig containing required configurations
+    ///
+    /// # Returns
+    /// * `Result<Self, RabbitMQError>` - The created client or an error.
     pub async fn new(config: &RabbitMQConfig) -> Result<Self, RabbitMQError> {
         let common = RabbitMQCommon::new(config).await?;
         common.declare_exchange(config, false).await?;
@@ -26,6 +35,13 @@ impl RabbitMQProducer {
     }
 
     /// Publishes an IngressObject to RabbitMQ after serializing it to JSON.
+    ///
+    /// # Arguments
+    /// * `self` - Reference to self
+    /// * `ingress_object` - A initialized IngressObject
+    /// 
+    /// # Returns
+    /// * `Result<Confirmation, RabbitMQError>` - Confirmation of sent message or error
     pub async fn publish(&self, ingress_object: &IngressObject) -> Result<Confirmation, RabbitMQError> {
         // Serialize IngressObject to JSON
         let payload = serde_json::to_vec(ingress_object)

@@ -5,7 +5,7 @@ use futures_lite::stream::StreamExt;
 
 use crate::models::{ingress_content::IngressContentError, ingress_object::IngressObject };
 
-use super::{RabbitMQCommon, RabbitMQConfig, RabbitMQError};
+use super::{RabbitMQCommon, RabbitMQCommonTrait, RabbitMQConfig, RabbitMQError};
 use tracing::{info, error};
 
 /// Struct to consume messages from RabbitMQ.
@@ -20,10 +20,10 @@ impl RabbitMQConsumer {
     /// declares a exchange if needed, declares and binds a queue and initializes the consumer
     ///
     /// # Arguments
-    /// * 'config' - A initialized RabbitMQConfig containing required configurations
+    /// * `config` - A initialized RabbitMQConfig containing required configurations
     ///
     /// # Returns
-    /// * 'Result<Self, RabbitMQError>' - The created client or an error.
+    /// * `Result<Self, RabbitMQError>` - The created client or an error.
     pub async fn new(config: &RabbitMQConfig) -> Result<Self, RabbitMQError> {
         let common = RabbitMQCommon::new(config).await?;
         
@@ -41,6 +41,13 @@ impl RabbitMQConsumer {
     }
 
     /// Sets up the consumer based on the channel and `RabbitMQConfig`.
+    ///
+    /// # Arguments
+    /// * `channel` - Lapin Channel.
+    /// * `config` - A initialized RabbitMQConfig containing required information
+    ///
+    /// # Returns
+    /// * `Result<Consumer, RabbitMQError>` - The initialized consumer or error
     async fn initialize_consumer(channel: &Channel, config: &RabbitMQConfig) -> Result<Consumer, RabbitMQError> {
         channel
             .basic_consume(
@@ -52,6 +59,12 @@ impl RabbitMQConsumer {
             .await.map_err(|e| RabbitMQError::InitializeConsumerError(e.to_string()))
     }
     /// Declares the queue based on the channel and `RabbitMQConfig`.
+    /// # Arguments
+    /// * `channel` - Lapin Channel.
+    /// * `config` - A initialized RabbitMQConfig containing required information
+    ///
+    /// # Returns
+    /// * `Result<Queue, RabbitMQError>` - The initialized queue or error
     async fn declare_queue(channel: &Channel, config: &RabbitMQConfig) -> Result<Queue, RabbitMQError> {
         channel
             .queue_declare(
@@ -65,7 +78,16 @@ impl RabbitMQConsumer {
             .await
             .map_err(|e| RabbitMQError::QueueError(e.to_string()))
     }
+
     /// Binds the queue based on the channel, declared exchange, queue and `RabbitMQConfig`.
+    /// # Arguments
+    /// * `channel` - Lapin Channel.
+    /// * `exchange` - String value of the exchange name
+    /// * `queue` - Lapin queue thats declared
+    /// * `config` - A initialized RabbitMQConfig containing required information
+    ///
+    /// # Returns
+    /// * `Result<(), RabbitMQError>` - Ok or error
     async fn bind_queue(channel: &Channel, exchange: &str, queue: &Queue, config: &RabbitMQConfig) -> Result<(), RabbitMQError> {
         channel
             .queue_bind(
@@ -101,6 +123,13 @@ impl RabbitMQConsumer {
     }
 
     /// Acknowledges the message after processing
+    ///
+    /// # Arguments
+    /// * `self` - Reference to self
+    /// * `delivery` - Delivery reciept
+    ///
+    /// # Returns
+    /// * `Result<(), RabbitMQError>` - Ok or error
     pub async fn ack_delivery(&self, delivery: Delivery) -> Result<(), RabbitMQError> {
         self.common.channel
             .basic_ack(delivery.delivery_tag, BasicAckOptions::default())

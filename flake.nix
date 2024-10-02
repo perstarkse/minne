@@ -35,6 +35,8 @@
             {
               # https://devenv.sh/reference/options/
               enterShell = ''
+                echo "Welcome to zettle_db project"
+                echo "----------------------------"
                 echo "run devenv up -d to start and monitor services"
               '';
 

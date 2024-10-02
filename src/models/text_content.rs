@@ -14,13 +14,31 @@ pub struct TextContent {
     pub category: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LLMAnalysis {
-    pub json_ld: serde_json::Value,
+/// A struct representing a knowledge source in the graph database.
+#[derive(Deserialize, Debug, Serialize)]
+pub struct KnowledgeSource {
+    pub id: String,
+    pub title: String,
     pub description: String,
-    pub related_category: String,
+    pub relationships: Vec<Relationship>,
+}
+
+/// A struct representing a relationship between knowledge sources.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Relationship {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub target: String,
+}
+
+/// A struct representing the result of an LLM analysis.
+#[derive(Deserialize, Debug,Serialize)]
+pub struct AnalysisResult {
+    pub knowledge_sources: Vec<KnowledgeSource>,
+    pub category: String,
     pub instructions: String,
 }
+
 
 /// Error types for processing `TextContent`.
 #[derive(Error, Debug)]
@@ -66,66 +84,43 @@ impl TextContent {
     }
 
     /// Sends text to an LLM for analysis.
-    async fn send_to_llm(&self) -> Result<LLMAnalysis, ProcessingError> {
+    async fn send_to_llm(&self) -> Result<AnalysisResult, ProcessingError> {
         let client = async_openai::Client::new();
-
-        // Define the JSON Schema for the expected response
-//         let schema = json!({
-//             "type": "object",
-//     "properties": {
-//         "json_ld": { 
-//             "type": "object",
-//             "properties": {
-//                 "@context": { "type": "string" },
-//                 "@type": { "type": "string" },
-//                 "name": { "type": "string" }
-//                 // Define only the essential properties
-//             },
-//             "required": ["@context", "@type", "name"],
-//             "additionalProperties": false,
-//         },
-//         "description": { "type": "string" },
-//         "related_category": { "type": "string" },
-//         "instructions": { "type": "string" }
-//     },
-//     "required": ["json_ld", "description", "related_category", "instructions"],
-//     "additionalProperties": false
-// });
-let  schema = json!({
-  "type": "object",
-  "properties": {
-    "knowledge_sources": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": {"type": "string"},
-          "type": {"type": "string", "enum": ["Document", "Page", "TextSnippet"]},
-          "title": {"type": "string"},
-          "description": {"type": "string"},
-          "relationships": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "type": {"type": "string", "enum": ["RelatedTo", "RelevantTo", "SimilarTo"]},
-                "target": {"type": "string", "description": "ID of the related knowledge source"}
-              },
-              "required": ["type", "target"],
-              "additionalProperties": false,
-            }
-          }
-        },
-        "required": ["id", "type", "title", "description", "relationships"],
-        "additionalProperties": false,
-      }
-    },
-    "category": {"type": "string"},
-    "instructions": {"type": "string"}
-  },
-  "required": ["knowledge_sources", "category", "instructions"],
-  "additionalProperties": false
-});
+        let  schema = json!({
+          "type": "object",
+          "properties": {
+            "knowledge_sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {"type": "string"},
+                  "type": {"type": "string", "enum": ["Document", "Page", "TextSnippet"]},
+                  "title": {"type": "string"},
+                  "description": {"type": "string"},
+                  "relationships": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {"type": "string", "enum": ["RelatedTo", "RelevantTo", "SimilarTo"]},
+                        "target": {"type": "string", "description": "ID of the related knowledge source"}
+                      },
+                      "required": ["type", "target"],
+                      "additionalProperties": false,
+                    }
+                  }
+                },
+                "required": ["id", "type", "title", "description", "relationships"],
+                "additionalProperties": false,
+              }
+            },
+            "category": {"type": "string"},
+            "instructions": {"type": "string"}
+          },
+          "required": ["knowledge_sources", "category", "instructions"],
+          "additionalProperties": false
+        });
 
         let response_format = async_openai::types::ResponseFormat::JsonSchema {
             json_schema: async_openai::types::ResponseFormatJsonSchema {
@@ -167,7 +162,7 @@ let  schema = json!({
         // Extract and parse the response
         for choice in response.choices {
             if let Some(content) = choice.message.content {
-                let analysis: LLMAnalysis = serde_json::from_str(&content).map_err(|e| {
+                let analysis: AnalysisResult = serde_json::from_str(&content).map_err(|e| {
                     ProcessingError::LLMError(format!(
                         "Failed to parse LLM response into LLMAnalysis: {}",
                         e.to_string()
@@ -183,7 +178,7 @@ let  schema = json!({
     }
 
     /// Stores analysis results in a graph database.
-    async fn store_in_graph_db(&self, _analysis: &LLMAnalysis) -> Result<(), ProcessingError> {
+    async fn store_in_graph_db(&self, _analysis: &AnalysisResult) -> Result<(), ProcessingError> {
         // TODO: Implement storage logic for your specific graph database.
         // Example:
         /*
