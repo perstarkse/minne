@@ -2,7 +2,7 @@ use async_openai::types::{ ChatCompletionRequestSystemMessage, ChatCompletionReq
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::info;
-use crate::models::file_info::FileInfo;
+use crate::{models::file_info::FileInfo, utils::llm::create_json_ld};
 use thiserror::Error;
 
 /// Represents a single piece of text content extracted from various sources.
@@ -71,7 +71,7 @@ impl TextContent {
     /// Processes the `TextContent` by sending it to an LLM, storing in a graph DB, and vector DB.
     pub async fn process(&self) -> Result<(), ProcessingError> {
         // Step 1: Send to LLM for analysis
-        let analysis = self.send_to_llm().await?;
+        let analysis = create_json_ld(&self.category, &self.instructions, &self.text).await?;
         info!("{:?}", analysis);
 
         // Step 2: Store analysis results in Graph DB
@@ -81,100 +81,6 @@ impl TextContent {
         // self.store_in_vector_db().await?;
 
         Ok(())
-    }
-
-    /// Sends text to an LLM for analysis.
-    async fn send_to_llm(&self) -> Result<AnalysisResult, ProcessingError> {
-        let client = async_openai::Client::new();
-        let  schema = json!({
-          "type": "object",
-          "properties": {
-            "knowledge_sources": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {"type": "string"},
-                  "type": {"type": "string", "enum": ["Document", "Page", "TextSnippet"]},
-                  "title": {"type": "string"},
-                  "description": {"type": "string"},
-                  "relationships": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {"type": "string", "enum": ["RelatedTo", "RelevantTo", "SimilarTo"]},
-                        "target": {"type": "string", "description": "ID of the related knowledge source"}
-                      },
-                      "required": ["type", "target"],
-                      "additionalProperties": false,
-                    }
-                  }
-                },
-                "required": ["id", "type", "title", "description", "relationships"],
-                "additionalProperties": false,
-              }
-            },
-            "category": {"type": "string"},
-            "instructions": {"type": "string"}
-          },
-          "required": ["knowledge_sources", "category", "instructions"],
-          "additionalProperties": false
-        });
-
-        let response_format = async_openai::types::ResponseFormat::JsonSchema {
-            json_schema: async_openai::types::ResponseFormatJsonSchema {
-                description: Some("Structured analysis of the submitted content".into()),
-                name: "content_analysis".into(),
-                schema: Some(schema),
-                strict: Some(true),
-            },
-        };
-
-        // Construct the system and user messages
-        let system_message = format!(
-            "You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON-LD object representing the content, a short description of the document, how it relates to the submitted category, and any relevant instructions."
-        );
-
-        let user_message = format!(
-            "Category: {}\nInstructions: {}\nContent:\n{}",
-            self.category, self.instructions, self.text
-        );
-
-        // Build the chat completion request
-        let request = CreateChatCompletionRequestArgs::default()
-            .model("gpt-4o-mini") 
-            .max_tokens(2048u32)
-            .messages([
-                ChatCompletionRequestSystemMessage::from(system_message).into(),
-                ChatCompletionRequestUserMessage::from(user_message).into(),
-            ])
-            .response_format(response_format)
-            .build().map_err(|e| ProcessingError::LLMError(e.to_string()))?;
-
-        // Send the request to OpenAI
-        let response = client.chat().create(request).await.map_err(|e| {
-            ProcessingError::LLMError(format!("OpenAI API request failed: {}", e.to_string()))
-        })?;
-
-        info!("{:?}", response);
-
-        // Extract and parse the response
-        for choice in response.choices {
-            if let Some(content) = choice.message.content {
-                let analysis: AnalysisResult = serde_json::from_str(&content).map_err(|e| {
-                    ProcessingError::LLMError(format!(
-                        "Failed to parse LLM response into LLMAnalysis: {}",
-                        e.to_string()
-                    ))
-                })?;
-                return Ok(analysis);
-            }
-        }
-
-        Err(ProcessingError::LLMError(
-            "No content found in LLM response".into(),
-        ))
     }
 
     /// Stores analysis results in a graph database.
