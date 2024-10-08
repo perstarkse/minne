@@ -92,6 +92,10 @@ impl IngressObject {
                 let content = tokio::fs::read_to_string(&file_info.path).await?;
                 Ok(content)
             }
+            "text/x-rust" => {
+                let content = tokio::fs::read_to_string(&file_info.path).await?;
+                Ok(content)
+            }
             // Handle other MIME types as needed
             _ => Err(IngressContentError::UnsupportedMime(file_info.mime_type.clone())),
         }
