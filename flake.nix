@@ -40,7 +40,15 @@
                 echo "run devenv up -d to start and monitor services"
               '';
 
+              packages = [
+                pkgs.neo4j
+              ];
+
               languages.rust.enable = true;
+
+              processes = {
+                start-neo4j.exec = "NEO4J_HOME=$(mktemp -d) neo4j console";
+              };
 
               services = {
                 redis = {

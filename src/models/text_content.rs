@@ -1,13 +1,13 @@
-use async_openai::types::{ ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage, CreateChatCompletionRequestArgs};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tracing::info;
-use crate::{models::file_info::FileInfo, utils::llm::create_json_ld};
+use uuid::Uuid;
+use crate::{models::file_info::FileInfo, neo4j::client::Neo4jClient, utils::llm::create_json_ld};
 use thiserror::Error;
 
 /// Represents a single piece of text content extracted from various sources.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TextContent {
+    pub id: Uuid,
     pub text: String,
     pub file_info: Option<FileInfo>,
     pub instructions: String,
@@ -15,7 +15,7 @@ pub struct TextContent {
 }
 
 /// A struct representing a knowledge source in the graph database.
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Serialize, Clone )]
 pub struct KnowledgeSource {
     pub id: String,
     pub title: String,
@@ -24,7 +24,7 @@ pub struct KnowledgeSource {
 }
 
 /// A struct representing a relationship between knowledge sources.
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Clone, Serialize, Debug)]
 pub struct Relationship {
     #[serde(rename = "type")]
     pub type_: String,
@@ -34,7 +34,7 @@ pub struct Relationship {
 /// A struct representing the result of an LLM analysis.
 #[derive(Deserialize, Debug,Serialize)]
 pub struct AnalysisResult {
-    pub knowledge_sources: Vec<KnowledgeSource>,
+    pub knowledge_source: KnowledgeSource,
     pub category: String,
     pub instructions: String,
 }
@@ -58,24 +58,24 @@ pub enum ProcessingError {
 
 
 impl TextContent {
-    /// Creates a new `TextContent` instance.
-    pub fn new(text: String, file_info: Option<FileInfo>, instructions: String, category: String) -> Self {
-        Self {
-            text,
-            file_info,
-            instructions,
-            category,
-        }
-    }
-
     /// Processes the `TextContent` by sending it to an LLM, storing in a graph DB, and vector DB.
     pub async fn process(&self) -> Result<(), ProcessingError> {
+        let client = Neo4jClient::new("127.0.0.1:7687", "neo4j", "neo4j").await.expect("Failed to create Neo4j client");        
+
         // Step 1: Send to LLM for analysis
         let analysis = create_json_ld(&self.category, &self.instructions, &self.text).await?;
-        info!("{:?}", analysis);
+        info!("{:?}", &analysis);
 
         // Step 2: Store analysis results in Graph DB
-        // self.store_in_graph_db(&analysis).await?;
+        client.store_knowledge_source(&analysis.knowledge_source).await?;
+
+        // Step 3: Store relationships in Graph DB
+        for relationship in analysis.knowledge_source.relationships.iter() {
+            client
+                .store_relationship(&analysis.knowledge_source.id, relationship)
+                .await?;
+            }
+
 
         // Step 3: Split text and store in Vector DB
         // self.store_in_vector_db().await?;
