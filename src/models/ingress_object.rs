@@ -1,5 +1,6 @@
 use crate::models::file_info::FileInfo;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::{ingress_content::IngressContentError, text_content::TextContent};
 
@@ -35,7 +36,9 @@ impl IngressObject {
         match self {
             IngressObject::Url { url, instructions, category } => {
                 let text = Self::fetch_text_from_url(url).await?;
+                let id = Uuid::new_v4();
                 Ok(TextContent {
+                    id,
                     text,
                     instructions: instructions.clone(),
                     category: category.clone(),
@@ -43,7 +46,9 @@ impl IngressObject {
                 })
             },
             IngressObject::Text { text, instructions, category } => {
+                let id = Uuid::new_v4();
                 Ok(TextContent {
+                    id,
                     text: text.clone(),
                     instructions: instructions.clone(),
                     category: category.clone(),
@@ -51,8 +56,10 @@ impl IngressObject {
                 })
             },
             IngressObject::File { file_info, instructions, category } => {
+                let id = Uuid::new_v4();
                 let text = Self::extract_text_from_file(file_info).await?;
                 Ok(TextContent {
+                    id,
                     text,
                     instructions: instructions.clone(),
                     category: category.clone(),
