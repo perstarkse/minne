@@ -47,7 +47,8 @@
               languages.rust.enable = true;
 
               processes = {
-                start-neo4j.exec = "NEO4J_HOME=$(mktemp -d) neo4j console";
+                # start-neo4j.exec = "NEO4J_HOME=$(mktemp -d) neo4j console";
+                surreal_db.exec = "docker run --rm --pull always -p 8000:8000 --user $(id -u) -v $(pwd)/database:/database surrealdb/surrealdb:latest start rocksdb:/database/database.db --user root_user --pass root_password";
               };
 
               services = {
