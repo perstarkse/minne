@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     models::file_info::{FileError, FileInfo},
-    redis::client::RedisClient,
+    redis::client::RedisClient, surrealdb::{document::set_file_info, SurrealDbClient},
 };
 
 #[derive(Debug, TryFromMultipart)]
@@ -44,6 +44,10 @@ pub async fn upload_handler(
     });
 
     info!("File uploaded successfully: {:?}", file_info);
+
+    let database = SurrealDbClient::new().await.map_err(|e| FileError::PersistError(e.to_string())).unwrap();
+
+    set_file_info(database.client, &file_info.sha256, file_info.clone()).await.unwrap();
 
     // Return the response with HTTP 200
     Ok((axum::http::StatusCode::OK, Json(response)))
