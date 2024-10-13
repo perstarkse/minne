@@ -19,7 +19,7 @@ use crate::redis::client::{RedisClient, RedisClientTrait};
 /// Represents metadata and storage information for a file.
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct FileInfo {
-    pub uuid: Uuid,
+    pub uuid: String,
     pub sha256: String,
     pub path: String,
     pub mime_type: String,
@@ -139,7 +139,7 @@ impl FileInfo {
 
         // Construct the FileInfo object
         let file_info = FileInfo {
-            uuid,
+            uuid: uuid.to_string(),
             sha256: sha.clone(),
             path: persisted_path.to_string_lossy().to_string(),
             mime_type,
@@ -212,7 +212,7 @@ impl FileInfo {
 
         // Update FileInfo
         let updated_file_info = FileInfo {
-            uuid,
+            uuid: uuid.to_string(),
             sha256: new_sha.clone(),
             path: new_persisted_path.to_string_lossy().to_string(),
             mime_type: new_mime_type,

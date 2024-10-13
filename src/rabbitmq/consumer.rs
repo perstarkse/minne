@@ -35,7 +35,7 @@ impl RabbitMQConsumer {
         Self::bind_queue(&common.channel, &config.exchange, &queue, config).await?;
         
         // Initialize the consumer
-        let consumer = Self::initialize_consumer(&common.channel, &config).await?;
+        let consumer = Self::initialize_consumer(&common.channel, config).await?;
 
         Ok(Self { common, queue, consumer })
     }

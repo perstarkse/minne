@@ -1,4 +1,3 @@
-use tokio;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::rabbitmq::{consumer::RabbitMQConsumer, RabbitMQConfig };

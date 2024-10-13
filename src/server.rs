@@ -1,8 +1,9 @@
 use axum::{
          extract::DefaultBodyLimit, routing::{delete, get, post, put}, Extension, Router
 };
+use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use zettle_db::{rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig}, routes::{file::{delete_file_handler, get_file_handler, update_file_handler, upload_handler}, ingress::ingress_handler, queue_length::queue_length_handler}};
+use zettle_db::{rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig}, routes::{file::{delete_file_handler, get_file_handler, update_file_handler, upload_handler}, ingress::ingress_handler, queue_length::queue_length_handler}, surrealdb::SurrealDbClient};
 use std::sync::Arc;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -23,6 +24,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     
     let producer = Arc::new(RabbitMQProducer::new(&config).await?);
+
+    // let database = SurrealDbClient::new().await?;
+
+    // database.client.health().await?;
+    // info!("Passed health check");
     
     // Create Axum router
     let app = Router::new()

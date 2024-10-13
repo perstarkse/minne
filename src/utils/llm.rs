@@ -74,7 +74,7 @@ pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> R
 
         // Send the request to OpenAI
         let response = client.chat().create(request).await.map_err(|e| {
-            ProcessingError::LLMError(format!("OpenAI API request failed: {}", e.to_string()))
+            ProcessingError::LLMError(format!("OpenAI API request failed: {}", e))
         })?;
 
         info!("{:?}", response);
@@ -85,7 +85,7 @@ pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> R
                 let analysis: AnalysisResult = serde_json::from_str(&content).map_err(|e| {
                     ProcessingError::LLMError(format!(
                         "Failed to parse LLM response into LLMAnalysis: {}",
-                        e.to_string()
+                        e
                     ))
                 })?;
                 return Ok(analysis);
