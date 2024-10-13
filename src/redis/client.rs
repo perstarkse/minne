@@ -197,7 +197,7 @@ mod tests {
 
         let test_sha = "dummysha256hash".to_string();
         let test_file_info = FileInfo {
-            uuid: Uuid::new_v4(),
+            uuid: Uuid::new_v4().to_string(),
             sha256: test_sha.clone(),
             path: "/path/to/file".to_string(),
             mime_type: "text/plain".to_string(),
@@ -222,7 +222,7 @@ mod tests {
 
         let test_sha = "dummysha256hash".to_string();
         let test_file_info = FileInfo {
-            uuid: Uuid::new_v4(),
+            uuid: Uuid::new_v4().to_string(),
             sha256: test_sha.clone(),
             path: "/path/to/file".to_string(),
             mime_type: "text/plain".to_string(),
