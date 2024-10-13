@@ -4,17 +4,22 @@ use mime_guess::from_path;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use surrealdb::RecordId;
 use std::{
     io::{BufReader, Read},
     path::{Path, PathBuf},
 };
 use tempfile::NamedTempFile;
 use thiserror::Error;
-use tracing::info;
+use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::redis::client::{RedisClient, RedisClientTrait};
+use crate::{redis::client::{RedisClient, RedisClientTrait}, surrealdb::SurrealDbClient};
 
+#[derive(Debug, Deserialize)]
+struct Record {
+    id: RecordId,
+}
 
 /// Represents metadata and storage information for a file.
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
@@ -39,6 +44,9 @@ pub enum FileError {
 
     #[error("Unsupported MIME type: {0}")]
     UnsupportedMime(String),
+
+    #[error("SurrealDB error: {0}")]
+    SurrealError(#[from] surrealdb::Error),
 
     #[error("Redis error: {0}")]
     RedisError(#[from] crate::redis::client::RedisError),
@@ -86,6 +94,7 @@ impl IntoResponse for FileError {
             FileError::PersistError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to persist file"),
             FileError::SerializationError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error"),
             FileError::DeserializationError(_) => (StatusCode::BAD_REQUEST, "Deserialization error"),
+            FileError::SurrealError(_) =>(StatusCode::INTERNAL_SERVER_ERROR, "Serialization error"), 
         };
 
         let body = Json(json!({
@@ -97,14 +106,66 @@ impl IntoResponse for FileError {
 }
 
 impl FileInfo {
-    /// Creates a new `FileInfo` instance from uploaded field data.
-    ///
-    /// # Arguments
-    /// * `field_data` - The uploaded file data.
-    ///
-    /// # Returns
-    /// * `Result<FileInfo, FileError>` - The created `FileInfo` or an error.
-    pub async fn new(field_data: FieldData<NamedTempFile>, redis_client: &RedisClient) -> Result<FileInfo, FileError> {
+    // /// Creates a new `FileInfo` instance from uploaded field data.
+    // ///
+    // /// # Arguments
+    // /// * `field_data` - The uploaded file data.
+    // ///
+    // /// # Returns
+    // /// * `Result<FileInfo, FileError>` - The created `FileInfo` or an error.
+    // pub async fn new(field_data: FieldData<NamedTempFile>, redis_client: &RedisClient) -> Result<FileInfo, FileError> {
+    //     let file = field_data.contents; // NamedTempFile
+    //     let metadata = field_data.metadata;
+
+    //     // Extract file name from metadata
+    //     let file_name = metadata.file_name.ok_or(FileError::MissingFileName)?;
+    //     info!("File name: {:?}", file_name);
+
+    //     // Calculate SHA256 hash of the file
+    //     let sha = Self::get_sha(&file).await?;
+    //     info!("SHA256: {:?}", sha);
+
+    //     // Check if SHA exists in Redis
+    //     if let Some(existing_file_info) = redis_client.get_file_info_by_sha(&sha).await? {
+    //         info!("Duplicate file detected with SHA256: {}", sha);
+    //         return Ok(existing_file_info);
+    //     }
+
+    //     // Generate a new UUID
+    //     let uuid = Uuid::new_v4();
+    //     info!("UUID: {:?}", uuid);
+
+    //     // Sanitize file name
+    //     let sanitized_file_name = sanitize_file_name(&file_name);
+    //     info!("Sanitized file name: {:?}", sanitized_file_name);
+
+    //     // Persist the file to the filesystem
+    //     let persisted_path = Self::persist_file(&uuid, file, &sanitized_file_name).await?;
+
+    //     // Guess the MIME type
+    //     let mime_type = Self::guess_mime_type(&persisted_path);
+    //     info!("Mime type: {:?}", mime_type);
+
+    //     // Construct the FileInfo object
+    //     let file_info = FileInfo {
+    //         uuid: uuid.to_string(),
+    //         sha256: sha.clone(),
+    //         path: persisted_path.to_string_lossy().to_string(),
+    //         mime_type,
+    //     };
+
+    //     // Store FileInfo in Redis with SHA256 as key
+    //     redis_client.set_file_info(&sha, &file_info).await?;
+
+    //     // Map UUID to SHA256 in Redis
+    //     redis_client.set_sha_uuid_mapping(&uuid, &sha).await?;
+
+    //     Ok(file_info)
+    // }
+    pub async fn new(
+        field_data: FieldData<NamedTempFile>,
+        db_client: &SurrealDbClient,
+    ) -> Result<FileInfo, FileError> {
         let file = field_data.contents; // NamedTempFile
         let metadata = field_data.metadata;
 
@@ -116,8 +177,8 @@ impl FileInfo {
         let sha = Self::get_sha(&file).await?;
         info!("SHA256: {:?}", sha);
 
-        // Check if SHA exists in Redis
-        if let Some(existing_file_info) = redis_client.get_file_info_by_sha(&sha).await? {
+        // Check if SHA exists in SurrealDB
+        if let Some(existing_file_info) = Self::get_by_sha(&sha, db_client).await? {
             info!("Duplicate file detected with SHA256: {}", sha);
             return Ok(existing_file_info);
         }
@@ -145,14 +206,12 @@ impl FileInfo {
             mime_type,
         };
 
-        // Store FileInfo in Redis with SHA256 as key
-        redis_client.set_file_info(&sha, &file_info).await?;
-
-        // Map UUID to SHA256 in Redis
-        redis_client.set_sha_uuid_mapping(&uuid, &sha).await?;
+        // Store FileInfo in SurrealDB
+        Self::create_record(&file_info, db_client).await?;
 
         Ok(file_info)
     }
+
 
     /// Retrieves `FileInfo` based on UUID.
     ///
@@ -333,6 +392,84 @@ impl FileInfo {
         from_path(path)
             .first_or(mime::APPLICATION_OCTET_STREAM)
             .to_string()
+    }
+
+    
+    /// Creates a new record in SurrealDB for the given `FileInfo`.
+    ///
+    /// # Arguments
+    /// * `file_info` - The `FileInfo` to store.
+    /// * `db_client` - Reference to the SurrealDbClient.
+    ///
+    /// # Returns
+    /// * `Result<(), FileError>` - Empty result or an error.
+    async fn create_record(file_info: &FileInfo, db_client: &SurrealDbClient) -> Result<(), FileError> {
+        // Define the table and primary key
+
+        // Create the record
+        let _created: Option<Record> = db_client
+            .client
+            .create(("file", &file_info.uuid ))
+            .content(file_info.clone())
+            .await?;
+
+        debug!("{:?}",_created);
+                
+        info!("Created FileInfo record with SHA256: {}", file_info.sha256);
+
+        Ok(())
+    }
+
+    /// Retrieves a `FileInfo` by UUID.
+    ///
+    /// # Arguments
+    /// * `uuid` - The UUID string.
+    /// * `db_client` - Reference to the SurrealDbClient.
+    ///
+    /// # Returns
+    /// * `Result<Option<FileInfo>, FileError>` - The `FileInfo` or `None` if not found.
+    async fn get_by_uuid(uuid: &str, db_client: &SurrealDbClient) -> Result<Option<FileInfo>, FileError> {
+        let query = format!("SELECT * FROM file WHERE uuid = '{}'", uuid);
+        let response: Vec<FileInfo> = db_client.client.query(query).await?.take(0)?;
+
+        Ok(response.into_iter().next())
+    }
+
+    /// Retrieves a `FileInfo` by SHA256.
+    ///
+    /// # Arguments
+    /// * `sha256` - The SHA256 hash string.
+    /// * `db_client` - Reference to the SurrealDbClient.
+    ///
+    /// # Returns
+    /// * `Result<Option<FileInfo>, FileError>` - The `FileInfo` or `None` if not found.
+    async fn get_by_sha(sha256: &str, db_client: &SurrealDbClient) -> Result<Option<FileInfo>, FileError> {
+        let query = format!("SELECT * FROM file WHERE sha256 = '{}'", sha256);
+        let response: Vec<FileInfo> = db_client.client.query(query).await?.take(0)?;
+
+        Ok(response.into_iter().next())
+    }
+
+    /// Deletes a `FileInfo` record by SHA256.
+    ///
+    /// # Arguments
+    /// * `sha256` - The SHA256 hash string.
+    /// * `db_client` - Reference to the SurrealDbClient.
+    ///
+    /// # Returns
+    /// * `Result<(), FileError>` - Empty result or an error.
+    async fn delete_record(sha256: &str, db_client: &SurrealDbClient) -> Result<(), FileError> {
+        let table = "file";
+        let primary_key = sha256;
+
+        let _created: Option<Record> = db_client
+            .client
+            .delete((table, primary_key))
+            .await?;
+
+        info!("Deleted FileInfo record with SHA256: {}", sha256);
+
+        Ok(())
     }
 }
 

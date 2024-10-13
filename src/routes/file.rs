@@ -32,8 +32,9 @@ pub async fn upload_handler(
     // Initialize a new RedisClient instance
     let redis_client = RedisClient::new("redis://127.0.0.1/");
 
+    let database = SurrealDbClient::new().await.map_err(|e| FileError::PersistError(e.to_string())).unwrap();
     // Process the file upload
-    let file_info = FileInfo::new(input.file, &redis_client).await?;
+    let file_info = FileInfo::new(input.file, &database).await?;
 
     // Prepare the response JSON
     let response = json!({
@@ -45,9 +46,6 @@ pub async fn upload_handler(
 
     info!("File uploaded successfully: {:?}", file_info);
 
-    let database = SurrealDbClient::new().await.map_err(|e| FileError::PersistError(e.to_string())).unwrap();
-
-    set_file_info(database.client, &file_info.sha256, file_info.clone()).await.unwrap();
 
     // Return the response with HTTP 200
     Ok((axum::http::StatusCode::OK, Json(response)))
