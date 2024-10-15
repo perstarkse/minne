@@ -52,7 +52,7 @@ pub enum FileError {
     RedisError(#[from] crate::redis::client::RedisError),
 
     #[error("File not found for UUID: {0}")]
-    FileNotFound(Uuid),
+    FileNotFound(String),
 
     #[error("Duplicate file detected with SHA256: {0}")]
     DuplicateFile(String),
@@ -106,62 +106,6 @@ impl IntoResponse for FileError {
 }
 
 impl FileInfo {
-    // /// Creates a new `FileInfo` instance from uploaded field data.
-    // ///
-    // /// # Arguments
-    // /// * `field_data` - The uploaded file data.
-    // ///
-    // /// # Returns
-    // /// * `Result<FileInfo, FileError>` - The created `FileInfo` or an error.
-    // pub async fn new(field_data: FieldData<NamedTempFile>, redis_client: &RedisClient) -> Result<FileInfo, FileError> {
-    //     let file = field_data.contents; // NamedTempFile
-    //     let metadata = field_data.metadata;
-
-    //     // Extract file name from metadata
-    //     let file_name = metadata.file_name.ok_or(FileError::MissingFileName)?;
-    //     info!("File name: {:?}", file_name);
-
-    //     // Calculate SHA256 hash of the file
-    //     let sha = Self::get_sha(&file).await?;
-    //     info!("SHA256: {:?}", sha);
-
-    //     // Check if SHA exists in Redis
-    //     if let Some(existing_file_info) = redis_client.get_file_info_by_sha(&sha).await? {
-    //         info!("Duplicate file detected with SHA256: {}", sha);
-    //         return Ok(existing_file_info);
-    //     }
-
-    //     // Generate a new UUID
-    //     let uuid = Uuid::new_v4();
-    //     info!("UUID: {:?}", uuid);
-
-    //     // Sanitize file name
-    //     let sanitized_file_name = sanitize_file_name(&file_name);
-    //     info!("Sanitized file name: {:?}", sanitized_file_name);
-
-    //     // Persist the file to the filesystem
-    //     let persisted_path = Self::persist_file(&uuid, file, &sanitized_file_name).await?;
-
-    //     // Guess the MIME type
-    //     let mime_type = Self::guess_mime_type(&persisted_path);
-    //     info!("Mime type: {:?}", mime_type);
-
-    //     // Construct the FileInfo object
-    //     let file_info = FileInfo {
-    //         uuid: uuid.to_string(),
-    //         sha256: sha.clone(),
-    //         path: persisted_path.to_string_lossy().to_string(),
-    //         mime_type,
-    //     };
-
-    //     // Store FileInfo in Redis with SHA256 as key
-    //     redis_client.set_file_info(&sha, &file_info).await?;
-
-    //     // Map UUID to SHA256 in Redis
-    //     redis_client.set_sha_uuid_mapping(&uuid, &sha).await?;
-
-    //     Ok(file_info)
-    // }
     pub async fn new(
         field_data: FieldData<NamedTempFile>,
         db_client: &SurrealDbClient,
@@ -212,26 +156,6 @@ impl FileInfo {
         Ok(file_info)
     }
 
-
-    /// Retrieves `FileInfo` based on UUID.
-    ///
-    /// # Arguments
-    /// * `uuid` - The UUID of the file.
-    ///
-    /// # Returns
-    /// * `Result<FileInfo, FileError>` - The `FileInfo` or an error.
-    pub async fn get(uuid: Uuid, redis_client: &RedisClient) -> Result<FileInfo, FileError> {
-        // Fetch SHA256 from UUID mapping
-        let sha = redis_client.get_sha_by_uuid(&uuid).await?
-            .ok_or(FileError::FileNotFound(uuid))?;
-
-        // Retrieve FileInfo by SHA256
-        let file_info = redis_client.get_file_info_by_sha(&sha).await?
-            .ok_or(FileError::FileNotFound(uuid))?;
-
-        Ok(file_info)
-    }
-
     /// Updates an existing file identified by UUID with new file data.
     ///
     /// # Arguments
@@ -241,7 +165,7 @@ impl FileInfo {
     ///
     /// # Returns
     /// * `Result<FileInfo, FileError>` - The updated `FileInfo` or an error.
-    pub async fn update(uuid: Uuid, new_field_data: FieldData<NamedTempFile>, redis_client: &RedisClient) -> Result<FileInfo, FileError> {
+    pub async fn update(uuid: Uuid, new_field_data: FieldData<NamedTempFile>, db_client: &SurrealDbClient) -> Result<FileInfo, FileError> {
         let new_file = new_field_data.contents;
         let new_metadata = new_field_data.metadata;
 
@@ -252,7 +176,7 @@ impl FileInfo {
         let new_sha = Self::get_sha(&new_file).await?;
 
         // Check if the new SHA already exists
-        if let Some(existing_file_info) = redis_client.get_file_info_by_sha(&new_sha).await? {
+        if let Some(existing_file_info) = Self::get_by_sha(&new_sha, &db_client).await? {
             info!("Duplicate file detected with SHA256: {}", new_sha);
             return Ok(existing_file_info);
         }
@@ -266,8 +190,9 @@ impl FileInfo {
         // Guess the new MIME type
         let new_mime_type = Self::guess_mime_type(&new_persisted_path);
 
-        // Retrieve existing FileInfo to get old SHA
-        let old_file_info = Self::get(uuid, redis_client).await?;
+        // Get the existing item and remove it
+        let old_record = Self::get_by_uuid(uuid, &db_client).await?;
+        Self::delete_record(&old_record.sha256, &db_client).await?;
 
         // Update FileInfo
         let updated_file_info = FileInfo {
@@ -277,10 +202,8 @@ impl FileInfo {
             mime_type: new_mime_type,
         };
 
-        // Update Redis: Remove old SHA entry and add new SHA entry
-        redis_client.delete_file_info(&old_file_info.sha256).await?;
-        redis_client.set_file_info(&new_sha, &updated_file_info).await?;
-        redis_client.set_sha_uuid_mapping(&uuid, &new_sha).await?;
+        // Save the new item
+        Self::create_record(&updated_file_info,&db_client).await?;
 
         // Optionally, delete the old file from the filesystem if it's no longer referenced
         // This requires reference counting or checking if other FileInfo entries point to the same SHA
@@ -297,9 +220,9 @@ impl FileInfo {
     ///
     /// # Returns
     /// * `Result<(), FileError>` - Empty result or an error.
-    pub async fn delete(uuid: Uuid, redis_client: &RedisClient) -> Result<(), FileError> {
+    pub async fn delete(uuid: Uuid, db_client: &SurrealDbClient) -> Result<(), FileError> {
         // Retrieve FileInfo to get SHA256 and path
-        let file_info = Self::get(uuid, redis_client).await?;
+        let file_info = Self::get_by_uuid(uuid, &db_client).await?; 
 
         // Delete the file from the filesystem
         let file_path = Path::new(&file_info.path);
@@ -310,14 +233,11 @@ impl FileInfo {
             info!("File path does not exist, skipping deletion: {}", file_info.path);
         }
 
-        // Delete the FileInfo from Redis
-        redis_client.delete_file_info(&file_info.sha256).await?;
-
-        // Delete the UUID to SHA mapping
-        redis_client.delete_sha_uuid_mapping(&uuid).await?;
+        // Delete the FileInfo from database
+        Self::delete_record(&file_info.sha256, &db_client).await?;
 
         // Remove the UUID directory if empty
-        let uuid_dir = file_path.parent().ok_or(FileError::FileNotFound(uuid))?;
+        let uuid_dir = file_path.parent().ok_or(FileError::FileNotFound(uuid.to_string()))?;
         if uuid_dir.exists() {
             let mut entries = tokio::fs::read_dir(uuid_dir).await.map_err(FileError::Io)?;
             if entries.next_entry().await?.is_none() {
@@ -427,12 +347,12 @@ impl FileInfo {
     /// * `db_client` - Reference to the SurrealDbClient.
     ///
     /// # Returns
-    /// * `Result<Option<FileInfo>, FileError>` - The `FileInfo` or `None` if not found.
-    async fn get_by_uuid(uuid: &str, db_client: &SurrealDbClient) -> Result<Option<FileInfo>, FileError> {
+    /// * `Result<FileInfo, FileError>` - The `FileInfo` or `Error` if not found.
+    pub async fn get_by_uuid(uuid: Uuid, db_client: &SurrealDbClient) -> Result<FileInfo, FileError> {
         let query = format!("SELECT * FROM file WHERE uuid = '{}'", uuid);
         let response: Vec<FileInfo> = db_client.client.query(query).await?.take(0)?;
 
-        Ok(response.into_iter().next())
+        Ok(response.into_iter().next().ok_or(FileError::FileNotFound(uuid.to_string()))?)
     }
 
     /// Retrieves a `FileInfo` by SHA256.
@@ -446,6 +366,8 @@ impl FileInfo {
     async fn get_by_sha(sha256: &str, db_client: &SurrealDbClient) -> Result<Option<FileInfo>, FileError> {
         let query = format!("SELECT * FROM file WHERE sha256 = '{}'", sha256);
         let response: Vec<FileInfo> = db_client.client.query(query).await?.take(0)?;
+
+        debug!("{:?}", response);
 
         Ok(response.into_iter().next())
     }

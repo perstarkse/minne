@@ -60,11 +60,11 @@ pub async fn get_file_handler(
     // Parse UUID
     let uuid = Uuid::parse_str(&uuid_str).map_err(|_| FileError::InvalidUuid(uuid_str.clone()))?;
 
-    // Initialize RedisClient
-    let redis_client = RedisClient::new("redis://127.0.0.1/");
+    // Initialize the database client
+    let db_client = SurrealDbClient::new().await.map_err(|e| FileError::PersistError(e.to_string())).unwrap();
 
     // Retrieve FileInfo
-    let file_info = FileInfo::get(uuid, &redis_client).await?;
+    let file_info = FileInfo::get_by_uuid(uuid, &db_client).await?;
 
     // Prepare the response JSON
     let response = json!({

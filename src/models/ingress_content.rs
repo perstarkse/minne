@@ -3,7 +3,7 @@ use thiserror::Error;
 use tracing::info;
 use url::Url;
 use uuid::Uuid;
-use crate::redis::client::RedisClient;
+use crate::{redis::client::RedisClient, surrealdb::SurrealDbClient};
 
 use super::{file_info::FileInfo, ingress_object::IngressObject };
 
@@ -52,7 +52,7 @@ pub enum IngressContentError {
 /// * `Vec<IngressObject>` - An array containing the ingressed objects, one file/contenttype per object.
 pub async fn create_ingress_objects(
     input: IngressInput,
-    redis_client: &RedisClient,
+    db_client: &SurrealDbClient,
 ) -> Result<Vec<IngressObject>, IngressContentError> {
     // Initialize list
     let mut object_list = Vec::new();
@@ -79,21 +79,20 @@ pub async fn create_ingress_objects(
         }
     }
 
-    // Look up FileInfo objects using the redis db and the submitted uuids in input.files
+    // Look up FileInfo objects using the db and the submitted uuids in input.files
     if let Some(file_uuids) = input.files {
         for uuid_str in file_uuids {
             let uuid = Uuid::parse_str(&uuid_str)?;
-            match FileInfo::get(uuid, redis_client).await {
-                Ok(file_info) => {
+            match FileInfo::get_by_uuid(uuid, &db_client).await {
+                Ok(Some(file_info)) => {
                     object_list.push(IngressObject::File {
                         file_info,
                         instructions: input.instructions.clone(),
                         category: input.category.clone(),
                     });
                 }
-                Err(_) => {
+                _ => {
                     info!("No file with UUID: {}", uuid);
-                    // Optionally, you can collect errors or continue silently
                 }
             }
         }

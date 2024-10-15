@@ -57,7 +57,7 @@
                 };
                 rabbitmq = {
                   enable = true;
-                  plugins = ["tracing"];
+                  # plugins = ["tracing"];
                 };
               };
             }
