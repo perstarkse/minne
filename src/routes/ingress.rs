@@ -1,16 +1,14 @@
 use std::sync::Arc;
 use axum::{http::StatusCode, response::IntoResponse, Extension, Json};
 use tracing::{error, info};
-use crate::{models::{file_info::FileError, ingress_content::{create_ingress_objects, IngressInput}}, rabbitmq::publisher::RabbitMQProducer, redis::client::RedisClient, surrealdb::SurrealDbClient};
+use crate::{models::ingress_content::{create_ingress_objects, IngressInput}, rabbitmq::publisher::RabbitMQProducer, surrealdb::SurrealDbClient};
 
 pub async fn ingress_handler(
     Extension(producer): Extension<Arc<RabbitMQProducer>>,
+    Extension(db_client): Extension<Arc<SurrealDbClient>>,
     Json(input): Json<IngressInput>,
 ) -> impl IntoResponse {
     info!("Received input: {:?}", input);
-
-    let db_client = SurrealDbClient::new().await.map_err(|e| FileError::PersistError(e.to_string())).unwrap();
-    let redis_client = RedisClient::new("redis://127.0.0.1/");
 
     match create_ingress_objects(input, &db_client).await {
         Ok(objects) => {

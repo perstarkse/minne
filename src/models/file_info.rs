@@ -14,10 +14,11 @@ use thiserror::Error;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::{redis::client::{RedisClient, RedisClientTrait}, surrealdb::SurrealDbClient};
+use crate::surrealdb::SurrealDbClient;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug,Deserialize)]
 struct Record {
+    #[allow(dead_code)]
     id: RecordId,
 }
 
@@ -47,9 +48,6 @@ pub enum FileError {
 
     #[error("SurrealDB error: {0}")]
     SurrealError(#[from] surrealdb::Error),
-
-    #[error("Redis error: {0}")]
-    RedisError(#[from] crate::redis::client::RedisError),
 
     #[error("File not found for UUID: {0}")]
     FileNotFound(String),
@@ -85,7 +83,6 @@ impl IntoResponse for FileError {
             FileError::Utf8(_) => (StatusCode::BAD_REQUEST, "Invalid UTF-8 data"),
             FileError::MimeDetection(_) => (StatusCode::BAD_REQUEST, "MIME type detection failed"),
             FileError::UnsupportedMime(_) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, "Unsupported MIME type"),
-            FileError::RedisError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Redis error"),
             FileError::FileNotFound(_) => (StatusCode::NOT_FOUND, "File not found"),
             FileError::DuplicateFile(_) => (StatusCode::CONFLICT, "Duplicate file detected"),
             FileError::HashCollision => (StatusCode::INTERNAL_SERVER_ERROR, "Hash collision detected"),
@@ -122,9 +119,10 @@ impl FileInfo {
         info!("SHA256: {:?}", sha);
 
         // Check if SHA exists in SurrealDB
-        if let Some(existing_file_info) = Self::get_by_sha(&sha, db_client).await? {
-            info!("Duplicate file detected with SHA256: {}", sha);
-            return Ok(existing_file_info);
+        if let Ok(file) = Self::get_by_sha(&sha, db_client).await {
+            info!("File already exists in database with SHA256: {}", sha);
+            // SHA exists: return FileInfo
+            return Ok(file);
         }
 
         // Generate a new UUID
@@ -176,9 +174,10 @@ impl FileInfo {
         let new_sha = Self::get_sha(&new_file).await?;
 
         // Check if the new SHA already exists
-        if let Some(existing_file_info) = Self::get_by_sha(&new_sha, &db_client).await? {
-            info!("Duplicate file detected with SHA256: {}", new_sha);
-            return Ok(existing_file_info);
+        if let Ok(file) = Self::get_by_sha(&new_sha, db_client).await {
+            info!("File already exists in database with SHA256: {}", new_sha);
+            // SHA exists: return FileInfo
+            return Ok(file);
         }
 
         // Sanitize new file name
@@ -191,8 +190,8 @@ impl FileInfo {
         let new_mime_type = Self::guess_mime_type(&new_persisted_path);
 
         // Get the existing item and remove it
-        let old_record = Self::get_by_uuid(uuid, &db_client).await?;
-        Self::delete_record(&old_record.sha256, &db_client).await?;
+        let old_record = Self::get_by_uuid(uuid, db_client).await?;
+        Self::delete_record(&old_record.sha256, db_client).await?;
 
         // Update FileInfo
         let updated_file_info = FileInfo {
@@ -203,7 +202,7 @@ impl FileInfo {
         };
 
         // Save the new item
-        Self::create_record(&updated_file_info,&db_client).await?;
+        Self::create_record(&updated_file_info,db_client).await?;
 
         // Optionally, delete the old file from the filesystem if it's no longer referenced
         // This requires reference counting or checking if other FileInfo entries point to the same SHA
@@ -222,7 +221,7 @@ impl FileInfo {
     /// * `Result<(), FileError>` - Empty result or an error.
     pub async fn delete(uuid: Uuid, db_client: &SurrealDbClient) -> Result<(), FileError> {
         // Retrieve FileInfo to get SHA256 and path
-        let file_info = Self::get_by_uuid(uuid, &db_client).await?; 
+        let file_info = Self::get_by_uuid(uuid, db_client).await?; 
 
         // Delete the file from the filesystem
         let file_path = Path::new(&file_info.path);
@@ -234,7 +233,7 @@ impl FileInfo {
         }
 
         // Delete the FileInfo from database
-        Self::delete_record(&file_info.sha256, &db_client).await?;
+        Self::delete_record(&file_info.sha256, db_client).await?;
 
         // Remove the UUID directory if empty
         let uuid_dir = file_path.parent().ok_or(FileError::FileNotFound(uuid.to_string()))?;
@@ -324,8 +323,6 @@ impl FileInfo {
     /// # Returns
     /// * `Result<(), FileError>` - Empty result or an error.
     async fn create_record(file_info: &FileInfo, db_client: &SurrealDbClient) -> Result<(), FileError> {
-        // Define the table and primary key
-
         // Create the record
         let _created: Option<Record> = db_client
             .client
@@ -352,7 +349,7 @@ impl FileInfo {
         let query = format!("SELECT * FROM file WHERE uuid = '{}'", uuid);
         let response: Vec<FileInfo> = db_client.client.query(query).await?.take(0)?;
 
-        Ok(response.into_iter().next().ok_or(FileError::FileNotFound(uuid.to_string()))?)
+        response.into_iter().next().ok_or(FileError::FileNotFound(uuid.to_string()))
     }
 
     /// Retrieves a `FileInfo` by SHA256.
@@ -363,14 +360,13 @@ impl FileInfo {
     ///
     /// # Returns
     /// * `Result<Option<FileInfo>, FileError>` - The `FileInfo` or `None` if not found.
-    async fn get_by_sha(sha256: &str, db_client: &SurrealDbClient) -> Result<Option<FileInfo>, FileError> {
-        let query = format!("SELECT * FROM file WHERE sha256 = '{}'", sha256);
+    async fn get_by_sha(sha256: &str, db_client: &SurrealDbClient) -> Result<FileInfo, FileError> {
+        let query = format!("SELECT * FROM file WHERE sha256 = '{}'", &sha256);
         let response: Vec<FileInfo> = db_client.client.query(query).await?.take(0)?;
 
         debug!("{:?}", response);
 
-        Ok(response.into_iter().next())
-    }
+        response.into_iter().next().ok_or(FileError::FileNotFound(sha256.to_string()))    }
 
     /// Deletes a `FileInfo` record by SHA256.
     ///
