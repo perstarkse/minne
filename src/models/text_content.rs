@@ -84,6 +84,7 @@ impl TextContent {
     }
 
     /// Stores analysis results in a graph database.
+    #[allow(dead_code)]
     async fn store_in_graph_db(&self, _analysis: &AnalysisResult) -> Result<(), ProcessingError> {
         // TODO: Implement storage logic for your specific graph database.
         // Example:
@@ -95,6 +96,7 @@ impl TextContent {
     }
 
     /// Splits text and stores it in a vector database.
+    #[allow(dead_code)]
     async fn store_in_vector_db(&self) -> Result<(), ProcessingError> {
         // TODO: Implement text splitting and vector storage logic.
         // Example:
