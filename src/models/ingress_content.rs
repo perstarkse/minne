@@ -3,10 +3,8 @@ use thiserror::Error;
 use tracing::info;
 use url::Url;
 use uuid::Uuid;
-use crate::{redis::client::RedisClient, surrealdb::SurrealDbClient};
-
+use crate::surrealdb::SurrealDbClient;
 use super::{file_info::FileInfo, ingress_object::IngressObject };
-
 
 /// Struct defining the expected body when ingressing content.
 #[derive(Serialize, Deserialize, Debug)]
@@ -83,8 +81,8 @@ pub async fn create_ingress_objects(
     if let Some(file_uuids) = input.files {
         for uuid_str in file_uuids {
             let uuid = Uuid::parse_str(&uuid_str)?;
-            match FileInfo::get_by_uuid(uuid, &db_client).await {
-                Ok(Some(file_info)) => {
+            match FileInfo::get_by_uuid(uuid, db_client).await {
+                Ok(file_info) => {
                     object_list.push(IngressObject::File {
                         file_info,
                         instructions: input.instructions.clone(),

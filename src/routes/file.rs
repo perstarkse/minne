@@ -1,8 +1,7 @@
+use std::sync::Arc;
+
 use axum::{
-    extract::Path,
-    response::IntoResponse,
-    Json,
-    
+    extract::Path, response::IntoResponse, Extension, Json
 };
 use axum_typed_multipart::{TypedMultipart, FieldData, TryFromMultipart};
 use serde_json::json;
@@ -12,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     models::file_info::{FileError, FileInfo},
-    redis::client::RedisClient, surrealdb::{document::set_file_info, SurrealDbClient},
+     surrealdb::SurrealDbClient,
 };
 
 #[derive(Debug, TryFromMultipart)]
@@ -25,16 +24,13 @@ pub struct FileUploadRequest {
 /// 
 /// Route: POST /file
 pub async fn upload_handler(
+    Extension(db_client): Extension<Arc<SurrealDbClient>>,
     TypedMultipart(input): TypedMultipart<FileUploadRequest>,
 ) -> Result<impl IntoResponse, FileError> {
     info!("Received an upload request");
 
-    // Initialize a new RedisClient instance
-    let redis_client = RedisClient::new("redis://127.0.0.1/");
-
-    let database = SurrealDbClient::new().await.map_err(|e| FileError::PersistError(e.to_string())).unwrap();
     // Process the file upload
-    let file_info = FileInfo::new(input.file, &database).await?;
+    let file_info = FileInfo::new(input.file, &db_client).await?;
 
     // Prepare the response JSON
     let response = json!({
@@ -55,13 +51,11 @@ pub async fn upload_handler(
 /// 
 /// Route: GET /file/:uuid
 pub async fn get_file_handler(
+    Extension(db_client): Extension<Arc<SurrealDbClient>>,
     Path(uuid_str): Path<String>,
 ) -> Result<impl IntoResponse, FileError> {
     // Parse UUID
     let uuid = Uuid::parse_str(&uuid_str).map_err(|_| FileError::InvalidUuid(uuid_str.clone()))?;
-
-    // Initialize the database client
-    let db_client = SurrealDbClient::new().await.map_err(|e| FileError::PersistError(e.to_string())).unwrap();
 
     // Retrieve FileInfo
     let file_info = FileInfo::get_by_uuid(uuid, &db_client).await?;
@@ -84,17 +78,15 @@ pub async fn get_file_handler(
 /// 
 /// Route: PUT /file/:uuid
 pub async fn update_file_handler(
+    Extension(db_client): Extension<Arc<SurrealDbClient>>,
     Path(uuid_str): Path<String>,
     TypedMultipart(input): TypedMultipart<FileUploadRequest>,
 ) -> Result<impl IntoResponse, FileError> {
     // Parse UUID
     let uuid = Uuid::parse_str(&uuid_str).map_err(|_| FileError::InvalidUuid(uuid_str.clone()))?;
 
-    // Initialize RedisClient
-    let redis_client = RedisClient::new("redis://127.0.0.1/");
-
     // Update the file
-    let updated_file_info = FileInfo::update(uuid, input.file, &redis_client).await?;
+    let updated_file_info = FileInfo::update(uuid, input.file, &db_client).await?;
 
     // Prepare the response JSON
     let response = json!({
@@ -114,16 +106,14 @@ pub async fn update_file_handler(
 /// 
 /// Route: DELETE /file/:uuid
 pub async fn delete_file_handler(
+    Extension(db_client): Extension<Arc<SurrealDbClient>>,
     Path(uuid_str): Path<String>,
 ) -> Result<impl IntoResponse, FileError> {
     // Parse UUID
     let uuid = Uuid::parse_str(&uuid_str).map_err(|_| FileError::InvalidUuid(uuid_str.clone()))?;
 
-    // Initialize RedisClient
-    let redis_client = RedisClient::new("redis://127.0.0.1/");
-
     // Delete the file
-    FileInfo::delete(uuid, &redis_client).await?;
+    FileInfo::delete(uuid, &db_client).await?;
 
     info!("Deleted file with UUID: {}", uuid);
 

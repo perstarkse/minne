@@ -1,9 +1,7 @@
 use surrealdb::{engine::remote::ws::{Client, Ws}, opt::auth::Root, Surreal};
 use thiserror::Error;
 
-pub mod document;
-pub mod graph;
-
+#[derive(Clone)]
 pub struct SurrealDbClient {
     pub client: Surreal<Client>,
 }

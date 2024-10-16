@@ -1,7 +1,7 @@
 use async_openai::types::ChatCompletionRequestSystemMessage;
 use async_openai::types::ChatCompletionRequestUserMessage;
 use async_openai::types::CreateChatCompletionRequestArgs;
-use tracing::info;
+use tracing::debug;
 use crate::models::text_content::ProcessingError;
 use serde_json::json;
 use crate::models::text_content::AnalysisResult;
@@ -52,9 +52,7 @@ pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> R
         };
 
         // Construct the system and user messages
-        let system_message = format!(
-            "You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON-LD object representing the content, a moderately short description of the document, how it relates to the submitted category and any relevant instructions. You shall also include related objects. The goal is to insert your output into a graph database."
-        );
+        let system_message = "You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON-LD object representing the content, a moderately short description of the document, how it relates to the submitted category and any relevant instructions. You shall also include related objects. The goal is to insert your output into a graph database.".to_string();
 
         let user_message = format!(
             "Category: {}\nInstructions: {}\nContent:\n{}",
@@ -77,7 +75,7 @@ pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> R
             ProcessingError::LLMError(format!("OpenAI API request failed: {}", e))
         })?;
 
-        info!("{:?}", response);
+        debug!("{:?}", response);
 
         // Extract and parse the response
         for choice in response.choices {

@@ -1,7 +1,6 @@
 use axum::{
          extract::DefaultBodyLimit, routing::{delete, get, post, put}, Extension, Router
 };
-use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::{rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig}, routes::{file::{delete_file_handler, get_file_handler, update_file_handler, upload_handler}, ingress::ingress_handler, queue_length::queue_length_handler}, surrealdb::SurrealDbClient};
 use std::sync::Arc;
@@ -23,12 +22,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routing_key: "my_key".to_string(),
     };
     
+    // Set up producer
     let producer = Arc::new(RabbitMQProducer::new(&config).await?);
 
-    // let database = SurrealDbClient::new().await?;
+    // Set up database client
+    let db_client = Arc::new(SurrealDbClient::new().await?);
 
-    // database.client.health().await?;
-    // info!("Passed health check");
     
     // Create Axum router
     let app = Router::new()
@@ -39,7 +38,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         .route("/file/:uuid", get(get_file_handler)) 
         .route("/file/:uuid", put(update_file_handler)) 
-        .route("/file/:uuid", delete(delete_file_handler));
+        .route("/file/:uuid", delete(delete_file_handler))
+        .layer(Extension(db_client));
      
     tracing::info!("Listening on 0.0.0.0:3000");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;

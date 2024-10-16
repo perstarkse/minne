@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::Uuid;
-use crate::{models::file_info::FileInfo, neo4j::client::Neo4jClient, utils::llm::create_json_ld};
+use crate::{models::file_info::FileInfo, utils::llm::create_json_ld};
 use thiserror::Error;
 
 /// Represents a single piece of text content extracted from various sources.
@@ -60,21 +60,21 @@ pub enum ProcessingError {
 impl TextContent {
     /// Processes the `TextContent` by sending it to an LLM, storing in a graph DB, and vector DB.
     pub async fn process(&self) -> Result<(), ProcessingError> {
-        let client = Neo4jClient::new("127.0.0.1:7687", "neo4j", "neo4j").await.expect("Failed to create Neo4j client");        
+        // let client = Neo4jClient::new("127.0.0.1:7687", "neo4j", "neo4j").await.expect("Failed to create Neo4j client");        
 
         // Step 1: Send to LLM for analysis
         let analysis = create_json_ld(&self.category, &self.instructions, &self.text).await?;
         info!("{:?}", &analysis);
 
         // Step 2: Store analysis results in Graph DB
-        client.store_knowledge_source(&analysis.knowledge_source).await?;
+        // client.store_knowledge_source(&analysis.knowledge_source).await?;
 
         // Step 3: Store relationships in Graph DB
-        for relationship in analysis.knowledge_source.relationships.iter() {
-            client
-                .store_relationship(&analysis.knowledge_source.id, relationship)
-                .await?;
-            }
+        // for relationship in analysis.knowledge_source.relationships.iter() {
+        //     client
+        //         .store_relationship(&analysis.knowledge_source.id, relationship)
+        //         .await?;
+        //     }
 
 
         // Step 3: Split text and store in Vector DB
