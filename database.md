@@ -27,13 +27,15 @@ pub struct TextContent {
 }
 ```
 
-We create KnowledgeSource, which we will store
+We create KnowledgeSource, which we will store as a node, and its relationship as edges
 
 - Add a uuid to we can link the textcontent and files to the knowledge sources?
+- Rename id to name, and use it as the id? Id represents the TextContent link, from which several knowledgeentities can be gathered.
 
 ```
 pub struct KnowledgeSource {
-    pub id: String,
+    pub name: String,
+    pub id: Uuid,
     pub title: String,
     pub description: String,
     pub relationships: Vec<Relationship>,
