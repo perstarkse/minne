@@ -14,10 +14,20 @@ pub struct TextContent {
     pub category: String,
 }
 
+/// Represents a generic knowledge entity in the graph.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct KnowledgeEntity {
+    pub id: Uuid,
+    pub name: String,
+    pub description: String,
+    pub source_uuid: Uuid, 
+    pub entity_type: String, 
+}
+
 /// A struct representing a knowledge source in the graph database.
 #[derive(Deserialize, Debug, Serialize, Clone )]
 pub struct KnowledgeSource {
-    pub id: String,
+    pub id: Uuid,
     pub title: String,
     pub description: String,
     pub relationships: Vec<Relationship>,
