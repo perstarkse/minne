@@ -3,21 +3,15 @@ name = "zettle_db"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 async-openai = "0.24.1"
 axum = { version = "0.7.5", features = ["multipart", "macros"] }
 axum_typed_multipart = "0.12.1"
-bytes = { version = "1.7.2", features = ["serde"] }
-futures = "0.3.30"
 futures-lite = "2.3.0"
 lapin = { version = "2.5.0", features = ["serde_json"] }
 mime = "0.3.17"
 mime_guess = "2.0.5"
 mockall = "0.13.0"
-neo4rs = { version = "0.8.0", features = ["serde_json"] }
-redis = { version = "0.27.2", features = ["aio", "tokio-comp"] }
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
 sha2 = "0.10.8"
