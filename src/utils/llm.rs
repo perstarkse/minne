@@ -1,44 +1,79 @@
 use async_openai::types::ChatCompletionRequestSystemMessage;
 use async_openai::types::ChatCompletionRequestUserMessage;
 use async_openai::types::CreateChatCompletionRequestArgs;
+use serde::Deserialize;
+use serde::Serialize;
 use tracing::debug;
 use crate::models::text_content::ProcessingError;
 use serde_json::json;
 use crate::models::text_content::AnalysisResult;
 
+/// Represents a single knowledge entity from the LLM.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LLMKnowledgeEntity {
+    pub key: String,               // Temporary identifier
+    pub name: String,
+    pub description: String,
+    pub entity_type: String,       // Should match KnowledgeEntityType variants
+}
+
+/// Represents a single relationship from the LLM.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LLMRelationship {
+    #[serde(rename = "type")]
+    pub type_: String,              // e.g., RelatedTo, RelevantTo
+    pub source: String,             // Key of the source entity
+    pub target: String,             // Key of the target entity
+}
+
+/// Represents the entire graph analysis result from the LLM.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LLMGraphAnalysisResult {
+    pub knowledge_entities: Vec<LLMKnowledgeEntity>,
+    pub relationships: Vec<LLMRelationship>,
+}
+
 /// Sends text to an LLM for analysis.
-pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> Result<AnalysisResult, ProcessingError> {
+pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> Result<LLMGraphAnalysisResult, ProcessingError> {
         let client = async_openai::Client::new();
-        let  schema = json!({
+        let schema = json!({
           "type": "object",
           "properties": {
-            "knowledge_source": {
-              "type": "object",
+            "knowledge_entities": {
+              "type": "array",
+              "items": {  
+                "type": "object",
                 "properties": {
-                  "id": {"type": "string"},
-                  "type": {"type": "string", "enum": ["Document", "Page", "TextSnippet"]},
-                  "title": {"type": "string"},
-                  "description": {"type": "string"},
-                  "relationships": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {"type": "string", "enum": ["RelatedTo", "RelevantTo", "SimilarTo"]},
-                        "target": {"type": "string", "description": "ID of the related knowledge source"}
-                      },
-                      "required": ["type", "target"],
-                      "additionalProperties": false,
-                    }
+                  "key": { "type": "string" },
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "entity_type": { 
+                    "type": "string",
+                    "enum": ["idea", "project", "document", "page", "textsnippet"]
                   }
                 },
-                "required": ["id", "type", "title", "description", "relationships"],
-                "additionalProperties": false,
+                "required": ["key", "name", "description", "entity_type"],
+                "additionalProperties": false
+              }
             },
-            "category": {"type": "string"},
-            "instructions": {"type": "string"}
+            "relationships": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": { 
+                    "type": "string", 
+                    "enum": ["RelatedTo", "RelevantTo", "SimilarTo"] 
+                  },
+                  "source": { "type": "string" },
+                  "target": { "type": "string" }
+                },
+                "required": ["type", "source", "target"],
+                "additionalProperties": false
+              }
+            }
           },
-          "required": ["knowledge_source", "category", "instructions"],
+          "required": ["knowledge_entities", "relationships"],
           "additionalProperties": false
         });
 
@@ -52,7 +87,39 @@ pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> R
         };
 
         // Construct the system and user messages
-        let system_message = "You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON-LD object representing the content, a moderately short description of the document, how it relates to the submitted category and any relevant instructions. You shall also include related objects. The goal is to insert your output into a graph database.".to_string();
+        let system_message = r#"
+            You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON object representing the content in a graph format suitable for a graph database.
+            
+            The JSON should have the following structure:
+            
+            {
+                "knowledge_entities": [
+                    {
+                        "key": "unique-key-1",
+                        "name": "Entity Name",
+                        "description": "A detailed description of the entity.",
+                        "entity_type": "TypeOfEntity"
+                    },
+                    // More entities...
+                ],
+                "relationships": [
+                    {
+                        "type": "RelationshipType",
+                        "source": "unique-key-1",
+                        "target": "unique-key-2"
+                    },
+                    // More relationships...
+                ]
+            }
+            
+            Guidelines:
+            1. Do NOT generate any IDs or UUIDs. Use a unique `key` for each knowledge entity.
+            2. Each KnowledgeEntity should have a unique `key`, a meaningful `name`, and a descriptive `description`.
+            3. Define the type of each KnowledgeEntity using the following categories: Idea, Project, Document, Page, TextSnippet.
+            4. Establish relationships between entities using types like RelatedTo, RelevantTo, SimilarTo.
+            5. Use the `source` key to indicate the originating entity and the `target` key to indicate the related entity.
+            6. Optionally, add any relevant metadata within each object as needed."#; 
+           
 
         let user_message = format!(
             "Category: {}\nInstructions: {}\nContent:\n{}",
@@ -80,9 +147,9 @@ pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> R
         // Extract and parse the response
         for choice in response.choices {
             if let Some(content) = choice.message.content {
-                let analysis: AnalysisResult = serde_json::from_str(&content).map_err(|e| {
+                let analysis: LLMGraphAnalysisResult = serde_json::from_str(&content).map_err(|e| {
                     ProcessingError::LLMError(format!(
-                        "Failed to parse LLM response into LLMAnalysis: {}",
+                        "Failed to parse LLM response into analysis: {}",
                         e
                     ))
                 })?;

@@ -74,7 +74,7 @@ impl TextContent {
 
         // Step 1: Send to LLM for analysis
         let analysis = create_json_ld(&self.category, &self.instructions, &self.text).await?;
-        info!("{:?}", &analysis);
+        info!("{:#?}", &analysis);
 
         // Step 2: Store analysis results in Graph DB
         // client.store_knowledge_source(&analysis.knowledge_source).await?;
