@@ -38,7 +38,7 @@ pub struct LLMGraphAnalysisResult {
 }
 
 impl LLMGraphAnalysisResult {
-    pub fn to_database_entities(&self) -> (Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>) {
+    pub fn to_database_entities(&self, source_id: &Uuid) -> (Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>) {
         let mut mapper = GraphMapper::new();
         
         // First pass: Create all entities and map their keys to UUIDs
@@ -47,11 +47,11 @@ impl LLMGraphAnalysisResult {
             .map(|llm_entity| {
                 let id = mapper.assign_id(&llm_entity.key);
                 KnowledgeEntity {
-                    id,
+                    id: id.to_string(),
                     name: llm_entity.name.clone(),
                     description: llm_entity.description.clone(),
                     entity_type: KnowledgeEntityType::from(llm_entity.entity_type.clone()),
-                    source_id: None,
+                    source_id: source_id.to_string(),
                     metadata: None,
                 }
             })

@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting RabbitMQ consumer");
     
     // Set up RabbitMQ config
-        let config = RabbitMQConfig {
+    let config = RabbitMQConfig {
         amqp_addr: "amqp://localhost".to_string(),
         exchange: "my_exchange".to_string(),
         queue: "my_queue".to_string(),

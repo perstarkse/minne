@@ -322,6 +322,7 @@ impl FileInfo {
     ///
     /// # Returns
     /// * `Result<(), FileError>` - Empty result or an error.
+
     async fn create_record(file_info: &FileInfo, db_client: &SurrealDbClient) -> Result<(), FileError> {
         // Create the record
         let _created: Option<Record> = db_client
