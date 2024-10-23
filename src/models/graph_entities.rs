@@ -38,7 +38,7 @@ impl From<String> for KnowledgeEntityType {
 
 /// Represents a relationship between two knowledge entities.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Relationship {
+pub struct KnowledgeRelationship {
     pub id: Uuid, // Generated in Rust
     #[serde(rename = "in")]
     pub in_: Uuid, // Target KnowledgeEntity ID
@@ -49,6 +49,7 @@ pub struct Relationship {
 
 use std::collections::HashMap;
 
+use crate::utils::llm::LLMGraphAnalysisResult;
 use crate::utils::llm::LLMKnowledgeEntity;
 use crate::utils::llm::LLMRelationship;
 
@@ -90,9 +91,9 @@ impl From<&LLMKnowledgeEntity> for KnowledgeEntity {
     }
 }
 
-impl From<&LLMRelationship> for Relationship {
+impl From<&LLMRelationship> for KnowledgeRelationship {
     fn from(llm_rel: &LLMRelationship) -> Self {
-        Relationship {
+        KnowledgeRelationship {
             id: Uuid::new_v4(),
             in_: Uuid::nil(), // Placeholder; to be set after mapping
             out: Uuid::nil(), // Placeholder; to be set after mapping

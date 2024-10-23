@@ -4,6 +4,8 @@ use uuid::Uuid;
 use crate::{models::file_info::FileInfo, utils::llm::create_json_ld};
 use thiserror::Error;
 
+use super::graph_entities::{KnowledgeEntity, KnowledgeRelationship};
+
 /// Represents a single piece of text content extracted from various sources.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TextContent {
@@ -13,42 +15,6 @@ pub struct TextContent {
     pub instructions: String,
     pub category: String,
 }
-
-/// Represents a generic knowledge entity in the graph.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct KnowledgeEntity {
-    pub id: Uuid,
-    pub name: String,
-    pub description: String,
-    pub source_uuid: Uuid, 
-    pub entity_type: String, 
-}
-
-/// A struct representing a knowledge source in the graph database.
-#[derive(Deserialize, Debug, Serialize, Clone )]
-pub struct KnowledgeSource {
-    pub id: Uuid,
-    pub title: String,
-    pub description: String,
-    pub relationships: Vec<Relationship>,
-}
-
-/// A struct representing a relationship between knowledge sources.
-#[derive(Deserialize, Clone, Serialize, Debug)]
-pub struct Relationship {
-    #[serde(rename = "type")]
-    pub type_: String,
-    pub target: String,
-}
-
-/// A struct representing the result of an LLM analysis.
-#[derive(Deserialize, Debug,Serialize)]
-pub struct AnalysisResult {
-    pub knowledge_source: KnowledgeSource,
-    pub category: String,
-    pub instructions: String,
-}
-
 
 /// Error types for processing `TextContent`.
 #[derive(Error, Debug)]
@@ -74,36 +40,38 @@ impl TextContent {
 
         // Step 1: Send to LLM for analysis
         let analysis = create_json_ld(&self.category, &self.instructions, &self.text).await?;
-        info!("{:#?}", &analysis);
-
-        // Step 2: Store analysis results in Graph DB
-        // client.store_knowledge_source(&analysis.knowledge_source).await?;
-
-        // Step 3: Store relationships in Graph DB
-        // for relationship in analysis.knowledge_source.relationships.iter() {
-        //     client
-        //         .store_relationship(&analysis.knowledge_source.id, relationship)
-        //         .await?;
-        //     }
+        // info!("{:#?}", &analysis);
 
 
-        // Step 3: Split text and store in Vector DB
+        // Step 2: Convert LLM analysis to database entities
+        let (entities, relationships) = analysis.to_database_entities();
+        
+        // Step 3: Store in database
+        self.store_in_graph_db(entities, relationships).await?;
+        
+
+        // Step 4: Split text and store in Vector DB
         // self.store_in_vector_db().await?;
 
         Ok(())
     }
 
-    /// Stores analysis results in a graph database.
-    #[allow(dead_code)]
-    async fn store_in_graph_db(&self, _analysis: &AnalysisResult) -> Result<(), ProcessingError> {
-        // TODO: Implement storage logic for your specific graph database.
-        // Example:
-        /*
-        let graph_db = GraphDB::new("http://graph-db:8080");
-        graph_db.insert_analysis(analysis).await.map_err(|e| ProcessingError::GraphDBError(e.to_string()))?;
-        */
-        unimplemented!()
+    async fn store_in_graph_db(
+        &self,
+        entities: Vec<KnowledgeEntity>,
+        relationships: Vec<KnowledgeRelationship>
+    ) -> Result<(), ProcessingError> {
+        for entity in entities {
+            info!("{:?}", entity);
+        }
+
+        for relationship in relationships {
+            info!("{:?}", relationship);
+        }
+
+        Ok(())
     }
+
 
     /// Splits text and stores it in a vector database.
     #[allow(dead_code)]

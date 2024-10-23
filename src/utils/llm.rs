@@ -4,9 +4,13 @@ use async_openai::types::CreateChatCompletionRequestArgs;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::debug;
+use uuid::Uuid;
+use crate::models::graph_entities::GraphMapper;
+use crate::models::graph_entities::KnowledgeEntity;
+use crate::models::graph_entities::KnowledgeEntityType;
+use crate::models::graph_entities::KnowledgeRelationship;
 use crate::models::text_content::ProcessingError;
 use serde_json::json;
-use crate::models::text_content::AnalysisResult;
 
 /// Represents a single knowledge entity from the LLM.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -31,6 +35,47 @@ pub struct LLMRelationship {
 pub struct LLMGraphAnalysisResult {
     pub knowledge_entities: Vec<LLMKnowledgeEntity>,
     pub relationships: Vec<LLMRelationship>,
+}
+
+impl LLMGraphAnalysisResult {
+    pub fn to_database_entities(&self) -> (Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>) {
+        let mut mapper = GraphMapper::new();
+        
+        // First pass: Create all entities and map their keys to UUIDs
+        let entities: Vec<KnowledgeEntity> = self.knowledge_entities
+            .iter()
+            .map(|llm_entity| {
+                let id = mapper.assign_id(&llm_entity.key);
+                KnowledgeEntity {
+                    id,
+                    name: llm_entity.name.clone(),
+                    description: llm_entity.description.clone(),
+                    entity_type: KnowledgeEntityType::from(llm_entity.entity_type.clone()),
+                    source_id: None,
+                    metadata: None,
+                }
+            })
+            .collect();
+
+        // Second pass: Create relationships using mapped UUIDs
+        let relationships: Vec<KnowledgeRelationship> = self.relationships
+            .iter()
+            .filter_map(|llm_rel| {
+                let source_id = mapper.get_id(&llm_rel.source)?;
+                let target_id = mapper.get_id(&llm_rel.target)?;
+                
+                Some(KnowledgeRelationship {
+                    id: Uuid::new_v4(),
+                    out: *source_id,
+                    in_: *target_id,
+                    relationship_type: llm_rel.type_.clone(),
+                    metadata: None,
+                })
+            })
+            .collect();
+
+        (entities, relationships)
+    }
 }
 
 /// Sends text to an LLM for analysis.
@@ -117,8 +162,9 @@ pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> R
             2. Each KnowledgeEntity should have a unique `key`, a meaningful `name`, and a descriptive `description`.
             3. Define the type of each KnowledgeEntity using the following categories: Idea, Project, Document, Page, TextSnippet.
             4. Establish relationships between entities using types like RelatedTo, RelevantTo, SimilarTo.
-            5. Use the `source` key to indicate the originating entity and the `target` key to indicate the related entity.
-            6. Optionally, add any relevant metadata within each object as needed."#; 
+            5. Use the `source` key to indicate the originating entity and the `target` key to indicate the related entity"
+            6. Only create relationships between existing KnowledgeEntities.
+            "#; 
            
 
         let user_message = format!(
