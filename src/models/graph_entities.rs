@@ -1,15 +1,16 @@
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Represents a generic knowledge entity in the graph.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KnowledgeEntity {
-    pub id: Uuid, // Generated in Rust
+    pub id: String, // Generated in Rust
     pub name: String,
     pub description: String,
     pub entity_type: KnowledgeEntityType,
-    pub source_id: Option<Uuid>, // Links to FileInfo or TextContent
+    pub source_id: String,                   // Links to FileInfo or TextContent
     pub metadata: Option<serde_json::Value>, // Additional metadata
 }
 
@@ -47,12 +48,6 @@ pub struct KnowledgeRelationship {
     pub metadata: Option<serde_json::Value>, // Additional metadata
 }
 
-use std::collections::HashMap;
-
-use crate::utils::llm::LLMGraphAnalysisResult;
-use crate::utils::llm::LLMKnowledgeEntity;
-use crate::utils::llm::LLMRelationship;
-
 /// Intermediate struct to hold mapping between LLM keys and generated IDs.
 pub struct GraphMapper {
     pub key_to_id: HashMap<String, Uuid>,
@@ -75,30 +70,5 @@ impl GraphMapper {
     /// Retrieves the UUID for a given key.
     pub fn get_id(&self, key: &str) -> Option<&Uuid> {
         self.key_to_id.get(key)
-    }
-}
-
-impl From<&LLMKnowledgeEntity> for KnowledgeEntity {
-    fn from(llm_entity: &LLMKnowledgeEntity) -> Self {
-        KnowledgeEntity {
-            id: Uuid::new_v4(),
-            name: llm_entity.name.clone(),
-            description: llm_entity.description.clone(),
-            entity_type: KnowledgeEntityType::from(llm_entity.entity_type.clone()),
-            source_id: None, // To be linked externally if needed
-            metadata: None,  // Populate if metadata is provided
-        }
-    }
-}
-
-impl From<&LLMRelationship> for KnowledgeRelationship {
-    fn from(llm_rel: &LLMRelationship) -> Self {
-        KnowledgeRelationship {
-            id: Uuid::new_v4(),
-            in_: Uuid::nil(), // Placeholder; to be set after mapping
-            out: Uuid::nil(), // Placeholder; to be set after mapping
-            relationship_type: llm_rel.type_.clone(),
-            metadata: None, // Populate if metadata is provided
-        }
     }
 }

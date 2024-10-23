@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use surrealdb::RecordId;
+use tracing::{debug, info};
 use uuid::Uuid;
-use crate::{models::file_info::FileInfo, utils::llm::create_json_ld};
+use crate::{models::file_info::FileInfo, surrealdb::{SurrealDbClient, SurrealError}, utils::llm::create_json_ld};
 use thiserror::Error;
 
 use super::graph_entities::{KnowledgeEntity, KnowledgeRelationship};
@@ -16,11 +17,23 @@ pub struct TextContent {
     pub category: String,
 }
 
+#[derive(Debug,Deserialize)]
+struct Record {
+    #[allow(dead_code)]
+    id: RecordId,
+}
+
 /// Error types for processing `TextContent`.
 #[derive(Error, Debug)]
 pub enum ProcessingError {
     #[error("LLM processing error: {0}")]
     LLMError(String),
+
+    #[error("SurrealDB error: {0}")]
+    SurrealError(#[from] SurrealError),
+    
+    #[error("SurrealDb error: {0}")]
+    SurrealDbError(#[from] surrealdb::Error),
     
     #[error("Graph DB storage error: {0}")]
     GraphDBError(String),
@@ -36,15 +49,15 @@ pub enum ProcessingError {
 impl TextContent {
     /// Processes the `TextContent` by sending it to an LLM, storing in a graph DB, and vector DB.
     pub async fn process(&self) -> Result<(), ProcessingError> {
-        // let client = Neo4jClient::new("127.0.0.1:7687", "neo4j", "neo4j").await.expect("Failed to create Neo4j client");        
-
+        // Store TextContent
+        
         // Step 1: Send to LLM for analysis
         let analysis = create_json_ld(&self.category, &self.instructions, &self.text).await?;
         // info!("{:#?}", &analysis);
 
 
         // Step 2: Convert LLM analysis to database entities
-        let (entities, relationships) = analysis.to_database_entities();
+        let (entities, relationships) = analysis.to_database_entities(&self.id);
         
         // Step 3: Store in database
         self.store_in_graph_db(entities, relationships).await?;
@@ -61,8 +74,18 @@ impl TextContent {
         entities: Vec<KnowledgeEntity>,
         relationships: Vec<KnowledgeRelationship>
     ) -> Result<(), ProcessingError> {
-        for entity in entities {
+        let db_client = SurrealDbClient::new().await?;
+
+         for entity in entities {
             info!("{:?}", entity);
+            
+            let _created: Option<Record> = db_client
+                .client
+                .create(("knowledge_entity", &entity.id.to_string()))
+                .content(entity)
+                .await?;
+
+            info!("{:?}",_created);
         }
 
         for relationship in relationships {
