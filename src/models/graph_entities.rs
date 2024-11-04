@@ -40,11 +40,11 @@ impl From<String> for KnowledgeEntityType {
 /// Represents a relationship between two knowledge entities.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KnowledgeRelationship {
-    pub id: Uuid, // Generated in Rust
+    pub id: String,
     #[serde(rename = "in")]
-    pub in_: Uuid, // Target KnowledgeEntity ID
-    pub out: Uuid, // Source KnowledgeEntity ID
-    pub relationship_type: String, // e.g., RelatedTo, RelevantTo
+    pub in_: String, // Target KnowledgeEntity ID
+    pub out: String,                         // Source KnowledgeEntity ID
+    pub relationship_type: String,           // e.g., RelatedTo, RelevantTo
     pub metadata: Option<serde_json::Value>, // Additional metadata
 }
 

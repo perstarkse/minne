@@ -4,12 +4,14 @@ use async_openai::types::CreateChatCompletionRequestArgs;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::debug;
+use tracing::info;
 use uuid::Uuid;
 use crate::models::graph_entities::GraphMapper;
 use crate::models::graph_entities::KnowledgeEntity;
 use crate::models::graph_entities::KnowledgeEntityType;
 use crate::models::graph_entities::KnowledgeRelationship;
 use crate::models::text_content::ProcessingError;
+use crate::surrealdb::SurrealDbClient;
 use serde_json::json;
 
 /// Represents a single knowledge entity from the LLM.
@@ -65,9 +67,9 @@ impl LLMGraphAnalysisResult {
                 let target_id = mapper.get_id(&llm_rel.target)?;
                 
                 Some(KnowledgeRelationship {
-                    id: Uuid::new_v4(),
-                    out: *source_id,
-                    in_: *target_id,
+                    id: Uuid::new_v4().to_string(),
+                    out: source_id.to_string(),
+                    in_: target_id.to_string(),
                     relationship_type: llm_rel.type_.clone(),
                     metadata: None,
                 })
@@ -79,7 +81,14 @@ impl LLMGraphAnalysisResult {
 }
 
 /// Sends text to an LLM for analysis.
-pub async fn create_json_ld(category: &str, instructions: &str, text: &str) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+pub async fn create_json_ld(category: &str, instructions: &str, text: &str, db_client: &SurrealDbClient) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+    // Get the nodes from the database
+    let mut result = db_client.client.query("SELECT * FROM knowledge_entity").await?;
+    info!("{:?}", result.num_statements());
+
+    let db_representation: Vec<KnowledgeEntity> = result.take(1)?;
+    info!("{:?}", db_representation);
+    
         let client = async_openai::Client::new();
         let schema = json!({
           "type": "object",

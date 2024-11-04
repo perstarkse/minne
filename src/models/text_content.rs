@@ -50,9 +50,10 @@ impl TextContent {
     /// Processes the `TextContent` by sending it to an LLM, storing in a graph DB, and vector DB.
     pub async fn process(&self) -> Result<(), ProcessingError> {
         // Store TextContent
+        let db_client = SurrealDbClient::new().await?;
         
         // Step 1: Send to LLM for analysis
-        let analysis = create_json_ld(&self.category, &self.instructions, &self.text).await?;
+        let analysis = create_json_ld(&self.category, &self.instructions, &self.text, &db_client).await?;
         // info!("{:#?}", &analysis);
 
 
@@ -60,7 +61,7 @@ impl TextContent {
         let (entities, relationships) = analysis.to_database_entities(&self.id);
         
         // Step 3: Store in database
-        self.store_in_graph_db(entities, relationships).await?;
+        self.store_in_graph_db(entities, relationships, &db_client).await?;
         
 
         // Step 4: Split text and store in Vector DB
@@ -72,10 +73,9 @@ impl TextContent {
     async fn store_in_graph_db(
         &self,
         entities: Vec<KnowledgeEntity>,
-        relationships: Vec<KnowledgeRelationship>
+        relationships: Vec<KnowledgeRelationship>,
+        db_client: &SurrealDbClient,
     ) -> Result<(), ProcessingError> {
-        let db_client = SurrealDbClient::new().await?;
-
          for entity in entities {
             info!("{:?}", entity);
             
@@ -85,11 +85,20 @@ impl TextContent {
                 .content(entity)
                 .await?;
 
-            info!("{:?}",_created);
+            debug!("{:?}",_created);
         }
 
         for relationship in relationships {
             info!("{:?}", relationship);
+
+            let _created: Option<Record> = db_client
+                .client
+                .insert(("knowledge_relationship", &relationship.id.to_string()))
+                .content(relationship)
+                .await?;
+
+            debug!("{:?}",_created);
+        
         }
 
         Ok(())
