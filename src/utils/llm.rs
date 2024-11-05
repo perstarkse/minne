@@ -3,6 +3,8 @@ use async_openai::types::ChatCompletionRequestUserMessage;
 use async_openai::types::CreateChatCompletionRequestArgs;
 use serde::Deserialize;
 use serde::Serialize;
+use surrealdb::sql::Thing;
+use surrealdb::RecordId;
 use tracing::debug;
 use tracing::info;
 use uuid::Uuid;
@@ -83,11 +85,13 @@ impl LLMGraphAnalysisResult {
 /// Sends text to an LLM for analysis.
 pub async fn create_json_ld(category: &str, instructions: &str, text: &str, db_client: &SurrealDbClient) -> Result<LLMGraphAnalysisResult, ProcessingError> {
     // Get the nodes from the database
-    let mut result = db_client.client.query("SELECT * FROM knowledge_entity").await?;
-    info!("{:?}", result.num_statements());
+    let entities: Vec<KnowledgeEntity> = db_client.client.select("knowledge_entity").await?;
+    info!("{:?}", entities);
 
-    let db_representation: Vec<KnowledgeEntity> = result.take(1)?;
-    info!("{:?}", db_representation);
+    let deleted: Vec<KnowledgeEntity> = db_client.client.delete("knowledge_entity").await?;
+    info!{"{:?}", deleted};
+
+    
     
         let client = async_openai::Client::new();
         let schema = json!({
