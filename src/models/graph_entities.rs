@@ -1,17 +1,28 @@
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 use std::collections::HashMap;
+use surrealdb::sql::Thing;
 use uuid::Uuid;
 
 /// Represents a generic knowledge entity in the graph.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KnowledgeEntity {
-    pub id: String, // Generated in Rust
+    #[serde(deserialize_with = "thing_to_string")]
+    pub id: String,
     pub name: String,
     pub description: String,
     pub entity_type: KnowledgeEntityType,
-    pub source_id: String,                   // Links to FileInfo or TextContent
-    pub metadata: Option<serde_json::Value>, // Additional metadata
+    pub source_id: String,
+    pub metadata: Option<serde_json::Value>,
+}
+
+fn thing_to_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let thing = Thing::deserialize(deserializer)?;
+    Ok(thing.id.to_raw())
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
