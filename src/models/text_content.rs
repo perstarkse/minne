@@ -84,13 +84,13 @@ impl TextContent {
         for relationship in relationships {
             // info!("{:?}", relationship);
 
-            // let _created: Option<Record> = db_client
-            //     .client
-            //     .insert(("knowledge_relationship", &relationship.id.to_string()))
-            //     .content(relationship)
-            //     .await?;
+            let _created: Option<KnowledgeRelationship> = db_client
+                .client
+                .insert(("knowledge_relationship", &relationship.id.to_string()))
+                .content(relationship)
+                .await?;
 
-            // debug!("{:?}",_created);
+            debug!("{:?}",_created);
         
         }
 
