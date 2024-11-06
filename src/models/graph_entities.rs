@@ -51,6 +51,7 @@ impl From<String> for KnowledgeEntityType {
 /// Represents a relationship between two knowledge entities.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KnowledgeRelationship {
+    #[serde(deserialize_with = "thing_to_string")]
     pub id: String,
     #[serde(rename = "in")]
     pub in_: String, // Target KnowledgeEntity ID
