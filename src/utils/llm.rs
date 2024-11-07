@@ -1,12 +1,10 @@
-use crate::models::graph_entities::GraphMapper;
-use crate::models::graph_entities::KnowledgeEntity;
-use crate::models::graph_entities::KnowledgeEntityType;
-use crate::models::graph_entities::KnowledgeRelationship;
+use crate::models::graph_entities::{GraphMapper, KnowledgeEntity, KnowledgeEntityType, KnowledgeRelationship};
 use crate::models::text_content::ProcessingError;
-use crate::surrealdb::SurrealDbClient;
 use async_openai::types::{CreateChatCompletionRequestArgs, ChatCompletionRequestUserMessage, ChatCompletionRequestSystemMessage };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use surrealdb::engine::remote::ws::Client;
+use surrealdb::Surreal;
 use tracing::{info,debug};
 use uuid::Uuid;
 
@@ -86,14 +84,20 @@ pub async fn create_json_ld(
     category: &str,
     instructions: &str,
     text: &str,
-    db_client: &SurrealDbClient,
+    db_client: &Surreal<Client>,
 ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
     // Get the nodes from the database
-    let entities: Vec<KnowledgeEntity> = db_client.client.select("knowledge_entity").await?;
+    let entities: Vec<KnowledgeEntity> = db_client.select("knowledge_entity").await?;
     info!("{:?}", entities);
 
-    let deleted: Vec<KnowledgeEntity> = db_client.client.delete("knowledge_entity").await?;
-    info! {"{:?}", deleted};
+    let deleted: Vec<KnowledgeEntity> = db_client.delete("knowledge_entity").await?;
+    info! {"{:?} KnowledgeEntities deleted", deleted.len()};
+    
+    let relationships: Vec<KnowledgeRelationship> = db_client.select("knowledge_relationship").await?;
+    info!("{:?}", relationships);
+    
+    let relationships_deleted: Vec<KnowledgeRelationship> = db_client.delete("knowledge_relationship").await?;
+    info!("{:?} Relationships deleted", relationships_deleted.len());
 
     let client = async_openai::Client::new();
     let schema = json!({
