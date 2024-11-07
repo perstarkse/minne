@@ -65,6 +65,12 @@ pub struct GraphMapper {
     pub key_to_id: HashMap<String, Uuid>,
 }
 
+impl Default for GraphMapper {
+    fn default() -> Self {
+        GraphMapper::new()
+    }
+}
+
 impl GraphMapper {
     pub fn new() -> Self {
         GraphMapper {

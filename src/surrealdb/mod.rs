@@ -1,4 +1,9 @@
-use surrealdb::{engine::remote::ws::{Client, Ws}, opt::auth::Root, Surreal};
+use std::ops::Deref;
+use surrealdb::{
+    engine::remote::ws::{Client, Ws},
+    opt::auth::Root,
+    Surreal,
+};
 use thiserror::Error;
 
 #[derive(Clone)]
@@ -10,10 +15,8 @@ pub struct SurrealDbClient {
 pub enum SurrealError {
     #[error("SurrealDb error: {0}")]
     SurrealDbError(#[from] surrealdb::Error),
-
     // Add more error variants as needed.
 }
-
 
 impl SurrealDbClient {
     /// # Initialize a new datbase client
@@ -26,11 +29,23 @@ impl SurrealDbClient {
         let db = Surreal::new::<Ws>("127.0.0.1:8000").await?;
 
         // Sign in to database
-        db.signin(Root{username: "root_user", password: "root_password"}).await?;
+        db.signin(Root {
+            username: "root_user",
+            password: "root_password",
+        })
+        .await?;
 
         // Set namespace
         db.use_ns("test").use_db("test").await?;
 
         Ok(SurrealDbClient { client: db })
+    }
+}
+
+impl Deref for SurrealDbClient {
+    type Target = Surreal<Client>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.client
     }
 }

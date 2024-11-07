@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use surrealdb::{engine::remote::ws::Client, Surreal};
 use tracing::{debug, info};
 use uuid::Uuid;
 use crate::{models::file_info::FileInfo, surrealdb::{SurrealDbClient, SurrealError}, utils::llm::create_json_ld};
@@ -67,13 +68,12 @@ impl TextContent {
         &self,
         entities: Vec<KnowledgeEntity>,
         relationships: Vec<KnowledgeRelationship>,
-        db_client: &SurrealDbClient,
+        db_client: &Surreal<Client>,
     ) -> Result<(), ProcessingError> {
          for entity in entities {
             info!("{:?}", entity);
             
             let _created: Option<KnowledgeEntity> = db_client
-                .client
                 .create(("knowledge_entity", &entity.id.to_string()))
                 .content(entity)
                 .await?;
@@ -82,10 +82,9 @@ impl TextContent {
         }
 
         for relationship in relationships {
-            // info!("{:?}", relationship);
+            info!("{:?}", relationship);
 
             let _created: Option<KnowledgeRelationship> = db_client
-                .client
                 .insert(("knowledge_relationship", &relationship.id.to_string()))
                 .content(relationship)
                 .await?;
