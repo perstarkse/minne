@@ -1,3 +1,4 @@
+use async_openai::{error::OpenAIError, types::{CreateEmbeddingRequest, CreateEmbeddingRequestArgs}};
 use serde::{Deserialize, Serialize};
 use surrealdb::{engine::remote::ws::Client, Surreal};
 use tracing::{debug, info};
@@ -37,6 +38,9 @@ pub enum ProcessingError {
 
     #[error("Unknown processing error")]
     Unknown,
+
+    #[error("LLM processing error: {0}")]
+    OpenAIerror(#[from] OpenAIError),
 }
 
 
@@ -45,14 +49,17 @@ impl TextContent {
     pub async fn process(&self) -> Result<(), ProcessingError> {
         // Store TextContent
         let db_client = SurrealDbClient::new().await?;
+
+        db_client.query("REMOVE INDEX embeddings ON knowledge_entity").await?;
+        // db_client.query("DEFINE INDEX embeddings ON knowledge_entity FIELDS embedding UNIQUE").await?;
+        // db_client.query("REBUILD INDEX IF EXISTS embeddings ON knowledge_entity").await?;
         
         // Step 1: Send to LLM for analysis
         let analysis = create_json_ld(&self.category, &self.instructions, &self.text, &db_client).await?;
         // info!("{:#?}", &analysis);
 
-
         // Step 2: Convert LLM analysis to database entities
-        let (entities, relationships) = analysis.to_database_entities(&self.id);
+        let (entities, relationships) = analysis.to_database_entities(&self.id).await?;
         
         // Step 3: Store in database
         self.store_in_graph_db(entities, relationships, &db_client).await?;
@@ -70,19 +77,22 @@ impl TextContent {
         relationships: Vec<KnowledgeRelationship>,
         db_client: &Surreal<Client>,
     ) -> Result<(), ProcessingError> {
-         for entity in entities {
-            info!("{:?}", entity);
+        for entity in entities {
+            // info!("{:?}", &entity);
             
             let _created: Option<KnowledgeEntity> = db_client
                 .create(("knowledge_entity", &entity.id.to_string()))
-                .content(entity)
+                .content(entity.clone())
                 .await?;
 
             debug!("{:?}",_created);
+
+
+
         }
 
         for relationship in relationships {
-            info!("{:?}", relationship);
+            // info!("{:?}", relationship);
 
             let _created: Option<KnowledgeRelationship> = db_client
                 .insert(("knowledge_relationship", &relationship.id.to_string()))

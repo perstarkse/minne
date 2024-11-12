@@ -15,6 +15,7 @@ pub struct KnowledgeEntity {
     pub entity_type: KnowledgeEntityType,
     pub source_id: String,
     pub metadata: Option<serde_json::Value>,
+    pub embedding: Option<Vec<f32>>,
 }
 
 fn thing_to_string<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -61,6 +62,7 @@ pub struct KnowledgeRelationship {
 }
 
 /// Intermediate struct to hold mapping between LLM keys and generated IDs.
+#[derive(Clone)]
 pub struct GraphMapper {
     pub key_to_id: HashMap<String, Uuid>,
 }
