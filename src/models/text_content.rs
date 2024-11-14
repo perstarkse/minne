@@ -50,8 +50,8 @@ impl TextContent {
         // Store TextContent
         let db_client = SurrealDbClient::new().await?;
 
-        db_client.query("REMOVE INDEX embeddings ON knowledge_entity").await?;
-        // db_client.query("DEFINE INDEX embeddings ON knowledge_entity FIELDS embedding UNIQUE").await?;
+        // db_client.query("REMOVE INDEX embeddings ON knowledge_entity").await?;
+        db_client.query("DEFINE INDEX embeddings ON knowledge_entity FIELDS embedding").await?;
         // db_client.query("REBUILD INDEX IF EXISTS embeddings ON knowledge_entity").await?;
         
         // Step 1: Send to LLM for analysis
@@ -77,7 +77,7 @@ impl TextContent {
         relationships: Vec<KnowledgeRelationship>,
         db_client: &Surreal<Client>,
     ) -> Result<(), ProcessingError> {
-        for entity in entities {
+        for entity in &entities {
             // info!("{:?}", &entity);
             
             let _created: Option<KnowledgeEntity> = db_client
@@ -86,22 +86,20 @@ impl TextContent {
                 .await?;
 
             debug!("{:?}",_created);
-
-
-
         }
 
-        for relationship in relationships {
+        for relationship in &relationships {
             // info!("{:?}", relationship);
 
             let _created: Option<KnowledgeRelationship> = db_client
                 .insert(("knowledge_relationship", &relationship.id.to_string()))
-                .content(relationship)
+                .content(relationship.clone())
                 .await?;
 
             debug!("{:?}",_created);
-        
         }
+
+        info!("Inserted to database: {:?} entities, {:?} relationships", entities.len(), relationships.len());
 
         Ok(())
     }
