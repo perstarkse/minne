@@ -162,15 +162,15 @@ pub async fn create_json_ld(
         .await?
         .take(0)?;
     for entity in entities {
-        info!("{:?}", entity.name);
+        info!("{:?}, {:?}", entity.name, entity.description);
     }
 
     let deleted: Vec<KnowledgeEntity> = db_client.delete("knowledge_entity").await?;
     info! {"{:?} KnowledgeEntities deleted", deleted.len()};
 
-    let relationships: Vec<KnowledgeRelationship> =
-        db_client.select("knowledge_relationship").await?;
-    info!("{:?}", relationships);
+    // let relationships: Vec<KnowledgeRelationship> =
+        // db_client.select("knowledge_relationship").await?;
+    // info!("{:?} Relationships defined", relationships.len());
 
     let relationships_deleted: Vec<KnowledgeRelationship> =
         db_client.delete("knowledge_relationship").await?;
@@ -270,6 +270,7 @@ pub async fn create_json_ld(
     // Build the chat completion request
     let request = CreateChatCompletionRequestArgs::default()
         .model("gpt-4o-mini")
+        .temperature(0.2)
         .max_tokens(2048u32)
         .messages([
             ChatCompletionRequestSystemMessage::from(system_message).into(),
