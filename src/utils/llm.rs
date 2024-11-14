@@ -156,6 +156,7 @@ pub async fn create_json_ld(
     text: &str,
     db_client: &Surreal<Client>,
 ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+    let client = async_openai::Client::new();
     // Get the nodes from the database
     let entities: Vec<KnowledgeEntity> = db_client
         .query("SELECT * FROM knowledge_entity")
@@ -164,6 +165,15 @@ pub async fn create_json_ld(
     for entity in entities {
         info!("{:?}, {:?}", entity.name, entity.description);
     }
+
+    let text_embeddings = generate_embedding(&client,text.to_string()).await?;
+
+    let closest_query = format!("SELECT *, vector::distance:knn() AS distance FROM knowledge_entity WHERE embedding {:?} ORDER BY distance", text_embeddings);
+
+    info!("{:?}", closest_query);
+    
+    let closest_entities: Vec<KnowledgeEntity> = db_client.query(closest_query).await?.take(0)?;
+    info!("{:?}", closest_entities);
 
     let deleted: Vec<KnowledgeEntity> = db_client.delete("knowledge_entity").await?;
     info! {"{:?} KnowledgeEntities deleted", deleted.len()};
@@ -176,7 +186,6 @@ pub async fn create_json_ld(
         db_client.delete("knowledge_relationship").await?;
     info!("{:?} Relationships deleted", relationships_deleted.len());
 
-    let client = async_openai::Client::new();
     let schema = json!({
       "type": "object",
       "properties": {
@@ -259,7 +268,7 @@ pub async fn create_json_ld(
             3. Define the type of each KnowledgeEntity using the following categories: Idea, Project, Document, Page, TextSnippet.
             4. Establish relationships between entities using types like RelatedTo, RelevantTo, SimilarTo.
             5. Use the `source` key to indicate the originating entity and the `target` key to indicate the related entity"
-            6. Only create relationships between existing KnowledgeEntities.
+            7. Only create relationships between existing KnowledgeEntities.
             "#;
 
     let user_message = format!(
