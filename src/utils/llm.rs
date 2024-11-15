@@ -1,3 +1,5 @@
+use core::panic;
+
 use crate::models::graph_entities::{
     GraphMapper, KnowledgeEntity, KnowledgeEntityType, KnowledgeRelationship,
 };
@@ -7,6 +9,7 @@ use async_openai::types::{
     CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs, Embedding,
 };
 use futures::future::try_join_all;
+use futures::SinkExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use surrealdb::engine::remote::ws::Client;
@@ -156,25 +159,42 @@ pub async fn create_json_ld(
     text: &str,
     db_client: &Surreal<Client>,
 ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+    // Initialize llm client
     let client = async_openai::Client::new();
-    // Get the nodes from the database
-    let entities: Vec<KnowledgeEntity> = db_client
-        .query("SELECT * FROM knowledge_entity")
-        .await?
-        .take(0)?;
-    for entity in entities {
+    
+    // Format the input for more cohesive comparison
+    let input_text = format!("content: {:?}, category: {:?}, user_instructions: {:?}", text, category, instructions);
+    
+    // Generate embedding of the input
+    let input_embedding = generate_embedding(&client, input_text).await?;
+
+    // Construct the query
+    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM knowledge_entity WHERE embedding <|3,40|> {:?} ORDER BY distance", input_embedding);
+
+    // Perform query and deserialize to struct    
+    let closest_entities: Vec<KnowledgeEntity> = db_client.query(closest_query).await?.take(0)?;
+    #[derive(Debug)]
+    struct KnowledgeEntityToLLM {
+        id: String,
+        name: String,
+        description: String
+    }
+    
+    // Only keep most relevant information
+    let closest_entities_to_llm: Vec<KnowledgeEntityToLLM> = closest_entities.clone().into_iter().map(|entity| KnowledgeEntityToLLM {
+        id: entity.id,
+        name: entity.name,
+        description: entity.description
+    }).collect();
+    
+    info!("{:?}", closest_entities_to_llm);
+    
+    for entity in closest_entities_to_llm {
         info!("{:?}, {:?}", entity.name, entity.description);
     }
-
-    let text_embeddings = generate_embedding(&client,text.to_string()).await?;
-
-    let closest_query = format!("SELECT *, vector::distance:knn() AS distance FROM knowledge_entity WHERE embedding {:?} ORDER BY distance", text_embeddings);
-
-    info!("{:?}", closest_query);
+    // info!("Closest entities: {:?}", closest_entities);
+    panic!("Quitting");
     
-    let closest_entities: Vec<KnowledgeEntity> = db_client.query(closest_query).await?.take(0)?;
-    info!("{:?}", closest_entities);
-
     let deleted: Vec<KnowledgeEntity> = db_client.delete("knowledge_entity").await?;
     info! {"{:?} KnowledgeEntities deleted", deleted.len()};
 
