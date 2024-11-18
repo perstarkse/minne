@@ -1,4 +1,4 @@
-use async_openai::{error::OpenAIError, types::{CreateEmbeddingRequest, CreateEmbeddingRequestArgs}};
+use async_openai::error::OpenAIError;
 use serde::{Deserialize, Serialize};
 use surrealdb::{engine::remote::ws::Client, Surreal};
 use tracing::{debug, info};
@@ -50,6 +50,15 @@ impl TextContent {
         // Store TextContent
         let db_client = SurrealDbClient::new().await?;
 
+        // let deleted: Vec<KnowledgeEntity> = db_client.delete("knowledge_entity").await?;
+        // info! {"{:?} KnowledgeEntities deleted", deleted.len()};
+    
+        // let relationships_deleted: Vec<KnowledgeRelationship> =
+        //     db_client.delete("knowledge_relationship").await?;
+        // info!("{:?} Relationships deleted", relationships_deleted.len());
+    
+        // panic!("STOP");
+
         // db_client.query("REMOVE INDEX embeddings ON knowledge_entity").await?;
         // db_client.query("DEFINE INDEX embeddings ON knowledge_entity FIELDS embedding HNSW DIMENSION 1536").await?;
         db_client.query("REBUILD INDEX IF EXISTS embeddings ON knowledge_entity").await?;
@@ -78,7 +87,7 @@ impl TextContent {
         db_client: &Surreal<Client>,
     ) -> Result<(), ProcessingError> {
         for entity in &entities {
-            // info!("{:?}", &entity);
+            info!("{:?}, {:?}, {:?}", &entity.id, &entity.name, &entity.description);
             
             let _created: Option<KnowledgeEntity> = db_client
                 .create(("knowledge_entity", &entity.id.to_string()))
@@ -97,6 +106,18 @@ impl TextContent {
                 .await?;
 
             debug!("{:?}",_created);
+        }
+
+        for relationship in &relationships {
+            let in_entity: Option<KnowledgeEntity> = db_client.select(("knowledge_entity",relationship.in_.to_string())).await?;
+            let out_entity: Option<KnowledgeEntity> = db_client.select(("knowledge_entity", relationship.out.to_string())).await?;
+            
+            if let (Some(in_), Some(out)) = (in_entity, out_entity) {
+            info!("{} - {} is {} to {} - {}", in_.id, in_.name, relationship.relationship_type, out.id, out.name);
+            }
+            else {
+                info!("No in or out entities found");
+            }
         }
 
         info!("Inserted to database: {:?} entities, {:?} relationships", entities.len(), relationships.len());

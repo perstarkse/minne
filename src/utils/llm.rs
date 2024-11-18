@@ -1,21 +1,16 @@
-use core::panic;
-
 use crate::models::graph_entities::{
     GraphMapper, KnowledgeEntity, KnowledgeEntityType, KnowledgeRelationship,
 };
 use crate::models::text_content::ProcessingError;
 use async_openai::types::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-    CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs, Embedding,
+    CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs 
 };
-use futures::future::try_join_all;
-use futures::SinkExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
-use tokio::try_join;
-use tracing::{debug, info};
+use tracing::debug;
 use uuid::Uuid;
 
 /// Represents a single knowledge entity from the LLM.
@@ -135,13 +130,14 @@ impl LLMGraphAnalysisResult {
             .relationships
             .iter()
             .filter_map(|llm_rel| {
-                let source_db_id = mapper.get_id(&llm_rel.source)?;
-                let target_db_id = mapper.get_id(&llm_rel.target)?;
+                let source_db_id = mapper.get_or_parse_id(&llm_rel.source);
+                let target_db_id = mapper.get_or_parse_id(&llm_rel.target);
+                debug!("IN: {}, OUT: {}", &source_db_id, &target_db_id);
 
                 Some(KnowledgeRelationship {
                     id: Uuid::new_v4().to_string(),
-                    out: source_db_id.to_string(),
-                    in_: target_db_id.to_string(),
+                    in_: source_db_id.to_string(),
+                    out: target_db_id.to_string(),
                     relationship_type: llm_rel.type_.clone(),
                     metadata: None,
                 })
@@ -173,6 +169,7 @@ pub async fn create_json_ld(
 
     // Perform query and deserialize to struct    
     let closest_entities: Vec<KnowledgeEntity> = db_client.query(closest_query).await?.take(0)?;
+    #[allow(dead_code)]
     #[derive(Debug)]
     struct KnowledgeEntityToLLM {
         id: String,
@@ -187,24 +184,8 @@ pub async fn create_json_ld(
         description: entity.description
     }).collect();
     
-    info!("{:?}", closest_entities_to_llm);
+    debug!("{:?}", closest_entities_to_llm);
     
-    for entity in closest_entities_to_llm {
-        info!("{:?}, {:?}", entity.name, entity.description);
-    }
-    // info!("Closest entities: {:?}", closest_entities);
-    panic!("Quitting");
-    
-    let deleted: Vec<KnowledgeEntity> = db_client.delete("knowledge_entity").await?;
-    info! {"{:?} KnowledgeEntities deleted", deleted.len()};
-
-    // let relationships: Vec<KnowledgeRelationship> =
-        // db_client.select("knowledge_relationship").await?;
-    // info!("{:?} Relationships defined", relationships.len());
-
-    let relationships_deleted: Vec<KnowledgeRelationship> =
-        db_client.delete("knowledge_relationship").await?;
-    info!("{:?} Relationships deleted", relationships_deleted.len());
 
     let schema = json!({
       "type": "object",
@@ -258,7 +239,7 @@ pub async fn create_json_ld(
 
     // Construct the system and user messages
     let system_message = r#"
-            You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON object representing the content in a graph format suitable for a graph database.
+            You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON object representing the content in a graph format suitable for a graph database. You will also be presented with some existing knowledge_entities, do not replicate these!
             
             The JSON should have the following structure:
             
@@ -275,8 +256,8 @@ pub async fn create_json_ld(
                 "relationships": [
                     {
                         "type": "RelationshipType",
-                        "source": "unique-key-1",
-                        "target": "unique-key-2"
+                        "source": "unique-key-1 or UUID from existing database",
+                        "target": "unique-key-1 or UUID from existing database"
                     },
                     // More relationships...
                 ]
@@ -288,12 +269,13 @@ pub async fn create_json_ld(
             3. Define the type of each KnowledgeEntity using the following categories: Idea, Project, Document, Page, TextSnippet.
             4. Establish relationships between entities using types like RelatedTo, RelevantTo, SimilarTo.
             5. Use the `source` key to indicate the originating entity and the `target` key to indicate the related entity"
+            6. You will be presented with a few existing KnowledgeEntities that are similar to the current ones. They will have an existing UUID. When creating relationships to these entities, use their UUID.
             7. Only create relationships between existing KnowledgeEntities.
             "#;
 
     let user_message = format!(
-        "Category: {}\nInstructions: {}\nContent:\n{}",
-        category, instructions, text
+        "Category: {}\nInstructions: {}\nContent:\n{}\nExisting KnowledgeEntities:{:?}",
+        category, instructions, text, closest_entities_to_llm
     );
 
     // Build the chat completion request

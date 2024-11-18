@@ -79,6 +79,14 @@ impl GraphMapper {
             key_to_id: HashMap::new(),
         }
     }
+    /// Get ID, tries to parse UUID
+    pub fn get_or_parse_id(&mut self, key: &str) -> Uuid {
+        if let Ok(parsed_uuid) = Uuid::parse_str(key) {
+            parsed_uuid
+        } else {
+            self.key_to_id.get(key).unwrap().clone()
+        }
+    }
 
     /// Assigns a new UUID for a given key.
     pub fn assign_id(&mut self, key: &str) -> Uuid {

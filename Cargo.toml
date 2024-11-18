@@ -7,6 +7,7 @@ edition = "2021"
 async-openai = "0.24.1"
 axum = { version = "0.7.5", features = ["multipart", "macros"] }
 axum_typed_multipart = "0.12.1"
+futures = "0.3.31"
 futures-lite = "2.3.0"
 lapin = { version = "2.5.0", features = ["serde_json"] }
 mime = "0.3.17"
