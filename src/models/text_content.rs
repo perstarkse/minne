@@ -108,17 +108,17 @@ impl TextContent {
             debug!("{:?}",_created);
         }
 
-        for relationship in &relationships {
-            let in_entity: Option<KnowledgeEntity> = db_client.select(("knowledge_entity",relationship.in_.to_string())).await?;
-            let out_entity: Option<KnowledgeEntity> = db_client.select(("knowledge_entity", relationship.out.to_string())).await?;
+        // for relationship in &relationships {
+        //     let in_entity: Option<KnowledgeEntity> = db_client.select(("knowledge_entity",relationship.in_.to_string())).await?;
+        //     let out_entity: Option<KnowledgeEntity> = db_client.select(("knowledge_entity", relationship.out.to_string())).await?;
             
-            if let (Some(in_), Some(out)) = (in_entity, out_entity) {
-            info!("{} - {} is {} to {} - {}", in_.id, in_.name, relationship.relationship_type, out.id, out.name);
-            }
-            else {
-                info!("No in or out entities found");
-            }
-        }
+        //     if let (Some(in_), Some(out)) = (in_entity, out_entity) {
+        //     info!("{} - {} is {} to {} - {}", in_.id, in_.name, relationship.relationship_type, out.id, out.name);
+        //     }
+        //     else {
+        //         info!("No in or out entities found");
+        //     }
+        // }
 
         info!("Inserted to database: {:?} entities, {:?} relationships", entities.len(), relationships.len());
 

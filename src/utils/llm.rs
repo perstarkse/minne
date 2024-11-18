@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
-use tracing::debug;
+use tracing::{debug, info};
 use uuid::Uuid;
 
 /// Represents a single knowledge entity from the LLM.
@@ -164,8 +164,10 @@ pub async fn create_json_ld(
     // Generate embedding of the input
     let input_embedding = generate_embedding(&client, input_text).await?;
 
+    let number_of_entities_to_get = 10;
+    
     // Construct the query
-    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM knowledge_entity WHERE embedding <|3,40|> {:?} ORDER BY distance", input_embedding);
+    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM knowledge_entity WHERE embedding <|{},40|> {:?} ORDER BY distance",number_of_entities_to_get, input_embedding);
 
     // Perform query and deserialize to struct    
     let closest_entities: Vec<KnowledgeEntity> = db_client.query(closest_query).await?.take(0)?;
@@ -176,6 +178,8 @@ pub async fn create_json_ld(
         name: String,
         description: String
     }
+
+    info!("Number of KnowledgeEntities sent as context: {}", closest_entities.len());
     
     // Only keep most relevant information
     let closest_entities_to_llm: Vec<KnowledgeEntityToLLM> = closest_entities.clone().into_iter().map(|entity| KnowledgeEntityToLLM {
@@ -239,7 +243,7 @@ pub async fn create_json_ld(
 
     // Construct the system and user messages
     let system_message = r#"
-            You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON object representing the content in a graph format suitable for a graph database. You will also be presented with some existing knowledge_entities, do not replicate these!
+            You are an expert document analyzer. You will receive a document's text content, along with user instructions and a category. Your task is to provide a structured JSON object representing the content in a graph format suitable for a graph database. You will also be presented with some existing knowledge_entities from the database, do not replicate these!
             
             The JSON should have the following structure:
             
@@ -271,10 +275,11 @@ pub async fn create_json_ld(
             5. Use the `source` key to indicate the originating entity and the `target` key to indicate the related entity"
             6. You will be presented with a few existing KnowledgeEntities that are similar to the current ones. They will have an existing UUID. When creating relationships to these entities, use their UUID.
             7. Only create relationships between existing KnowledgeEntities.
+            8. Entities that exist already in the database should NOT be created again. If there is only a minor overlap, skip creating a new entity.
             "#;
 
     let user_message = format!(
-        "Category: {}\nInstructions: {}\nContent:\n{}\nExisting KnowledgeEntities:{:?}",
+        "Category: {}\nInstructions: {}\nContent:\n{}\nExisting KnowledgeEntities in database:{:?}",
         category, instructions, text, closest_entities_to_llm
     );
 
