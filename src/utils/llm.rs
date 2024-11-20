@@ -38,7 +38,7 @@ pub struct LLMGraphAnalysisResult {
     pub relationships: Vec<LLMRelationship>,
 }
 
-async fn generate_embedding(
+pub async fn generate_embedding(
     client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     input: String,
 ) -> Result<Vec<f32>, ProcessingError> {
@@ -73,13 +73,15 @@ impl LLMGraphAnalysisResult {
     /// # Arguments
     ///
     /// * `source_id` - A UUID representing the source identifier.
+    /// * `openai_client` - OpenAI client for LLM calls.
     ///
     /// # Returns
     ///
     /// * `Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), ProcessingError>` - A tuple containing vectors of `KnowledgeEntity` and `KnowledgeRelationship`.
     pub async fn to_database_entities(
         &self,
-        source_id: &Uuid,
+        source_id: &String,
+        openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), ProcessingError> {
         let mut mapper = GraphMapper::new();
 
@@ -88,7 +90,6 @@ impl LLMGraphAnalysisResult {
             mapper.assign_id(&llm_entity.key);
         }
 
-        let openai_client = async_openai::Client::new();
 
         let mut entities = vec![];
 
@@ -154,15 +155,13 @@ pub async fn create_json_ld(
     instructions: &str,
     text: &str,
     db_client: &Surreal<Client>,
+    openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
 ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
-    // Initialize llm client
-    let client = async_openai::Client::new();
-    
     // Format the input for more cohesive comparison
     let input_text = format!("content: {:?}, category: {:?}, user_instructions: {:?}", text, category, instructions);
     
     // Generate embedding of the input
-    let input_embedding = generate_embedding(&client, input_text).await?;
+    let input_embedding = generate_embedding(&openai_client, input_text).await?;
 
     let number_of_entities_to_get = 10;
     
@@ -276,6 +275,7 @@ pub async fn create_json_ld(
             6. You will be presented with a few existing KnowledgeEntities that are similar to the current ones. They will have an existing UUID. When creating relationships to these entities, use their UUID.
             7. Only create relationships between existing KnowledgeEntities.
             8. Entities that exist already in the database should NOT be created again. If there is only a minor overlap, skip creating a new entity.
+            9. A new relationship MUST include a newly created KnowledgeEntity.
             "#;
 
     let user_message = format!(
@@ -297,7 +297,7 @@ pub async fn create_json_ld(
         .map_err(|e| ProcessingError::LLMError(e.to_string()))?;
 
     // Send the request to OpenAI
-    let response = client
+    let response = openai_client
         .chat()
         .create(request)
         .await
