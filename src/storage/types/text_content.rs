@@ -1,9 +1,9 @@
 use uuid::Uuid;
 
 use crate::models::file_info::FileInfo;
-use crate::stored_entity;
+use crate::stored_object;
 
-stored_entity!(TextContent, "text_content", {
+stored_object!(TextContent, "text_content", {
     text: String,
     file_info: Option<FileInfo>,
     instructions: String,
@@ -22,14 +22,4 @@ impl TextContent {
     }
 
     // Other methods...
-}
-
-fn test() {
-    let content = TextContent::new(
-        "hiho".to_string(),
-        "instructions".to_string(),
-        "cat".to_string(),
-    );
-
-    content.get_id();
 }
