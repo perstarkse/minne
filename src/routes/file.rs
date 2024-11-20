@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use axum::{
     extract::Path, response::IntoResponse, Extension, Json
 };
@@ -8,7 +7,6 @@ use serde_json::json;
 use tempfile::NamedTempFile;
 use tracing::info;
 use uuid::Uuid;
-
 use crate::{
     models::file_info::{FileError, FileInfo},
      surrealdb::SurrealDbClient,
