@@ -5,7 +5,7 @@ use crate::{
 };
 use async_openai::error::OpenAIError;
 use serde::{Deserialize, Serialize};
-use surrealdb::{engine::remote::ws::Client, Surreal};
+use surrealdb::{engine::remote::ws::Client, sql::Thing, Surreal};
 use text_splitter::TextSplitter;
 use thiserror::Error;
 use tracing::{debug, info};
@@ -83,7 +83,7 @@ async fn get_related_nodes(
     id: String,
     db_client: &Surreal<Client>,
 ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
-    let query = format!("SELECT -> knowledge_relationship -> knowledge_entity as related_nodes FROM knowledge_entity WHERE source_id = `{}`", id);
+    let query = format!("SELECT * FROM knowledge_entity WHERE source_id = '{}'", id);
 
     // let query = format!("SELECT * FROM knowledge_entity WHERE in OR out {}", id);
     let related_nodes: Vec<KnowledgeEntity> = db_client.query(query).await?.take(0)?;
@@ -101,7 +101,7 @@ impl TextContent {
         self.store_text_content(&db_client).await?;
 
         let closest_text_content: Vec<TextChunk> = vector_comparison(
-            4,
+            3,
             self.text.clone(),
             &db_client,
             "text_chunk".to_string(),
@@ -110,9 +110,10 @@ impl TextContent {
         .await?;
 
         for node in closest_text_content {
-            info!("{}-{}", node.id, node.source_id);
             let related_nodes = get_related_nodes(node.source_id, &db_client).await?;
-            info!("{:?}", related_nodes);
+            for related_node in related_nodes {
+                info!("{:?}", related_node.name);
+            }
         }
 
         panic!("STOPPING");
