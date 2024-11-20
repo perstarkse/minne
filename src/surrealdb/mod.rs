@@ -2,20 +2,12 @@ use std::ops::Deref;
 use surrealdb::{
     engine::remote::ws::{Client, Ws},
     opt::auth::Root,
-    Surreal,
+    Error, Surreal,
 };
-use thiserror::Error;
 
 #[derive(Clone)]
 pub struct SurrealDbClient {
     pub client: Surreal<Client>,
-}
-
-#[derive(Error, Debug)]
-pub enum SurrealError {
-    #[error("SurrealDb error: {0}")]
-    SurrealDbError(#[from] surrealdb::Error),
-    // Add more error variants as needed.
 }
 
 impl SurrealDbClient {
@@ -25,7 +17,7 @@ impl SurrealDbClient {
     ///
     /// # Returns
     /// * `SurrealDbClient` initialized
-    pub async fn new() -> Result<Self, SurrealError> {
+    pub async fn new() -> Result<Self, Error> {
         let db = Surreal::new::<Ws>("127.0.0.1:8000").await?;
 
         // Sign in to database

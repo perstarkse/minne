@@ -1,8 +1,8 @@
+use super::ingress_content::IngressContentError;
 use crate::models::file_info::FileInfo;
+use crate::storage::types::text_content::TextContent;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-use super::{ingress_content::IngressContentError, text_content::TextContent};
 
 /// Knowledge object type, containing the content or reference to it, as well as metadata
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -34,7 +34,11 @@ impl IngressObject {
     /// `TextContent` - An object containing a text representation of the object, could be a scraped URL, parsed PDF, etc.
     pub async fn to_text_content(&self) -> Result<TextContent, IngressContentError> {
         match self {
-            IngressObject::Url { url, instructions, category } => {
+            IngressObject::Url {
+                url,
+                instructions,
+                category,
+            } => {
                 let text = Self::fetch_text_from_url(url).await?;
                 let id = Uuid::new_v4();
                 Ok(TextContent {
@@ -44,8 +48,12 @@ impl IngressObject {
                     category: category.clone(),
                     file_info: None,
                 })
-            },
-            IngressObject::Text { text, instructions, category } => {
+            }
+            IngressObject::Text {
+                text,
+                instructions,
+                category,
+            } => {
                 let id = Uuid::new_v4();
                 Ok(TextContent {
                     id: id.to_string(),
@@ -54,8 +62,12 @@ impl IngressObject {
                     category: category.clone(),
                     file_info: None,
                 })
-            },
-            IngressObject::File { file_info, instructions, category } => {
+            }
+            IngressObject::File {
+                file_info,
+                instructions,
+                category,
+            } => {
                 let id = Uuid::new_v4();
                 let text = Self::extract_text_from_file(file_info).await?;
                 Ok(TextContent {
@@ -65,7 +77,7 @@ impl IngressObject {
                     category: category.clone(),
                     file_info: Some(file_info.clone()),
                 })
-            },
+            }
         }
     }
 
@@ -89,11 +101,15 @@ impl IngressObject {
             }
             "application/pdf" => {
                 // TODO: Implement PDF text extraction using a crate like `pdf-extract` or `lopdf`
-                Err(IngressContentError::UnsupportedMime(file_info.mime_type.clone()))
+                Err(IngressContentError::UnsupportedMime(
+                    file_info.mime_type.clone(),
+                ))
             }
             "image/png" | "image/jpeg" => {
                 // TODO: Implement OCR on image using a crate like `tesseract`
-                Err(IngressContentError::UnsupportedMime(file_info.mime_type.clone()))
+                Err(IngressContentError::UnsupportedMime(
+                    file_info.mime_type.clone(),
+                ))
             }
             "application/octet-stream" => {
                 let content = tokio::fs::read_to_string(&file_info.path).await?;
@@ -104,8 +120,9 @@ impl IngressObject {
                 Ok(content)
             }
             // Handle other MIME types as needed
-            _ => Err(IngressContentError::UnsupportedMime(file_info.mime_type.clone())),
+            _ => Err(IngressContentError::UnsupportedMime(
+                file_info.mime_type.clone(),
+            )),
         }
     }
 }
-

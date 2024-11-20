@@ -1,3 +1,4 @@
+pub mod error;
 pub mod models;
 pub mod rabbitmq;
 pub mod routes;

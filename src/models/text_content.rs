@@ -1,62 +1,38 @@
+use crate::storage;
+use crate::storage::db::store_item;
+use crate::storage::types::text_chunk::TextChunk;
+use crate::storage::types::text_content::TextContent;
 use crate::{
-    models::file_info::FileInfo,
-    surrealdb::{SurrealDbClient, SurrealError},
+    error::ProcessingError,
+    surrealdb::SurrealDbClient,
     utils::llm::{create_json_ld, generate_embedding},
 };
-use async_openai::error::OpenAIError;
-use serde::{Deserialize, Serialize};
-use surrealdb::{engine::remote::ws::Client, sql::Thing, Surreal};
+use surrealdb::{engine::remote::ws::Client, Surreal};
 use text_splitter::TextSplitter;
-use thiserror::Error;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use super::graph_entities::{thing_to_string, KnowledgeEntity, KnowledgeRelationship};
+use super::graph_entities::{KnowledgeEntity, KnowledgeRelationship};
 
-#[derive(Serialize, Deserialize, Debug)]
-struct TextChunk {
-    #[serde(deserialize_with = "thing_to_string")]
-    id: String,
-    source_id: String,
-    chunk: String,
-    embedding: Vec<f32>,
-}
+// #[derive(Serialize, Deserialize, Debug)]
+// struct TextChunk {
+//     #[serde(deserialize_with = "thing_to_string")]
+//     id: String,
+//     source_id: String,
+//     chunk: String,
+//     embedding: Vec<f32>,
+// }
 
 /// Represents a single piece of text content extracted from various sources.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TextContent {
-    #[serde(deserialize_with = "thing_to_string")]
-    pub id: String,
-    pub text: String,
-    pub file_info: Option<FileInfo>,
-    pub instructions: String,
-    pub category: String,
-}
-
-/// Error types for processing `TextContent`.
-#[derive(Error, Debug)]
-pub enum ProcessingError {
-    #[error("LLM processing error: {0}")]
-    LLMError(String),
-
-    #[error("SurrealDB error: {0}")]
-    SurrealError(#[from] SurrealError),
-
-    #[error("SurrealDb error: {0}")]
-    SurrealDbError(#[from] surrealdb::Error),
-
-    #[error("Graph DB storage error: {0}")]
-    GraphDBError(String),
-
-    #[error("Vector DB storage error: {0}")]
-    VectorDBError(String),
-
-    #[error("Unknown processing error")]
-    Unknown,
-
-    #[error("LLM processing error: {0}")]
-    OpenAIerror(#[from] OpenAIError),
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct TextContent {
+//     #[serde(deserialize_with = "thing_to_string")]
+//     pub id: String,
+//     pub text: String,
+//     pub file_info: Option<FileInfo>,
+//     pub instructions: String,
+//     pub category: String,
+// }
 
 async fn vector_comparison<T>(
     take: u8,
@@ -66,9 +42,9 @@ async fn vector_comparison<T>(
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
 ) -> Result<Vec<T>, ProcessingError>
 where
-    T: for<'de> serde::Deserialize<'de>, // Add this trait bound for deserialization
+    T: for<'de> serde::Deserialize<'de>,
 {
-    let input_embedding = generate_embedding(&openai_client, input_text).await?;
+    let input_embedding = generate_embedding(openai_client, input_text).await?;
 
     // Construct the query
     let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM {} WHERE embedding <|{},40|> {:?} ORDER BY distance",table, take, input_embedding);
@@ -98,7 +74,9 @@ impl TextContent {
         let db_client = SurrealDbClient::new().await?;
         let openai_client = async_openai::Client::new();
 
-        self.store_text_content(&db_client).await?;
+        let create_operation = storage::db::store_item(&db_client, self.clone()).await?;
+        info!("{:?}", create_operation);
+        // self.store_text_content(&db_client).await?;
 
         let closest_text_content: Vec<TextChunk> = vector_comparison(
             3,
@@ -116,7 +94,7 @@ impl TextContent {
             }
         }
 
-        panic!("STOPPING");
+        // panic!("STOPPING");
         // let deleted: Vec<TextChunk> = db_client.delete("text_chunk").await?;
         // info! {"{:?} KnowledgeEntities deleted", deleted.len()};
 
@@ -230,34 +208,12 @@ impl TextContent {
         for chunk in chunks {
             info!("Chunk: {}", chunk);
             let embedding = generate_embedding(&openai_client, chunk.to_string()).await?;
-            let text_chunk = TextChunk {
-                id: Uuid::new_v4().to_string(),
-                source_id: self.id.clone(),
-                chunk: chunk.to_string(),
-                embedding,
-            };
+            let text_chunk = TextChunk::new(self.id.to_string(), chunk.to_string(), embedding);
 
             info!("{:?}", text_chunk);
 
-            let _created: Option<TextChunk> = db_client
-                .create(("text_chunk", text_chunk.id.clone()))
-                .content(text_chunk)
-                .await?;
-
-            debug!("{:?}", _created);
+            store_item(db_client, text_chunk).await?;
         }
-
-        Ok(())
-    }
-
-    /// Stores text content in database
-    async fn store_text_content(&self, db_client: &Surreal<Client>) -> Result<(), ProcessingError> {
-        let _created: Option<TextContent> = db_client
-            .create(("text_content", self.id.clone()))
-            .content(self.clone())
-            .await?;
-
-        debug!("{:?}", _created);
 
         Ok(())
     }
