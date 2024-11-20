@@ -18,7 +18,7 @@ pub struct KnowledgeEntity {
     pub embedding: Option<Vec<f32>>,
 }
 
-fn thing_to_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+pub fn thing_to_string<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
