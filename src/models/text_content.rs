@@ -44,20 +44,7 @@ impl TextContent {
             }
         }
 
-        // panic!("STOPPING");
-        // let deleted: Vec<TextChunk> = db_client.delete("text_chunk").await?;
-        // info! {"{:?} KnowledgeEntities deleted", deleted.len()};
-
-        // let relationships_deleted: Vec<KnowledgeRelationship> =
-        //     db_client.delete("knowledge_relationship").await?;
-        // info!("{:?} Relationships deleted", relationships_deleted.len());
-
-        // panic!("STOP");
-
-        // db_client.query("REMOVE INDEX embeddings ON knowledge_entity").await?;
-        // db_client
-        //     .query("DEFINE INDEX idx_embedding ON text_chunk FIELDS embedding HNSW DIMENSION 1536")
-        //     .await?;
+        // Rebuild indexes
         db_client.rebuild_indexes().await?;
 
         // Step 1: Send to LLM for analysis
