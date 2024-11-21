@@ -1,5 +1,6 @@
-use crate::storage;
 use crate::storage::db::store_item;
+use crate::storage::types::knowledge_entity::KnowledgeEntity;
+use crate::storage::types::knowledge_relationship::KnowledgeRelationship;
 use crate::storage::types::text_chunk::TextChunk;
 use crate::storage::types::text_content::TextContent;
 use crate::{
@@ -10,29 +11,6 @@ use crate::{
 use surrealdb::{engine::remote::ws::Client, Surreal};
 use text_splitter::TextSplitter;
 use tracing::{debug, info};
-use uuid::Uuid;
-
-use super::graph_entities::{KnowledgeEntity, KnowledgeRelationship};
-
-// #[derive(Serialize, Deserialize, Debug)]
-// struct TextChunk {
-//     #[serde(deserialize_with = "thing_to_string")]
-//     id: String,
-//     source_id: String,
-//     chunk: String,
-//     embedding: Vec<f32>,
-// }
-
-/// Represents a single piece of text content extracted from various sources.
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct TextContent {
-//     #[serde(deserialize_with = "thing_to_string")]
-//     pub id: String,
-//     pub text: String,
-//     pub file_info: Option<FileInfo>,
-//     pub instructions: String,
-//     pub category: String,
-// }
 
 async fn vector_comparison<T>(
     take: u8,
@@ -70,14 +48,14 @@ async fn get_related_nodes(
 impl TextContent {
     /// Processes the `TextContent` by sending it to an LLM, storing in a graph DB, and vector DB.
     pub async fn process(&self) -> Result<(), ProcessingError> {
-        // Store TextContent
         let db_client = SurrealDbClient::new().await?;
         let openai_client = async_openai::Client::new();
 
-        let create_operation = storage::db::store_item(&db_client, self.clone()).await?;
+        // Store TextContent
+        let create_operation = store_item(&db_client, self.clone()).await?;
         info!("{:?}", create_operation);
-        // self.store_text_content(&db_client).await?;
 
+        // Get related nodes
         let closest_text_content: Vec<TextChunk> = vector_comparison(
             3,
             self.text.clone(),
@@ -148,41 +126,19 @@ impl TextContent {
         db_client: &Surreal<Client>,
     ) -> Result<(), ProcessingError> {
         for entity in &entities {
-            info!(
+            debug!(
                 "{:?}, {:?}, {:?}",
                 &entity.id, &entity.name, &entity.description
             );
 
-            let _created: Option<KnowledgeEntity> = db_client
-                .create(("knowledge_entity", &entity.id.to_string()))
-                .content(entity.clone())
-                .await?;
-
-            debug!("{:?}", _created);
+            store_item(db_client, entity.clone()).await?;
         }
 
         for relationship in &relationships {
-            // info!("{:?}", relationship);
+            debug!("{:?}", relationship);
 
-            let _created: Option<KnowledgeRelationship> = db_client
-                .insert(("knowledge_relationship", &relationship.id.to_string()))
-                .content(relationship.clone())
-                .await?;
-
-            debug!("{:?}", _created);
+            store_item(db_client, relationship.clone()).await?;
         }
-
-        // for relationship in &relationships {
-        //     let in_entity: Option<KnowledgeEntity> = db_client.select(("knowledge_entity",relationship.in_.to_string())).await?;
-        //     let out_entity: Option<KnowledgeEntity> = db_client.select(("knowledge_entity", relationship.out.to_string())).await?;
-
-        //     if let (Some(in_), Some(out)) = (in_entity, out_entity) {
-        //     info!("{} - {} is {} to {} - {}", in_.id, in_.name, relationship.relationship_type, out.id, out.name);
-        //     }
-        //     else {
-        //         info!("No in or out entities found");
-        //     }
-        // }
 
         info!(
             "Inserted to database: {:?} entities, {:?} relationships",
@@ -194,7 +150,6 @@ impl TextContent {
     }
 
     /// Splits text and stores it in a vector database.
-    #[allow(dead_code)]
     async fn store_in_vector_db(
         &self,
         db_client: &Surreal<Client>,
@@ -209,8 +164,6 @@ impl TextContent {
             info!("Chunk: {}", chunk);
             let embedding = generate_embedding(&openai_client, chunk.to_string()).await?;
             let text_chunk = TextChunk::new(self.id.to_string(), chunk.to_string(), embedding);
-
-            info!("{:?}", text_chunk);
 
             store_item(db_client, text_chunk).await?;
         }
