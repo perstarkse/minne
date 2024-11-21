@@ -1,3 +1,4 @@
+pub mod analysis;
 pub mod error;
 pub mod models;
 pub mod rabbitmq;
