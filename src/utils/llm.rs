@@ -17,6 +17,8 @@ use surrealdb::Surreal;
 use tracing::{debug, info};
 use uuid::Uuid;
 
+use super::embedding::generate_embedding;
+
 /// Represents a single knowledge entity from the LLM.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LLMKnowledgeEntity {
@@ -40,29 +42,6 @@ pub struct LLMRelationship {
 pub struct LLMGraphAnalysisResult {
     pub knowledge_entities: Vec<LLMKnowledgeEntity>,
     pub relationships: Vec<LLMRelationship>,
-}
-
-pub async fn generate_embedding(
-    client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-    input: String,
-) -> Result<Vec<f32>, ProcessingError> {
-    let request = CreateEmbeddingRequestArgs::default()
-        .model("text-embedding-3-small")
-        .input(&[input])
-        .build()?;
-
-    // Send the request to OpenAI
-    let response = client.embeddings().create(request).await?;
-
-    // Extract the embedding vector
-    let embedding: Vec<f32> = response
-        .data
-        .first()
-        .ok_or_else(|| ProcessingError::EmbeddingError("No embedding data received".into()))?
-        .embedding
-        .clone();
-
-    Ok(embedding)
 }
 
 impl LLMGraphAnalysisResult {

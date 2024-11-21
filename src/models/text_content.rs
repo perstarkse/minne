@@ -1,49 +1,16 @@
+use crate::retrieval::graph::find_entities_by_source_id;
+use crate::retrieval::vector::find_items_by_vector_similarity;
 use crate::storage::db::store_item;
 use crate::storage::types::knowledge_entity::KnowledgeEntity;
 use crate::storage::types::knowledge_relationship::KnowledgeRelationship;
 use crate::storage::types::text_chunk::TextChunk;
 use crate::storage::types::text_content::TextContent;
-use crate::{
-    error::ProcessingError,
-    surrealdb::SurrealDbClient,
-    utils::llm::{create_json_ld, generate_embedding},
-};
+use crate::storage::types::StoredObject;
+use crate::utils::embedding::generate_embedding;
+use crate::{error::ProcessingError, surrealdb::SurrealDbClient, utils::llm::create_json_ld};
 use surrealdb::{engine::remote::ws::Client, Surreal};
 use text_splitter::TextSplitter;
 use tracing::{debug, info};
-
-async fn vector_comparison<T>(
-    take: u8,
-    input_text: String,
-    db_client: &Surreal<Client>,
-    table: String,
-    openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-) -> Result<Vec<T>, ProcessingError>
-where
-    T: for<'de> serde::Deserialize<'de>,
-{
-    let input_embedding = generate_embedding(openai_client, input_text).await?;
-
-    // Construct the query
-    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM {} WHERE embedding <|{},40|> {:?} ORDER BY distance",table, take, input_embedding);
-
-    // Perform query and deserialize to struct
-    let closest_entities: Vec<T> = db_client.query(closest_query).await?.take(0)?;
-
-    Ok(closest_entities)
-}
-
-async fn get_related_nodes(
-    id: String,
-    db_client: &Surreal<Client>,
-) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
-    let query = format!("SELECT * FROM knowledge_entity WHERE source_id = '{}'", id);
-
-    // let query = format!("SELECT * FROM knowledge_entity WHERE in OR out {}", id);
-    let related_nodes: Vec<KnowledgeEntity> = db_client.query(query).await?.take(0)?;
-
-    Ok(related_nodes)
-}
 
 impl TextContent {
     /// Processes the `TextContent` by sending it to an LLM, storing in a graph DB, and vector DB.
@@ -56,7 +23,7 @@ impl TextContent {
         info!("{:?}", create_operation);
 
         // Get related nodes
-        let closest_text_content: Vec<TextChunk> = vector_comparison(
+        let closest_text_content: Vec<TextChunk> = find_items_by_vector_similarity(
             3,
             self.text.clone(),
             &db_client,
@@ -66,7 +33,12 @@ impl TextContent {
         .await?;
 
         for node in closest_text_content {
-            let related_nodes = get_related_nodes(node.source_id, &db_client).await?;
+            let related_nodes: Vec<KnowledgeEntity> = find_entities_by_source_id(
+                node.source_id.to_owned(),
+                KnowledgeEntity::table_name().to_string(),
+                &db_client,
+            )
+            .await?;
             for related_node in related_nodes {
                 info!("{:?}", related_node.name);
             }
@@ -86,12 +58,7 @@ impl TextContent {
         // db_client
         //     .query("DEFINE INDEX idx_embedding ON text_chunk FIELDS embedding HNSW DIMENSION 1536")
         //     .await?;
-        db_client
-            .query("REBUILD INDEX IF EXISTS idx_embedding ON text_chunk")
-            .await?;
-        db_client
-            .query("REBUILD INDEX IF EXISTS embeddings ON knowledge_entity")
-            .await?;
+        db_client.rebuild_indexes().await?;
 
         // Step 1: Send to LLM for analysis
         let analysis = create_json_ld(
