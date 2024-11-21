@@ -1,12 +1,15 @@
-pub mod publisher;
 pub mod consumer;
+pub mod publisher;
 
 use axum::async_trait;
 use lapin::{
-    options::ExchangeDeclareOptions, types::FieldTable, Channel, Connection, ConnectionProperties, ExchangeKind 
+    options::ExchangeDeclareOptions, types::FieldTable, Channel, Connection, ConnectionProperties,
+    ExchangeKind,
 };
 use thiserror::Error;
 use tracing::debug;
+
+use crate::error::ProcessingError;
 
 /// Possible errors related to RabbitMQ operations.
 #[derive(Error, Debug)]
@@ -25,6 +28,8 @@ pub enum RabbitMQError {
     InitializeConsumerError(String),
     #[error("Queue error: {0}")]
     QueueError(String),
+    #[error("Processing error: {0}")]
+    ProcessingError(#[from] ProcessingError),
 }
 
 /// Struct containing the information required to set up a client and connection.
@@ -42,18 +47,21 @@ pub struct RabbitMQCommon {
     pub channel: Channel,
 }
 
-
 /// Defines the behavior for RabbitMQCommon client operations.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait RabbitMQCommonTrait: Send + Sync {
     async fn create_connection(config: &RabbitMQConfig) -> Result<Connection, RabbitMQError>;
-    async fn declare_exchange(&self, config: &RabbitMQConfig, passive: bool) -> Result<(), RabbitMQError>;
-} 
+    async fn declare_exchange(
+        &self,
+        config: &RabbitMQConfig,
+        passive: bool,
+    ) -> Result<(), RabbitMQError>;
+}
 
 impl RabbitMQCommon {
     /// Sets up a new RabbitMQ client or error
-    /// 
+    ///
     /// # Arguments
     /// * `RabbitMQConfig` - Configuration object with required information
     ///
@@ -62,7 +70,10 @@ impl RabbitMQCommon {
     pub async fn new(config: &RabbitMQConfig) -> Result<Self, RabbitMQError> {
         let connection = Self::create_connection(config).await?;
         let channel = connection.create_channel().await?;
-        Ok(Self { connection, channel })
+        Ok(Self {
+            connection,
+            channel,
+        })
     }
 }
 
@@ -77,7 +88,11 @@ impl RabbitMQCommonTrait for RabbitMQCommon {
     }
 
     /// Function to declare the exchange required
-    async fn declare_exchange(&self, config: &RabbitMQConfig, passive: bool) -> Result<(), RabbitMQError> {
+    async fn declare_exchange(
+        &self,
+        config: &RabbitMQConfig,
+        passive: bool,
+    ) -> Result<(), RabbitMQError> {
         debug!("Declaring exchange");
         self.channel
             .exchange_declare(

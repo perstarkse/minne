@@ -1,7 +1,8 @@
 use uuid::Uuid;
 
-use crate::models::file_info::FileInfo;
 use crate::stored_object;
+
+use super::file_info::FileInfo;
 
 stored_object!(TextContent, "text_content", {
     text: String,

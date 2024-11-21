@@ -1,5 +1,6 @@
 use axum::async_trait;
 use serde::{Deserialize, Serialize};
+pub mod file_info;
 pub mod knowledge_entity;
 pub mod knowledge_relationship;
 pub mod text_chunk;

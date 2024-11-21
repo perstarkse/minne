@@ -1,22 +1,26 @@
-use axum::{http::StatusCode, response::{IntoResponse, Response}, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use axum_typed_multipart::FieldData;
 use mime_guess::from_path;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use surrealdb::RecordId;
 use std::{
     io::{BufReader, Read},
     path::{Path, PathBuf},
 };
+use surrealdb::RecordId;
 use tempfile::NamedTempFile;
 use thiserror::Error;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::surrealdb::SurrealDbClient;
+use crate::storage::db::SurrealDbClient;
 
-#[derive(Debug,Deserialize)]
+#[derive(Debug, Deserialize)]
 struct Record {
     #[allow(dead_code)]
     id: RecordId,
@@ -72,7 +76,6 @@ pub enum FileError {
 
     #[error("Deserialization error: {0}")]
     DeserializationError(String),
-
     // Add more error variants as needed.
 }
 
@@ -82,16 +85,30 @@ impl IntoResponse for FileError {
             FileError::Io(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
             FileError::Utf8(_) => (StatusCode::BAD_REQUEST, "Invalid UTF-8 data"),
             FileError::MimeDetection(_) => (StatusCode::BAD_REQUEST, "MIME type detection failed"),
-            FileError::UnsupportedMime(_) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, "Unsupported MIME type"),
+            FileError::UnsupportedMime(_) => {
+                (StatusCode::UNSUPPORTED_MEDIA_TYPE, "Unsupported MIME type")
+            }
             FileError::FileNotFound(_) => (StatusCode::NOT_FOUND, "File not found"),
             FileError::DuplicateFile(_) => (StatusCode::CONFLICT, "Duplicate file detected"),
-            FileError::HashCollision => (StatusCode::INTERNAL_SERVER_ERROR, "Hash collision detected"),
+            FileError::HashCollision => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "Hash collision detected")
+            }
             FileError::InvalidUuid(_) => (StatusCode::BAD_REQUEST, "Invalid UUID format"),
-            FileError::MissingFileName => (StatusCode::BAD_REQUEST, "Missing file name in metadata"),
-            FileError::PersistError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to persist file"),
-            FileError::SerializationError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error"),
-            FileError::DeserializationError(_) => (StatusCode::BAD_REQUEST, "Deserialization error"),
-            FileError::SurrealError(_) =>(StatusCode::INTERNAL_SERVER_ERROR, "Serialization error"), 
+            FileError::MissingFileName => {
+                (StatusCode::BAD_REQUEST, "Missing file name in metadata")
+            }
+            FileError::PersistError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "Failed to persist file")
+            }
+            FileError::SerializationError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error")
+            }
+            FileError::DeserializationError(_) => {
+                (StatusCode::BAD_REQUEST, "Deserialization error")
+            }
+            FileError::SurrealError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error")
+            }
         };
 
         let body = Json(json!({
@@ -163,7 +180,11 @@ impl FileInfo {
     ///
     /// # Returns
     /// * `Result<FileInfo, FileError>` - The updated `FileInfo` or an error.
-    pub async fn update(uuid: Uuid, new_field_data: FieldData<NamedTempFile>, db_client: &SurrealDbClient) -> Result<FileInfo, FileError> {
+    pub async fn update(
+        uuid: Uuid,
+        new_field_data: FieldData<NamedTempFile>,
+        db_client: &SurrealDbClient,
+    ) -> Result<FileInfo, FileError> {
         let new_file = new_field_data.contents;
         let new_metadata = new_field_data.metadata;
 
@@ -184,7 +205,8 @@ impl FileInfo {
         let sanitized_new_file_name = sanitize_file_name(&new_file_name);
 
         // Persist the new file
-        let new_persisted_path = Self::persist_file(&uuid, new_file, &sanitized_new_file_name).await?;
+        let new_persisted_path =
+            Self::persist_file(&uuid, new_file, &sanitized_new_file_name).await?;
 
         // Guess the new MIME type
         let new_mime_type = Self::guess_mime_type(&new_persisted_path);
@@ -202,7 +224,7 @@ impl FileInfo {
         };
 
         // Save the new item
-        Self::create_record(&updated_file_info,db_client).await?;
+        Self::create_record(&updated_file_info, db_client).await?;
 
         // Optionally, delete the old file from the filesystem if it's no longer referenced
         // This requires reference counting or checking if other FileInfo entries point to the same SHA
@@ -221,26 +243,35 @@ impl FileInfo {
     /// * `Result<(), FileError>` - Empty result or an error.
     pub async fn delete(uuid: Uuid, db_client: &SurrealDbClient) -> Result<(), FileError> {
         // Retrieve FileInfo to get SHA256 and path
-        let file_info = Self::get_by_uuid(uuid, db_client).await?; 
+        let file_info = Self::get_by_uuid(uuid, db_client).await?;
 
         // Delete the file from the filesystem
         let file_path = Path::new(&file_info.path);
         if file_path.exists() {
-            tokio::fs::remove_file(file_path).await.map_err(FileError::Io)?;
+            tokio::fs::remove_file(file_path)
+                .await
+                .map_err(FileError::Io)?;
             info!("Deleted file at path: {}", file_info.path);
         } else {
-            info!("File path does not exist, skipping deletion: {}", file_info.path);
+            info!(
+                "File path does not exist, skipping deletion: {}",
+                file_info.path
+            );
         }
 
         // Delete the FileInfo from database
         Self::delete_record(&file_info.sha256, db_client).await?;
 
         // Remove the UUID directory if empty
-        let uuid_dir = file_path.parent().ok_or(FileError::FileNotFound(uuid.to_string()))?;
+        let uuid_dir = file_path
+            .parent()
+            .ok_or(FileError::FileNotFound(uuid.to_string()))?;
         if uuid_dir.exists() {
             let mut entries = tokio::fs::read_dir(uuid_dir).await.map_err(FileError::Io)?;
             if entries.next_entry().await?.is_none() {
-                tokio::fs::remove_dir(uuid_dir).await.map_err(FileError::Io)?;
+                tokio::fs::remove_dir(uuid_dir)
+                    .await
+                    .map_err(FileError::Io)?;
                 info!("Deleted empty UUID directory: {:?}", uuid_dir);
             }
         }
@@ -257,19 +288,26 @@ impl FileInfo {
     ///
     /// # Returns
     /// * `Result<PathBuf, FileError>` - The persisted file path or an error.
-    async fn persist_file(uuid: &Uuid, file: NamedTempFile, file_name: &str) -> Result<PathBuf, FileError> {
+    async fn persist_file(
+        uuid: &Uuid,
+        file: NamedTempFile,
+        file_name: &str,
+    ) -> Result<PathBuf, FileError> {
         let base_dir = Path::new("./data");
         let uuid_dir = base_dir.join(uuid.to_string());
 
         // Create the UUID directory if it doesn't exist
-        tokio::fs::create_dir_all(&uuid_dir).await.map_err(FileError::Io)?;
+        tokio::fs::create_dir_all(&uuid_dir)
+            .await
+            .map_err(FileError::Io)?;
 
         // Define the final file path
         let final_path = uuid_dir.join(file_name);
         info!("Final path: {:?}", final_path);
 
         // Persist the temporary file to the final path
-        file.persist(&final_path).map_err(|e| FileError::PersistError(e.to_string()))?;
+        file.persist(&final_path)
+            .map_err(|e| FileError::PersistError(e.to_string()))?;
 
         info!("Persisted file to {:?}", final_path);
 
@@ -313,7 +351,6 @@ impl FileInfo {
             .to_string()
     }
 
-    
     /// Creates a new record in SurrealDB for the given `FileInfo`.
     ///
     /// # Arguments
@@ -323,16 +360,19 @@ impl FileInfo {
     /// # Returns
     /// * `Result<(), FileError>` - Empty result or an error.
 
-    async fn create_record(file_info: &FileInfo, db_client: &SurrealDbClient) -> Result<(), FileError> {
+    async fn create_record(
+        file_info: &FileInfo,
+        db_client: &SurrealDbClient,
+    ) -> Result<(), FileError> {
         // Create the record
         let _created: Option<Record> = db_client
             .client
-            .create(("file", &file_info.uuid ))
+            .create(("file", &file_info.uuid))
             .content(file_info.clone())
             .await?;
 
-        debug!("{:?}",_created);
-                
+        debug!("{:?}", _created);
+
         info!("Created FileInfo record with SHA256: {}", file_info.sha256);
 
         Ok(())
@@ -346,11 +386,17 @@ impl FileInfo {
     ///
     /// # Returns
     /// * `Result<FileInfo, FileError>` - The `FileInfo` or `Error` if not found.
-    pub async fn get_by_uuid(uuid: Uuid, db_client: &SurrealDbClient) -> Result<FileInfo, FileError> {
+    pub async fn get_by_uuid(
+        uuid: Uuid,
+        db_client: &SurrealDbClient,
+    ) -> Result<FileInfo, FileError> {
         let query = format!("SELECT * FROM file WHERE uuid = '{}'", uuid);
         let response: Vec<FileInfo> = db_client.client.query(query).await?.take(0)?;
 
-        response.into_iter().next().ok_or(FileError::FileNotFound(uuid.to_string()))
+        response
+            .into_iter()
+            .next()
+            .ok_or(FileError::FileNotFound(uuid.to_string()))
     }
 
     /// Retrieves a `FileInfo` by SHA256.
@@ -367,7 +413,11 @@ impl FileInfo {
 
         debug!("{:?}", response);
 
-        response.into_iter().next().ok_or(FileError::FileNotFound(sha256.to_string()))    }
+        response
+            .into_iter()
+            .next()
+            .ok_or(FileError::FileNotFound(sha256.to_string()))
+    }
 
     /// Deletes a `FileInfo` record by SHA256.
     ///
@@ -381,10 +431,7 @@ impl FileInfo {
         let table = "file";
         let primary_key = sha256;
 
-        let _created: Option<Record> = db_client
-            .client
-            .delete((table, primary_key))
-            .await?;
+        let _created: Option<Record> = db_client.client.delete((table, primary_key)).await?;
 
         info!("Deleted FileInfo record with SHA256: {}", sha256);
 
@@ -395,7 +442,14 @@ impl FileInfo {
 /// Sanitizes the file name to prevent security vulnerabilities like directory traversal.
 /// Replaces any non-alphanumeric characters (excluding '.' and '_') with underscores.
 fn sanitize_file_name(file_name: &str) -> String {
-    file_name.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '_' { c } else { '_' })
+    file_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }

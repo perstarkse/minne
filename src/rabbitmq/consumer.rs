@@ -1,12 +1,16 @@
-use lapin::{
-    message::Delivery, options::*, types::FieldTable, Channel, Consumer, Queue 
-};
 use futures_lite::stream::StreamExt;
+use lapin::{message::Delivery, options::*, types::FieldTable, Channel, Consumer, Queue};
 
-use crate::models::{ingress_content::IngressContentError, ingress_object::IngressObject };
+use crate::{
+    error::IngressConsumerError,
+    ingress::{
+        content_processor::ContentProcessor,
+        types::{ingress_input::IngressContentError, ingress_object::IngressObject},
+    },
+};
 
 use super::{RabbitMQCommon, RabbitMQCommonTrait, RabbitMQConfig, RabbitMQError};
-use tracing::{info, error};
+use tracing::{error, info};
 
 /// Struct to consume messages from RabbitMQ.
 pub struct RabbitMQConsumer {
@@ -26,18 +30,22 @@ impl RabbitMQConsumer {
     /// * `Result<Self, RabbitMQError>` - The created client or an error.
     pub async fn new(config: &RabbitMQConfig) -> Result<Self, RabbitMQError> {
         let common = RabbitMQCommon::new(config).await?;
-        
+
         // Passively declare the exchange (it should already exist)
         common.declare_exchange(config, true).await?;
-        
+
         // Declare queue and bind it to the channel
         let queue = Self::declare_queue(&common.channel, config).await?;
         Self::bind_queue(&common.channel, &config.exchange, &queue, config).await?;
-        
+
         // Initialize the consumer
         let consumer = Self::initialize_consumer(&common.channel, config).await?;
 
-        Ok(Self { common, queue, consumer })
+        Ok(Self {
+            common,
+            queue,
+            consumer,
+        })
     }
 
     /// Sets up the consumer based on the channel and `RabbitMQConfig`.
@@ -48,7 +56,10 @@ impl RabbitMQConsumer {
     ///
     /// # Returns
     /// * `Result<Consumer, RabbitMQError>` - The initialized consumer or error
-    async fn initialize_consumer(channel: &Channel, config: &RabbitMQConfig) -> Result<Consumer, RabbitMQError> {
+    async fn initialize_consumer(
+        channel: &Channel,
+        config: &RabbitMQConfig,
+    ) -> Result<Consumer, RabbitMQError> {
         channel
             .basic_consume(
                 &config.queue,
@@ -56,7 +67,8 @@ impl RabbitMQConsumer {
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
-            .await.map_err(|e| RabbitMQError::InitializeConsumerError(e.to_string()))
+            .await
+            .map_err(|e| RabbitMQError::InitializeConsumerError(e.to_string()))
     }
     /// Declares the queue based on the channel and `RabbitMQConfig`.
     /// # Arguments
@@ -65,7 +77,10 @@ impl RabbitMQConsumer {
     ///
     /// # Returns
     /// * `Result<Queue, RabbitMQError>` - The initialized queue or error
-    async fn declare_queue(channel: &Channel, config: &RabbitMQConfig) -> Result<Queue, RabbitMQError> {
+    async fn declare_queue(
+        channel: &Channel,
+        config: &RabbitMQConfig,
+    ) -> Result<Queue, RabbitMQError> {
         channel
             .queue_declare(
                 &config.queue,
@@ -88,7 +103,12 @@ impl RabbitMQConsumer {
     ///
     /// # Returns
     /// * `Result<(), RabbitMQError>` - Ok or error
-    async fn bind_queue(channel: &Channel, exchange: &str, queue: &Queue, config: &RabbitMQConfig) -> Result<(), RabbitMQError> {
+    async fn bind_queue(
+        channel: &Channel,
+        exchange: &str,
+        queue: &Queue,
+        config: &RabbitMQConfig,
+    ) -> Result<(), RabbitMQError> {
         channel
             .queue_bind(
                 queue.name().as_str(),
@@ -111,7 +131,11 @@ impl RabbitMQConsumer {
     /// `Delivery` - A delivery reciept, required to ack or nack the delivery.
     pub async fn consume(&self) -> Result<(IngressObject, Delivery), RabbitMQError> {
         // Receive the next message
-        let delivery = self.consumer.clone().next().await
+        let delivery = self
+            .consumer
+            .clone()
+            .next()
+            .await
             .ok_or_else(|| RabbitMQError::ConsumeError("No message received".to_string()))?
             .map_err(|e| RabbitMQError::ConsumeError(e.to_string()))?;
 
@@ -131,7 +155,8 @@ impl RabbitMQConsumer {
     /// # Returns
     /// * `Result<(), RabbitMQError>` - Ok or error
     pub async fn ack_delivery(&self, delivery: Delivery) -> Result<(), RabbitMQError> {
-        self.common.channel
+        self.common
+            .channel
             .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
             .await
             .map_err(|e| RabbitMQError::ConsumeError(e.to_string()))?;
@@ -139,33 +164,22 @@ impl RabbitMQConsumer {
         Ok(())
     }
     /// Function to continually consume messages as they come in
-    /// WIP
-    pub async fn process_messages(&self) -> Result<(), RabbitMQError> {
+    pub async fn process_messages(&self) -> Result<(), IngressConsumerError> {
         loop {
             match self.consume().await {
                 Ok((ingress, delivery)) => {
                     info!("Received IngressObject: {:?}", ingress);
-                    let text_content = ingress.to_text_content().await.unwrap();
-                    text_content.process().await.unwrap();
-                    
+                    // Get the TextContent
+                    let text_content = ingress.to_text_content().await?;
+
+                    // Initialize ContentProcessor which handles LLM analysis and storage
+                    let content_processor = ContentProcessor::new().await?;
+
+                    // Begin processing of TextContent
+                    content_processor.process(&text_content).await?;
+
+                    // Remove from queue
                     self.ack_delivery(delivery).await?;
-                    // Process the IngressContent
-                    // match self.handle_ingress_content(&ingress).await {
-                    //     Ok(_) => {
-                    //         info!("Successfully handled IngressContent");
-                    //         // Acknowledge the message
-                    //         if let Err(e) = self.ack_delivery(delivery).await {
-                    //             error!("Failed to acknowledge message: {:?}", e);
-                    //         }
-                    //     },
-                    //     Err(e) => {
-                    //         error!("Failed to handle IngressContent: {:?}", e);
-                    //         // For now, we'll acknowledge to remove it from the queue. Change to nack?
-                    //         if let Err(ack_err) = self.ack_delivery(delivery).await {
-                    //             error!("Failed to acknowledge message after handling error: {:?}", ack_err);
-                    //         }
-                    //     }
-                    // }
                 }
                 Err(RabbitMQError::ConsumeError(e)) => {
                     error!("Error consuming message: {}", e);
@@ -182,7 +196,10 @@ impl RabbitMQConsumer {
         Ok(())
     }
 
-    pub async fn handle_ingress_content(&self, ingress: &IngressObject) -> Result<(), IngressContentError> {
+    pub async fn handle_ingress_content(
+        &self,
+        ingress: &IngressObject,
+    ) -> Result<(), IngressContentError> {
         info!("Processing IngressContent: {:?}", ingress);
 
         unimplemented!()

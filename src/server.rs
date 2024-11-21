@@ -12,7 +12,7 @@ use zettle_db::{
         ingress::ingress_handler,
         queue_length::queue_length_handler,
     },
-    surrealdb::SurrealDbClient,
+    storage::db::SurrealDbClient,
 };
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
