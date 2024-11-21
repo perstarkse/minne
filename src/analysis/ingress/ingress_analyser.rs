@@ -1,0 +1,147 @@
+use crate::{
+    analysis::ingress::{
+        prompt::{get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE},
+        types::llm_analysis_result::LLMGraphAnalysisResult,
+    },
+    error::ProcessingError,
+    retrieval::vector::find_items_by_vector_similarity,
+    storage::types::{knowledge_entity::KnowledgeEntity, StoredObject},
+};
+use async_openai::types::{
+    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
+    CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
+    ResponseFormatJsonSchema,
+};
+use serde_json::json;
+use surrealdb::engine::remote::ws::Client;
+use surrealdb::Surreal;
+use tracing::{debug, instrument};
+
+pub struct IngressAnalyzer<'a> {
+    db_client: &'a Surreal<Client>,
+    openai_client: &'a async_openai::Client<async_openai::config::OpenAIConfig>,
+}
+
+impl<'a> IngressAnalyzer<'a> {
+    pub fn new(
+        db_client: &'a Surreal<Client>,
+        openai_client: &'a async_openai::Client<async_openai::config::OpenAIConfig>,
+    ) -> Self {
+        Self {
+            db_client,
+            openai_client,
+        }
+    }
+
+    #[instrument(skip(self))]
+    pub async fn analyze_content(
+        &self,
+        category: &str,
+        instructions: &str,
+        text: &str,
+    ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+        let similar_entities = self
+            .find_similar_entities(category, instructions, text)
+            .await?;
+        let llm_request =
+            self.prepare_llm_request(category, instructions, text, &similar_entities)?;
+        self.perform_analysis(llm_request).await
+    }
+
+    #[instrument(skip(self))]
+    async fn find_similar_entities(
+        &self,
+        category: &str,
+        instructions: &str,
+        text: &str,
+    ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
+        let input_text = format!(
+            "content: {}, category: {}, user_instructions: {}",
+            text, category, instructions
+        );
+
+        find_items_by_vector_similarity(
+            10,
+            input_text,
+            self.db_client,
+            KnowledgeEntity::table_name().to_string(),
+            self.openai_client,
+        )
+        .await
+    }
+
+    #[instrument(skip(self))]
+    fn prepare_llm_request(
+        &self,
+        category: &str,
+        instructions: &str,
+        text: &str,
+        similar_entities: &[KnowledgeEntity],
+    ) -> Result<CreateChatCompletionRequest, ProcessingError> {
+        let entities_json = json!(similar_entities
+            .iter()
+            .map(|entity| {
+                json!({
+                    "KnowledgeEntity": {
+                        "id": entity.id,
+                        "name": entity.name,
+                        "description": entity.description
+                    }
+                })
+            })
+            .collect::<Vec<_>>());
+
+        let user_message = format!(
+            "Category:\n{}\nInstructions:\n{}\nContent:\n{}\nExisting KnowledgeEntities in database:\n{}",
+            category, instructions, text, entities_json
+        );
+
+        debug!("Prepared LLM request message: {}", user_message);
+
+        let response_format = ResponseFormat::JsonSchema {
+            json_schema: ResponseFormatJsonSchema {
+                description: Some("Structured analysis of the submitted content".into()),
+                name: "content_analysis".into(),
+                schema: Some(get_ingress_analysis_schema()),
+                strict: Some(true),
+            },
+        };
+
+        CreateChatCompletionRequestArgs::default()
+            .model("gpt-4-mini")
+            .temperature(0.2)
+            .max_tokens(2048u32)
+            .messages([
+                ChatCompletionRequestSystemMessage::from(INGRESS_ANALYSIS_SYSTEM_MESSAGE).into(),
+                ChatCompletionRequestUserMessage::from(user_message).into(),
+            ])
+            .response_format(response_format)
+            .build()
+            .map_err(|e| ProcessingError::LLMParsingError(e.to_string()))
+    }
+
+    #[instrument(skip(self, request))]
+    async fn perform_analysis(
+        &self,
+        request: CreateChatCompletionRequest,
+    ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+        let response = self.openai_client.chat().create(request).await?;
+        debug!("Received LLM response: {:?}", response);
+
+        response
+            .choices
+            .first()
+            .and_then(|choice| choice.message.content.as_ref())
+            .ok_or(ProcessingError::LLMParsingError(
+                "No content found in LLM response".into(),
+            ))
+            .and_then(|content| {
+                serde_json::from_str(content).map_err(|e| {
+                    ProcessingError::LLMParsingError(format!(
+                        "Failed to parse LLM response into analysis: {}",
+                        e
+                    ))
+                })
+            })
+    }
+}

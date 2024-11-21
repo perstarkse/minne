@@ -2,7 +2,6 @@ use super::ingress_content::IngressContentError;
 use crate::models::file_info::FileInfo;
 use crate::storage::types::text_content::TextContent;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Knowledge object type, containing the content or reference to it, as well as metadata
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -1,3 +1,4 @@
+use crate::analysis::ingress::ingress_analyser::IngressAnalyzer;
 use crate::retrieval::graph::find_entities_by_source_id;
 use crate::retrieval::vector::find_items_by_vector_similarity;
 use crate::storage::db::store_item;
@@ -7,7 +8,7 @@ use crate::storage::types::text_chunk::TextChunk;
 use crate::storage::types::text_content::TextContent;
 use crate::storage::types::StoredObject;
 use crate::utils::embedding::generate_embedding;
-use crate::{error::ProcessingError, surrealdb::SurrealDbClient, utils::llm::create_json_ld};
+use crate::{error::ProcessingError, surrealdb::SurrealDbClient};
 use surrealdb::{engine::remote::ws::Client, Surreal};
 use text_splitter::TextSplitter;
 use tracing::{debug, info};
@@ -19,8 +20,7 @@ impl TextContent {
         let openai_client = async_openai::Client::new();
 
         // Store TextContent
-        let create_operation = store_item(&db_client, self.clone()).await?;
-        info!("{:?}", create_operation);
+        store_item(&db_client, self.clone()).await?;
 
         // Get related nodes
         let closest_text_content: Vec<TextChunk> = find_items_by_vector_similarity(
@@ -48,15 +48,10 @@ impl TextContent {
         db_client.rebuild_indexes().await?;
 
         // Step 1: Send to LLM for analysis
-        let analysis = create_json_ld(
-            &self.category,
-            &self.instructions,
-            &self.text,
-            &db_client,
-            &openai_client,
-        )
-        .await?;
-        // info!("{:#?}", &analysis);
+        let analyser = IngressAnalyzer::new(&db_client, &openai_client);
+        let analysis = analyser
+            .analyze_content(&self.category, &self.instructions, &self.text)
+            .await?;
 
         // Step 2: Convert LLM analysis to database entities
         let (entities, relationships) = analysis
@@ -116,7 +111,7 @@ impl TextContent {
 
         for chunk in chunks {
             info!("Chunk: {}", chunk);
-            let embedding = generate_embedding(&openai_client, chunk.to_string()).await?;
+            let embedding = generate_embedding(openai_client, chunk.to_string()).await?;
             let text_chunk = TextChunk::new(self.id.to_string(), chunk.to_string(), embedding);
 
             store_item(db_client, text_chunk).await?;

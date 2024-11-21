@@ -1,5 +1,6 @@
 use async_openai::error::OpenAIError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 /// Error types for processing `TextContent`.
 #[derive(Error, Debug)]
@@ -18,4 +19,7 @@ pub enum ProcessingError {
 
     #[error("LLM parsing error: {0}")]
     LLMParsingError(String),
+
+    #[error("Task join error: {0}")]
+    JoinError(#[from] JoinError),
 }
