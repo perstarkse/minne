@@ -11,15 +11,18 @@ stored_object!(TextContent, "text_content", {
 });
 
 impl TextContent {
-    pub fn new(text: String, instructions: String, category: String) -> Self {
+    pub fn new(
+        text: String,
+        instructions: String,
+        category: String,
+        file_info: Option<FileInfo>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             text,
-            file_info: None,
+            file_info,
             instructions,
             category,
         }
     }
-
-    // Other methods...
 }

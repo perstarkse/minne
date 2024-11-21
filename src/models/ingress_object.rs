@@ -40,43 +40,35 @@ impl IngressObject {
                 category,
             } => {
                 let text = Self::fetch_text_from_url(url).await?;
-                let id = Uuid::new_v4();
-                Ok(TextContent {
-                    id: id.to_string(),
+                Ok(TextContent::new(
                     text,
-                    instructions: instructions.clone(),
-                    category: category.clone(),
-                    file_info: None,
-                })
+                    instructions.into(),
+                    category.into(),
+                    None,
+                ))
             }
             IngressObject::Text {
                 text,
                 instructions,
                 category,
-            } => {
-                let id = Uuid::new_v4();
-                Ok(TextContent {
-                    id: id.to_string(),
-                    text: text.clone(),
-                    instructions: instructions.clone(),
-                    category: category.clone(),
-                    file_info: None,
-                })
-            }
+            } => Ok(TextContent::new(
+                text.into(),
+                instructions.into(),
+                category.into(),
+                None,
+            )),
             IngressObject::File {
                 file_info,
                 instructions,
                 category,
             } => {
-                let id = Uuid::new_v4();
                 let text = Self::extract_text_from_file(file_info).await?;
-                Ok(TextContent {
-                    id: id.to_string(),
+                Ok(TextContent::new(
                     text,
-                    instructions: instructions.clone(),
-                    category: category.clone(),
-                    file_info: Some(file_info.clone()),
-                })
+                    instructions.into(),
+                    category.into(),
+                    Some(file_info.to_owned()),
+                ))
             }
         }
     }

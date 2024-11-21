@@ -1,7 +1,9 @@
 use crate::{
     error::ProcessingError,
-    models::graph_entities::{
-        GraphMapper, KnowledgeEntity, KnowledgeEntityType, KnowledgeRelationship,
+    models::graph_entities::GraphMapper,
+    storage::types::{
+        knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
+        knowledge_relationship::KnowledgeRelationship,
     },
 };
 use async_openai::types::{
@@ -119,7 +121,7 @@ impl LLMGraphAnalysisResult {
                 entity_type: KnowledgeEntityType::from(llm_entity.entity_type.clone()),
                 source_id: source_id.to_string(),
                 metadata: None,
-                embedding: Some(embedding),
+                embedding,
             };
 
             entities.push(knowledge_entity);
