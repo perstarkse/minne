@@ -1,20 +1,22 @@
 use crate::{
     error::ProcessingError,
     models::graph_entities::GraphMapper,
+    retrieval::vector::find_items_by_vector_similarity,
     storage::types::{
         knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
         knowledge_relationship::KnowledgeRelationship,
+        StoredObject,
     },
 };
 use async_openai::types::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-    CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs,
+    CreateChatCompletionRequestArgs,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
-use tracing::{debug, info};
+use tracing::debug;
 use uuid::Uuid;
 
 use super::embedding::generate_embedding;
@@ -115,13 +117,12 @@ impl LLMGraphAnalysisResult {
                 let target_db_id = mapper.get_or_parse_id(&llm_rel.target);
                 debug!("IN: {}, OUT: {}", &source_db_id, &target_db_id);
 
-                Some(KnowledgeRelationship {
-                    id: Uuid::new_v4().to_string(),
-                    in_: source_db_id.to_string(),
-                    out: target_db_id.to_string(),
-                    relationship_type: llm_rel.type_.clone(),
-                    metadata: None,
-                })
+                Some(KnowledgeRelationship::new(
+                    source_db_id.to_string(),
+                    target_db_id.to_string(),
+                    llm_rel.type_.to_owned(),
+                    None,
+                ))
             })
             .collect();
 
@@ -139,45 +140,34 @@ pub async fn create_json_ld(
 ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
     // Format the input for more cohesive comparison
     let input_text = format!(
-        "content: {:?}, category: {:?}, user_instructions: {:?}",
+        "content: {}, category: {}, user_instructions: {}",
         text, category, instructions
     );
 
-    // Generate embedding of the input
-    let input_embedding = generate_embedding(&openai_client, input_text).await?;
+    let closest_entities: Vec<KnowledgeEntity> = find_items_by_vector_similarity(
+        10,
+        input_text,
+        db_client,
+        KnowledgeEntity::table_name().to_string(),
+        openai_client,
+    )
+    .await?;
 
-    let number_of_entities_to_get = 10;
-
-    // Construct the query
-    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM knowledge_entity WHERE embedding <|{},40|> {:?} ORDER BY distance",number_of_entities_to_get, input_embedding);
-
-    // Perform query and deserialize to struct
-    let closest_entities: Vec<KnowledgeEntity> = db_client.query(closest_query).await?.take(0)?;
-    #[allow(dead_code)]
-    #[derive(Debug)]
-    struct KnowledgeEntityToLLM {
-        id: String,
-        name: String,
-        description: String,
-    }
-
-    info!(
-        "Number of KnowledgeEntities sent as context: {}",
-        closest_entities.len()
-    );
-
-    // Only keep most relevant information
-    let closest_entities_to_llm: Vec<KnowledgeEntityToLLM> = closest_entities
-        .clone()
-        .into_iter()
-        .map(|entity| KnowledgeEntityToLLM {
-            id: entity.id,
-            name: entity.name,
-            description: entity.description,
+    // Format the KnowledgeEntity, remove redudant fields
+    let closest_entities_to_llm = json!(closest_entities
+        .iter()
+        .map(|entity| {
+            json!({
+                "KnowledgeEntity": {
+                    "id": entity.id,
+                    "name": entity.name,
+                    "description": entity.description
+                }
+            })
         })
-        .collect();
+        .collect::<Vec<_>>());
 
-    debug!("{:?}", closest_entities_to_llm);
+    // let db_context = serde_json::to_string_pretty(&closest_entities_to_llm).unwrap();
 
     let schema = json!({
       "type": "object",
@@ -268,9 +258,11 @@ pub async fn create_json_ld(
             "#;
 
     let user_message = format!(
-        "Category: {}\nInstructions: {}\nContent:\n{}\nExisting KnowledgeEntities in database:{:?}",
+        "Category:\n{}\nInstructions:\n{}\nContent:\n{}\nExisting KnowledgeEntities in database:\n{}",
         category, instructions, text, closest_entities_to_llm
     );
+
+    debug!("{}", user_message);
 
     // Build the chat completion request
     let request = CreateChatCompletionRequestArgs::default()
