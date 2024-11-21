@@ -1,7 +1,7 @@
-use super::ingress_content::IngressContentError;
-use crate::models::file_info::FileInfo;
-use crate::storage::types::text_content::TextContent;
+use crate::storage::types::{file_info::FileInfo, text_content::TextContent};
 use serde::{Deserialize, Serialize};
+
+use super::ingress_input::IngressContentError;
 
 /// Knowledge object type, containing the content or reference to it, as well as metadata
 #[derive(Debug, Serialize, Deserialize, Clone)]

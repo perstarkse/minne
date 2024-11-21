@@ -5,14 +5,15 @@ use tokio::task;
 
 use crate::{
     error::ProcessingError,
-    models::graph_entities::GraphMapper,
     storage::types::{
         knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
         knowledge_relationship::KnowledgeRelationship,
     },
     utils::embedding::generate_embedding,
 };
-use futures::future::try_join_all; // For future parallelization
+use futures::future::try_join_all;
+
+use super::graph_mapper::GraphMapper; // For future parallelization
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LLMKnowledgeEntity {

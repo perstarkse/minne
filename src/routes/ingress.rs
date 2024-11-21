@@ -1,7 +1,11 @@
-use std::sync::Arc;
+use crate::{
+    ingress::types::ingress_input::{create_ingress_objects, IngressInput},
+    rabbitmq::publisher::RabbitMQProducer,
+    storage::db::SurrealDbClient,
+};
 use axum::{http::StatusCode, response::IntoResponse, Extension, Json};
+use std::sync::Arc;
 use tracing::{error, info};
-use crate::{models::ingress_content::{create_ingress_objects, IngressInput}, rabbitmq::publisher::RabbitMQProducer, surrealdb::SurrealDbClient};
 
 pub async fn ingress_handler(
     Extension(producer): Extension<Arc<RabbitMQProducer>>,
@@ -23,7 +27,7 @@ pub async fn ingress_handler(
                             StatusCode::INTERNAL_SERVER_ERROR,
                             "Failed to publish message",
                         )
-                        .into_response();
+                            .into_response();
                     }
                 }
             }
@@ -31,11 +35,7 @@ pub async fn ingress_handler(
         }
         Err(e) => {
             error!("Failed to process input: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to process input",
-            )
-            .into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to process input").into_response()
         }
     }
 }

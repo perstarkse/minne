@@ -1,10 +1,10 @@
+use super::ingress_object::IngressObject;
+use crate::storage::{db::SurrealDbClient, types::file_info::FileInfo};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::info;
 use url::Url;
 use uuid::Uuid;
-use crate::surrealdb::SurrealDbClient;
-use super::{file_info::FileInfo, ingress_object::IngressObject };
 
 /// Struct defining the expected body when ingressing content.
 #[derive(Serialize, Deserialize, Debug)]
@@ -105,4 +105,3 @@ pub async fn create_ingress_objects(
 
     Ok(object_list)
 }
-

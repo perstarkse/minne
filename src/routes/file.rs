@@ -1,16 +1,14 @@
-use std::sync::Arc;
-use axum::{
-    extract::Path, response::IntoResponse, Extension, Json
+use crate::storage::{
+    db::SurrealDbClient,
+    types::file_info::{FileError, FileInfo},
 };
-use axum_typed_multipart::{TypedMultipart, FieldData, TryFromMultipart};
+use axum::{extract::Path, response::IntoResponse, Extension, Json};
+use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use serde_json::json;
+use std::sync::Arc;
 use tempfile::NamedTempFile;
 use tracing::info;
 use uuid::Uuid;
-use crate::{
-    models::file_info::{FileError, FileInfo},
-     surrealdb::SurrealDbClient,
-};
 
 #[derive(Debug, TryFromMultipart)]
 pub struct FileUploadRequest {
@@ -19,7 +17,7 @@ pub struct FileUploadRequest {
 }
 
 /// Handler to upload a new file.
-/// 
+///
 /// Route: POST /file
 pub async fn upload_handler(
     Extension(db_client): Extension<Arc<SurrealDbClient>>,
@@ -40,13 +38,12 @@ pub async fn upload_handler(
 
     info!("File uploaded successfully: {:?}", file_info);
 
-
     // Return the response with HTTP 200
     Ok((axum::http::StatusCode::OK, Json(response)))
 }
 
 /// Handler to retrieve file information by UUID.
-/// 
+///
 /// Route: GET /file/:uuid
 pub async fn get_file_handler(
     Extension(db_client): Extension<Arc<SurrealDbClient>>,
@@ -73,7 +70,7 @@ pub async fn get_file_handler(
 }
 
 /// Handler to update an existing file by UUID.
-/// 
+///
 /// Route: PUT /file/:uuid
 pub async fn update_file_handler(
     Extension(db_client): Extension<Arc<SurrealDbClient>>,
@@ -101,7 +98,7 @@ pub async fn update_file_handler(
 }
 
 /// Handler to delete a file by UUID.
-/// 
+///
 /// Route: DELETE /file/:uuid
 pub async fn delete_file_handler(
     Extension(db_client): Extension<Arc<SurrealDbClient>>,

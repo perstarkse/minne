@@ -1,9 +1,6 @@
 use crate::{
-    analysis::ingress::{
-        prompt::{get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE},
-        types::llm_analysis_result::LLMGraphAnalysisResult,
-    },
     error::ProcessingError,
+    ingress::analysis::prompt::{get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE},
     retrieval::vector::find_items_by_vector_similarity,
     storage::types::{knowledge_entity::KnowledgeEntity, StoredObject},
 };
@@ -15,7 +12,9 @@ use async_openai::types::{
 use serde_json::json;
 use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
-use tracing::{debug, instrument};
+use tracing::debug;
+
+use super::types::llm_analysis_result::LLMGraphAnalysisResult;
 
 pub struct IngressAnalyzer<'a> {
     db_client: &'a Surreal<Client>,
@@ -33,7 +32,6 @@ impl<'a> IngressAnalyzer<'a> {
         }
     }
 
-    #[instrument(skip(self))]
     pub async fn analyze_content(
         &self,
         category: &str,
@@ -48,7 +46,6 @@ impl<'a> IngressAnalyzer<'a> {
         self.perform_analysis(llm_request).await
     }
 
-    #[instrument(skip(self))]
     async fn find_similar_entities(
         &self,
         category: &str,
@@ -70,7 +67,6 @@ impl<'a> IngressAnalyzer<'a> {
         .await
     }
 
-    #[instrument(skip(self))]
     fn prepare_llm_request(
         &self,
         category: &str,
@@ -108,7 +104,7 @@ impl<'a> IngressAnalyzer<'a> {
         };
 
         CreateChatCompletionRequestArgs::default()
-            .model("gpt-4-mini")
+            .model("gpt-4o-mini")
             .temperature(0.2)
             .max_tokens(2048u32)
             .messages([
@@ -120,7 +116,6 @@ impl<'a> IngressAnalyzer<'a> {
             .map_err(|e| ProcessingError::LLMParsingError(e.to_string()))
     }
 
-    #[instrument(skip(self, request))]
     async fn perform_analysis(
         &self,
         request: CreateChatCompletionRequest,
