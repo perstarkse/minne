@@ -2,6 +2,7 @@ use crate::stored_object;
 use uuid::Uuid;
 
 stored_object!(KnowledgeRelationship, "knowledge_relationship", {
+    #[serde(rename = "in")]
     in_: String,
     out: String,
     relationship_type: String,
