@@ -5,6 +5,8 @@ use surrealdb::{
     Error, Surreal,
 };
 
+use crate::storage::types::StoredObject;
+
 #[derive(Clone)]
 pub struct SurrealDbClient {
     pub client: Surreal<Client>,
@@ -31,6 +33,24 @@ impl SurrealDbClient {
         db.use_ns("test").use_db("test").await?;
 
         Ok(SurrealDbClient { client: db })
+    }
+
+    pub async fn rebuild_indexes(&self) -> Result<(), Error> {
+        self.client
+            .query("REBUILD INDEX IF EXISTS idx_embedding ON text_chunk")
+            .await?;
+        self.client
+            .query("REBUILD INDEX IF EXISTS embeddings ON knowledge_entity")
+            .await?;
+        Ok(())
+    }
+
+    pub async fn drop_table<T>(&self) -> Result<(), Error>
+    where
+        T: StoredObject + Send + Sync + 'static,
+    {
+        let _deleted: Vec<T> = self.client.delete(T::table_name()).await?;
+        Ok(())
     }
 }
 
