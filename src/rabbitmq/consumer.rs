@@ -1,4 +1,4 @@
-use futures_lite::stream::StreamExt;
+use futures::StreamExt;
 use lapin::{message::Delivery, options::*, types::FieldTable, Channel, Consumer, Queue};
 
 use crate::{

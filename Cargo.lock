@@ -5387,7 +5387,6 @@ dependencies = [
  "axum",
  "axum_typed_multipart",
  "futures",
- "futures-lite 2.3.0",
  "lapin",
  "mime",
  "mime_guess",

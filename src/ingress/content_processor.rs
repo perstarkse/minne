@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use text_splitter::TextSplitter;
 use tracing::{debug, info};
 
@@ -35,11 +37,17 @@ impl ContentProcessor {
         // Store original content
         store_item(&self.db_client, content.clone()).await?;
 
+        let now = Instant::now();
         // Process in parallel where possible
         let (analysis, _similar_chunks) = tokio::try_join!(
             self.perform_semantic_analysis(content),
             self.find_similar_content(content),
         )?;
+        let end = now.elapsed();
+        info!(
+            "{:?} time elapsed during creation of entities and relationships",
+            end
+        );
 
         // Convert and store entities
         let (entities, relationships) = analysis
