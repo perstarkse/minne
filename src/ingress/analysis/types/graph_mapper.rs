@@ -24,7 +24,7 @@ impl GraphMapper {
         if let Ok(parsed_uuid) = Uuid::parse_str(key) {
             parsed_uuid
         } else {
-            self.key_to_id.get(key).unwrap().clone()
+            *self.key_to_id.get(key).unwrap()
         }
     }
 
