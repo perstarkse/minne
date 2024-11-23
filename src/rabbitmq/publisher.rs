@@ -42,10 +42,10 @@ impl RabbitMQProducer {
     /// * `Result<Confirmation, RabbitMQError>` - Confirmation of sent message or error
     pub async fn publish(
         &self,
-        ingress_object: &IngressObject,
+        ingress_object: IngressObject,
     ) -> Result<Confirmation, RabbitMQError> {
         // Serialize IngressObject to JSON
-        let payload = serde_json::to_vec(ingress_object).map_err(|e| {
+        let payload = serde_json::to_vec(&ingress_object).map_err(|e| {
             error!("Serialization Error: {}", e);
             RabbitMQError::PublishError(format!("Serialization Error: {}", e))
         })?;

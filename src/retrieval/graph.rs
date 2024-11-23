@@ -46,20 +46,22 @@ use crate::error::ProcessingError;
 ///     &db_client
 /// ).await?;
 /// ```
-pub async fn find_entities_by_source_id<T>(
-    source_id: String,
+pub async fn find_entities_by_source_ids<T>(
+    source_id: Vec<String>,
     table_name: String,
     db_client: &Surreal<Client>,
 ) -> Result<Vec<T>, ProcessingError>
 where
     T: for<'de> serde::Deserialize<'de>,
 {
-    let query = format!(
-        "SELECT * FROM {} WHERE source_id = '{}'",
-        table_name, source_id
-    );
+    let query = "SELECT * FROM type::table($table) WHERE source_id IN $source_ids";
 
-    let matching_entities: Vec<T> = db_client.query(query).await?.take(0)?;
+    let matching_entities: Vec<T> = db_client
+        .query(query)
+        .bind(("table", table_name))
+        .bind(("source_ids", source_id))
+        .await?
+        .take(0)?;
 
     Ok(matching_entities)
 }
