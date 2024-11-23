@@ -5,6 +5,7 @@ use crate::{
     storage::db::SurrealDbClient,
 };
 use axum::{http::StatusCode, response::IntoResponse, Extension, Json};
+use futures::future::try_join_all;
 use std::sync::Arc;
 use tracing::info;
 
@@ -17,9 +18,12 @@ pub async fn ingress_handler(
 
     let ingress_objects = create_ingress_objects(input, &db_client).await?;
 
-    for object in ingress_objects {
-        producer.publish(&object).await?;
-    }
+    let futures: Vec<_> = ingress_objects
+        .into_iter()
+        .map(|object| producer.publish(object))
+        .collect();
+
+    try_join_all(futures).await?;
 
     Ok(StatusCode::OK)
 }
