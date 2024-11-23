@@ -7,9 +7,10 @@ use std::sync::Arc;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::{
     rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig},
-    routes::{
+    server::routes::{
         file::{delete_file_handler, get_file_handler, update_file_handler, upload_handler},
         ingress::ingress_handler,
+        query::query_handler,
         queue_length::queue_length_handler,
     },
     storage::db::SurrealDbClient,
@@ -48,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/file/:uuid", get(get_file_handler))
         .route("/file/:uuid", put(update_file_handler))
         .route("/file/:uuid", delete(delete_file_handler))
+        .route("/query", post(query_handler))
         .layer(Extension(db_client));
 
     tracing::info!("Listening on 0.0.0.0:3000");
