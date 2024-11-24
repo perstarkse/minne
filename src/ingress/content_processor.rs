@@ -100,7 +100,7 @@ impl ContentProcessor {
 
         for relationship in &relationships {
             debug!("Storing relationship: {:?}", relationship);
-            store_item(&self.db_client, relationship.clone()).await?;
+            relationship.store_relationship(&self.db_client).await?;
         }
 
         info!(
