@@ -1,6 +1,12 @@
 use crate::{
     error::ApiError,
-    retrieval::{graph::find_entities_by_source_ids, vector::find_items_by_vector_similarity},
+    retrieval::{
+        graph::{
+            find_entities_by_relationship_by_id, find_entities_by_relationship_by_source_ids,
+            find_entities_by_source_ids,
+        },
+        vector::find_items_by_vector_similarity,
+    },
     storage::{
         db::SurrealDbClient,
         types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk},
@@ -24,6 +30,9 @@ pub async fn query_handler(
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Received input: {:?}", query);
     let openai_client = async_openai::Client::new();
+
+    let test = find_entities_by_relationship_by_id(&db_client, &query.query).await?;
+    info!("{:?}", test);
 
     let items_from_knowledge_entity_similarity: Vec<KnowledgeEntity> =
         find_items_by_vector_similarity(
@@ -49,8 +58,12 @@ pub async fn query_handler(
         .map(|chunk| chunk.source_id.clone())
         .collect::<Vec<String>>();
 
-    let items_from_text_chunk_similarity: Vec<KnowledgeEntity> =
-        find_entities_by_source_ids(source_ids, "knowledge_entity".to_string(), &db_client).await?;
+    let items_from_text_chunk_similarity: Vec<KnowledgeEntity> = find_entities_by_source_ids(
+        source_ids.clone(),
+        "knowledge_entity".to_string(),
+        &db_client,
+    )
+    .await?;
 
     let entities: Vec<KnowledgeEntity> = items_from_knowledge_entity_similarity
         .into_iter()
@@ -75,7 +88,12 @@ pub async fn query_handler(
         })
         .collect::<Vec<_>>());
 
-    info!("{} Entities\n{:#?}", entities.len(), entities_json);
+    let graph_retrieval =
+        find_entities_by_relationship_by_source_ids(&db_client, &source_ids).await?;
+
+    info!("{:?}", graph_retrieval);
+
+    // info!("{} Entities\n{:#?}", entities.len(), entities_json);
 
     Ok("we got some stuff".to_string())
 }
