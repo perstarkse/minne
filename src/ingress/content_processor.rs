@@ -5,7 +5,6 @@ use tracing::{debug, info};
 
 use crate::{
     error::ProcessingError,
-    retrieval::vector::find_items_by_vector_similarity,
     storage::{
         db::{store_item, SurrealDbClient},
         types::{
@@ -39,10 +38,8 @@ impl ContentProcessor {
 
         let now = Instant::now();
         // Process in parallel where possible
-        let (analysis, _similar_chunks) = tokio::try_join!(
-            self.perform_semantic_analysis(content),
-            self.find_similar_content(content),
-        )?;
+        let analysis = self.perform_semantic_analysis(content).await?;
+
         let end = now.elapsed();
         info!(
             "{:?} time elapsed during creation of entities and relationships",
@@ -72,20 +69,6 @@ impl ContentProcessor {
         analyser
             .analyze_content(&content.category, &content.instructions, &content.text)
             .await
-    }
-
-    async fn find_similar_content(
-        &self,
-        content: &TextContent,
-    ) -> Result<Vec<TextChunk>, ProcessingError> {
-        find_items_by_vector_similarity(
-            3,
-            content.text.clone(),
-            &self.db_client,
-            "text_chunk".to_string(),
-            &self.openai_client,
-        )
-        .await
     }
 
     async fn store_graph_entities(

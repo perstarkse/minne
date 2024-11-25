@@ -1,5 +1,5 @@
 use surrealdb::{engine::remote::ws::Client, Surreal};
-use tracing::info;
+use tracing::debug;
 
 use crate::{error::ProcessingError, storage::types::knowledge_entity::KnowledgeEntity};
 
@@ -71,23 +71,21 @@ pub async fn find_entities_by_relationship_by_source_ids(
     db_client: &Surreal<Client>,
     source_ids: &[String],
 ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
-    // Create a comma-separated list of IDs wrapped in backticks
     let ids = source_ids
         .iter()
+        // .map(|id| format!("`{}`", id))
         .map(|id| format!("knowledge_entity:`{}`", id))
         .collect::<Vec<_>>()
         .join(", ");
 
-    info!("{:?}", ids);
-
-    // let first = format!("knowledge_entity:`{}`", source_ids.first().unwrap());
+    debug!("{:?}", ids);
 
     let query = format!(
-        "SELECT *, array::complement(<->relates_to<->knowledge_entity, [id]) AS related FROM [{}] FETCH related",
+        "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM [{}]",
         ids
     );
 
-    info!("{}", query);
+    debug!("{}", query);
 
     let result: Vec<KnowledgeEntity> = db_client.query(query).await?.take(0)?;
 
@@ -95,14 +93,14 @@ pub async fn find_entities_by_relationship_by_source_ids(
 }
 pub async fn find_entities_by_relationship_by_id(
     db_client: &Surreal<Client>,
-    source_id: &str,
+    source_id: String,
 ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
     let query = format!(
         "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM knowledge_entity:`{}`",
         source_id
     );
 
-    info!("{}", query);
+    debug!("{}", query);
 
     let result: Vec<KnowledgeEntity> = db_client.query(query).await?.take(0)?;
 
