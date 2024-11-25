@@ -1,8 +1,8 @@
 use crate::{
     error::ProcessingError,
     ingress::analysis::prompt::{get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE},
-    retrieval::vector::find_items_by_vector_similarity,
-    storage::types::{knowledge_entity::KnowledgeEntity, StoredObject},
+    retrieval::combined_knowledge_entity_retrieval,
+    storage::types::knowledge_entity::KnowledgeEntity,
 };
 use async_openai::types::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
@@ -57,14 +57,7 @@ impl<'a> IngressAnalyzer<'a> {
             text, category, instructions
         );
 
-        find_items_by_vector_similarity(
-            10,
-            input_text,
-            self.db_client,
-            KnowledgeEntity::table_name().to_string(),
-            self.openai_client,
-        )
-        .await
+        combined_knowledge_entity_retrieval(self.db_client, self.openai_client, input_text).await
     }
 
     fn prepare_llm_request(
@@ -106,7 +99,7 @@ impl<'a> IngressAnalyzer<'a> {
         CreateChatCompletionRequestArgs::default()
             .model("gpt-4o-mini")
             .temperature(0.2)
-            .max_tokens(2048u32)
+            .max_tokens(3048u32)
             .messages([
                 ChatCompletionRequestSystemMessage::from(INGRESS_ANALYSIS_SYSTEM_MESSAGE).into(),
                 ChatCompletionRequestUserMessage::from(user_message).into(),

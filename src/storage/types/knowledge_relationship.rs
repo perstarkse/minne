@@ -1,6 +1,6 @@
 use crate::{error::ProcessingError, stored_object};
 use surrealdb::{engine::remote::ws::Client, Surreal};
-use tracing::info;
+use tracing::debug;
 use uuid::Uuid;
 
 stored_object!(KnowledgeRelationship, "knowledge_relationship", {
@@ -37,7 +37,7 @@ impl KnowledgeRelationship {
 
         let result = db_client.query(query).await?;
 
-        info!("{:?}", result);
+        debug!("{:?}", result);
 
         Ok(())
     }

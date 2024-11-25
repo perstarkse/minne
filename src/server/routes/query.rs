@@ -1,21 +1,13 @@
 use crate::{
-    error::ApiError,
-    retrieval::{
-        graph::{
-            find_entities_by_relationship_by_id, find_entities_by_relationship_by_source_ids,
-            find_entities_by_source_ids,
-        },
-        vector::find_items_by_vector_similarity,
-    },
-    storage::{
-        db::SurrealDbClient,
-        types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk},
-    },
+    error::ApiError, retrieval::combined_knowledge_entity_retrieval, storage::db::SurrealDbClient,
+};
+use async_openai::types::{
+    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
+    CreateChatCompletionRequestArgs,
 };
 use axum::{response::IntoResponse, Extension, Json};
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::info;
 
@@ -31,49 +23,9 @@ pub async fn query_handler(
     info!("Received input: {:?}", query);
     let openai_client = async_openai::Client::new();
 
-    let test = find_entities_by_relationship_by_id(&db_client, &query.query).await?;
-    info!("{:?}", test);
-
-    let items_from_knowledge_entity_similarity: Vec<KnowledgeEntity> =
-        find_items_by_vector_similarity(
-            10,
-            query.query.to_string(),
-            &db_client,
-            "knowledge_entity".to_string(),
-            &openai_client,
-        )
-        .await?;
-
-    let closest_chunks: Vec<TextChunk> = find_items_by_vector_similarity(
-        5,
-        query.query,
-        &db_client,
-        "text_chunk".to_string(),
-        &openai_client,
-    )
-    .await?;
-
-    let source_ids = closest_chunks
-        .iter()
-        .map(|chunk| chunk.source_id.clone())
-        .collect::<Vec<String>>();
-
-    let items_from_text_chunk_similarity: Vec<KnowledgeEntity> = find_entities_by_source_ids(
-        source_ids.clone(),
-        "knowledge_entity".to_string(),
-        &db_client,
-    )
-    .await?;
-
-    let entities: Vec<KnowledgeEntity> = items_from_knowledge_entity_similarity
-        .into_iter()
-        .chain(items_from_text_chunk_similarity.into_iter())
-        .fold(HashMap::new(), |mut map, entity| {
-            map.insert(entity.id.clone(), entity);
-            map
-        })
-        .into_values()
-        .collect();
+    let entities =
+        combined_knowledge_entity_retrieval(&db_client, &openai_client, query.query.clone())
+            .await?;
 
     let entities_json = json!(entities
         .iter()
@@ -88,12 +40,68 @@ pub async fn query_handler(
         })
         .collect::<Vec<_>>());
 
-    let graph_retrieval =
-        find_entities_by_relationship_by_source_ids(&db_client, &source_ids).await?;
+    let system_message = r#"
+      You are a knowledgeable assistant with access to a specialized knowledge base. You will be provided with relevant knowledge entities from the database as context. Each knowledge entity contains a name, description, and type, representing different concepts, ideas, and information.
 
-    info!("{:?}", graph_retrieval);
+      Your task is to:
+      1. Carefully analyze the provided knowledge entities in the context
+      2. Answer user questions based on this information
+      3. Provide clear, concise, and accurate responses
+      4. When referencing information, briefly mention which knowledge entity it came from
+      5. If the provided context doesn't contain enough information to answer the question confidently, clearly state this
+      6. If only partial information is available, explain what you can answer and what information is missing
+      7. Avoid making assumptions or providing information not supported by the context
 
-    // info!("{} Entities\n{:#?}", entities.len(), entities_json);
+      Remember:
+      - Be direct and honest about the limitations of your knowledge
+      - Cite the relevant knowledge entities when providing information
+      - If you need to combine information from multiple entities, explain how they connect
+      - Don't speculate beyond what's provided in the context
 
-    Ok("we got some stuff".to_string())
+      Example response formats:
+      "Based on [Entity Name], [answer...]"
+      "I found relevant information in multiple entries: [explanation...]"
+      "I apologize, but the provided context doesn't contain information about [topic]"  
+    "#;
+
+    let user_message = format!(
+        r#"
+        Context Information:
+        ==================
+        {}
+
+        User Question:
+        ==================
+        {}
+        "#,
+        entities_json, query.query
+    );
+
+    info!("{:?}", user_message);
+
+    let request = CreateChatCompletionRequestArgs::default()
+        .model("gpt-4o-mini")
+        .temperature(0.2)
+        .max_tokens(3048u32)
+        .messages([
+            ChatCompletionRequestSystemMessage::from(system_message).into(),
+            ChatCompletionRequestUserMessage::from(user_message).into(),
+        ])
+        .build()?;
+
+    let response = openai_client.chat().create(request).await?;
+
+    let answer = response
+        .choices
+        .first()
+        .and_then(|choice| choice.message.content.as_ref())
+        .ok_or(ApiError::QueryError(
+            "No content found in LLM response".to_string(),
+        ))?;
+
+    info!("{:?}", answer);
+
+    // info!("{:#?}", entities_json);
+
+    Ok(answer.clone().into_response())
 }

@@ -53,6 +53,8 @@ pub enum ApiError {
     QueryError(String),
     #[error("RabbitMQ error: {0}")]
     RabbitMQError(#[from] RabbitMQError),
+    #[error("LLM processing error: {0}")]
+    OpenAIerror(#[from] OpenAIError),
 }
 
 impl IntoResponse for ApiError {
@@ -61,6 +63,7 @@ impl IntoResponse for ApiError {
             ApiError::ProcessingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::PublishingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::OpenAIerror(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::QueryError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::IngressContentError(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
