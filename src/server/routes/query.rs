@@ -3,7 +3,7 @@ use crate::{
 };
 use async_openai::types::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-    CreateChatCompletionRequestArgs,
+    CreateChatCompletionRequestArgs, ResponseFormat, ResponseFormatJsonSchema,
 };
 use axum::{response::IntoResponse, Extension, Json};
 use serde::Deserialize;
@@ -51,6 +51,7 @@ pub async fn query_handler(
       5. If the provided context doesn't contain enough information to answer the question confidently, clearly state this
       6. If only partial information is available, explain what you can answer and what information is missing
       7. Avoid making assumptions or providing information not supported by the context
+      8. Output the references to the documents. Use the UUIDs and make sure they are correct!
 
       Remember:
       - Be direct and honest about the limitations of your knowledge
@@ -77,6 +78,35 @@ pub async fn query_handler(
         entities_json, query.query
     );
 
+    let query_response_schema = json!({
+       "type": "object",
+       "properties": {
+           "answer": { "type": "string" },
+           "references": {
+               "type": "array",
+               "items": {
+                   "type": "object",
+                   "properties": {
+                       "reference": { "type": "string" },
+                   },
+               "required": ["reference"],
+               "additionalProperties": false,
+               }
+           }
+       },
+       "required": ["answer", "references"],
+       "additionalProperties": false
+    });
+
+    let response_format = ResponseFormat::JsonSchema {
+        json_schema: ResponseFormatJsonSchema {
+            description: Some("Query answering AI".into()),
+            name: "query_answering_with_uuids".into(),
+            schema: Some(query_response_schema),
+            strict: Some(true),
+        },
+    };
+
     info!("{:?}", user_message);
 
     let request = CreateChatCompletionRequestArgs::default()
@@ -87,6 +117,7 @@ pub async fn query_handler(
             ChatCompletionRequestSystemMessage::from(system_message).into(),
             ChatCompletionRequestUserMessage::from(user_message).into(),
         ])
+        .response_format(response_format)
         .build()?;
 
     let response = openai_client.chat().create(request).await?;
