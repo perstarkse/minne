@@ -1,15 +1,17 @@
+pub mod helper;
+pub mod prompt;
+
+use std::sync::Arc;
+
 use crate::{
     error::ApiError, retrieval::combined_knowledge_entity_retrieval, storage::db::SurrealDbClient,
 };
-use async_openai::types::{
-    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-    CreateChatCompletionRequestArgs, ResponseFormat, ResponseFormatJsonSchema,
+use axum::{response::IntoResponse, Extension, Json};
+use helper::{
+    create_chat_request, create_user_message, format_entities_json, process_llm_response,
 };
-use axum::{http::StatusCode, response::IntoResponse, Extension, Json};
 use serde::Deserialize;
-use serde_json::json;
-use std::sync::Arc;
-use tracing::info;
+use tracing::{debug, info};
 
 #[derive(Debug, Deserialize)]
 pub struct QueryInput {
@@ -18,19 +20,16 @@ pub struct QueryInput {
 
 #[derive(Debug, Deserialize)]
 struct Reference {
+    #[allow(dead_code)]
     reference: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct LLMResponseFormat {
+pub struct LLMResponseFormat {
     answer: String,
+    #[allow(dead_code)]
     references: Vec<Reference>,
 }
-// impl IntoResponse for LLMResponseFormat {
-//     fn into_response(self) -> axum::response::Response {
-//         (StatusCode::OK, Json(self))
-//     }
-// }
 
 pub async fn query_handler(
     Extension(db_client): Extension<Arc<SurrealDbClient>>,
@@ -39,120 +38,27 @@ pub async fn query_handler(
     info!("Received input: {:?}", query);
     let openai_client = async_openai::Client::new();
 
+    // Retrieve entities
     let entities =
         combined_knowledge_entity_retrieval(&db_client, &openai_client, query.query.clone())
             .await?;
 
-    let entities_json = json!(entities
-        .iter()
-        .map(|entity| {
-            json!({
-                "KnowledgeEntity": {
-                    "id": entity.id,
-                    "name": entity.name,
-                    "description": entity.description
-                }
-            })
-        })
-        .collect::<Vec<_>>());
+    // Format entities and create message
+    let entities_json = format_entities_json(&entities);
+    let user_message = create_user_message(&entities_json, &query.query);
+    debug!("{:?}", user_message);
 
-    let system_message = r#"
-      You are a knowledgeable assistant with access to a specialized knowledge base. You will be provided with relevant knowledge entities from the database as context. Each knowledge entity contains a name, description, and type, representing different concepts, ideas, and information.
+    // Create and send request
+    let request = create_chat_request(user_message)?;
+    let response = openai_client
+        .chat()
+        .create(request)
+        .await
+        .map_err(|e| ApiError::QueryError(e.to_string()))?;
 
-      Your task is to:
-      1. Carefully analyze the provided knowledge entities in the context
-      2. Answer user questions based on this information
-      3. Provide clear, concise, and accurate responses
-      4. When referencing information, briefly mention which knowledge entity it came from
-      5. If the provided context doesn't contain enough information to answer the question confidently, clearly state this
-      6. If only partial information is available, explain what you can answer and what information is missing
-      7. Avoid making assumptions or providing information not supported by the context
-      8. Output the references to the documents. Use the UUIDs and make sure they are correct!
-
-      Remember:
-      - Be direct and honest about the limitations of your knowledge
-      - Cite the relevant knowledge entities when providing information
-      - If you need to combine information from multiple entities, explain how they connect
-      - Don't speculate beyond what's provided in the context
-
-      Example response formats:
-      "Based on [Entity Name], [answer...]"
-      "I found relevant information in multiple entries: [explanation...]"
-      "I apologize, but the provided context doesn't contain information about [topic]"  
-    "#;
-
-    let user_message = format!(
-        r#"
-        Context Information:
-        ==================
-        {}
-
-        User Question:
-        ==================
-        {}
-        "#,
-        entities_json, query.query
-    );
-
-    let query_response_schema = json!({
-       "type": "object",
-       "properties": {
-           "answer": { "type": "string" },
-           "references": {
-               "type": "array",
-               "items": {
-                   "type": "object",
-                   "properties": {
-                       "reference": { "type": "string" },
-                   },
-               "required": ["reference"],
-               "additionalProperties": false,
-               }
-           }
-       },
-       "required": ["answer", "references"],
-       "additionalProperties": false
-    });
-
-    let response_format = ResponseFormat::JsonSchema {
-        json_schema: ResponseFormatJsonSchema {
-            description: Some("Query answering AI".into()),
-            name: "query_answering_with_uuids".into(),
-            schema: Some(query_response_schema),
-            strict: Some(true),
-        },
-    };
-
-    info!("{:?}", user_message);
-
-    let request = CreateChatCompletionRequestArgs::default()
-        .model("gpt-4o-mini")
-        .temperature(0.2)
-        .max_tokens(3048u32)
-        .messages([
-            ChatCompletionRequestSystemMessage::from(system_message).into(),
-            ChatCompletionRequestUserMessage::from(user_message).into(),
-        ])
-        .response_format(response_format)
-        .build()?;
-
-    let response = openai_client.chat().create(request).await?;
-
-    let answer = response
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.as_ref())
-        .ok_or(ApiError::QueryError(
-            "No content found in LLM response".into(),
-        ))?;
-
+    // Process response
+    let answer = process_llm_response(response).await?;
     info!("{:?}", answer);
 
-    let parsed: LLMResponseFormat = serde_json::from_str(answer).map_err(|e| {
-        ApiError::QueryError(format!("Failed to parse LLM response into analysis: {}", e))
-    })?;
-
-    info!("{:?}", parsed);
-
-    Ok(parsed.answer.into_response())
+    Ok(answer.answer.into_response())
 }
