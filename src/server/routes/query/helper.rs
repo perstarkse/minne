@@ -1,4 +1,9 @@
-use serde_json::json;
+use async_openai::types::{
+    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
+    CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
+    ResponseFormat, ResponseFormatJsonSchema,
+};
+use serde_json::{json, Value};
 
 use crate::{error::ApiError, storage::types::knowledge_entity::KnowledgeEntity};
 
@@ -7,7 +12,7 @@ use super::{
     LLMResponseFormat,
 };
 
-pub fn format_entities_json(entities: &[KnowledgeEntity]) -> serde_json::Value {
+pub fn format_entities_json(entities: &[KnowledgeEntity]) -> Value {
     json!(entities
         .iter()
         .map(|entity| {
@@ -22,7 +27,7 @@ pub fn format_entities_json(entities: &[KnowledgeEntity]) -> serde_json::Value {
         .collect::<Vec<_>>())
 }
 
-pub fn create_user_message(entities_json: &serde_json::Value, query: &str) -> String {
+pub fn create_user_message(entities_json: &Value, query: &str) -> String {
     format!(
         r#"
         Context Information:
@@ -37,11 +42,9 @@ pub fn create_user_message(entities_json: &serde_json::Value, query: &str) -> St
     )
 }
 
-pub fn create_chat_request(
-    user_message: String,
-) -> Result<async_openai::types::CreateChatCompletionRequest, ApiError> {
-    let response_format = async_openai::types::ResponseFormat::JsonSchema {
-        json_schema: async_openai::types::ResponseFormatJsonSchema {
+pub fn create_chat_request(user_message: String) -> Result<CreateChatCompletionRequest, ApiError> {
+    let response_format = ResponseFormat::JsonSchema {
+        json_schema: ResponseFormatJsonSchema {
             description: Some("Query answering AI".into()),
             name: "query_answering_with_uuids".into(),
             schema: Some(get_query_response_schema()),
@@ -49,14 +52,13 @@ pub fn create_chat_request(
         },
     };
 
-    async_openai::types::CreateChatCompletionRequestArgs::default()
+    CreateChatCompletionRequestArgs::default()
         .model("gpt-4o-mini")
         .temperature(0.2)
         .max_tokens(3048u32)
         .messages([
-            async_openai::types::ChatCompletionRequestSystemMessage::from(QUERY_SYSTEM_PROMPT)
-                .into(),
-            async_openai::types::ChatCompletionRequestUserMessage::from(user_message).into(),
+            ChatCompletionRequestSystemMessage::from(QUERY_SYSTEM_PROMPT).into(),
+            ChatCompletionRequestUserMessage::from(user_message).into(),
         ])
         .response_format(response_format)
         .build()
@@ -64,7 +66,7 @@ pub fn create_chat_request(
 }
 
 pub async fn process_llm_response(
-    response: async_openai::types::CreateChatCompletionResponse,
+    response: CreateChatCompletionResponse,
 ) -> Result<LLMResponseFormat, ApiError> {
     response
         .choices
