@@ -1,7 +1,10 @@
 use surrealdb::{engine::remote::ws::Client, Surreal};
 use tracing::debug;
 
-use crate::{error::ProcessingError, storage::types::knowledge_entity::KnowledgeEntity};
+use crate::{
+    error::ProcessingError,
+    storage::types::{knowledge_entity::KnowledgeEntity, StoredObject},
+};
 
 /// Retrieves database entries that match a specific source identifier.
 ///
@@ -67,22 +70,38 @@ where
     Ok(matching_entities)
 }
 
-pub async fn find_entities_by_relationship_by_source_ids(
+// pub async fn find_entities_by_relationship_by_source_ids(
+//     db_client: &Surreal<Client>,
+//     source_ids: &[String],
+// ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
+//     let ids = source_ids
+//         .iter()
+//         .map(|id| format!("knowledge_entity:`{}`", id))
+//         .collect::<Vec<_>>()
+//         .join(", ");
+
+//     debug!("{:?}", ids);
+
+//     let query = format!(
+//         "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM [{}]",
+//         ids
+//     );
+
+//     debug!("{}", query);
+
+//     let result: Vec<KnowledgeEntity> = db_client.query(query).await?.take(0)?;
+
+//     Ok(result)
+// }
+
+/// Find entities by their relationship to the id
+pub async fn find_entities_by_relationship_by_id(
     db_client: &Surreal<Client>,
-    source_ids: &[String],
+    entity_id: String,
 ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
-    let ids = source_ids
-        .iter()
-        // .map(|id| format!("`{}`", id))
-        .map(|id| format!("knowledge_entity:`{}`", id))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    debug!("{:?}", ids);
-
     let query = format!(
-        "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM [{}]",
-        ids
+        "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM knowledge_entity:`{}`",
+        entity_id
     );
 
     debug!("{}", query);
@@ -91,18 +110,23 @@ pub async fn find_entities_by_relationship_by_source_ids(
 
     Ok(result)
 }
-pub async fn find_entities_by_relationship_by_id(
+
+/// Get a specific KnowledgeEntity by its id
+pub async fn get_entity_by_id(
     db_client: &Surreal<Client>,
-    source_id: String,
-) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
-    let query = format!(
-        "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM knowledge_entity:`{}`",
-        source_id
-    );
+    entity_id: &str,
+) -> Result<Option<KnowledgeEntity>, ProcessingError> {
+    let response: Option<KnowledgeEntity> = db_client
+        .select((KnowledgeEntity::table_name(), entity_id))
+        .await?;
 
-    debug!("{}", query);
+    Ok(response)
+}
 
-    let result: Vec<KnowledgeEntity> = db_client.query(query).await?.take(0)?;
-
-    Ok(result)
+pub async fn get_all_stored_items<T>(db_client: &Surreal<Client>) -> Result<Vec<T>, ProcessingError>
+where
+    T: for<'de> StoredObject,
+{
+    let response: Vec<T> = db_client.select(T::table_name()).await?;
+    Ok(response)
 }
