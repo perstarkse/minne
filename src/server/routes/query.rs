@@ -58,7 +58,17 @@ pub async fn query_handler(
 
     // Process response
     let answer = process_llm_response(response).await?;
-    info!("{:?}", answer);
+    debug!("{:?}", answer);
 
-    Ok(answer.answer.into_response())
+    let references: Vec<String> = answer
+        .references
+        .into_iter()
+        .map(|reference| reference.reference)
+        .collect();
+    info!("{:?}", references);
+
+    Ok(
+        Json(serde_json::json!({"answer": answer.answer, "references": references}))
+            .into_response(),
+    )
 }
