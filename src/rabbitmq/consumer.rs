@@ -3,10 +3,7 @@ use lapin::{message::Delivery, options::*, types::FieldTable, Channel, Consumer,
 
 use crate::{
     error::IngressConsumerError,
-    ingress::{
-        content_processor::ContentProcessor,
-        types::{ingress_input::IngressContentError, ingress_object::IngressObject},
-    },
+    ingress::{content_processor::ContentProcessor, types::ingress_object::IngressObject},
 };
 
 use super::{RabbitMQCommon, RabbitMQCommonTrait, RabbitMQConfig, RabbitMQError};
@@ -194,14 +191,5 @@ impl RabbitMQConsumer {
         }
 
         Ok(())
-    }
-
-    pub async fn handle_ingress_content(
-        &self,
-        ingress: &IngressObject,
-    ) -> Result<(), IngressContentError> {
-        info!("Processing IngressContent: {:?}", ingress);
-
-        unimplemented!()
     }
 }
