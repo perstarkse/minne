@@ -39,20 +39,17 @@ pub struct LLMGraphAnalysisResult {
     pub relationships: Vec<LLMRelationship>,
 }
 
-/// Converts the LLM graph analysis result into database entities and relationships.
-/// Processes embeddings sequentially for simplicity.
-///
-/// # Arguments
-///
-/// * `source_id` - A UUID representing the source identifier.
-/// * `openai_client` - OpenAI client for LLM calls.
-///
-/// # Returns
-///
-/// * `Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), ProcessingError>` - A tuple containing vectors of `KnowledgeEntity` and `KnowledgeRelationship`.
-
 impl LLMGraphAnalysisResult {
-    // Split the main function into smaller, focused functions
+    /// Converts the LLM graph analysis result into database entities and relationships.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_id` - A UUID representing the source identifier.
+    /// * `openai_client` - OpenAI client for LLM calls.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), ProcessingError>` - A tuple containing vectors of `KnowledgeEntity` and `KnowledgeRelationship`.
     pub async fn to_database_entities(
         &self,
         source_id: &str,
@@ -61,7 +58,7 @@ impl LLMGraphAnalysisResult {
         // Create mapper and pre-assign IDs
         let mapper = Arc::new(Mutex::new(self.create_mapper()?));
 
-        // Process entities (prepared for future parallelization)
+        // Process entities
         let entities = self
             .process_entities(source_id, Arc::clone(&mapper), openai_client)
             .await?;

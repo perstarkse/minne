@@ -37,7 +37,8 @@ impl ContentProcessor {
         store_item(&self.db_client, content.clone()).await?;
 
         let now = Instant::now();
-        // Process in parallel where possible
+
+        // Perform analyis, this step also includes retrieval
         let analysis = self.perform_semantic_analysis(content).await?;
 
         let end = now.elapsed();
@@ -46,7 +47,7 @@ impl ContentProcessor {
             end
         );
 
-        // Convert and store entities
+        // Convert analysis to objects
         let (entities, relationships) = analysis
             .to_database_entities(&content.id, &self.openai_client)
             .await?;
