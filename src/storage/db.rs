@@ -1,5 +1,3 @@
-use crate::error::ProcessingError;
-
 use super::types::StoredObject;
 use std::ops::Deref;
 use surrealdb::{
@@ -46,12 +44,11 @@ impl SurrealDbClient {
         Ok(())
     }
 
-    pub async fn drop_table<T>(&self) -> Result<(), Error>
+    pub async fn drop_table<T>(&self) -> Result<Vec<T>, Error>
     where
         T: StoredObject + Send + Sync + 'static,
     {
-        let _deleted: Vec<T> = self.client.delete(T::table_name()).await?;
-        Ok(())
+        self.client.delete(T::table_name()).await
     }
 }
 
@@ -71,10 +68,7 @@ impl Deref for SurrealDbClient {
 ///
 /// # Returns
 /// * `Result` - Item or Error
-pub async fn store_item<T>(
-    db_client: &Surreal<Client>,
-    item: T,
-) -> Result<Option<T>, ProcessingError>
+pub async fn store_item<T>(db_client: &Surreal<Client>, item: T) -> Result<Option<T>, Error>
 where
     T: StoredObject + Send + Sync + 'static,
 {
@@ -82,5 +76,18 @@ where
         .create((T::table_name(), item.get_id()))
         .content(item)
         .await
-        .map_err(ProcessingError::from)
+}
+
+/// Operation to retrieve all objects from a certain table, requires the struct to implement StoredObject
+///
+/// # Arguments
+/// * `db_client` - A initialized database client
+///
+/// # Returns
+/// * `Result` - Vec<T> or Error
+pub async fn get_all_stored_items<T>(db_client: &Surreal<Client>) -> Result<Vec<T>, Error>
+where
+    T: for<'de> StoredObject,
+{
+    db_client.select(T::table_name()).await
 }

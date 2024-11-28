@@ -70,30 +70,6 @@ where
     Ok(matching_entities)
 }
 
-// pub async fn find_entities_by_relationship_by_source_ids(
-//     db_client: &Surreal<Client>,
-//     source_ids: &[String],
-// ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
-//     let ids = source_ids
-//         .iter()
-//         .map(|id| format!("knowledge_entity:`{}`", id))
-//         .collect::<Vec<_>>()
-//         .join(", ");
-
-//     debug!("{:?}", ids);
-
-//     let query = format!(
-//         "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM [{}]",
-//         ids
-//     );
-
-//     debug!("{}", query);
-
-//     let result: Vec<KnowledgeEntity> = db_client.query(query).await?.take(0)?;
-
-//     Ok(result)
-// }
-
 /// Find entities by their relationship to the id
 pub async fn find_entities_by_relationship_by_id(
     db_client: &Surreal<Client>,
@@ -120,13 +96,5 @@ pub async fn get_entity_by_id(
         .select((KnowledgeEntity::table_name(), entity_id))
         .await?;
 
-    Ok(response)
-}
-
-pub async fn get_all_stored_items<T>(db_client: &Surreal<Client>) -> Result<Vec<T>, ProcessingError>
-where
-    T: for<'de> StoredObject,
-{
-    let response: Vec<T> = db_client.select(T::table_name()).await?;
     Ok(response)
 }
