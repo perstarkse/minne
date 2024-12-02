@@ -25,14 +25,6 @@ use crate::error::ProcessingError;
 /// * If the OpenAI API request fails
 /// * If the request building fails
 /// * If no embedding data is received in the response
-///
-/// # Example
-///
-/// ```rust
-/// let client = async_openai::Client::new();
-/// let text = String::from("Hello, world!");
-/// let embedding = generate_embedding(&client, text).await?;
-/// ```
 pub async fn generate_embedding(
     client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     input: String,
