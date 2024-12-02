@@ -34,12 +34,19 @@ impl SurrealDbClient {
         Ok(SurrealDbClient { client: db })
     }
 
+    pub async fn build_indexes(&self) -> Result<(), Error> {
+        self.client.query("DEFINE INDEX idx_embedding_chunks ON text_chunk FIELDS embedding HNSW DIMENSION 1536").await?;
+        self.client.query("DEFINE INDEX idx_embedding_entities ON knowledge_entity FIELDS embedding HNSW DIMENSION 1536").await?;
+
+        Ok(())
+    }
+
     pub async fn rebuild_indexes(&self) -> Result<(), Error> {
         self.client
-            .query("REBUILD INDEX IF EXISTS idx_embedding ON text_chunk")
+            .query("REBUILD INDEX IF EXISTS idx_embedding_chunks ON text_chunk")
             .await?;
         self.client
-            .query("REBUILD INDEX IF EXISTS embeddings ON knowledge_entity")
+            .query("REBUILD INDEX IF EXISTS idx_embeddings_entities ON knowledge_entity")
             .await?;
         Ok(())
     }
