@@ -30,23 +30,6 @@ use crate::storage::types::{knowledge_entity::KnowledgeEntity, StoredObject};
 /// This function will return a `Error` if:
 /// * The database query fails to execute
 /// * The results cannot be deserialized into type `T`
-///
-/// # Example
-///
-/// ```rust
-/// #[derive(serde::Deserialize)]
-/// struct KnowledgeEntity {
-///     id: String,
-///     source_id: String,
-///     // ... other fields
-/// }
-///
-/// let results = find_entities_by_source_id::<KnowledgeEntity>(
-///     "source123".to_string(),
-///     "knowledge_entity".to_string(),
-///     &db_client
-/// ).await?;
-/// ```
 pub async fn find_entities_by_source_ids<T>(
     source_id: Vec<String>,
     table_name: String,
