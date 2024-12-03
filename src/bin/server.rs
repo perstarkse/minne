@@ -4,6 +4,7 @@ use axum::{
     Extension, Router,
 };
 use std::sync::Arc;
+use tera::Tera;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::{
     rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig},
@@ -24,6 +25,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(EnvFilter::from_default_env())
         .try_init()
         .ok();
+
+    let tera = Tera::new("src/server/templates/**/*.html").unwrap();
 
     // Set up RabbitMQ
     let config = RabbitMQConfig {
@@ -50,7 +53,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/file/:uuid", put(update_file_handler))
         .route("/file/:uuid", delete(delete_file_handler))
         .route("/query", post(query_handler))
-        .layer(Extension(db_client));
+        .layer(Extension(db_client))
+        .route(
+            "/hello_world",
+            get(zettle_db::server::routes::hello_world::hello_world_handler),
+        )
+        .layer(Extension(tera));
 
     tracing::info!("Listening on 0.0.0.0:3000");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
