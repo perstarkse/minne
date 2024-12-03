@@ -10,6 +10,7 @@ use zettle_db::{
     rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig},
     server::routes::{
         file::{delete_file_handler, get_file_handler, update_file_handler, upload_handler},
+        index::index_handler,
         ingress::ingress_handler,
         query::query_handler,
         queue_length::queue_length_handler,
@@ -44,20 +45,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create Axum router
     let app = Router::new()
+        // Ingress routes
         .route("/ingress", post(ingress_handler))
         .route("/message_count", get(queue_length_handler))
         .layer(Extension(producer))
+        // File routes
         .route("/file", post(upload_handler))
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         .route("/file/:uuid", get(get_file_handler))
         .route("/file/:uuid", put(update_file_handler))
         .route("/file/:uuid", delete(delete_file_handler))
+        // Query routes
         .route("/query", post(query_handler))
         .layer(Extension(db_client))
-        .route(
-            "/hello_world",
-            get(zettle_db::server::routes::hello_world::hello_world_handler),
-        )
+        // Html routes
+        .route("/", get(index_handler))
         .layer(Extension(tera));
 
     tracing::info!("Listening on 0.0.0.0:3000");
