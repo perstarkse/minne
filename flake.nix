@@ -41,6 +41,7 @@
               '';
 
               packages = [
+                pkgs.vscode-langservers-extracted
               ];
 
               languages.rust.enable = true;
