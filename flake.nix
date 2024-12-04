@@ -48,6 +48,7 @@
 
               processes = {
                 surreal_db.exec = "docker run --rm --pull always -p 8000:8000 --user $(id -u) -v $(pwd)/database:/database surrealdb/surrealdb:latest-dev start rocksdb:/database/database.db --user root_user --pass root_password";
+                # tailwind_css.exec = "npx tailwindcss --input src/server/assets/input.css --output src/server/assets/style.css -w";
               };
 
               services = {

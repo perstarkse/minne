@@ -5,6 +5,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tera::Tera;
+use tower_http::services::ServeDir;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::{
     rabbitmq::{publisher::RabbitMQProducer, RabbitMQConfig},
@@ -60,7 +61,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(Extension(db_client))
         // Html routes
         .route("/", get(index_handler))
-        .layer(Extension(tera));
+        .layer(Extension(tera))
+        .nest_service("/assets", ServeDir::new("src/server/assets"));
 
     tracing::info!("Listening on 0.0.0.0:3000");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
