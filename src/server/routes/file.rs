@@ -1,11 +1,14 @@
-use crate::storage::{
-    db::SurrealDbClient,
-    types::file_info::{FileError, FileInfo},
+use crate::{
+    server::AppState,
+    storage::types::file_info::{FileError, FileInfo},
 };
-use axum::{extract::Path, response::IntoResponse, Extension, Json};
+use axum::{
+    extract::{Path, State},
+    response::IntoResponse,
+    Json,
+};
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use serde_json::json;
-use std::sync::Arc;
 use tempfile::NamedTempFile;
 use tracing::info;
 use uuid::Uuid;
@@ -20,13 +23,13 @@ pub struct FileUploadRequest {
 ///
 /// Route: POST /file
 pub async fn upload_handler(
-    Extension(db_client): Extension<Arc<SurrealDbClient>>,
+    State(state): State<AppState>,
     TypedMultipart(input): TypedMultipart<FileUploadRequest>,
 ) -> Result<impl IntoResponse, FileError> {
     info!("Received an upload request");
 
     // Process the file upload
-    let file_info = FileInfo::new(input.file, &db_client).await?;
+    let file_info = FileInfo::new(input.file, &state.surreal_db_client).await?;
 
     // Prepare the response JSON
     let response = json!({
@@ -46,14 +49,14 @@ pub async fn upload_handler(
 ///
 /// Route: GET /file/:uuid
 pub async fn get_file_handler(
-    Extension(db_client): Extension<Arc<SurrealDbClient>>,
+    State(state): State<AppState>,
     Path(uuid_str): Path<String>,
 ) -> Result<impl IntoResponse, FileError> {
     // Parse UUID
     let uuid = Uuid::parse_str(&uuid_str).map_err(|_| FileError::InvalidUuid(uuid_str.clone()))?;
 
     // Retrieve FileInfo
-    let file_info = FileInfo::get_by_uuid(uuid, &db_client).await?;
+    let file_info = FileInfo::get_by_uuid(uuid, &state.surreal_db_client).await?;
 
     // Prepare the response JSON
     let response = json!({
@@ -73,7 +76,7 @@ pub async fn get_file_handler(
 ///
 /// Route: PUT /file/:uuid
 pub async fn update_file_handler(
-    Extension(db_client): Extension<Arc<SurrealDbClient>>,
+    State(state): State<AppState>,
     Path(uuid_str): Path<String>,
     TypedMultipart(input): TypedMultipart<FileUploadRequest>,
 ) -> Result<impl IntoResponse, FileError> {
@@ -81,7 +84,7 @@ pub async fn update_file_handler(
     let uuid = Uuid::parse_str(&uuid_str).map_err(|_| FileError::InvalidUuid(uuid_str.clone()))?;
 
     // Update the file
-    let updated_file_info = FileInfo::update(uuid, input.file, &db_client).await?;
+    let updated_file_info = FileInfo::update(uuid, input.file, &state.surreal_db_client).await?;
 
     // Prepare the response JSON
     let response = json!({
@@ -101,14 +104,14 @@ pub async fn update_file_handler(
 ///
 /// Route: DELETE /file/:uuid
 pub async fn delete_file_handler(
-    Extension(db_client): Extension<Arc<SurrealDbClient>>,
+    State(state): State<AppState>,
     Path(uuid_str): Path<String>,
 ) -> Result<impl IntoResponse, FileError> {
     // Parse UUID
     let uuid = Uuid::parse_str(&uuid_str).map_err(|_| FileError::InvalidUuid(uuid_str.clone()))?;
 
     // Delete the file
-    FileInfo::delete(uuid, &db_client).await?;
+    FileInfo::delete(uuid, &state.surreal_db_client).await?;
 
     info!("Deleted file with UUID: {}", uuid);
 
