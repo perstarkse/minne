@@ -3,13 +3,22 @@
 
 <head>
   <link rel="stylesheet" type="text/css" href="assets/style.css">
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+  <title>
+    radien
+  </title>
 </head>
 
+<body class="h-full bg-slate-100">
+  <h1 class="text-4xl bg-blue-300 p-2 font-mono font-bold">radien</h1>
+  <div class="p-10">
+    I am {{adjective}}
+    <div class="py-4">
+      <h2 class="text-lg font-bold">Queue:</h2>
+      <p class="">There are {{queue_length}} items queued </p>
+    </div>
 
-<body>
-  <h1 class="text-4xl bg-blue-300">Hello world!</h1>
-  I am {{adjective}}
-  <h1>WOW!</h1>
+  </div>
 </body>
 
 </html>

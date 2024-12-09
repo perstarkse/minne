@@ -1,12 +1,8 @@
 pub mod helper;
 pub mod prompt;
 
-use std::sync::Arc;
-
-use crate::{
-    error::ApiError, retrieval::combined_knowledge_entity_retrieval, storage::db::SurrealDbClient,
-};
-use axum::{response::IntoResponse, Extension, Json};
+use crate::{error::ApiError, retrieval::combined_knowledge_entity_retrieval, server::AppState};
+use axum::{extract::State, response::IntoResponse, Json};
 use helper::{
     create_chat_request, create_user_message, format_entities_json, process_llm_response,
 };
@@ -32,16 +28,19 @@ pub struct LLMResponseFormat {
 }
 
 pub async fn query_handler(
-    Extension(db_client): Extension<Arc<SurrealDbClient>>,
+    State(state): State<AppState>,
     Json(query): Json<QueryInput>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Received input: {:?}", query);
     let openai_client = async_openai::Client::new();
 
     // Retrieve entities
-    let entities =
-        combined_knowledge_entity_retrieval(&db_client, &openai_client, query.query.clone())
-            .await?;
+    let entities = combined_knowledge_entity_retrieval(
+        &state.surreal_db_client,
+        &openai_client,
+        query.query.clone(),
+    )
+    .await?;
 
     // Format entities and create message
     let entities_json = format_entities_json(&entities);
