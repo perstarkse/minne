@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}radien{% endblock %}</title>
+  <link rel="stylesheet" type="text/css" href="assets/style.css">
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+</head>
+
+<body class="min-h-screen bg-gradient-to-br from-slate-50 to-purple-200">
+  <!-- Navbar -->
+  <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center">
+          <a href="/" class="flex items-center">
+            <!-- You can add your logo here -->
+            <span class="text-2xl hover:text-white font-bold text-gray-300 bg-clip-text">
+              radien
+            </span>
+          </a>
+        </div>
+        <div class="flex items-center space-x-4">
+          <a href="/upload"
+            class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+            Upload
+          </a>
+          <a href="/files"
+            class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+            Files
+          </a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="container mx-auto px-4 py-8">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+
+</html>
