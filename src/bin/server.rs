@@ -48,6 +48,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create Axum router
     let app = Router::new()
+        .nest("/api/v1", api_routes_v1())
+        .nest("", html_routes())
+        .with_state(app_state);
+
+    tracing::info!("Listening on 0.0.0.0:3000");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+/// Router for API functionality, version 1
+fn api_routes_v1() -> Router<AppState> {
+    Router::new()
         // Ingress routes
         .route("/ingress", post(ingress_handler))
         .route("/message_count", get(queue_length_handler))
@@ -59,14 +73,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/file/:uuid", delete(delete_file_handler))
         // Query routes
         .route("/query", post(query_handler))
-        // Html routes
+}
+
+/// Router for HTML endpoints
+fn html_routes() -> Router<AppState> {
+    Router::new()
         .route("/", get(index_handler))
-        .with_state(app_state)
-        .nest_service("/assets", ServeDir::new("src/server/assets"));
-
-    tracing::info!("Listening on 0.0.0.0:3000");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
+        .nest_service("/assets", ServeDir::new("src/server/assets"))
 }
