@@ -1,10 +1,12 @@
 use super::ingress_object::IngressObject;
-use crate::storage::{db::SurrealDbClient, types::file_info::FileInfo};
+use crate::storage::{
+    db::{get_item, SurrealDbClient},
+    types::file_info::FileInfo,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::info;
 use url::Url;
-use uuid::Uuid;
 
 /// Struct defining the expected body when ingressing content.
 #[derive(Serialize, Deserialize, Debug)]
@@ -23,6 +25,9 @@ pub enum IngressContentError {
 
     #[error("UTF-8 conversion error: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
+
+    #[error("SurrealDb error: {0}")]
+    SurrealDbError(#[from] surrealdb::Error),
 
     #[error("MIME type detection failed for input: {0}")]
     MimeDetection(String),
@@ -79,19 +84,15 @@ pub async fn create_ingress_objects(
 
     // Look up FileInfo objects using the db and the submitted uuids in input.files
     if let Some(file_uuids) = input.files {
-        for uuid_str in file_uuids {
-            let uuid = Uuid::parse_str(&uuid_str)?;
-            match FileInfo::get_by_uuid(uuid, db_client).await {
-                Ok(file_info) => {
-                    object_list.push(IngressObject::File {
-                        file_info,
-                        instructions: input.instructions.clone(),
-                        category: input.category.clone(),
-                    });
-                }
-                _ => {
-                    info!("No file with UUID: {}", uuid);
-                }
+        for uuid in file_uuids {
+            if let Some(file_info) = get_item::<FileInfo>(&db_client, &uuid).await? {
+                object_list.push(IngressObject::File {
+                    file_info,
+                    instructions: input.instructions.clone(),
+                    category: input.category.clone(),
+                });
+            } else {
+                info!("No file with UUID: {}", uuid);
             }
         }
     }

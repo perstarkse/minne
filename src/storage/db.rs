@@ -98,3 +98,18 @@ where
 {
     db_client.select(T::table_name()).await
 }
+
+/// Operation to retrieve a single object by its ID, requires the struct to implement StoredObject
+///
+/// # Arguments
+/// * `db_client` - An initialized database client
+/// * `id` - The ID of the item to retrieve
+///
+/// # Returns
+/// * `Result<Option<T>, Error>` - The found item or Error
+pub async fn get_item<T>(db_client: &Surreal<Client>, id: &str) -> Result<Option<T>, Error>
+where
+    T: for<'de> StoredObject,
+{
+    Ok(db_client.select((T::table_name(), id)).await?)
+}
