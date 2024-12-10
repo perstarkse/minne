@@ -10,13 +10,17 @@
     <p class="text-gray-400 text-xl">
       An experiment in creating a second brain
     </p>
+    <p class="text-gray-400 text-lg">
+      There are {{queue_length}} messages queued for ingression.
+    </p>
+
   </div>
 
   <!-- Search Bar -->
   <div class="w-full max-w-2xl">
-    <input type="text" placeholder="Search..."
+    <input type="text" placeholder="Search..." name="query"
       class="w-full px-6 py-4 bg-black/30 backdrop-blur-md text-white placeholder-gray-400 outline-none rounded-xl"
-      hx-get="/search" hx-trigger="keyup changed delay:500ms" hx-target="#search-results">
+      hx-get="/search" hx-target="#search-results">
   </div>
 
   <!-- Search Results -->
