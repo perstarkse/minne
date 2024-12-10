@@ -27,11 +27,11 @@ use crate::error::ProcessingError;
 /// * If no embedding data is received in the response
 pub async fn generate_embedding(
     client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-    input: String,
+    input: &str,
 ) -> Result<Vec<f32>, ProcessingError> {
     let request = CreateEmbeddingRequestArgs::default()
         .model("text-embedding-3-small")
-        .input(&[input])
+        .input([input])
         .build()?;
 
     // Send the request to OpenAI

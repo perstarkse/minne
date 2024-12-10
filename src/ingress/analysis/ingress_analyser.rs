@@ -57,7 +57,7 @@ impl<'a> IngressAnalyzer<'a> {
             text, category, instructions
         );
 
-        combined_knowledge_entity_retrieval(self.db_client, self.openai_client, input_text).await
+        combined_knowledge_entity_retrieval(self.db_client, self.openai_client, &input_text).await
     }
 
     fn prepare_llm_request(

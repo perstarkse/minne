@@ -42,6 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         rabbitmq_consumer: Arc::new(RabbitMQConsumer::new(&config, false).await?),
         surreal_db_client: Arc::new(SurrealDbClient::new().await?),
         tera: Arc::new(Tera::new("src/server/templates/**/*.html").unwrap()),
+        openai_client: Arc::new(async_openai::Client::new()),
     };
 
     // Create Axum router

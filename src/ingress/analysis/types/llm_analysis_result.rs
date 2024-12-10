@@ -158,7 +158,7 @@ async fn create_single_entity(
         llm_entity.name, llm_entity.description, llm_entity.entity_type
     );
 
-    let embedding = generate_embedding(openai_client, embedding_input).await?;
+    let embedding = generate_embedding(openai_client, &embedding_input).await?;
 
     Ok(KnowledgeEntity {
         id: assigned_id,
