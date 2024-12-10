@@ -12,7 +12,6 @@ use crate::{
 use futures::future::{try_join, try_join_all};
 use std::collections::HashMap;
 use surrealdb::{engine::remote::ws::Client, Surreal};
-use tracing::info;
 
 /// Performs a comprehensive knowledge entity retrieval using multiple search strategies
 /// to find the most relevant entities for a given query.
@@ -37,14 +36,14 @@ use tracing::info;
 pub async fn combined_knowledge_entity_retrieval(
     db_client: &Surreal<Client>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-    query: String,
+    query: &str,
 ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
-    info!("Received input: {:?}", query);
+    // info!("Received input: {:?}", query);
 
     let (items_from_knowledge_entity_similarity, closest_chunks) = try_join(
         find_items_by_vector_similarity(
             10,
-            query.clone(),
+            query,
             db_client,
             "knowledge_entity".to_string(),
             openai_client,

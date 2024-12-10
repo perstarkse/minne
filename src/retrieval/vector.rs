@@ -24,7 +24,7 @@ use crate::{error::ProcessingError, utils::embedding::generate_embedding};
 /// * `T`: The type to deserialize the query results into. Must implement `serde::Deserialize`.
 pub async fn find_items_by_vector_similarity<T>(
     take: u8,
-    input_text: String,
+    input_text: &str,
     db_client: &Surreal<Client>,
     table: String,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,

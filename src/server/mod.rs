@@ -12,4 +12,5 @@ pub struct AppState {
     pub rabbitmq_consumer: Arc<RabbitMQConsumer>,
     pub surreal_db_client: Arc<SurrealDbClient>,
     pub tera: Arc<Tera>,
+    pub openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
 }

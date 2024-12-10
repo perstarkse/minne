@@ -101,7 +101,7 @@ impl ContentProcessor {
 
         // Could potentially process chunks in parallel with a bounded concurrent limit
         for chunk in chunks {
-            let embedding = generate_embedding(&self.openai_client, chunk.to_string()).await?;
+            let embedding = generate_embedding(&self.openai_client, chunk).await?;
             let text_chunk = TextChunk::new(content.id.to_string(), chunk.to_string(), embedding);
             store_item(&self.db_client, text_chunk).await?;
         }
