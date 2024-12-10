@@ -111,5 +111,5 @@ pub async fn get_item<T>(db_client: &Surreal<Client>, id: &str) -> Result<Option
 where
     T: for<'de> StoredObject,
 {
-    Ok(db_client.select((T::table_name(), id)).await?)
+    db_client.select((T::table_name(), id)).await
 }

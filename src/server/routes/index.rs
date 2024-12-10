@@ -8,7 +8,6 @@ use crate::{error::ApiError, server::AppState};
 pub async fn index_handler(State(state): State<AppState>) -> Result<Html<String>, ApiError> {
     info!("Displaying index page");
 
-    // Now you can access the consumer directly from the state
     let queue_length = state.rabbitmq_consumer.queue.message_count();
 
     let output = state

@@ -14,24 +14,57 @@ pub trait StoredObject: Serialize + for<'de> Deserialize<'de> {
 
 #[macro_export]
 macro_rules! stored_object {
-        ($name:ident, $table:expr, {$($(#[$attr:meta])* $field:ident: $ty:ty),*}) => {
+    ($name:ident, $table:expr, {$($(#[$attr:meta])* $field:ident: $ty:ty),*}) => {
         use axum::async_trait;
         use serde::{Deserialize, Deserializer, Serialize};
         use surrealdb::sql::Thing;
         use $crate::storage::types::StoredObject;
+        use serde::de::{self, Visitor};
+        use std::fmt;
 
-        fn thing_to_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+        struct FlexibleIdVisitor;
+
+        impl<'de> Visitor<'de> for FlexibleIdVisitor {
+            type Value = String;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string or a Thing")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(value.to_string())
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(value)
+            }
+
+            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                // Try to deserialize as Thing
+                let thing = Thing::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(thing.id.to_raw())
+            }
+        }
+
+        fn deserialize_flexible_id<'de, D>(deserializer: D) -> Result<String, D::Error>
         where
             D: Deserializer<'de>,
         {
-            let thing = Thing::deserialize(deserializer)?;
-            Ok(thing.id.to_raw())
+            deserializer.deserialize_any(FlexibleIdVisitor)
         }
-
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct $name {
-            #[serde(deserialize_with = "thing_to_string")]
+            #[serde(deserialize_with = "deserialize_flexible_id")]
             pub id: String,
             $(pub $field: $ty),*
         }

@@ -1,6 +1,6 @@
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use zettle_db::rabbitmq::{consumer::RabbitMQConsumer, RabbitMQConfig };
+use zettle_db::rabbitmq::{consumer::RabbitMQConsumer, RabbitMQConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok();
 
     info!("Starting RabbitMQ consumer");
-    
+
     // Set up RabbitMQ config
     let config = RabbitMQConfig {
         amqp_addr: "amqp://localhost".to_string(),
@@ -21,11 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routing_key: "my_key".to_string(),
     };
 
-
     // Create a RabbitMQ consumer
-    let consumer = RabbitMQConsumer::new(&config).await?;
-
-    info!("Consumer connected to RabbitMQ");
+    let consumer = RabbitMQConsumer::new(&config, true).await?;
 
     // Start consuming messages
     consumer.process_messages().await?;

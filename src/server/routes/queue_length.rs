@@ -1,42 +1,17 @@
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
-use tracing::{error, info};
+use axum::{extract::State, http::StatusCode, response::IntoResponse};
+use tracing::info;
 
-use crate::rabbitmq::{consumer::RabbitMQConsumer, RabbitMQConfig};
+use crate::{error::ApiError, server::AppState};
 
-pub async fn queue_length_handler() -> Response {
+pub async fn queue_length_handler(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
     info!("Getting queue length");
 
-    // Set up RabbitMQ config
-    let config = RabbitMQConfig {
-        amqp_addr: "amqp://localhost".to_string(),
-        exchange: "my_exchange".to_string(),
-        queue: "my_queue".to_string(),
-        routing_key: "my_key".to_string(),
-    };
+    let queue_length = state.rabbitmq_consumer.get_queue_length().await?;
 
-    // Create a new consumer
-    match RabbitMQConsumer::new(&config).await {
-        Ok(consumer) => {
-            info!("Consumer connected to RabbitMQ");
+    info!("Queue length: {}", queue_length);
 
-            // Get the queue length
-            let queue_length = consumer.queue.message_count();
-
-            info!("Queue length: {}", queue_length);
-
-            // Return the queue length with a 200 OK status
-            (StatusCode::OK, queue_length.to_string()).into_response()
-        }
-        Err(e) => {
-            error!("Failed to create consumer: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to connect to RabbitMQ".to_string(),
-            )
-                .into_response()
-        }
-    }
+    // Return the queue length with a 200 OK status
+    Ok((StatusCode::OK, queue_length.to_string()))
 }

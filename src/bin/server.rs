@@ -1,6 +1,6 @@
 use axum::{
     extract::DefaultBodyLimit,
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Router,
 };
 use std::sync::Arc;
@@ -11,11 +11,8 @@ use zettle_db::{
     rabbitmq::{consumer::RabbitMQConsumer, publisher::RabbitMQProducer, RabbitMQConfig},
     server::{
         routes::{
-            file::{delete_file_handler, get_file_handler, update_file_handler, upload_handler},
-            index::index_handler,
-            ingress::ingress_handler,
-            query::query_handler,
-            queue_length::queue_length_handler,
+            file::upload_handler, index::index_handler, ingress::ingress_handler,
+            query::query_handler, queue_length::queue_length_handler,
         },
         AppState,
     },
@@ -41,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app_state = AppState {
         rabbitmq_producer: Arc::new(RabbitMQProducer::new(&config).await?),
-        rabbitmq_consumer: Arc::new(RabbitMQConsumer::new(&config).await?),
+        rabbitmq_consumer: Arc::new(RabbitMQConsumer::new(&config, false).await?),
         surreal_db_client: Arc::new(SurrealDbClient::new().await?),
         tera: Arc::new(Tera::new("src/server/templates/**/*.html").unwrap()),
     };
@@ -68,9 +65,6 @@ fn api_routes_v1() -> Router<AppState> {
         // File routes
         .route("/file", post(upload_handler))
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
-        .route("/file/:uuid", get(get_file_handler))
-        .route("/file/:uuid", put(update_file_handler))
-        .route("/file/:uuid", delete(delete_file_handler))
         // Query routes
         .route("/query", post(query_handler))
 }
