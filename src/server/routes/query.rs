@@ -15,16 +15,16 @@ pub struct QueryInput {
 }
 
 #[derive(Debug, Deserialize)]
-struct Reference {
+pub struct Reference {
     #[allow(dead_code)]
-    reference: String,
+    pub reference: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct LLMResponseFormat {
-    answer: String,
+    pub answer: String,
     #[allow(dead_code)]
-    references: Vec<Reference>,
+    pub references: Vec<Reference>,
 }
 
 pub async fn query_handler(

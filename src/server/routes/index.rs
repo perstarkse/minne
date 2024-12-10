@@ -8,7 +8,7 @@ use crate::{error::ApiError, server::AppState};
 pub async fn index_handler(State(state): State<AppState>) -> Result<Html<String>, ApiError> {
     info!("Displaying index page");
 
-    let queue_length = state.rabbitmq_consumer.queue.message_count();
+    let queue_length = state.rabbitmq_consumer.get_queue_length().await?;
 
     let output = state
         .tera

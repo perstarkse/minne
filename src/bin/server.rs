@@ -13,6 +13,7 @@ use zettle_db::{
         routes::{
             file::upload_handler, index::index_handler, ingress::ingress_handler,
             query::query_handler, queue_length::queue_length_handler,
+            search_result::search_result_handler,
         },
         AppState,
     },
@@ -73,5 +74,6 @@ fn api_routes_v1() -> Router<AppState> {
 fn html_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(index_handler))
+        .route("/search", get(search_result_handler))
         .nest_service("/assets", ServeDir::new("src/server/assets"))
 }
