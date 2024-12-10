@@ -83,16 +83,16 @@ pub async fn create_ingress_objects(
     }
 
     // Look up FileInfo objects using the db and the submitted uuids in input.files
-    if let Some(file_uuids) = input.files {
-        for uuid in file_uuids {
-            if let Some(file_info) = get_item::<FileInfo>(&db_client, &uuid).await? {
+    if let Some(file_ids) = input.files {
+        for id in file_ids {
+            if let Some(file_info) = get_item::<FileInfo>(db_client, &id).await? {
                 object_list.push(IngressObject::File {
                     file_info,
                     instructions: input.instructions.clone(),
                     category: input.category.clone(),
                 });
             } else {
-                info!("No file with UUID: {}", uuid);
+                info!("No file with id: {}", id);
             }
         }
     }

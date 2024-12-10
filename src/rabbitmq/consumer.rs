@@ -13,7 +13,7 @@ use tracing::{error, info};
 pub struct RabbitMQConsumer {
     common: RabbitMQCommon,
     pub queue: Queue,
-    consumer: Consumer,
+    consumer: Option<Consumer>,
 }
 
 impl RabbitMQConsumer {
@@ -22,10 +22,14 @@ impl RabbitMQConsumer {
     ///
     /// # Arguments
     /// * `config` - A initialized RabbitMQConfig containing required configurations
+    /// * `start_consuming` - Set to true to start consuming messages
     ///
     /// # Returns
     /// * `Result<Self, RabbitMQError>` - The created client or an error.
-    pub async fn new(config: &RabbitMQConfig) -> Result<Self, RabbitMQError> {
+    pub async fn new(
+        config: &RabbitMQConfig,
+        start_consuming: bool,
+    ) -> Result<Self, RabbitMQError> {
         let common = RabbitMQCommon::new(config).await?;
 
         // Passively declare the exchange (it should already exist)
@@ -36,7 +40,11 @@ impl RabbitMQConsumer {
         Self::bind_queue(&common.channel, &config.exchange, &queue, config).await?;
 
         // Initialize the consumer
-        let consumer = Self::initialize_consumer(&common.channel, config).await?;
+        let consumer = if start_consuming {
+            Some(Self::initialize_consumer(&common.channel, config).await?)
+        } else {
+            None
+        };
 
         Ok(Self {
             common,
@@ -67,6 +75,27 @@ impl RabbitMQConsumer {
             .await
             .map_err(|e| RabbitMQError::InitializeConsumerError(e.to_string()))
     }
+
+    /// Operation to get the current queue length
+    /// Will redeclare queue to get a updated number
+    pub async fn get_queue_length(&self) -> Result<u32, RabbitMQError> {
+        let queue_info = self
+            .common
+            .channel
+            .queue_declare(
+                &self.queue.name().to_string(),
+                QueueDeclareOptions {
+                    durable: true,
+                    ..QueueDeclareOptions::default()
+                },
+                FieldTable::default(),
+            )
+            .await
+            .map_err(|e| RabbitMQError::QueueError(e.to_string()))?;
+
+        Ok(queue_info.message_count())
+    }
+
     /// Declares the queue based on the channel and `RabbitMQConfig`.
     /// # Arguments
     /// * `channel` - Lapin Channel.
@@ -127,9 +156,15 @@ impl RabbitMQConsumer {
     /// `IngressObject` - The object containing content and metadata.
     /// `Delivery` - A delivery reciept, required to ack or nack the delivery.
     pub async fn consume(&self) -> Result<(IngressObject, Delivery), RabbitMQError> {
+        // Get consumer or return error if not initialized
+        let consumer: &lapin::Consumer = self.consumer.as_ref().ok_or_else(|| {
+            RabbitMQError::ConsumeError(
+                "Consumer not initialized. Call new() with start_consuming=true".to_string(),
+            )
+        })?;
+
         // Receive the next message
-        let delivery = self
-            .consumer
+        let delivery = consumer
             .clone()
             .next()
             .await

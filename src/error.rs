@@ -4,7 +4,10 @@ use serde_json::json;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::{ingress::types::ingress_input::IngressContentError, rabbitmq::RabbitMQError};
+use crate::{
+    ingress::types::ingress_input::IngressContentError, rabbitmq::RabbitMQError,
+    storage::types::file_info::FileError,
+};
 
 #[derive(Error, Debug)]
 pub enum ProcessingError {
@@ -55,6 +58,8 @@ pub enum ApiError {
     RabbitMQError(#[from] RabbitMQError),
     #[error("LLM processing error: {0}")]
     OpenAIerror(#[from] OpenAIError),
+    #[error("File error: {0}")]
+    FileError(#[from] FileError),
 }
 
 impl IntoResponse for ApiError {
@@ -69,6 +74,7 @@ impl IntoResponse for ApiError {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             ApiError::RabbitMQError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::FileError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
         (
