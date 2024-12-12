@@ -1,4 +1,4 @@
-use surrealdb::{engine::remote::ws::Client, Error, Surreal};
+use surrealdb::{engine::any::Any, Error, Surreal};
 use tracing::debug;
 
 use crate::storage::types::{knowledge_entity::KnowledgeEntity, StoredObject};
@@ -33,7 +33,7 @@ use crate::storage::types::{knowledge_entity::KnowledgeEntity, StoredObject};
 pub async fn find_entities_by_source_ids<T>(
     source_id: Vec<String>,
     table_name: String,
-    db_client: &Surreal<Client>,
+    db_client: &Surreal<Any>,
 ) -> Result<Vec<T>, Error>
 where
     T: for<'de> serde::Deserialize<'de>,
@@ -50,7 +50,7 @@ where
 
 /// Find entities by their relationship to the id
 pub async fn find_entities_by_relationship_by_id(
-    db_client: &Surreal<Client>,
+    db_client: &Surreal<Any>,
     entity_id: String,
 ) -> Result<Vec<KnowledgeEntity>, Error> {
     let query = format!(
@@ -65,7 +65,7 @@ pub async fn find_entities_by_relationship_by_id(
 
 /// Get a specific KnowledgeEntity by its id
 pub async fn get_entity_by_id(
-    db_client: &Surreal<Client>,
+    db_client: &Surreal<Any>,
     entity_id: &str,
 ) -> Result<Option<KnowledgeEntity>, Error> {
     db_client

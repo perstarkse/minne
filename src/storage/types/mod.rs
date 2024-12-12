@@ -5,6 +5,7 @@ pub mod knowledge_entity;
 pub mod knowledge_relationship;
 pub mod text_chunk;
 pub mod text_content;
+pub mod user;
 
 #[async_trait]
 pub trait StoredObject: Serialize + for<'de> Deserialize<'de> {

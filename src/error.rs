@@ -60,16 +60,25 @@ pub enum ApiError {
     OpenAIerror(#[from] OpenAIError),
     #[error("File error: {0}")]
     FileError(#[from] FileError),
+    #[error("SurrealDb error: {0}")]
+    SurrealDbError(#[from] surrealdb::Error),
+    #[error("User already exists")]
+    UserAlreadyExists,
+    #[error("User was not found")]
+    UserNotFound,
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         let (status, error_message) = match &self {
             ApiError::ProcessingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::SurrealDbError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::PublishingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::OpenAIerror(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::QueryError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            ApiError::UserAlreadyExists => (StatusCode::BAD_REQUEST, self.to_string()),
+            ApiError::UserNotFound => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::IngressContentError(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }

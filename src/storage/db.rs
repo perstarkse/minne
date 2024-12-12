@@ -1,14 +1,14 @@
 use super::types::StoredObject;
 use std::ops::Deref;
 use surrealdb::{
-    engine::remote::ws::{Client, Ws},
+    engine::any::{connect, Any},
     opt::auth::Root,
     Error, Surreal,
 };
 
 #[derive(Clone)]
 pub struct SurrealDbClient {
-    pub client: Surreal<Client>,
+    pub client: Surreal<Any>,
 }
 
 impl SurrealDbClient {
@@ -19,7 +19,7 @@ impl SurrealDbClient {
     /// # Returns
     /// * `SurrealDbClient` initialized
     pub async fn new() -> Result<Self, Error> {
-        let db = Surreal::new::<Ws>("127.0.0.1:8000").await?;
+        let db = connect("ws://127.0.0.1:8000").await?;
 
         // Sign in to database
         db.signin(Root {
@@ -60,7 +60,7 @@ impl SurrealDbClient {
 }
 
 impl Deref for SurrealDbClient {
-    type Target = Surreal<Client>;
+    type Target = Surreal<Any>;
 
     fn deref(&self) -> &Self::Target {
         &self.client
@@ -75,7 +75,7 @@ impl Deref for SurrealDbClient {
 ///
 /// # Returns
 /// * `Result` - Item or Error
-pub async fn store_item<T>(db_client: &Surreal<Client>, item: T) -> Result<Option<T>, Error>
+pub async fn store_item<T>(db_client: &Surreal<Any>, item: T) -> Result<Option<T>, Error>
 where
     T: StoredObject + Send + Sync + 'static,
 {
@@ -92,7 +92,7 @@ where
 ///
 /// # Returns
 /// * `Result` - Vec<T> or Error
-pub async fn get_all_stored_items<T>(db_client: &Surreal<Client>) -> Result<Vec<T>, Error>
+pub async fn get_all_stored_items<T>(db_client: &Surreal<Any>) -> Result<Vec<T>, Error>
 where
     T: for<'de> StoredObject,
 {
@@ -107,7 +107,7 @@ where
 ///
 /// # Returns
 /// * `Result<Option<T>, Error>` - The found item or Error
-pub async fn get_item<T>(db_client: &Surreal<Client>, id: &str) -> Result<Option<T>, Error>
+pub async fn get_item<T>(db_client: &Surreal<Any>, id: &str) -> Result<Option<T>, Error>
 where
     T: for<'de> StoredObject,
 {
