@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod file;
 pub mod index;
 pub mod ingress;

@@ -10,20 +10,20 @@ use async_openai::types::{
     ResponseFormatJsonSchema,
 };
 use serde_json::json;
-use surrealdb::engine::remote::ws::Client;
+use surrealdb::engine::any::Any;
 use surrealdb::Surreal;
 use tracing::debug;
 
 use super::types::llm_analysis_result::LLMGraphAnalysisResult;
 
 pub struct IngressAnalyzer<'a> {
-    db_client: &'a Surreal<Client>,
+    db_client: &'a Surreal<Any>,
     openai_client: &'a async_openai::Client<async_openai::config::OpenAIConfig>,
 }
 
 impl<'a> IngressAnalyzer<'a> {
     pub fn new(
-        db_client: &'a Surreal<Client>,
+        db_client: &'a Surreal<Any>,
         openai_client: &'a async_openai::Client<async_openai::config::OpenAIConfig>,
     ) -> Self {
         Self {

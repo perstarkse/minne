@@ -1,4 +1,4 @@
-use surrealdb::{engine::remote::ws::Client, Surreal};
+use surrealdb::{engine::any::Any, Surreal};
 
 use crate::{error::ProcessingError, utils::embedding::generate_embedding};
 
@@ -25,7 +25,7 @@ use crate::{error::ProcessingError, utils::embedding::generate_embedding};
 pub async fn find_items_by_vector_similarity<T>(
     take: u8,
     input_text: &str,
-    db_client: &Surreal<Client>,
+    db_client: &Surreal<Any>,
     table: String,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
 ) -> Result<Vec<T>, ProcessingError>

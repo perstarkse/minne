@@ -1,5 +1,5 @@
 use crate::{error::ProcessingError, stored_object};
-use surrealdb::{engine::remote::ws::Client, Surreal};
+use surrealdb::{engine::any::Any, Surreal};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -28,7 +28,7 @@ impl KnowledgeRelationship {
     }
     pub async fn store_relationship(
         &self,
-        db_client: &Surreal<Client>,
+        db_client: &Surreal<Any>,
     ) -> Result<(), ProcessingError> {
         let query = format!(
             "RELATE knowledge_entity:`{}` -> relates_to -> knowledge_entity:`{}`",

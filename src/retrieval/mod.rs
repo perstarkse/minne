@@ -11,7 +11,7 @@ use crate::{
 };
 use futures::future::{try_join, try_join_all};
 use std::collections::HashMap;
-use surrealdb::{engine::remote::ws::Client, Surreal};
+use surrealdb::{engine::any::Any, Surreal};
 
 /// Performs a comprehensive knowledge entity retrieval using multiple search strategies
 /// to find the most relevant entities for a given query.
@@ -34,7 +34,7 @@ use surrealdb::{engine::remote::ws::Client, Surreal};
 /// * `Result<Vec<KnowledgeEntity>, ProcessingError>` - A deduplicated vector of relevant
 ///   knowledge entities, or an error if the retrieval process fails
 pub async fn combined_knowledge_entity_retrieval(
-    db_client: &Surreal<Client>,
+    db_client: &Surreal<Any>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     query: &str,
 ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {

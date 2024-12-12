@@ -2,6 +2,7 @@
 .direnv
 .devenv
 database
+node_modules
 
 
 
