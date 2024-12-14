@@ -4,6 +4,7 @@ use crate::storage::db::SurrealDbClient;
 use std::sync::Arc;
 use tera::Tera;
 
+pub mod middleware_api_auth;
 pub mod routes;
 
 #[derive(Clone)]

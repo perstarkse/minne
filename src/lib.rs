@@ -1,4 +1,3 @@
-pub mod auth;
 pub mod error;
 pub mod ingress;
 pub mod rabbitmq;
