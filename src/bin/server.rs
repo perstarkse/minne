@@ -1,11 +1,11 @@
 use axum::{
     extract::DefaultBodyLimit,
-    http::Method,
+    middleware::from_fn_with_state,
     routing::{get, post},
     Router,
 };
 use axum_session::{SessionConfig, SessionLayer, SessionStore};
-use axum_session_auth::{Auth, AuthConfig, AuthSession, AuthSessionLayer, Rights};
+use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_surreal::SessionSurrealPool;
 use std::sync::Arc;
 use surrealdb::{engine::any::Any, Surreal};
@@ -16,6 +16,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::{
     rabbitmq::{consumer::RabbitMQConsumer, publisher::RabbitMQProducer, RabbitMQConfig},
     server::{
+        middleware_api_auth::api_auth,
         routes::{
             auth::{show_signup_form, signup_handler},
             file::upload_handler,
@@ -54,7 +55,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tera: Arc::new(Tera::new("src/server/templates/**/*.html").unwrap()),
         openai_client: Arc::new(async_openai::Client::new()),
     };
-    // app_state.surreal_db_client.query("DELETE user").await?;
 
     // setup_auth(&app_state.surreal_db_client).await?;
 
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create Axum router
     let app = Router::new()
-        .nest("/api/v1", api_routes_v1())
+        .nest("/api/v1", api_routes_v1(&app_state))
         .nest(
             "/",
             html_routes(
@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .with_state(app_state);
 
-    tracing::info!("Listening on 0.0.0.0:3000");
+    info!("Listening on 0.0.0.0:3000");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     axum::serve(listener, app).await?;
 
@@ -90,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Router for API functionality, version 1
-fn api_routes_v1() -> Router<AppState> {
+fn api_routes_v1(app_state: &AppState) -> Router<AppState> {
     Router::new()
         // Ingress routes
         .route("/ingress", post(ingress_handler))
@@ -100,6 +100,7 @@ fn api_routes_v1() -> Router<AppState> {
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         // Query routes
         .route("/query", post(query_handler))
+        .route_layer(from_fn_with_state(app_state.clone(), api_auth))
 }
 
 /// Router for HTML endpoints

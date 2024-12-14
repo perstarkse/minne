@@ -113,3 +113,18 @@ where
 {
     db_client.select((T::table_name(), id)).await
 }
+
+/// Operation to delete a single object by its ID, requires the struct to implement StoredObject
+///
+/// # Arguments
+/// * `db_client` - An initialized database client
+/// * `id` - The ID of the item to delete
+///
+/// # Returns
+/// * `Result<Option<T>, Error>` - The deleted item or Error
+pub async fn delete_item<T>(db_client: &Surreal<Any>, id: &str) -> Result<Option<T>, Error>
+where
+    T: for<'de> StoredObject,
+{
+    db_client.delete((T::table_name(), id)).await
+}

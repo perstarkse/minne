@@ -1,8 +1,8 @@
 pub mod helper;
 pub mod prompt;
 
-use crate::{error::ApiError, server::AppState};
-use axum::{extract::State, response::IntoResponse, Json};
+use crate::{error::ApiError, server::AppState, storage::types::user::User};
+use axum::{extract::State, response::IntoResponse, Extension, Json};
 use helper::get_answer_with_references;
 use serde::Deserialize;
 use tracing::info;
@@ -27,9 +27,11 @@ pub struct LLMResponseFormat {
 
 pub async fn query_handler(
     State(state): State<AppState>,
+    Extension(user): Extension<User>,
     Json(query): Json<QueryInput>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Received input: {:?}", query);
+    info!("{:?}", user);
 
     let answer =
         get_answer_with_references(&state.surreal_db_client, &state.openai_client, &query.query)
