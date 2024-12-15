@@ -8,7 +8,8 @@ stored_object!(TextContent, "text_content", {
     text: String,
     file_info: Option<FileInfo>,
     instructions: String,
-    category: String
+    category: String,
+    user_id: String
 });
 
 impl TextContent {
@@ -17,6 +18,7 @@ impl TextContent {
         instructions: String,
         category: String,
         file_info: Option<FileInfo>,
+        user_id: String,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -24,6 +26,7 @@ impl TextContent {
             file_info,
             instructions,
             category,
+            user_id,
         }
     }
 }

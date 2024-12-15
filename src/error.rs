@@ -66,6 +66,8 @@ pub enum ApiError {
     UserAlreadyExists,
     #[error("User was not found")]
     UserNotFound,
+    #[error("You must provide valid credentials")]
+    AuthRequired,
 }
 
 impl IntoResponse for ApiError {
@@ -78,6 +80,7 @@ impl IntoResponse for ApiError {
             ApiError::OpenAIerror(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::QueryError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::UserAlreadyExists => (StatusCode::BAD_REQUEST, self.to_string()),
+            ApiError::AuthRequired => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::UserNotFound => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::IngressContentError(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())

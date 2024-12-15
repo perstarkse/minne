@@ -30,7 +30,8 @@ stored_object!(KnowledgeEntity, "knowledge_entity", {
     description: String,
     entity_type: KnowledgeEntityType,
     metadata: Option<serde_json::Value>,
-    embedding: Vec<f32>
+    embedding: Vec<f32>,
+    user_id: String
 });
 
 impl KnowledgeEntity {
@@ -41,6 +42,7 @@ impl KnowledgeEntity {
         entity_type: KnowledgeEntityType,
         metadata: Option<serde_json::Value>,
         embedding: Vec<f32>,
+        user_id: String,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -50,6 +52,7 @@ impl KnowledgeEntity {
             entity_type,
             metadata,
             embedding,
+            user_id,
         }
     }
 }

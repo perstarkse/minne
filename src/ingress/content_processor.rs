@@ -49,7 +49,7 @@ impl ContentProcessor {
 
         // Convert analysis to objects
         let (entities, relationships) = analysis
-            .to_database_entities(&content.id, &self.openai_client)
+            .to_database_entities(&content.id, &content.user_id, &self.openai_client)
             .await?;
 
         // Store everything
@@ -68,7 +68,12 @@ impl ContentProcessor {
     ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
         let analyser = IngressAnalyzer::new(&self.db_client, &self.openai_client);
         analyser
-            .analyze_content(&content.category, &content.instructions, &content.text)
+            .analyze_content(
+                &content.category,
+                &content.instructions,
+                &content.text,
+                &content.user_id,
+            )
             .await
     }
 
@@ -102,7 +107,12 @@ impl ContentProcessor {
         // Could potentially process chunks in parallel with a bounded concurrent limit
         for chunk in chunks {
             let embedding = generate_embedding(&self.openai_client, chunk).await?;
-            let text_chunk = TextChunk::new(content.id.to_string(), chunk.to_string(), embedding);
+            let text_chunk = TextChunk::new(
+                content.id.to_string(),
+                chunk.to_string(),
+                embedding,
+                content.user_id.to_string(),
+            );
             store_item(&self.db_client, text_chunk).await?;
         }
 

@@ -37,9 +37,10 @@ impl<'a> IngressAnalyzer<'a> {
         category: &str,
         instructions: &str,
         text: &str,
+        user_id: &str,
     ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
         let similar_entities = self
-            .find_similar_entities(category, instructions, text)
+            .find_similar_entities(category, instructions, text, user_id)
             .await?;
         let llm_request =
             self.prepare_llm_request(category, instructions, text, &similar_entities)?;
@@ -51,13 +52,20 @@ impl<'a> IngressAnalyzer<'a> {
         category: &str,
         instructions: &str,
         text: &str,
+        user_id: &str,
     ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
         let input_text = format!(
             "content: {}, category: {}, user_instructions: {}",
             text, category, instructions
         );
 
-        combined_knowledge_entity_retrieval(self.db_client, self.openai_client, &input_text).await
+        combined_knowledge_entity_retrieval(
+            self.db_client,
+            self.openai_client,
+            &input_text,
+            user_id,
+        )
+        .await
     }
 
     fn prepare_llm_request(
