@@ -13,7 +13,7 @@ pub async fn api_auth(
     mut request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let api_key = extract_api_key(&request).ok_or(ApiError::UserNotFound)?;
+    let api_key = extract_api_key(&request).ok_or(ApiError::AuthRequired)?;
 
     let user = User::find_by_api_key(&api_key, &state.surreal_db_client).await?;
     let user = user.ok_or(ApiError::UserNotFound)?;

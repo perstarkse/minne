@@ -9,11 +9,12 @@ use crate::{error::ProcessingError, utils::embedding::generate_embedding};
 ///
 /// # Arguments
 ///
-/// * `take`: The number of items to retrieve from the database.
-/// * `input_text`: The text to generate embeddings for.
-/// * `db_client`: The SurrealDB client to use for querying the database.
-/// * `table`: The table to query in the database.
-/// * `openai_client`: The OpenAI client to use for generating embeddings.
+/// * `take` - The number of items to retrieve from the database.
+/// * `input_text` - The text to generate embeddings for.
+/// * `db_client` - The SurrealDB client to use for querying the database.
+/// * `table` - The table to query in the database.
+/// * `openai_client` - The OpenAI client to use for generating embeddings.
+/// * 'user_id`-  The user id of the current user.
 ///
 /// # Returns
 ///
@@ -21,13 +22,14 @@ use crate::{error::ProcessingError, utils::embedding::generate_embedding};
 ///
 /// # Type Parameters
 ///
-/// * `T`: The type to deserialize the query results into. Must implement `serde::Deserialize`.
+/// * `T` - The type to deserialize the query results into. Must implement `serde::Deserialize`.
 pub async fn find_items_by_vector_similarity<T>(
     take: u8,
     input_text: &str,
     db_client: &Surreal<Any>,
     table: String,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+    user_id: &str,
 ) -> Result<Vec<T>, ProcessingError>
 where
     T: for<'de> serde::Deserialize<'de>,
@@ -36,7 +38,7 @@ where
     let input_embedding = generate_embedding(openai_client, input_text).await?;
 
     // Construct the query
-    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM {} WHERE embedding <|{},40|> {:?} ORDER BY distance", table, take, input_embedding);
+    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM {} WHERE embedding <|{},40|> {:?} AND user_id = '{}' ORDER BY distance", table, take, input_embedding, user_id);
 
     // Perform query and deserialize to struct
     let closest_entities: Vec<T> = db_client.query(closest_query).await?.take(0)?;

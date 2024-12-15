@@ -69,6 +69,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
 
+    app_state.surreal_db_client.build_indexes().await?;
+
     // Create Axum router
     let app = Router::new()
         .nest("/api/v1", api_routes_v1(&app_state))

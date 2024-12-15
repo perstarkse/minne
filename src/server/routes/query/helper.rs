@@ -4,6 +4,7 @@ use async_openai::types::{
     ResponseFormat, ResponseFormatJsonSchema,
 };
 use serde_json::{json, Value};
+use tracing::debug;
 
 use crate::{
     error::ApiError,
@@ -66,6 +67,7 @@ use super::{
 /// * `surreal_db_client` - Client for SurrealDB interactions
 /// * `openai_client` - Client for OpenAI API calls
 /// * `query` - The user's query string
+/// * `user_id` - The user's id
 ///
 /// # Returns
 ///
@@ -80,11 +82,14 @@ pub async fn get_answer_with_references(
     surreal_db_client: &SurrealDbClient,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     query: &str,
+    user_id: &str,
 ) -> Result<Answer, ApiError> {
     let entities =
-        combined_knowledge_entity_retrieval(surreal_db_client, openai_client, query).await?;
+        combined_knowledge_entity_retrieval(surreal_db_client, openai_client, query, user_id)
+            .await?;
 
     let entities_json = format_entities_json(&entities);
+    debug!("{:?}", entities_json);
     let user_message = create_user_message(&entities_json, query);
 
     let request = create_chat_request(user_message)?;

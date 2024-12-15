@@ -53,6 +53,7 @@ impl LLMGraphAnalysisResult {
     pub async fn to_database_entities(
         &self,
         source_id: &str,
+        user_id: &str,
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), ProcessingError> {
         // Create mapper and pre-assign IDs
@@ -60,7 +61,7 @@ impl LLMGraphAnalysisResult {
 
         // Process entities
         let entities = self
-            .process_entities(source_id, Arc::clone(&mapper), openai_client)
+            .process_entities(source_id, user_id, Arc::clone(&mapper), openai_client)
             .await?;
 
         // Process relationships
@@ -83,6 +84,7 @@ impl LLMGraphAnalysisResult {
     async fn process_entities(
         &self,
         source_id: &str,
+        user_id: &str,
         mapper: Arc<Mutex<GraphMapper>>,
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
@@ -93,10 +95,12 @@ impl LLMGraphAnalysisResult {
                 let mapper = Arc::clone(&mapper);
                 let openai_client = openai_client.clone();
                 let source_id = source_id.to_string();
+                let user_id = user_id.to_string();
                 let entity = entity.clone();
 
                 task::spawn(async move {
-                    create_single_entity(&entity, &source_id, mapper, &openai_client).await
+                    create_single_entity(&entity, &source_id, &user_id, mapper, &openai_client)
+                        .await
                 })
             })
             .collect();
@@ -135,6 +139,7 @@ impl LLMGraphAnalysisResult {
 async fn create_single_entity(
     llm_entity: &LLMKnowledgeEntity,
     source_id: &str,
+    user_id: &str,
     mapper: Arc<Mutex<GraphMapper>>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
 ) -> Result<KnowledgeEntity, ProcessingError> {
@@ -168,5 +173,6 @@ async fn create_single_entity(
         source_id: source_id.to_string(),
         metadata: None,
         embedding,
+        user_id: user_id.into(),
     })
 }

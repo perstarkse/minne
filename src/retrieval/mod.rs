@@ -29,6 +29,7 @@ use surrealdb::{engine::any::Any, Surreal};
 /// * `db_client` - SurrealDB client for database operations
 /// * `openai_client` - OpenAI client for vector embeddings generation
 /// * `query` - The search query string to find relevant knowledge entities
+/// * 'user_id' - The user id of the current user
 ///
 /// # Returns
 /// * `Result<Vec<KnowledgeEntity>, ProcessingError>` - A deduplicated vector of relevant
@@ -37,6 +38,7 @@ pub async fn combined_knowledge_entity_retrieval(
     db_client: &Surreal<Any>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     query: &str,
+    user_id: &str,
 ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
     // info!("Received input: {:?}", query);
 
@@ -47,6 +49,7 @@ pub async fn combined_knowledge_entity_retrieval(
             db_client,
             "knowledge_entity".to_string(),
             openai_client,
+            user_id,
         ),
         find_items_by_vector_similarity(
             5,
@@ -54,6 +57,7 @@ pub async fn combined_knowledge_entity_retrieval(
             db_client,
             "text_chunk".to_string(),
             openai_client,
+            user_id,
         ),
     )
     .await?;

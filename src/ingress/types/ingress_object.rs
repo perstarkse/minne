@@ -10,16 +10,19 @@ pub enum IngressObject {
         url: String,
         instructions: String,
         category: String,
+        user_id: String,
     },
     Text {
         text: String,
         instructions: String,
         category: String,
+        user_id: String,
     },
     File {
         file_info: FileInfo,
         instructions: String,
         category: String,
+        user_id: String,
     },
 }
 
@@ -37,6 +40,7 @@ impl IngressObject {
                 url,
                 instructions,
                 category,
+                user_id,
             } => {
                 let text = Self::fetch_text_from_url(url).await?;
                 Ok(TextContent::new(
@@ -44,22 +48,26 @@ impl IngressObject {
                     instructions.into(),
                     category.into(),
                     None,
+                    user_id.into(),
                 ))
             }
             IngressObject::Text {
                 text,
                 instructions,
                 category,
+                user_id,
             } => Ok(TextContent::new(
                 text.into(),
                 instructions.into(),
                 category.into(),
                 None,
+                user_id.into(),
             )),
             IngressObject::File {
                 file_info,
                 instructions,
                 category,
+                user_id,
             } => {
                 let text = Self::extract_text_from_file(file_info).await?;
                 Ok(TextContent::new(
@@ -67,6 +75,7 @@ impl IngressObject {
                     instructions.into(),
                     category.into(),
                     Some(file_info.to_owned()),
+                    user_id.into(),
                 ))
             }
         }

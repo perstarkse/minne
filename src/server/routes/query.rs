@@ -33,9 +33,13 @@ pub async fn query_handler(
     info!("Received input: {:?}", query);
     info!("{:?}", user);
 
-    let answer =
-        get_answer_with_references(&state.surreal_db_client, &state.openai_client, &query.query)
-            .await?;
+    let answer = get_answer_with_references(
+        &state.surreal_db_client,
+        &state.openai_client,
+        &query.query,
+        &user.id,
+    )
+    .await?;
 
     Ok(
         Json(serde_json::json!({"answer": answer.content, "references": answer.references}))

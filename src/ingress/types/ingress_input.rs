@@ -56,6 +56,7 @@ pub enum IngressContentError {
 pub async fn create_ingress_objects(
     input: IngressInput,
     db_client: &SurrealDbClient,
+    user_id: &str,
 ) -> Result<Vec<IngressObject>, IngressContentError> {
     // Initialize list
     let mut object_list = Vec::new();
@@ -69,6 +70,7 @@ pub async fn create_ingress_objects(
                     url: url.to_string(),
                     instructions: input.instructions.clone(),
                     category: input.category.clone(),
+                    user_id: user_id.into(),
                 });
             }
             Err(_) => {
@@ -77,6 +79,7 @@ pub async fn create_ingress_objects(
                     text: input_content.to_string(),
                     instructions: input.instructions.clone(),
                     category: input.category.clone(),
+                    user_id: user_id.into(),
                 });
             }
         }
@@ -90,6 +93,7 @@ pub async fn create_ingress_objects(
                     file_info,
                     instructions: input.instructions.clone(),
                     category: input.category.clone(),
+                    user_id: user_id.into(),
                 });
             } else {
                 info!("No file with id: {}", id);
