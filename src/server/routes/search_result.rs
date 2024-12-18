@@ -37,16 +37,17 @@ pub async fn search_result_handler(
     )
     .await?;
 
-    let output = state
-        .tera
-        .render(
-            "search_result.html",
-            &Context::from_value(
-                json!({"result": answer.content, "references": answer.references}),
-            )
-            .unwrap(),
-        )
-        .unwrap();
+    Ok(Html("Hello".to_string()))
+    // let output = state
+    //     .tera
+    //     .render(
+    //         "search_result.html",
+    //         &Context::from_value(
+    //             json!({"result": answer.content, "references": answer.references}),
+    //         )
+    //         .unwrap(),
+    //     )
+    //     .unwrap();
 
-    Ok(output.into())
+    // Ok(output.into())
 }

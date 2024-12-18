@@ -7,7 +7,9 @@ use axum::{
 use axum_session::{SessionConfig, SessionLayer, SessionStore};
 use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_surreal::SessionSurrealPool;
-use std::sync::Arc;
+use minijinja::{path_loader, Environment};
+use minijinja_autoreload::AutoReloader;
+use std::{path::PathBuf, sync::Arc};
 use surrealdb::{engine::any::Any, Surreal};
 use tera::Tera;
 use tower_http::services::ServeDir;
@@ -48,12 +50,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routing_key: "my_key".to_string(),
     };
 
+    let reloader = AutoReloader::new(move |notifier| {
+        let template_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates");
+        let mut env = Environment::new();
+        env.set_loader(path_loader(&template_path));
+
+        notifier.set_fast_reload(true);
+        notifier.watch_path(&template_path, true);
+        Ok(env)
+    });
+
     let app_state = AppState {
         rabbitmq_producer: Arc::new(RabbitMQProducer::new(&config).await?),
         rabbitmq_consumer: Arc::new(RabbitMQConsumer::new(&config, false).await?),
         surreal_db_client: Arc::new(SurrealDbClient::new().await?),
-        tera: Arc::new(Tera::new("src/server/templates/**/*.html").unwrap()),
+        // tera: Arc::new(Tera::new("templates/**/*.html").unwrap()),
         openai_client: Arc::new(async_openai::Client::new()),
+        templates: Arc::new(reloader),
     };
 
     // setup_auth(&app_state.surreal_db_client).await?;
@@ -116,7 +129,7 @@ fn html_routes(
         .route("/", get(index_handler))
         .route("/search", get(search_result_handler))
         .route("/signup", get(show_signup_form).post(signup_handler))
-        .nest_service("/assets", ServeDir::new("src/server/assets"))
+        .nest_service("/assets", ServeDir::new("assets/"))
         .layer(
             AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(
                 db_client,
