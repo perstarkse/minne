@@ -1,5 +1,6 @@
 use axum::{
     extract::State,
+    http::Response,
     response::{Html, IntoResponse},
     Form,
 };
@@ -11,23 +12,34 @@ use surrealdb::{engine::any::Any, Surreal};
 
 use crate::{error::ApiError, server::AppState, storage::types::user::User};
 
+use super::{render_block, render_template};
+
 #[derive(Deserialize, Serialize)]
 pub struct SignupParams {
     pub email: String,
     pub password: String,
 }
 
+#[derive(Serialize)]
+struct PageData {
+    // name: String,
+}
+
 pub async fn show_signup_form(
     State(state): State<AppState>,
     HxBoosted(boosted): HxBoosted,
-) -> Html<String> {
-    let mut context = tera::Context::new();
-    context.insert("boosted", &boosted);
-    // let html = state
-    //     .tera
-    //     .render("auth/signup_form.html", &context)
-    //     .unwrap_or_else(|_| "<h1>Error rendering template</h1>".to_string());
-    Html("html".to_string())
+) -> Result<Html<String>, ApiError> {
+    let output = match boosted {
+        true => render_block(
+            "auth/signup_form.html",
+            "content",
+            PageData {},
+            state.templates,
+        )?,
+        false => render_template("auth/signup_form.html", PageData {}, state.templates)?,
+    };
+
+    Ok(output)
 }
 
 pub async fn signup_handler(

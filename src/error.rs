@@ -68,6 +68,8 @@ pub enum ApiError {
     UserNotFound,
     #[error("You must provide valid credentials")]
     AuthRequired,
+    #[error("Templating error: {0}")]
+    TemplatingError(#[from] minijinja::Error),
 }
 
 impl IntoResponse for ApiError {
@@ -87,6 +89,7 @@ impl IntoResponse for ApiError {
             }
             ApiError::RabbitMQError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::FileError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::TemplatingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
         (

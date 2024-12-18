@@ -11,7 +11,6 @@ use minijinja::{path_loader, Environment};
 use minijinja_autoreload::AutoReloader;
 use std::{path::PathBuf, sync::Arc};
 use surrealdb::{engine::any::Any, Surreal};
-use tera::Tera;
 use tower_http::services::ServeDir;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -64,7 +63,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         rabbitmq_producer: Arc::new(RabbitMQProducer::new(&config).await?),
         rabbitmq_consumer: Arc::new(RabbitMQConsumer::new(&config, false).await?),
         surreal_db_client: Arc::new(SurrealDbClient::new().await?),
-        // tera: Arc::new(Tera::new("templates/**/*.html").unwrap()),
         openai_client: Arc::new(async_openai::Client::new()),
         templates: Arc::new(reloader),
     };
