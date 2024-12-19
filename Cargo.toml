@@ -14,6 +14,7 @@ axum_session_surreal = "0.2.1"
 axum_typed_multipart = "0.12.1"
 futures = "0.3.31"
 lapin = { version = "2.5.0", features = ["serde_json"] }
+lettre = { version = "0.11.11", features = ["rustls-tls"] }
 mime = "0.3.17"
 mime_guess = "2.0.5"
 minijinja = { version = "2.5.0", features = ["loader", "multi_template"] }
@@ -24,7 +25,6 @@ serde_json = "1.0.128"
 sha2 = "0.10.8"
 surrealdb = "2.0.4"
 tempfile = "3.12.0"
-tera = "1.20.0"
 text-splitter = "0.18.1"
 thiserror = "1.0.63"
 tokio = { version = "1.40.0", features = ["full"] }

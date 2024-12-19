@@ -5,14 +5,11 @@ use axum::{
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use serde::Deserialize;
-use serde_json::json;
 use surrealdb::{engine::any::Any, Surreal};
-use tera::Context;
 use tracing::info;
 
 use crate::{
-    error::ApiError,
-    server::{routes::query::helper::get_answer_with_references, AppState},
+    error::ApiError, retrieval::query_helper::get_answer_with_references, server::AppState,
     storage::types::user::User,
 };
 #[derive(Deserialize)]

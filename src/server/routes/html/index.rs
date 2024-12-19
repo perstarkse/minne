@@ -1,24 +1,19 @@
 use axum::{extract::State, response::Html};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
-use minijinja::context;
-use serde::Serialize;
-use serde_json::json;
-use surrealdb::{engine::any::Any, sql::Relation, Surreal};
-use tera::Context;
-// use tera::Context;
+use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
 use crate::{
     error::ApiError,
-    server::{routes::render_template, AppState},
+    page_data,
+    server::{routes::html::render_template, AppState},
     storage::types::user::User,
 };
 
-#[derive(Serialize)]
-struct PageData<'a> {
-    queue_length: &'a str,
-}
+page_data!(IndexData, {
+    queue_length: u32,
+});
 
 pub async fn index_handler(
     State(state): State<AppState>,
@@ -30,13 +25,7 @@ pub async fn index_handler(
 
     let queue_length = state.rabbitmq_consumer.get_queue_length().await?;
 
-    let output = render_template(
-        "index.html",
-        PageData {
-            queue_length: "1000",
-        },
-        state.templates,
-    )?;
+    let output = render_template("index.html", IndexData { queue_length }, state.templates)?;
 
     Ok(output)
 }

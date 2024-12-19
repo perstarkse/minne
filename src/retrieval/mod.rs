@@ -1,4 +1,6 @@
 pub mod graph;
+pub mod query_helper;
+pub mod query_helper_prompt;
 pub mod vector;
 
 use crate::{
