@@ -4,6 +4,7 @@
 database
 node_modules
 
+flake.nix
 
 
 /target
