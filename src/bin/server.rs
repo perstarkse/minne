@@ -19,17 +19,20 @@ use zettle_db::{
     server::{
         middleware_api_auth::api_auth,
         routes::{
-            auth::{show_signup_form, signup_handler},
-            file::upload_handler,
-            index::index_handler,
-            ingress::ingress_handler,
-            query::query_handler,
-            queue_length::queue_length_handler,
-            search_result::search_result_handler,
+            api::{
+                file::upload_handler, ingress::ingress_handler, query::query_handler,
+                queue_length::queue_length_handler,
+            },
+            html::{
+                auth::{show_signup_form, signup_handler},
+                index::index_handler,
+                search_result::search_result_handler,
+            },
         },
         AppState,
     },
     storage::{db::SurrealDbClient, types::user::User},
+    utils::mailer::Mailer,
 };
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -58,6 +61,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         notifier.watch_path(&template_path, true);
         Ok(env)
     });
+
+    let mailer = Mailer::new();
 
     let app_state = AppState {
         rabbitmq_producer: Arc::new(RabbitMQProducer::new(&config).await?),

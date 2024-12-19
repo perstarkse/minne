@@ -1,7 +1,6 @@
 use axum::{
     extract::State,
-    http::Response,
-    response::{Html, IntoResponse},
+    response::{IntoResponse, Redirect},
     Form,
 };
 use axum_htmx::HxBoosted;
@@ -27,19 +26,23 @@ struct PageData {
 
 pub async fn show_signup_form(
     State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     HxBoosted(boosted): HxBoosted,
-) -> Result<Html<String>, ApiError> {
+) -> Result<impl IntoResponse, ApiError> {
+    if auth.is_authenticated() {
+        return Ok(Redirect::to("/").into_response());
+    }
     let output = match boosted {
         true => render_block(
             "auth/signup_form.html",
-            "content",
+            "body",
             PageData {},
             state.templates,
         )?,
         false => render_template("auth/signup_form.html", PageData {}, state.templates)?,
     };
 
-    Ok(output)
+    Ok(output.into_response())
 }
 
 pub async fn signup_handler(

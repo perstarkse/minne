@@ -1,28 +1,14 @@
-pub mod helper;
-pub mod prompt;
-
-use crate::{error::ApiError, server::AppState, storage::types::user::User};
+use crate::{
+    error::ApiError, retrieval::query_helper::get_answer_with_references, server::AppState,
+    storage::types::user::User,
+};
 use axum::{extract::State, response::IntoResponse, Extension, Json};
-use helper::get_answer_with_references;
 use serde::Deserialize;
 use tracing::info;
 
 #[derive(Debug, Deserialize)]
 pub struct QueryInput {
     query: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Reference {
-    #[allow(dead_code)]
-    pub reference: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LLMResponseFormat {
-    pub answer: String,
-    #[allow(dead_code)]
-    pub references: Vec<Reference>,
 }
 
 pub async fn query_handler(

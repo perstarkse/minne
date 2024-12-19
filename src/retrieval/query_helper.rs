@@ -3,6 +3,7 @@ use async_openai::types::{
     CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
     ResponseFormat, ResponseFormatJsonSchema,
 };
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tracing::debug;
 
@@ -12,10 +13,20 @@ use crate::{
     storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity},
 };
 
-use super::{
-    prompt::{get_query_response_schema, QUERY_SYSTEM_PROMPT},
-    LLMResponseFormat,
-};
+use super::query_helper_prompt::{get_query_response_schema, QUERY_SYSTEM_PROMPT};
+
+#[derive(Debug, Deserialize)]
+pub struct Reference {
+    #[allow(dead_code)]
+    pub reference: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LLMResponseFormat {
+    pub answer: String,
+    #[allow(dead_code)]
+    pub references: Vec<Reference>,
+}
 
 // /// Orchestrator function that takes a query and clients and returns a answer with references
 // ///

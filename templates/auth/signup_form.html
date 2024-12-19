@@ -1,10 +1,16 @@
-HELLO THIS IS OUTSIDE THE BLOCK
-{% block content %}
-<div class="max-h-full grid place-items-center place-content-center">
-  <div class="max-w-md mx-auto">
+{% extends "head_base.html" %}
+
+{% block body %}
+<style>
+  form.htmx-request {
+    opacity: 0.5;
+  }
+</style>
+<div class="min-h-screen grid place-items-center place-content-center">
+  <div class="max-w-lg mx-auto">
     <h2 class="text-2xl font-bold text-center mb-8">Create your account</h2>
 
-    <form hx-post="/signup" hx-target="#signup-result" hx-indicator="#spinner" class="" psac-y-e6>
+    <form hx-post="/signup" hx-target="#signup-result" class="">
       <div class="form-control">
         <label class="label">
           <span class="label-text">Email</span>
@@ -24,21 +30,20 @@ HELLO THIS IS OUTSIDE THE BLOCK
       </div>
 
       <div class="form-control mt-6">
-        <button class="btn btn-primary w-full">
+        <button id="submit-btn" class="btn btn-primary w-full">
           Create Account
-          <span id="spinner" class="loading loading-spinner text-primary htmx-indicator"></span>
         </button>
       </div>
 
       <div id="signup-result"></div>
-
-      <div class="divider">OR</div>
-
-      <div class="text-center text-sm">
-        Already have an account?
-        <a href="/signin" class="link link-primary">Sign in</a>
-      </div>
     </form>
+
+    <div class="divider">OR</div>
+
+    <div class="text-center text-sm">
+      Already have an account?
+      <a href="/signin" class="link link-primary">Sign in</a>
+    </div>
   </div>
 </div>
 {% endblock %}
