@@ -42,6 +42,7 @@
 
               packages = [
                 pkgs.vscode-langservers-extracted
+                pkgs.openssl
               ];
 
               languages.rust.enable = true;
@@ -56,6 +57,8 @@
                   enable = true;
                   # plugins = ["tracing"];
                 };
+              };
+              env = {
               };
             }
           ];
