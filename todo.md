@@ -4,3 +4,4 @@
 \[x\] redirects
 \[\] hx-redirect
 \[\] macro for pagedata?
+\[\] add more config structs for clarity

@@ -11,7 +11,7 @@ use crate::{
     storage::types::user::User,
 };
 
-page_data!(IndexData, {
+page_data!(IndexData, "index.html", {
     queue_length: u32,
 });
 
@@ -25,7 +25,9 @@ pub async fn index_handler(
 
     let queue_length = state.rabbitmq_consumer.get_queue_length().await?;
 
-    let output = render_template("index.html", IndexData { queue_length }, state.templates)?;
+    let data = IndexData { queue_length };
+
+    let output = render_template(IndexData::template_name(), data, state.templates)?;
 
     Ok(output)
 }

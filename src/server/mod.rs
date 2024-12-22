@@ -1,6 +1,7 @@
 use crate::rabbitmq::consumer::RabbitMQConsumer;
 use crate::rabbitmq::publisher::RabbitMQProducer;
 use crate::storage::db::SurrealDbClient;
+use crate::utils::mailer::Mailer;
 use minijinja_autoreload::AutoReloader;
 use std::sync::Arc;
 
@@ -14,4 +15,5 @@ pub struct AppState {
     pub surreal_db_client: Arc<SurrealDbClient>,
     pub openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     pub templates: Arc<AutoReloader>,
+    pub mailer: Arc<Mailer>,
 }

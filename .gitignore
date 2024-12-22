@@ -3,7 +3,7 @@
 .devenv
 database
 node_modules
-
+config.yaml
 flake.nix
 
 

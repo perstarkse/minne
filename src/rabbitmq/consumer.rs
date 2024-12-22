@@ -1,13 +1,9 @@
 use futures::StreamExt;
 use lapin::{message::Delivery, options::*, types::FieldTable, Channel, Consumer, Queue};
 
-use crate::{
-    error::IngressConsumerError,
-    ingress::{content_processor::ContentProcessor, types::ingress_object::IngressObject},
-};
+use crate::ingress::types::ingress_object::IngressObject;
 
 use super::{RabbitMQCommon, RabbitMQCommonTrait, RabbitMQConfig, RabbitMQError};
-use tracing::{error, info};
 
 /// Struct to consume messages from RabbitMQ.
 pub struct RabbitMQConsumer {
@@ -192,38 +188,6 @@ impl RabbitMQConsumer {
             .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
             .await
             .map_err(|e| RabbitMQError::ConsumeError(e.to_string()))?;
-
-        Ok(())
-    }
-    /// Function to continually consume messages as they come in
-    pub async fn process_messages(&self) -> Result<(), IngressConsumerError> {
-        loop {
-            match self.consume().await {
-                Ok((ingress, delivery)) => {
-                    info!("Received IngressObject: {:?}", ingress);
-                    // Get the TextContent
-                    let text_content = ingress.to_text_content().await?;
-
-                    // Initialize ContentProcessor which handles LLM analysis and storage
-                    let content_processor = ContentProcessor::new().await?;
-
-                    // Begin processing of TextContent
-                    content_processor.process(&text_content).await?;
-
-                    // Remove from queue
-                    self.ack_delivery(delivery).await?;
-                }
-                Err(RabbitMQError::ConsumeError(e)) => {
-                    error!("Error consuming message: {}", e);
-                    // Optionally add a delay before trying again
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                }
-                Err(e) => {
-                    error!("Unexpected error: {}", e);
-                    break;
-                }
-            }
-        }
 
         Ok(())
     }

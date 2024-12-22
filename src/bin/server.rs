@@ -32,7 +32,7 @@ use zettle_db::{
         AppState,
     },
     storage::{db::SurrealDbClient, types::user::User},
-    utils::mailer::Mailer,
+    utils::{config::get_config, mailer::Mailer},
 };
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -44,12 +44,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .try_init()
         .ok();
 
+    let config = get_config()?;
+
+    info!("{:?}", config);
+
     // Set up RabbitMQ
-    let config = RabbitMQConfig {
-        amqp_addr: "amqp://localhost".to_string(),
-        exchange: "my_exchange".to_string(),
-        queue: "my_queue".to_string(),
-        routing_key: "my_key".to_string(),
+    let rabbitmq_config = RabbitMQConfig {
+        amqp_addr: config.rabbitmq_address,
+        exchange: config.rabbitmq_exchange,
+        queue: config.rabbitmq_queue,
+        routing_key: config.rabbitmq_routing_key,
     };
 
     let reloader = AutoReloader::new(move |notifier| {
@@ -62,14 +66,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(env)
     });
 
-    let mailer = Mailer::new();
-
     let app_state = AppState {
-        rabbitmq_producer: Arc::new(RabbitMQProducer::new(&config).await?),
-        rabbitmq_consumer: Arc::new(RabbitMQConsumer::new(&config, false).await?),
-        surreal_db_client: Arc::new(SurrealDbClient::new().await?),
+        rabbitmq_producer: Arc::new(RabbitMQProducer::new(&rabbitmq_config).await?),
+        rabbitmq_consumer: Arc::new(RabbitMQConsumer::new(&rabbitmq_config, false).await?),
+        surreal_db_client: Arc::new(
+            SurrealDbClient::new(
+                &config.surrealdb_address,
+                &config.surrealdb_username,
+                &config.surrealdb_password,
+                &config.surrealdb_namespace,
+                &config.surrealdb_database,
+            )
+            .await?,
+        ),
         openai_client: Arc::new(async_openai::Client::new()),
         templates: Arc::new(reloader),
+        mailer: Arc::new(Mailer::new(
+            config.smtp_username,
+            config.smtp_relayer,
+            config.smtp_password,
+        )?),
     };
 
     // setup_auth(&app_state.surreal_db_client).await?;

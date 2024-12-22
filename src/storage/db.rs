@@ -18,18 +18,20 @@ impl SurrealDbClient {
     ///
     /// # Returns
     /// * `SurrealDbClient` initialized
-    pub async fn new() -> Result<Self, Error> {
-        let db = connect("ws://127.0.0.1:8000").await?;
+    pub async fn new(
+        address: &str,
+        username: &str,
+        password: &str,
+        namespace: &str,
+        database: &str,
+    ) -> Result<Self, Error> {
+        let db = connect(address).await?;
 
         // Sign in to database
-        db.signin(Root {
-            username: "root_user",
-            password: "root_password",
-        })
-        .await?;
+        db.signin(Root { username, password }).await?;
 
         // Set namespace
-        db.use_ns("test").use_db("test").await?;
+        db.use_ns(namespace).use_db(database).await?;
 
         Ok(SurrealDbClient { client: db })
     }
