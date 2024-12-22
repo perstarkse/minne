@@ -1,0 +1,77 @@
+{# email_verification.html #}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin: 20px auto;
+            max-width: 400px;
+        }
+        .verification-code {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2c3e50;
+            letter-spacing: 2px;
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #666666;
+        }
+        .header {
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Email Verification</h1>
+        </div>
+        
+        <div class="card">
+            <p>Hello {{ name }},</p>
+            <p>Please use the following verification code to complete your registration:</p>
+            
+            <div class="verification-code">
+                {{ verification_code }}
+            </div>
+            
+            <p>This code will expire in 30 minutes.</p>
+        </div>
+
+        <div class="footer">
+            <p><strong>Security Notice:</strong> If you didn't request this verification code, please ignore this email. Someone might have entered your email address by mistake.</p>
+            <p>For your security, never share this code with anyone, including those claiming to be from our support team.</p>
+            <p>This is an automated message, please do not reply to this email.</p>
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+            <p>© 2024 Your Company Name. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+

@@ -6,7 +6,7 @@ use tokio::task::JoinError;
 
 use crate::{
     ingress::types::ingress_input::IngressContentError, rabbitmq::RabbitMQError,
-    storage::types::file_info::FileError,
+    storage::types::file_info::FileError, utils::mailer::EmailError,
 };
 
 #[derive(Error, Debug)]
@@ -70,6 +70,8 @@ pub enum ApiError {
     AuthRequired,
     #[error("Templating error: {0}")]
     TemplatingError(#[from] minijinja::Error),
+    #[error("Mail error: {0}")]
+    EmailError(#[from] EmailError),
 }
 
 impl IntoResponse for ApiError {
@@ -90,6 +92,7 @@ impl IntoResponse for ApiError {
             ApiError::RabbitMQError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::FileError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ApiError::TemplatingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::EmailError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
         (

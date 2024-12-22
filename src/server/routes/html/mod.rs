@@ -7,6 +7,10 @@ pub mod auth;
 pub mod index;
 pub mod search_result;
 
+pub trait PageData {
+    fn template_name() -> &'static str;
+}
+
 pub fn render_template<T>(
     template_name: &str,
     context: T,
@@ -44,12 +48,19 @@ where
 
 #[macro_export]
 macro_rules! page_data {
-    ($name:ident, {$($(#[$attr:meta])* $field:ident: $ty:ty),*$(,)?}) => {
+    ($name:ident, $template_name:expr, {$($(#[$attr:meta])* $field:ident: $ty:ty),*$(,)?}) => {
         use serde::{Serialize, Deserialize};
+        use $crate::server::routes::html::PageData;
 
         #[derive(Debug, Deserialize, Serialize)]
         pub struct $name {
             $($(#[$attr])* pub $field: $ty),*
+        }
+
+        impl PageData for $name {
+            fn template_name() -> &'static str {
+                $template_name
+            }
         }
     };
 }

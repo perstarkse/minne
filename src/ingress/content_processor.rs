@@ -12,7 +12,7 @@ use crate::{
             text_chunk::TextChunk, text_content::TextContent,
         },
     },
-    utils::embedding::generate_embedding,
+    utils::{config::AppConfig, embedding::generate_embedding},
 };
 
 use super::analysis::{
@@ -25,9 +25,16 @@ pub struct ContentProcessor {
 }
 
 impl ContentProcessor {
-    pub async fn new() -> Result<Self, ProcessingError> {
+    pub async fn new(app_config: &AppConfig) -> Result<Self, ProcessingError> {
         Ok(Self {
-            db_client: SurrealDbClient::new().await?,
+            db_client: SurrealDbClient::new(
+                &app_config.surrealdb_address,
+                &app_config.surrealdb_username,
+                &app_config.surrealdb_password,
+                &app_config.surrealdb_namespace,
+                &app_config.surrealdb_database,
+            )
+            .await?,
             openai_client: async_openai::Client::new(),
         })
     }

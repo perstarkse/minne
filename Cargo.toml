@@ -12,6 +12,7 @@ axum_session = "0.14.4"
 axum_session_auth = "0.14.1"
 axum_session_surreal = "0.2.1"
 axum_typed_multipart = "0.12.1"
+config = "0.15.4"
 futures = "0.3.31"
 lapin = { version = "2.5.0", features = ["serde_json"] }
 lettre = { version = "0.11.11", features = ["rustls-tls"] }

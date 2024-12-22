@@ -5,8 +5,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}minnet{% endblock %}</title>
-  <script src="https://unpkg.com/htmx.org@1.9.2"></script>
+  <script src="assets/htmx.min.js"></script>
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="manifest" href="/assets/manifest.json">
+  <!-- Optional but recommended for iOS support -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192x192.png">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   {% block head %}{% endblock %}
 </head>
 {% block body %}{% endblock %}
