@@ -877,57 +877,6 @@ html {
   content: var(--tw-content);
 }
 
-.card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--rounded-box, 1rem);
-}
-
-.card:focus {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-}
-
-.card figure {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.card.image-full {
-  display: grid;
-}
-
-.card.image-full:before {
-  position: relative;
-  content: "";
-  z-index: 10;
-  border-radius: var(--rounded-box, 1rem);
-  --tw-bg-opacity: 1;
-  background-color: var(--fallback-n,oklch(var(--n)/var(--tw-bg-opacity)));
-  opacity: 0.75;
-}
-
-.card.image-full:before,
-    .card.image-full > * {
-  grid-column-start: 1;
-  grid-row-start: 1;
-}
-
-.card.image-full > figure img {
-  height: 100%;
-  -o-object-fit: cover;
-     object-fit: cover;
-}
-
-.card.image-full > .card-body {
-  position: relative;
-  z-index: 20;
-  --tw-text-opacity: 1;
-  color: var(--fallback-nc,oklch(var(--nc)/var(--tw-text-opacity)));
-}
-
 .chat {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1212,34 +1161,6 @@ html {
     :where(.menu li:not(.menu-title, .disabled) > *:not(ul, details, .menu-title)):not(.active, .btn):hover, :where(.menu li:not(.menu-title, .disabled) > details > summary:not(.menu-title)):not(.active, .btn):hover {
       background-color: var(--fallback-bc,oklch(var(--bc)/0.1));
     }
-  }
-}
-
-.footer {
-  display: grid;
-  width: 100%;
-  grid-auto-flow: row;
-  place-items: start;
-  -moz-column-gap: 1rem;
-       column-gap: 1rem;
-  row-gap: 2.5rem;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-}
-
-.footer > * {
-  display: grid;
-  place-items: start;
-  gap: 0.5rem;
-}
-
-@media (min-width: 48rem) {
-  .footer {
-    grid-auto-flow: column;
-  }
-
-  .footer-center {
-    grid-auto-flow: row dense;
   }
 }
 
@@ -1577,44 +1498,6 @@ html {
   100% {
     transform: scale(1);
   }
-}
-
-.card :where(figure:first-child) {
-  overflow: hidden;
-  border-start-start-radius: inherit;
-  border-start-end-radius: inherit;
-  border-end-start-radius: unset;
-  border-end-end-radius: unset;
-}
-
-.card :where(figure:last-child) {
-  overflow: hidden;
-  border-start-start-radius: unset;
-  border-start-end-radius: unset;
-  border-end-start-radius: inherit;
-  border-end-end-radius: inherit;
-}
-
-.card:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
-}
-
-.card.bordered {
-  border-width: 1px;
-  --tw-border-opacity: 1;
-  border-color: var(--fallback-b2,oklch(var(--b2)/var(--tw-border-opacity)));
-}
-
-.card.compact .card-body {
-  padding: 1rem;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-}
-
-.card.image-full :where(figure) {
-  overflow: hidden;
-  border-radius: inherit;
 }
 
 .checkbox:focus {
@@ -2176,10 +2059,6 @@ html {
 .rounded-t-none {
   border-top-left-radius: 0px;
   border-top-right-radius: 0px;
-}
-
-.border {
-  border-width: 1px;
 }
 
 .border-transparent {

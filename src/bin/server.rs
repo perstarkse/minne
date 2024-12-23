@@ -24,9 +24,9 @@ use zettle_db::{
                 queue_length::queue_length_handler,
             },
             html::{
-                auth::{show_signup_form, signup_handler},
                 index::index_handler,
                 search_result::search_result_handler,
+                signup::{process_signup_and_show_verification, show_signup_form},
             },
         },
         AppState,
@@ -147,7 +147,10 @@ fn html_routes(
     Router::new()
         .route("/", get(index_handler))
         .route("/search", get(search_result_handler))
-        .route("/signup", get(show_signup_form).post(signup_handler))
+        .route(
+            "/signup",
+            get(show_signup_form).post(process_signup_and_show_verification),
+        )
         .nest_service("/assets", ServeDir::new("assets/"))
         .layer(
             AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(

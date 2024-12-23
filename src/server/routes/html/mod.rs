@@ -3,9 +3,10 @@ use std::sync::Arc;
 use axum::response::Html;
 use minijinja_autoreload::AutoReloader;
 
-pub mod auth;
 pub mod index;
 pub mod search_result;
+pub mod signin;
+pub mod signup;
 
 pub trait PageData {
     fn template_name() -> &'static str;
