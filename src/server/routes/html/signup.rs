@@ -45,7 +45,7 @@ pub async fn show_signup_form(
     Ok(output.into_response())
 }
 
-pub async fn signup_handler(
+pub async fn process_signup_and_show_verification(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     Form(form): Form<SignupParams>,
