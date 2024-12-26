@@ -6,6 +6,7 @@ use minijinja_autoreload::AutoReloader;
 pub mod index;
 pub mod search_result;
 pub mod signin;
+pub mod signout;
 pub mod signup;
 
 pub trait PageData {

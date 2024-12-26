@@ -13,6 +13,7 @@ use crate::{
 
 page_data!(IndexData, "index.html", {
     queue_length: u32,
+    user: Option<User>
 });
 
 pub async fn index_handler(
@@ -21,11 +22,12 @@ pub async fn index_handler(
 ) -> Result<Html<String>, ApiError> {
     info!("Displaying index page");
 
-    info!("{:?}", auth.current_user);
-
     let queue_length = state.rabbitmq_consumer.get_queue_length().await?;
 
-    let data = IndexData { queue_length };
+    let data = IndexData {
+        queue_length,
+        user: auth.current_user,
+    };
 
     let output = render_template(IndexData::template_name(), data, state.templates)?;
 
