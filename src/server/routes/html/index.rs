@@ -24,12 +24,14 @@ pub async fn index_handler(
 
     let queue_length = state.rabbitmq_consumer.get_queue_length().await?;
 
-    let data = IndexData {
-        queue_length,
-        user: auth.current_user,
-    };
-
-    let output = render_template(IndexData::template_name(), data, state.templates)?;
+    let output = render_template(
+        IndexData::template_name(),
+        IndexData {
+            queue_length,
+            user: auth.current_user,
+        },
+        state.templates,
+    )?;
 
     Ok(output)
 }

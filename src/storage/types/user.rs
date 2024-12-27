@@ -134,10 +134,6 @@ impl User {
             Err(ApiError::UserNotFound)
         }
     }
-    pub async fn reset_api_key(id: &str, db: &SurrealDbClient) -> Result<String, ApiError> {
-        // Simply call set_api_key to generate and set a new key
-        Self::set_api_key(id, db).await
-    }
 
     pub async fn revoke_api_key(id: &str, db: &SurrealDbClient) -> Result<(), ApiError> {
         let user: Option<User> = db

@@ -7,10 +7,9 @@ use axum::{
 use axum_htmx::{HxBoosted, HxRedirect};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
-use serde::{Deserialize, Serialize};
 use surrealdb::{engine::any::Any, Surreal};
 
-use crate::{error::ApiError, server::AppState, storage::types::user::User};
+use crate::{error::ApiError, page_data, server::AppState, storage::types::user::User};
 
 use super::{render_block, render_template};
 
@@ -21,10 +20,7 @@ pub struct SignupParams {
     pub remember_me: Option<String>,
 }
 
-#[derive(Serialize)]
-struct PageData {
-    // name: String,
-}
+page_data!(ShowSignInForm, "auth/signin_form.html", {});
 
 pub async fn show_signin_form(
     State(state): State<AppState>,
@@ -36,12 +32,16 @@ pub async fn show_signin_form(
     }
     let output = match boosted {
         true => render_block(
-            "auth/signin_form.html",
+            ShowSignInForm::template_name(),
             "body",
-            PageData {},
+            ShowSignInForm {},
             state.templates,
         )?,
-        false => render_template("auth/signin_form.html", PageData {}, state.templates)?,
+        false => render_template(
+            ShowSignInForm::template_name(),
+            ShowSignInForm {},
+            state.templates,
+        )?,
     };
 
     Ok(output.into_response())
@@ -54,10 +54,7 @@ pub async fn authenticate_user(
 ) -> Result<impl IntoResponse, ApiError> {
     let user = User::authenticate(form.email, form.password, &state.surreal_db_client).await?;
     auth.login_user(user.id);
-    if form
-        .remember_me
-        .is_some_and(|string| string == "on".to_string())
-    {
+    if form.remember_me.is_some_and(|string| string == *"on") {
         auth.remember_user(true);
     }
     Ok((HxRedirect::from(Uri::from_static("/")), StatusCode::OK).into_response())

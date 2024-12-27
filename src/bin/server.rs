@@ -24,6 +24,7 @@ use zettle_db::{
                 queue_length::queue_length_handler,
             },
             html::{
+                account::{set_api_key, show_account_page},
                 index::index_handler,
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
@@ -151,6 +152,8 @@ fn html_routes(
         .route("/search", get(search_result_handler))
         .route("/signout", get(sign_out_user))
         .route("/signin", get(show_signin_form).post(authenticate_user))
+        .route("/account", get(show_account_page))
+        .route("/set-api-key", post(set_api_key))
         .route(
             "/signup",
             get(show_signup_form).post(process_signup_and_show_verification),
