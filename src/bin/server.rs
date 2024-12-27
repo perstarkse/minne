@@ -26,6 +26,7 @@ use zettle_db::{
             html::{
                 index::index_handler,
                 search_result::search_result_handler,
+                signin::{authenticate_user, show_signin_form},
                 signout::sign_out_user,
                 signup::{process_signup_and_show_verification, show_signup_form},
             },
@@ -149,6 +150,7 @@ fn html_routes(
         .route("/", get(index_handler))
         .route("/search", get(search_result_handler))
         .route("/signout", get(sign_out_user))
+        .route("/signin", get(show_signin_form).post(authenticate_user))
         .route(
             "/signup",
             get(show_signup_form).post(process_signup_and_show_verification),
