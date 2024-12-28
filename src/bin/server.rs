@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     middleware::from_fn_with_state,
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use axum_session::{SessionConfig, SessionLayer, SessionStore};
@@ -24,7 +24,7 @@ use zettle_db::{
                 queue_length::queue_length_handler,
             },
             html::{
-                account::{set_api_key, show_account_page},
+                account::{delete_account, set_api_key, show_account_page},
                 index::index_handler,
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
@@ -154,6 +154,7 @@ fn html_routes(
         .route("/signin", get(show_signin_form).post(authenticate_user))
         .route("/account", get(show_account_page))
         .route("/set-api-key", post(set_api_key))
+        .route("/delete-account", delete(delete_account))
         .route(
             "/signup",
             get(show_signup_form).post(process_signup_and_show_verification),
