@@ -1,9 +1,10 @@
 use axum::{
     extract::State,
-    response::{IntoResponse, Redirect},
+    http::{StatusCode, Uri},
+    response::{Html, IntoResponse, Redirect},
     Form,
 };
-use axum_htmx::HxBoosted;
+use axum_htmx::{HxBoosted, HxRedirect};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use serde::{Deserialize, Serialize};
@@ -50,7 +51,14 @@ pub async fn process_signup_and_show_verification(
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     Form(form): Form<SignupParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let user = User::create_new(form.email, form.password, &state.surreal_db_client).await?;
+    let user = match User::create_new(form.email, form.password, &state.surreal_db_client).await {
+        Ok(user) => user,
+        Err(_) => {
+            return Ok(Html("<p>User already exists</p>").into_response());
+        }
+    };
+
     auth.login_user(user.id);
-    Ok(())
+
+    Ok((HxRedirect::from(Uri::from_static("/")), StatusCode::OK).into_response())
 }
