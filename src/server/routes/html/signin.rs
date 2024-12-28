@@ -1,7 +1,7 @@
 use axum::{
     extract::State,
     http::{StatusCode, Uri},
-    response::{IntoResponse, Redirect},
+    response::{Html, IntoResponse, Redirect},
     Form,
 };
 use axum_htmx::{HxBoosted, HxRedirect};
@@ -52,10 +52,18 @@ pub async fn authenticate_user(
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     Form(form): Form<SignupParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let user = User::authenticate(form.email, form.password, &state.surreal_db_client).await?;
+    let user = match User::authenticate(form.email, form.password, &state.surreal_db_client).await {
+        Ok(user) => user,
+        Err(_) => {
+            return Ok(Html("<p>Invalid email or password.</p>").into_response());
+        }
+    };
+
     auth.login_user(user.id);
+
     if form.remember_me.is_some_and(|string| string == *"on") {
         auth.remember_user(true);
     }
+
     Ok((HxRedirect::from(Uri::from_static("/")), StatusCode::OK).into_response())
 }
