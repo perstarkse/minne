@@ -13,7 +13,6 @@
   packages = [
     pkgs.openssl
     pkgs.nodejs
-    pkgs.nodePackages.tailwindcss
   ];
 
   # https://devenv.sh/languages/
@@ -35,7 +34,6 @@
   # https://devenv.sh/processes/
   processes = {
     surreal_db.exec = "docker run --rm --pull always -p 8000:8000 --net=host --user $(id -u) -v $(pwd)/database:/database surrealdb/surrealdb:latest-dev start rocksdb:/database/database.db --user root_user --pass root_password";
-    # tailwind_css.exec = "tailwindcss --input assets/input.css --output assets/style.css -w > tailwind.log 2>&1";
   };
 
   services = {
