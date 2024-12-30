@@ -1,0 +1,29 @@
+<div class="container mx-auto p-4 max-w-screen-lg flex-col flex justify-center gap-6">
+  <!-- Search Bar -->
+  <div class="form-control w-full mx-auto mt-8">
+    <h1 class="textl-lg text-center pb-5">So here you can search all your ingressed documents</h1>
+    <input type="text" placeholder="Search your knowledge base" class="input input-bordered w-full" name="query"
+      hx-get="/search" hx-target="#search-results" />
+    <div id="search-results" class="mt-4">
+      <!-- Results will be populated here by HTMX -->
+    </div>
+  </div>
+
+  <!-- Recent Activity -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <h2 class="card-title">Recent Activity</h2>
+      <div class="skeleton h-32 w-full"></div>
+    </div>
+  </div>
+
+  <!-- Quick Actions - Modified button to link to ingress form -->
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <h2 class="card-title">Quick Actions</h2>
+      <div class="flex gap-4">
+        <a class="btn btn-primary" href="/ingress" hx-boost="true">Add Content</a>
+      </div>
+    </div>
+  </div>
+</div>

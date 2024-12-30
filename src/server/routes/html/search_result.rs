@@ -34,7 +34,7 @@ pub async fn search_result_handler(
     )
     .await?;
 
-    Ok(Html("Hello".to_string()))
+    Ok(Html(answer.content))
     // let output = state
     //     .tera
     //     .render(
