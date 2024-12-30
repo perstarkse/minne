@@ -11,7 +11,7 @@ use crate::{
     storage::types::user::User,
 };
 
-page_data!(IndexData, "index.html", {
+page_data!(IndexData, "index/index.html", {
     queue_length: u32,
     user: Option<User>
 });

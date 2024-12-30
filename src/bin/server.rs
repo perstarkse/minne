@@ -26,6 +26,7 @@ use zettle_db::{
             html::{
                 account::{delete_account, set_api_key, show_account_page},
                 index::index_handler,
+                ingress::{process_ingress_form, show_ingress_form},
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
                 signout::sign_out_user,
@@ -152,6 +153,10 @@ fn html_routes(
         .route("/search", get(search_result_handler))
         .route("/signout", get(sign_out_user))
         .route("/signin", get(show_signin_form).post(authenticate_user))
+        .route(
+            "/ingress",
+            get(show_ingress_form).post(process_ingress_form),
+        )
         .route("/account", get(show_account_page))
         .route("/set-api-key", post(set_api_key))
         .route("/delete-account", delete(delete_account))

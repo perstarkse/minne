@@ -13,6 +13,7 @@
   packages = [
     pkgs.openssl
     pkgs.nodejs
+    pkgs.vscode-langservers-extracted
   ];
 
   # https://devenv.sh/languages/

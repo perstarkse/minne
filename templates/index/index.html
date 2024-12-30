@@ -1,0 +1,8 @@
+{% extends "body_base.html" %}
+{% block main %}
+{% if user %}
+{% include 'index/signed_in_view.html' %}
+{% else %}
+{% include 'index/hero.html' %}
+{% endif %}
+{% endblock %}
