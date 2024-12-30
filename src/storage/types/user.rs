@@ -7,6 +7,8 @@ use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
+use super::knowledge_entity::KnowledgeEntity;
+
 stored_object!(User, "user", {
     email: String,
     password: String,
@@ -152,5 +154,19 @@ impl User {
         } else {
             Err(ApiError::UserNotFound)
         }
+    }
+
+    pub async fn get_knowledge_entities(
+        id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<KnowledgeEntity>, ApiError> {
+        let entities: Vec<KnowledgeEntity> = db
+            .client
+            .query("SELECT * FROM knowledge_entity WHERE user_id = $user_id")
+            .bind(("user_id", id.to_owned()))
+            .await?
+            .take(0)?;
+
+        Ok(entities)
     }
 }

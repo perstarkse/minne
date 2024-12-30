@@ -24,6 +24,14 @@ pub async fn index_handler(
 
     let queue_length = state.rabbitmq_consumer.get_queue_length().await?;
 
+    // let knowledge_entities = User::get_knowledge_entities(
+    //     &auth.current_user.clone().unwrap().id,
+    //     &state.surreal_db_client,
+    // )
+    // .await?;
+
+    // info!("{:?}", knowledge_entities);
+
     let output = render_template(
         IndexData::template_name(),
         IndexData {
