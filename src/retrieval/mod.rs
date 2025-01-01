@@ -4,7 +4,7 @@ pub mod query_helper_prompt;
 pub mod vector;
 
 use crate::{
-    error::ProcessingError,
+    error::AppError,
     retrieval::{
         graph::{find_entities_by_relationship_by_id, find_entities_by_source_ids},
         vector::find_items_by_vector_similarity,
@@ -34,14 +34,14 @@ use surrealdb::{engine::any::Any, Surreal};
 /// * 'user_id' - The user id of the current user
 ///
 /// # Returns
-/// * `Result<Vec<KnowledgeEntity>, ProcessingError>` - A deduplicated vector of relevant
+/// * `Result<Vec<KnowledgeEntity>, AppError>` - A deduplicated vector of relevant
 ///   knowledge entities, or an error if the retrieval process fails
 pub async fn combined_knowledge_entity_retrieval(
     db_client: &Surreal<Any>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     query: &str,
     user_id: &str,
-) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
+) -> Result<Vec<KnowledgeEntity>, AppError> {
     // info!("Received input: {:?}", query);
 
     let (items_from_knowledge_entity_similarity, closest_chunks) = try_join(

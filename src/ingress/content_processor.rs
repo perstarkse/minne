@@ -4,7 +4,7 @@ use text_splitter::TextSplitter;
 use tracing::{debug, info};
 
 use crate::{
-    error::ProcessingError,
+    error::AppError,
     storage::{
         db::{store_item, SurrealDbClient},
         types::{
@@ -25,7 +25,7 @@ pub struct ContentProcessor {
 }
 
 impl ContentProcessor {
-    pub async fn new(app_config: &AppConfig) -> Result<Self, ProcessingError> {
+    pub async fn new(app_config: &AppConfig) -> Result<Self, AppError> {
         Ok(Self {
             db_client: SurrealDbClient::new(
                 &app_config.surrealdb_address,
@@ -39,7 +39,7 @@ impl ContentProcessor {
         })
     }
 
-    pub async fn process(&self, content: &TextContent) -> Result<(), ProcessingError> {
+    pub async fn process(&self, content: &TextContent) -> Result<(), AppError> {
         // Store original content
         store_item(&self.db_client, content.clone()).await?;
 
@@ -72,7 +72,7 @@ impl ContentProcessor {
     async fn perform_semantic_analysis(
         &self,
         content: &TextContent,
-    ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+    ) -> Result<LLMGraphAnalysisResult, AppError> {
         let analyser = IngressAnalyzer::new(&self.db_client, &self.openai_client);
         analyser
             .analyze_content(
@@ -88,7 +88,7 @@ impl ContentProcessor {
         &self,
         entities: Vec<KnowledgeEntity>,
         relationships: Vec<KnowledgeRelationship>,
-    ) -> Result<(), ProcessingError> {
+    ) -> Result<(), AppError> {
         for entity in &entities {
             debug!("Storing entity: {:?}", entity);
             store_item(&self.db_client, entity.clone()).await?;
@@ -107,7 +107,7 @@ impl ContentProcessor {
         Ok(())
     }
 
-    async fn store_vector_chunks(&self, content: &TextContent) -> Result<(), ProcessingError> {
+    async fn store_vector_chunks(&self, content: &TextContent) -> Result<(), AppError> {
         let splitter = TextSplitter::new(500..2000);
         let chunks = splitter.chunks(&content.text);
 

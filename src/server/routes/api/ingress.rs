@@ -1,5 +1,5 @@
 use crate::{
-    error::ApiError,
+    error::{ApiError, AppError},
     ingress::types::ingress_input::{create_ingress_objects, IngressInput},
     server::AppState,
     storage::types::user::User,
@@ -22,7 +22,7 @@ pub async fn ingress_handler(
         .map(|object| state.rabbitmq_producer.publish(object))
         .collect();
 
-    try_join_all(futures).await?;
+    try_join_all(futures).await.map_err(AppError::from)?;
 
     Ok(StatusCode::OK)
 }

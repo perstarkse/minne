@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task;
 
 use crate::{
-    error::ProcessingError,
+    error::AppError,
     storage::types::{
         knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
         knowledge_relationship::KnowledgeRelationship,
@@ -49,13 +49,13 @@ impl LLMGraphAnalysisResult {
     ///
     /// # Returns
     ///
-    /// * `Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), ProcessingError>` - A tuple containing vectors of `KnowledgeEntity` and `KnowledgeRelationship`.
+    /// * `Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError>` - A tuple containing vectors of `KnowledgeEntity` and `KnowledgeRelationship`.
     pub async fn to_database_entities(
         &self,
         source_id: &str,
         user_id: &str,
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-    ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), ProcessingError> {
+    ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         // Create mapper and pre-assign IDs
         let mapper = Arc::new(Mutex::new(self.create_mapper()?));
 
@@ -70,7 +70,7 @@ impl LLMGraphAnalysisResult {
         Ok((entities, relationships))
     }
 
-    fn create_mapper(&self) -> Result<GraphMapper, ProcessingError> {
+    fn create_mapper(&self) -> Result<GraphMapper, AppError> {
         let mut mapper = GraphMapper::new();
 
         // Pre-assign all IDs
@@ -87,7 +87,7 @@ impl LLMGraphAnalysisResult {
         user_id: &str,
         mapper: Arc<Mutex<GraphMapper>>,
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-    ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
+    ) -> Result<Vec<KnowledgeEntity>, AppError> {
         let futures: Vec<_> = self
             .knowledge_entities
             .iter()
@@ -116,10 +116,10 @@ impl LLMGraphAnalysisResult {
     fn process_relationships(
         &self,
         mapper: Arc<Mutex<GraphMapper>>,
-    ) -> Result<Vec<KnowledgeRelationship>, ProcessingError> {
+    ) -> Result<Vec<KnowledgeRelationship>, AppError> {
         let mut mapper_guard = mapper
             .lock()
-            .map_err(|_| ProcessingError::GraphProcessingError("Failed to lock mapper".into()))?;
+            .map_err(|_| AppError::GraphMapper("Failed to lock mapper".into()))?;
         self.relationships
             .iter()
             .map(|rel| {
@@ -142,18 +142,15 @@ async fn create_single_entity(
     user_id: &str,
     mapper: Arc<Mutex<GraphMapper>>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-) -> Result<KnowledgeEntity, ProcessingError> {
+) -> Result<KnowledgeEntity, AppError> {
     let assigned_id = {
         let mapper = mapper
             .lock()
-            .map_err(|_| ProcessingError::GraphProcessingError("Failed to lock mapper".into()))?;
+            .map_err(|_| AppError::GraphMapper("Failed to lock mapper".into()))?;
         mapper
             .get_id(&llm_entity.key)
             .ok_or_else(|| {
-                ProcessingError::GraphProcessingError(format!(
-                    "ID not found for key: {}",
-                    llm_entity.key
-                ))
+                AppError::GraphMapper(format!("ID not found for key: {}", llm_entity.key))
             })?
             .to_string()
     };

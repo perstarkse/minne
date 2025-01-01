@@ -1,4 +1,8 @@
-use crate::{error::ApiError, server::AppState, storage::types::file_info::FileInfo};
+use crate::{
+    error::{ApiError, AppError},
+    server::AppState,
+    storage::types::file_info::FileInfo,
+};
 use axum::{extract::State, response::IntoResponse, Json};
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use serde_json::json;
@@ -21,7 +25,9 @@ pub async fn upload_handler(
     info!("Received an upload request");
 
     // Process the file upload
-    let file_info = FileInfo::new(input.file, &state.surreal_db_client).await?;
+    let file_info = FileInfo::new(input.file, &state.surreal_db_client)
+        .await
+        .map_err(AppError::from)?;
 
     // Prepare the response JSON
     let response = json!({

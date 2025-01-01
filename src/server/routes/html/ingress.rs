@@ -1,25 +1,22 @@
 use axum::{
     extract::State,
-    http::{StatusCode, Uri},
     response::{Html, IntoResponse, Redirect},
-    Form,
 };
-use axum_htmx::{HxBoosted, HxRedirect};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use surrealdb::{engine::any::Any, Surreal};
 use tempfile::NamedTempFile;
 use tracing::info;
 
 use crate::{
-    error::ApiError,
+    error::{AppError, HtmlError},
     server::AppState,
     storage::types::{file_info::FileInfo, user::User},
 };
 
-use super::{render_block, render_template};
+use super::render_template;
 
 #[derive(Serialize)]
 struct PageData {
@@ -29,13 +26,17 @@ struct PageData {
 pub async fn show_ingress_form(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<impl IntoResponse, HtmlError> {
     if !auth.is_authenticated() {
         return Ok(Redirect::to("/").into_response());
     }
 
-    Ok(render_template("ingress_form.html", PageData {}, state.templates)?.into_response())
+    let output = render_template("ingress_form.html", PageData {}, state.templates.clone())
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+
+    Ok(output.into_response())
 }
+
 #[derive(Debug, TryFromMultipart)]
 pub struct IngressParams {
     pub content: Option<String>,
@@ -49,8 +50,8 @@ pub async fn process_ingress_form(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     TypedMultipart(input): TypedMultipart<IngressParams>,
-) -> Result<impl IntoResponse, ApiError> {
-    let user = match auth.current_user {
+) -> Result<impl IntoResponse, HtmlError> {
+    let _user = match auth.current_user {
         Some(user) => user,
         None => return Ok(Redirect::to("/").into_response()),
     };
@@ -60,7 +61,9 @@ pub async fn process_ingress_form(
     // Process files and create FileInfo objects
     let mut file_infos = Vec::new();
     for file in input.files {
-        let file_info = FileInfo::new(file, &state.surreal_db_client).await?;
+        let file_info = FileInfo::new(file, &state.surreal_db_client)
+            .await
+            .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
         file_infos.push(file_info);
     }
 
