@@ -1,10 +1,12 @@
 use super::ingress_object::IngressObject;
-use crate::storage::{
-    db::{get_item, SurrealDbClient},
-    types::file_info::FileInfo,
+use crate::{
+    error::AppError,
+    storage::{
+        db::{get_item, SurrealDbClient},
+        types::file_info::FileInfo,
+    },
 };
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use tracing::info;
 use url::Url;
 
@@ -15,34 +17,6 @@ pub struct IngressInput {
     pub instructions: String,
     pub category: String,
     pub files: Option<Vec<String>>,
-}
-
-/// Error types for processing ingress content.
-#[derive(Error, Debug)]
-pub enum IngressContentError {
-    #[error("IO error occurred: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("UTF-8 conversion error: {0}")]
-    Utf8(#[from] std::string::FromUtf8Error),
-
-    #[error("SurrealDb error: {0}")]
-    SurrealDbError(#[from] surrealdb::Error),
-
-    #[error("MIME type detection failed for input: {0}")]
-    MimeDetection(String),
-
-    #[error("Unsupported MIME type: {0}")]
-    UnsupportedMime(String),
-
-    #[error("URL parse error: {0}")]
-    UrlParse(#[from] url::ParseError),
-
-    #[error("UUID parse error: {0}")]
-    UuidParse(#[from] uuid::Error),
-
-    #[error("Redis error: {0}")]
-    RedisError(String),
 }
 
 /// Function to create ingress objects from input.
@@ -57,7 +31,7 @@ pub async fn create_ingress_objects(
     input: IngressInput,
     db_client: &SurrealDbClient,
     user_id: &str,
-) -> Result<Vec<IngressObject>, IngressContentError> {
+) -> Result<Vec<IngressObject>, AppError> {
     // Initialize list
     let mut object_list = Vec::new();
 
@@ -103,7 +77,7 @@ pub async fn create_ingress_objects(
 
     // If no objects are constructed, we return Err
     if object_list.is_empty() {
-        return Err(IngressContentError::MimeDetection(
+        return Err(AppError::NotFound(
             "No valid content or files provided".into(),
         ));
     }

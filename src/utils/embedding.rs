@@ -1,7 +1,6 @@
 use async_openai::types::CreateEmbeddingRequestArgs;
 
-use crate::error::ProcessingError;
-
+use crate::error::AppError;
 /// Generates an embedding vector for the given input text using OpenAI's embedding model.
 ///
 /// This function takes a text input and converts it into a numerical vector representation (embedding)
@@ -21,14 +20,14 @@ use crate::error::ProcessingError;
 ///
 /// # Errors
 ///
-/// This function can return a `ProcessingError` in the following cases:
+/// This function can return a `AppError` in the following cases:
 /// * If the OpenAI API request fails
 /// * If the request building fails
 /// * If no embedding data is received in the response
 pub async fn generate_embedding(
     client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     input: &str,
-) -> Result<Vec<f32>, ProcessingError> {
+) -> Result<Vec<f32>, AppError> {
     let request = CreateEmbeddingRequestArgs::default()
         .model("text-embedding-3-small")
         .input([input])
@@ -41,7 +40,7 @@ pub async fn generate_embedding(
     let embedding: Vec<f32> = response
         .data
         .first()
-        .ok_or_else(|| ProcessingError::EmbeddingError("No embedding data received".into()))?
+        .ok_or_else(|| AppError::LLMParsing("No embedding data received".into()))?
         .embedding
         .clone();
 

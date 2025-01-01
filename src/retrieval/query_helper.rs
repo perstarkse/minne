@@ -1,14 +1,17 @@
-use async_openai::types::{
-    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-    CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
-    ResponseFormat, ResponseFormatJsonSchema,
+use async_openai::{
+    error::OpenAIError,
+    types::{
+        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
+        CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
+        ResponseFormat, ResponseFormatJsonSchema,
+    },
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tracing::debug;
 
 use crate::{
-    error::ApiError,
+    error::AppError,
     retrieval::combined_knowledge_entity_retrieval,
     storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity},
 };
@@ -94,7 +97,7 @@ pub async fn get_answer_with_references(
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     query: &str,
     user_id: &str,
-) -> Result<Answer, ApiError> {
+) -> Result<Answer, AppError> {
     let entities =
         combined_knowledge_entity_retrieval(surreal_db_client, openai_client, query, user_id)
             .await?;
@@ -104,11 +107,7 @@ pub async fn get_answer_with_references(
     let user_message = create_user_message(&entities_json, query);
 
     let request = create_chat_request(user_message)?;
-    let response = openai_client
-        .chat()
-        .create(request)
-        .await
-        .map_err(|e| ApiError::QueryError(e.to_string()))?;
+    let response = openai_client.chat().create(request).await?;
 
     let llm_response = process_llm_response(response).await?;
 
@@ -152,7 +151,9 @@ pub fn create_user_message(entities_json: &Value, query: &str) -> String {
     )
 }
 
-pub fn create_chat_request(user_message: String) -> Result<CreateChatCompletionRequest, ApiError> {
+pub fn create_chat_request(
+    user_message: String,
+) -> Result<CreateChatCompletionRequest, OpenAIError> {
     let response_format = ResponseFormat::JsonSchema {
         json_schema: ResponseFormatJsonSchema {
             description: Some("Query answering AI".into()),
@@ -172,22 +173,21 @@ pub fn create_chat_request(user_message: String) -> Result<CreateChatCompletionR
         ])
         .response_format(response_format)
         .build()
-        .map_err(|e| ApiError::QueryError(e.to_string()))
 }
 
 pub async fn process_llm_response(
     response: CreateChatCompletionResponse,
-) -> Result<LLMResponseFormat, ApiError> {
+) -> Result<LLMResponseFormat, AppError> {
     response
         .choices
         .first()
         .and_then(|choice| choice.message.content.as_ref())
-        .ok_or(ApiError::QueryError(
+        .ok_or(AppError::LLMParsing(
             "No content found in LLM response".into(),
         ))
         .and_then(|content| {
             serde_json::from_str::<LLMResponseFormat>(content).map_err(|e| {
-                ApiError::QueryError(format!("Failed to parse LLM response into analysis: {}", e))
+                AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {}", e))
             })
         })
 }

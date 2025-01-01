@@ -1,6 +1,6 @@
 use axum::{
     extract::{Query, State},
-    response::Html,
+    response::{Html, IntoResponse, Redirect},
 };
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
@@ -9,7 +9,7 @@ use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
 use crate::{
-    error::ApiError, retrieval::query_helper::get_answer_with_references, server::AppState,
+    error::HtmlError, retrieval::query_helper::get_answer_with_references, server::AppState,
     storage::types::user::User,
 };
 #[derive(Deserialize)]
@@ -21,30 +21,22 @@ pub async fn search_result_handler(
     State(state): State<AppState>,
     Query(query): Query<SearchParams>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
-) -> Result<Html<String>, ApiError> {
+) -> Result<impl IntoResponse, HtmlError> {
     info!("Displaying search results");
 
-    let user_id = auth.current_user.ok_or_else(|| ApiError::AuthRequired)?.id;
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/").into_response()),
+    };
 
     let answer = get_answer_with_references(
         &state.surreal_db_client,
         &state.openai_client,
         &query.query,
-        &user_id,
+        &user.id,
     )
-    .await?;
+    .await
+    .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    Ok(Html(answer.content))
-    // let output = state
-    //     .tera
-    //     .render(
-    //         "search_result.html",
-    //         &Context::from_value(
-    //             json!({"result": answer.content, "references": answer.references}),
-    //         )
-    //         .unwrap(),
-    //     )
-    //     .unwrap();
-
-    // Ok(output.into())
+    Ok(Html(answer.content).into_response())
 }

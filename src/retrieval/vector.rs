@@ -1,6 +1,6 @@
 use surrealdb::{engine::any::Any, Surreal};
 
-use crate::{error::ProcessingError, utils::embedding::generate_embedding};
+use crate::{error::AppError, utils::embedding::generate_embedding};
 
 /// Compares vectors and retrieves a number of items from the specified table.
 ///
@@ -30,7 +30,7 @@ pub async fn find_items_by_vector_similarity<T>(
     table: String,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     user_id: &str,
-) -> Result<Vec<T>, ProcessingError>
+) -> Result<Vec<T>, AppError>
 where
     T: for<'de> serde::Deserialize<'de>,
 {

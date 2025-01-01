@@ -1,11 +1,11 @@
-use axum::{extract::State, response::Html};
+use axum::{extract::State, response::IntoResponse};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
 use crate::{
-    error::ApiError,
+    error::{AppError, HtmlError},
     page_data,
     server::{routes::html::render_template, AppState},
     storage::types::user::User,
@@ -19,10 +19,14 @@ page_data!(IndexData, "index/index.html", {
 pub async fn index_handler(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
-) -> Result<Html<String>, ApiError> {
+) -> Result<impl IntoResponse, HtmlError> {
     info!("Displaying index page");
 
-    let queue_length = state.rabbitmq_consumer.get_queue_length().await?;
+    let queue_length = state
+        .rabbitmq_consumer
+        .get_queue_length()
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 
     // let knowledge_entities = User::get_knowledge_entities(
     //     &auth.current_user.clone().unwrap().id,
@@ -38,8 +42,9 @@ pub async fn index_handler(
             queue_length,
             user: auth.current_user,
         },
-        state.templates,
-    )?;
+        state.templates.clone(),
+    )
+    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 
-    Ok(output)
+    Ok(output.into_response())
 }

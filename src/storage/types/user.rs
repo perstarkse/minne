@@ -1,5 +1,5 @@
 use crate::{
-    error::ApiError,
+    error::AppError,
     storage::db::{get_item, SurrealDbClient},
     stored_object,
 };
@@ -41,10 +41,10 @@ impl User {
         email: String,
         password: String,
         db: &SurrealDbClient,
-    ) -> Result<Self, ApiError> {
+    ) -> Result<Self, AppError> {
         // Check if user exists
         if (Self::find_by_email(&email, db).await?).is_some() {
-            return Err(ApiError::UserAlreadyExists);
+            return Err(AppError::Auth("User already exists".into()));
         }
 
         let id = Uuid::new_v4().to_string();
@@ -62,14 +62,14 @@ impl User {
             .await?
             .take(0)?;
 
-        user.ok_or(ApiError::UserAlreadyExists)
+        user.ok_or(AppError::Auth("User failed to create".into()))
     }
 
     pub async fn authenticate(
         email: String,
         password: String,
         db: &SurrealDbClient,
-    ) -> Result<Self, ApiError> {
+    ) -> Result<Self, AppError> {
         let user: Option<User> = db
             .client
             .query(
@@ -81,13 +81,13 @@ impl User {
             .bind(("password", password))
             .await?
             .take(0)?;
-        user.ok_or(ApiError::UserAlreadyExists)
+        user.ok_or(AppError::Auth("User failed to authenticate".into()))
     }
 
     pub async fn find_by_email(
         email: &str,
         db: &SurrealDbClient,
-    ) -> Result<Option<Self>, ApiError> {
+    ) -> Result<Option<Self>, AppError> {
         let user: Option<User> = db
             .client
             .query("SELECT * FROM user WHERE email = $email LIMIT 1")
@@ -101,7 +101,7 @@ impl User {
     pub async fn find_by_api_key(
         api_key: &str,
         db: &SurrealDbClient,
-    ) -> Result<Option<Self>, ApiError> {
+    ) -> Result<Option<Self>, AppError> {
         let user: Option<User> = db
             .client
             .query("SELECT * FROM user WHERE api_key = $api_key LIMIT 1")
@@ -112,7 +112,7 @@ impl User {
         Ok(user)
     }
 
-    pub async fn set_api_key(id: &str, db: &SurrealDbClient) -> Result<String, ApiError> {
+    pub async fn set_api_key(id: &str, db: &SurrealDbClient) -> Result<String, AppError> {
         // Generate a secure random API key
         let api_key = format!("sk_{}", Uuid::new_v4().to_string().replace("-", ""));
 
@@ -133,11 +133,11 @@ impl User {
         if user.is_some() {
             Ok(api_key)
         } else {
-            Err(ApiError::UserNotFound)
+            Err(AppError::Auth("User not found".into()))
         }
     }
 
-    pub async fn revoke_api_key(id: &str, db: &SurrealDbClient) -> Result<(), ApiError> {
+    pub async fn revoke_api_key(id: &str, db: &SurrealDbClient) -> Result<(), AppError> {
         let user: Option<User> = db
             .client
             .query(
@@ -152,14 +152,14 @@ impl User {
         if user.is_some() {
             Ok(())
         } else {
-            Err(ApiError::UserNotFound)
+            Err(AppError::Auth("User was not found".into()))
         }
     }
 
     pub async fn get_knowledge_entities(
         id: &str,
         db: &SurrealDbClient,
-    ) -> Result<Vec<KnowledgeEntity>, ApiError> {
+    ) -> Result<Vec<KnowledgeEntity>, AppError> {
         let entities: Vec<KnowledgeEntity> = db
             .client
             .query("SELECT * FROM knowledge_entity WHERE user_id = $user_id")

@@ -1,107 +1,233 @@
+use std::sync::Arc;
+
 use async_openai::error::OpenAIError;
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    http::StatusCode,
+    response::{Html, IntoResponse, Response},
+    Json,
+};
+use minijinja::context;
+use minijinja_autoreload::AutoReloader;
+use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
 use tokio::task::JoinError;
 
 use crate::{
-    ingress::types::ingress_input::IngressContentError, rabbitmq::RabbitMQError,
-    storage::types::file_info::FileError, utils::mailer::EmailError,
+    rabbitmq::RabbitMQError, storage::types::file_info::FileError, utils::mailer::EmailError,
 };
 
+// Core internal errors
 #[derive(Error, Debug)]
-pub enum ProcessingError {
-    #[error("SurrealDb error: {0}")]
-    SurrealDbError(#[from] surrealdb::Error),
-
-    #[error("LLM processing error: {0}")]
-    OpenAIerror(#[from] OpenAIError),
-
-    #[error("Embedding processing error: {0}")]
-    EmbeddingError(String),
-
-    #[error("Graph processing error: {0}")]
-    GraphProcessingError(String),
-
-    #[error("LLM parsing error: {0}")]
-    LLMParsingError(String),
-
-    #[error("Task join error: {0}")]
-    JoinError(#[from] JoinError),
-}
-
-#[derive(Error, Debug)]
-pub enum IngressConsumerError {
+pub enum AppError {
+    #[error("Database error: {0}")]
+    Database(#[from] surrealdb::Error),
+    #[error("OpenAI error: {0}")]
+    OpenAI(#[from] OpenAIError),
     #[error("RabbitMQ error: {0}")]
     RabbitMQ(#[from] RabbitMQError),
-
-    #[error("Processing error: {0}")]
-    Processing(#[from] ProcessingError),
-
-    #[error("Ingress content error: {0}")]
-    IngressContent(#[from] IngressContentError),
+    #[error("File error: {0}")]
+    File(#[from] FileError),
+    #[error("Email error: {0}")]
+    Email(#[from] EmailError),
+    #[error("Not found: {0}")]
+    NotFound(String),
+    #[error("Validation error: {0}")]
+    Validation(String),
+    #[error("Authorization error: {0}")]
+    Auth(String),
+    #[error("LLM parsing error: {0}")]
+    LLMParsing(String),
+    #[error("Task join error: {0}")]
+    Join(#[from] JoinError),
+    #[error("Graph mapper error: {0}")]
+    GraphMapper(String),
+    #[error("IoError: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Minijina error: {0}")]
+    MiniJinja(#[from] minijinja::Error),
 }
 
-#[derive(Error, Debug)]
+// API-specific errors
+#[derive(Debug, Serialize)]
 pub enum ApiError {
-    #[error("Processing error: {0}")]
-    ProcessingError(#[from] ProcessingError),
-    #[error("Ingress content error: {0}")]
-    IngressContentError(#[from] IngressContentError),
-    #[error("Publishing error: {0}")]
-    PublishingError(String),
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-    #[error("Query error: {0}")]
-    QueryError(String),
-    #[error("RabbitMQ error: {0}")]
-    RabbitMQError(#[from] RabbitMQError),
-    #[error("LLM processing error: {0}")]
-    OpenAIerror(#[from] OpenAIError),
-    #[error("File error: {0}")]
-    FileError(#[from] FileError),
-    #[error("SurrealDb error: {0}")]
-    SurrealDbError(#[from] surrealdb::Error),
-    #[error("User already exists")]
-    UserAlreadyExists,
-    #[error("User was not found")]
-    UserNotFound,
-    #[error("You must provide valid credentials")]
-    AuthRequired,
-    #[error("Templating error: {0}")]
-    TemplatingError(#[from] minijinja::Error),
-    #[error("Mail error: {0}")]
-    EmailError(#[from] EmailError),
+    InternalError(String),
+    ValidationError(String),
+    NotFound(String),
+    Unauthorized(String),
+}
+
+impl From<AppError> for ApiError {
+    fn from(err: AppError) -> Self {
+        match err {
+            AppError::Database(_) | AppError::OpenAI(_) | AppError::Email(_) => {
+                tracing::error!("Internal error: {:?}", err);
+                ApiError::InternalError("Internal server error".to_string())
+            }
+            AppError::NotFound(msg) => ApiError::NotFound(msg),
+            AppError::Validation(msg) => ApiError::ValidationError(msg),
+            AppError::Auth(msg) => ApiError::Unauthorized(msg),
+            _ => ApiError::InternalError("Internal server error".to_string()),
+        }
+    }
 }
 
 impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, error_message) = match &self {
-            ApiError::ProcessingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::SurrealDbError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::PublishingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::OpenAIerror(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::QueryError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ApiError::UserAlreadyExists => (StatusCode::BAD_REQUEST, self.to_string()),
-            ApiError::AuthRequired => (StatusCode::BAD_REQUEST, self.to_string()),
-            ApiError::UserNotFound => (StatusCode::BAD_REQUEST, self.to_string()),
-            ApiError::IngressContentError(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+    fn into_response(self) -> Response {
+        let (status, body) = match self {
+            ApiError::InternalError(message) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({
+                    "error": message,
+                    "status": "error"
+                }),
+            ),
+            ApiError::ValidationError(message) => (
+                StatusCode::BAD_REQUEST,
+                json!({
+                    "error": message,
+                    "status": "error"
+                }),
+            ),
+            ApiError::NotFound(message) => (
+                StatusCode::NOT_FOUND,
+                json!({
+                    "error": message,
+                    "status": "error"
+                }),
+            ),
+            ApiError::Unauthorized(message) => (
+                StatusCode::UNAUTHORIZED,
+                json!({
+                    "error": message,
+                    "status": "error"
+                }),
+            ), // ... other matches
+        };
+        (status, Json(body)).into_response()
+    }
+}
+#[derive(Clone)]
+pub struct ErrorContext {
+    #[allow(dead_code)]
+    templates: Arc<AutoReloader>,
+}
+
+impl ErrorContext {
+    pub fn new(templates: Arc<AutoReloader>) -> Self {
+        Self { templates }
+    }
+}
+
+pub enum HtmlError {
+    ServerError(Arc<AutoReloader>),
+    NotFound(Arc<AutoReloader>),
+    Unauthorized(Arc<AutoReloader>),
+    BadRequest(String, Arc<AutoReloader>),
+    Template(String, Arc<AutoReloader>),
+}
+
+// Implement From<ApiError> for HtmlError
+impl HtmlError {
+    pub fn new(error: AppError, templates: Arc<AutoReloader>) -> Self {
+        match error {
+            AppError::NotFound(_msg) => HtmlError::NotFound(templates),
+            AppError::Auth(_msg) => HtmlError::Unauthorized(templates),
+            AppError::Validation(msg) => HtmlError::BadRequest(msg, templates),
+            _ => {
+                tracing::error!("Internal error: {:?}", error);
+                HtmlError::ServerError(templates)
             }
-            ApiError::RabbitMQError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::FileError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::TemplatingError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::EmailError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        }
+    }
+
+    pub fn from_template_error(error: minijinja::Error, templates: Arc<AutoReloader>) -> Self {
+        tracing::error!("Template error: {:?}", error);
+        HtmlError::Template(error.to_string(), templates)
+    }
+}
+
+impl IntoResponse for HtmlError {
+    fn into_response(self) -> Response {
+        let (status, context, templates) = match self {
+            HtmlError::ServerError(templates) | HtmlError::Template(_, templates) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                context! {
+                    status_code => 500,
+                    title => "Internal Server Error",
+                    error => "Internal Server Error",
+                    description => "Something went wrong on our end."
+                },
+                templates,
+            ),
+            HtmlError::NotFound(templates) => (
+                StatusCode::NOT_FOUND,
+                context! {
+                    status_code => 404,
+                    title => "Page Not Found",
+                    error => "Not Found",
+                    description => "The page you're looking for doesn't exist or was removed."
+                },
+                templates,
+            ),
+            HtmlError::Unauthorized(templates) => (
+                StatusCode::UNAUTHORIZED,
+                context! {
+                    status_code => 401,
+                    title => "Unauthorized",
+                    error => "Access Denied",
+                    description => "You need to be logged in to access this page."
+                },
+                templates,
+            ),
+            HtmlError::BadRequest(msg, templates) => (
+                StatusCode::BAD_REQUEST,
+                context! {
+                    status_code => 400,
+                    title => "Bad Request",
+                    error => "Bad Request",
+                    description => msg
+                },
+                templates,
+            ),
         };
 
-        (
-            status,
-            Json(json!({
-            "error": error_message,
-                    "status": "error"
-                        })),
-        )
-            .into_response()
+        let html = match templates.acquire_env() {
+            Ok(env) => match env.get_template("errors/error.html") {
+                Ok(tmpl) => match tmpl.render(context) {
+                    Ok(output) => output,
+                    Err(e) => {
+                        tracing::error!("Template render error: {:?}", e);
+                        Self::fallback_html()
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("Template get error: {:?}", e);
+                    Self::fallback_html()
+                }
+            },
+            Err(e) => {
+                tracing::error!("Environment acquire error: {:?}", e);
+                Self::fallback_html()
+            }
+        };
+
+        (status, Html(html)).into_response()
+    }
+}
+
+impl HtmlError {
+    fn fallback_html() -> String {
+        r#"
+                     <html>
+                         <body>
+                             <div class="container mx-auto p-4">
+                                 <h1 class="text-4xl text-error">Error</h1>
+                                 <p class="mt-4">Sorry, something went wrong displaying this page.</p>
+                             </div>
+                         </body>
+                     </html>
+                     "#
+        .to_string()
     }
 }

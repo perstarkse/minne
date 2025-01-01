@@ -1,7 +1,8 @@
-use crate::storage::types::{file_info::FileInfo, text_content::TextContent};
+use crate::{
+    error::AppError,
+    storage::types::{file_info::FileInfo, text_content::TextContent},
+};
 use serde::{Deserialize, Serialize};
-
-use super::ingress_input::IngressContentError;
 
 /// Knowledge object type, containing the content or reference to it, as well as metadata
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -34,7 +35,7 @@ impl IngressObject {
     ///
     /// # Returns
     /// `TextContent` - An object containing a text representation of the object, could be a scraped URL, parsed PDF, etc.
-    pub async fn to_text_content(&self) -> Result<TextContent, IngressContentError> {
+    pub async fn to_text_content(&self) -> Result<TextContent, AppError> {
         match self {
             IngressObject::Url {
                 url,
@@ -82,12 +83,12 @@ impl IngressObject {
     }
 
     /// Fetches and extracts text from a URL.
-    async fn fetch_text_from_url(_url: &str) -> Result<String, IngressContentError> {
+    async fn fetch_text_from_url(_url: &str) -> Result<String, AppError> {
         unimplemented!()
     }
 
     /// Extracts text from a file based on its MIME type.
-    async fn extract_text_from_file(file_info: &FileInfo) -> Result<String, IngressContentError> {
+    async fn extract_text_from_file(file_info: &FileInfo) -> Result<String, AppError> {
         match file_info.mime_type.as_str() {
             "text/plain" => {
                 // Read the file and return its content
@@ -101,15 +102,11 @@ impl IngressObject {
             }
             "application/pdf" => {
                 // TODO: Implement PDF text extraction using a crate like `pdf-extract` or `lopdf`
-                Err(IngressContentError::UnsupportedMime(
-                    file_info.mime_type.clone(),
-                ))
+                Err(AppError::NotFound(file_info.mime_type.clone()))
             }
             "image/png" | "image/jpeg" => {
                 // TODO: Implement OCR on image using a crate like `tesseract`
-                Err(IngressContentError::UnsupportedMime(
-                    file_info.mime_type.clone(),
-                ))
+                Err(AppError::NotFound(file_info.mime_type.clone()))
             }
             "application/octet-stream" => {
                 let content = tokio::fs::read_to_string(&file_info.path).await?;
@@ -120,9 +117,7 @@ impl IngressObject {
                 Ok(content)
             }
             // Handle other MIME types as needed
-            _ => Err(IngressContentError::UnsupportedMime(
-                file_info.mime_type.clone(),
-            )),
+            _ => Err(AppError::NotFound(file_info.mime_type.clone())),
         }
     }
 }

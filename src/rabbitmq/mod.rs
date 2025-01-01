@@ -9,8 +9,6 @@ use lapin::{
 use thiserror::Error;
 use tracing::debug;
 
-use crate::error::ProcessingError;
-
 /// Possible errors related to RabbitMQ operations.
 #[derive(Error, Debug)]
 pub enum RabbitMQError {
@@ -28,8 +26,6 @@ pub enum RabbitMQError {
     InitializeConsumerError(String),
     #[error("Queue error: {0}")]
     QueueError(String),
-    #[error("Processing error: {0}")]
-    ProcessingError(#[from] ProcessingError),
 }
 
 /// Struct containing the information required to set up a client and connection.

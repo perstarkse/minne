@@ -1,13 +1,16 @@
 use crate::{
-    error::ProcessingError,
+    error::AppError,
     ingress::analysis::prompt::{get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE},
     retrieval::combined_knowledge_entity_retrieval,
     storage::types::knowledge_entity::KnowledgeEntity,
 };
-use async_openai::types::{
-    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-    CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
-    ResponseFormatJsonSchema,
+use async_openai::{
+    error::OpenAIError,
+    types::{
+        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
+        CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
+        ResponseFormatJsonSchema,
+    },
 };
 use serde_json::json;
 use surrealdb::engine::any::Any;
@@ -38,7 +41,7 @@ impl<'a> IngressAnalyzer<'a> {
         instructions: &str,
         text: &str,
         user_id: &str,
-    ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+    ) -> Result<LLMGraphAnalysisResult, AppError> {
         let similar_entities = self
             .find_similar_entities(category, instructions, text, user_id)
             .await?;
@@ -53,7 +56,7 @@ impl<'a> IngressAnalyzer<'a> {
         instructions: &str,
         text: &str,
         user_id: &str,
-    ) -> Result<Vec<KnowledgeEntity>, ProcessingError> {
+    ) -> Result<Vec<KnowledgeEntity>, AppError> {
         let input_text = format!(
             "content: {}, category: {}, user_instructions: {}",
             text, category, instructions
@@ -74,7 +77,7 @@ impl<'a> IngressAnalyzer<'a> {
         instructions: &str,
         text: &str,
         similar_entities: &[KnowledgeEntity],
-    ) -> Result<CreateChatCompletionRequest, ProcessingError> {
+    ) -> Result<CreateChatCompletionRequest, OpenAIError> {
         let entities_json = json!(similar_entities
             .iter()
             .map(|entity| {
@@ -114,13 +117,12 @@ impl<'a> IngressAnalyzer<'a> {
             ])
             .response_format(response_format)
             .build()
-            .map_err(|e| ProcessingError::LLMParsingError(e.to_string()))
     }
 
     async fn perform_analysis(
         &self,
         request: CreateChatCompletionRequest,
-    ) -> Result<LLMGraphAnalysisResult, ProcessingError> {
+    ) -> Result<LLMGraphAnalysisResult, AppError> {
         let response = self.openai_client.chat().create(request).await?;
         debug!("Received LLM response: {:?}", response);
 
@@ -128,12 +130,12 @@ impl<'a> IngressAnalyzer<'a> {
             .choices
             .first()
             .and_then(|choice| choice.message.content.as_ref())
-            .ok_or(ProcessingError::LLMParsingError(
-                "No content found in LLM response".into(),
+            .ok_or(AppError::LLMParsing(
+                "No content found in LLM response".to_string(),
             ))
             .and_then(|content| {
                 serde_json::from_str(content).map_err(|e| {
-                    ProcessingError::LLMParsingError(format!(
+                    AppError::LLMParsing(format!(
                         "Failed to parse LLM response into analysis: {}",
                         e
                     ))
