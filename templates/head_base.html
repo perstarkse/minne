@@ -5,15 +5,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Minne{% endblock %}</title>
-  <script src="assets/htmx.min.js"></script>
-  <link rel="stylesheet" href="assets/style.css">
-  <link rel="manifest" href="/assets/manifest.json">
 
-  <!-- Optional but recommended for iOS support -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
+  <!-- Preload critical assets -->
+  <link rel="preload" href="assets/htmx.min.js" as="script">
+  <link rel="preload" href="assets/style.css" as="style">
+
+  <!-- Core styles -->
+  <link rel="stylesheet" href="assets/style.css">
+
+  <!-- Scripts -->
+  <script src="assets/htmx.min.js" defer></script>
+
+  <!-- Icons -->
   <link rel="icon" href="/assets/icon/favicon.ico">
-  <link rel="apple-touch-icon" href="/assets/icon/apple-touch-icon.png">
+  <link rel="apple-touch-icon" href="/assets/icon/apple-touch-icon.png" media="(device-width: 320px)">
+
+  <!-- PWA -->
+  <link rel="manifest" href="/assets/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
   {% block head %}{% endblock %}
 </head>
 {% block body %}{% endblock %}
