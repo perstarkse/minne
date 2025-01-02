@@ -1,4 +1,5 @@
 use axum::{extract::State, response::IntoResponse};
+use axum_session::Session;
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use surrealdb::{engine::any::Any, Surreal};
@@ -12,6 +13,7 @@ use crate::{
 };
 
 page_data!(IndexData, "index/index.html", {
+    gdpr_accepted: bool,
     queue_length: u32,
     user: Option<User>
 });
@@ -19,8 +21,11 @@ page_data!(IndexData, "index/index.html", {
 pub async fn index_handler(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    session: Session<SessionSurrealPool<Any>>,
 ) -> Result<impl IntoResponse, HtmlError> {
     info!("Displaying index page");
+
+    let gdpr_accepted = auth.current_user.is_some() | session.get("gdpr_accepted").unwrap_or(false);
 
     let queue_length = state
         .rabbitmq_consumer
@@ -40,6 +45,7 @@ pub async fn index_handler(
         IndexData::template_name(),
         IndexData {
             queue_length,
+            gdpr_accepted,
             user: auth.current_user,
         },
         state.templates.clone(),

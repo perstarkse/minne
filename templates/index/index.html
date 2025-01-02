@@ -4,5 +4,8 @@
 {% include 'index/signed_in_view.html' %}
 {% else %}
 {% include 'index/hero.html' %}
+{% if not gdpr_accepted %}
+{% include "gdpr.html" %}
+{% endif %}
 {% endif %}
 {% endblock %}
