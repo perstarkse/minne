@@ -25,6 +25,7 @@ use zettle_db::{
             },
             html::{
                 account::{delete_account, set_api_key, show_account_page},
+                gdpr::{accept_gdpr, deny_gdpr},
                 index::index_handler,
                 ingress::{process_ingress_form, show_ingress_form},
                 search_result::search_result_handler,
@@ -96,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let session_config = SessionConfig::default()
         .with_table_name("test_session_table")
-        .with_secure(false);
+        .with_secure(true);
     let auth_config = AuthConfig::<String>::default();
 
     let session_store: SessionStore<SessionSurrealPool<Any>> = SessionStore::new(
@@ -150,6 +151,8 @@ fn html_routes(
 ) -> Router<AppState> {
     Router::new()
         .route("/", get(index_handler))
+        .route("/gdpr/accept", post(accept_gdpr))
+        .route("/gdpr/deny", post(deny_gdpr))
         .route("/search", get(search_result_handler))
         .route("/signout", get(sign_out_user))
         .route("/signin", get(show_signin_form).post(authenticate_user))
