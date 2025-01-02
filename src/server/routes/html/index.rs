@@ -27,11 +27,14 @@ pub async fn index_handler(
 
     let gdpr_accepted = auth.current_user.is_some() | session.get("gdpr_accepted").unwrap_or(false);
 
-    let queue_length = state
-        .rabbitmq_consumer
-        .get_queue_length()
-        .await
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    let queue_length = match auth.current_user.is_some() {
+        true => state
+            .rabbitmq_consumer
+            .get_queue_length()
+            .await
+            .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?,
+        false => 0,
+    };
 
     // let knowledge_entities = User::get_knowledge_entities(
     //     &auth.current_user.clone().unwrap().id,
