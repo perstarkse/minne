@@ -16,20 +16,19 @@ pub struct IngressInput {
     pub content: Option<String>,
     pub instructions: String,
     pub category: String,
-    pub files: Option<Vec<String>>,
+    pub files: Vec<FileInfo>,
 }
 
 /// Function to create ingress objects from input.
 ///
 /// # Arguments
 /// * `input` - IngressInput containing information needed to ingress content.
-/// * `redis_client` - Initialized redis client needed to retrieve file information
+/// * `user_id` - User id of the ingressing user
 ///
 /// # Returns
 /// * `Vec<IngressObject>` - An array containing the ingressed objects, one file/contenttype per object.
-pub async fn create_ingress_objects(
+pub fn create_ingress_objects(
     input: IngressInput,
-    db_client: &SurrealDbClient,
     user_id: &str,
 ) -> Result<Vec<IngressObject>, AppError> {
     // Initialize list
@@ -59,20 +58,13 @@ pub async fn create_ingress_objects(
         }
     }
 
-    // Look up FileInfo objects using the db and the submitted uuids in input.files
-    if let Some(file_ids) = input.files {
-        for id in file_ids {
-            if let Some(file_info) = get_item::<FileInfo>(db_client, &id).await? {
-                object_list.push(IngressObject::File {
-                    file_info,
-                    instructions: input.instructions.clone(),
-                    category: input.category.clone(),
-                    user_id: user_id.into(),
-                });
-            } else {
-                info!("No file with id: {}", id);
-            }
-        }
+    for file in input.files {
+        object_list.push(IngressObject::File {
+            file_info: file,
+            instructions: input.instructions.clone(),
+            category: input.category.clone(),
+            user_id: user_id.into(),
+        })
     }
 
     // If no objects are constructed, we return Err

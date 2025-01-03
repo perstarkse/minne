@@ -43,6 +43,7 @@ pub struct IngressParams {
     pub instructions: String,
     pub category: String,
     #[form_data(limit = "10000000")] // Adjust limit as needed
+    #[form_data(default)]
     pub files: Vec<FieldData<NamedTempFile>>,
 }
 
