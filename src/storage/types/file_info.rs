@@ -46,6 +46,7 @@ impl FileInfo {
     pub async fn new(
         field_data: FieldData<NamedTempFile>,
         db_client: &SurrealDbClient,
+        user_id: &str,
     ) -> Result<Self, FileError> {
         let file = field_data.contents;
         let file_name = field_data
@@ -74,7 +75,7 @@ impl FileInfo {
         let file_info = Self {
             id: uuid.to_string(),
             sha256,
-            path: Self::persist_file(&uuid, file, &sanitized_file_name)
+            path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id)
                 .await?
                 .to_string_lossy()
                 .into(),
@@ -139,12 +140,13 @@ impl FileInfo {
             .collect()
     }
 
-    /// Persists the file to the filesystem under `./data/{uuid}/{file_name}`.
+    /// Persists the file to the filesystem under `./data/{user_id}/{uuid}/{file_name}`.
     ///
     /// # Arguments
     /// * `uuid` - The UUID of the file.
     /// * `file` - The temporary file to persist.
     /// * `file_name` - The sanitized file name.
+    /// * `user-id` - User id
     ///
     /// # Returns
     /// * `Result<PathBuf, FileError>` - The persisted file path or an error.
@@ -152,11 +154,13 @@ impl FileInfo {
         uuid: &Uuid,
         file: NamedTempFile,
         file_name: &str,
+        user_id: &str,
     ) -> Result<PathBuf, FileError> {
         let base_dir = Path::new("./data");
-        let uuid_dir = base_dir.join(uuid.to_string());
+        let user_dir = base_dir.join(user_id); // Create the user directory
+        let uuid_dir = user_dir.join(uuid.to_string()); // Create the UUID directory under the user directory
 
-        // Create the UUID directory if it doesn't exist
+        // Create the user and UUID directories if they don't exist
         tokio::fs::create_dir_all(&uuid_dir)
             .await
             .map_err(FileError::Io)?;
@@ -167,7 +171,6 @@ impl FileInfo {
 
         // Persist the temporary file to the final path
         file.persist(&final_path)?;
-
         info!("Persisted file to {:?}", final_path);
 
         Ok(final_path)

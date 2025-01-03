@@ -7,3 +7,4 @@
 \[\] add more config structs for clarity
 \[\] user id to fileinfo and data path?
 \[x\] gdpr
+\[\] ios shortcut generation

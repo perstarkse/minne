@@ -1,21 +1,49 @@
 use crate::{
     error::{ApiError, AppError},
-    ingress::types::ingress_input::{create_ingress_objects, IngressInput},
+    ingress::types::{
+        ingress_input::{create_ingress_objects, IngressInput},
+        ingress_object,
+    },
     server::AppState,
-    storage::types::user::User,
+    storage::types::{file_info::FileInfo, user::User},
 };
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension, Json};
-use futures::future::try_join_all;
+use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
+use futures::{future::try_join_all, TryFutureExt};
+use tempfile::NamedTempFile;
 use tracing::info;
 
-pub async fn ingress_handler(
+#[derive(Debug, TryFromMultipart)]
+pub struct IngressParams {
+    pub content: Option<String>,
+    pub instructions: String,
+    pub category: String,
+    #[form_data(limit = "10000000")] // Adjust limit as needed
+    #[form_data(default)]
+    pub files: Vec<FieldData<NamedTempFile>>,
+}
+
+pub async fn ingress_data(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
-    Json(input): Json<IngressInput>,
+    TypedMultipart(input): TypedMultipart<IngressParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Received input: {:?}", input);
 
-    let ingress_objects = create_ingress_objects(input, &state.surreal_db_client, &user.id).await?;
+    let file_infos = try_join_all(input.files.into_iter().map(|file| {
+        FileInfo::new(file, &state.surreal_db_client, &user.id).map_err(|e| AppError::from(e))
+    }))
+    .await?;
+
+    let ingress_objects = create_ingress_objects(
+        IngressInput {
+            content: input.content,
+            instructions: input.instructions,
+            category: input.category,
+            files: file_infos,
+        },
+        user.id.as_str(),
+    )?;
 
     let futures: Vec<_> = ingress_objects
         .into_iter()
