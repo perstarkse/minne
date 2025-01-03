@@ -5,6 +5,7 @@ use axum::{
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
+use futures::{future::try_join_all, TryFutureExt};
 use serde::Serialize;
 use surrealdb::{engine::any::Any, Surreal};
 use tempfile::NamedTempFile;
@@ -12,6 +13,7 @@ use tracing::info;
 
 use crate::{
     error::{AppError, HtmlError},
+    ingress::types::ingress_input::{create_ingress_objects, IngressInput},
     server::AppState,
     storage::types::{file_info::FileInfo, user::User},
 };
@@ -52,22 +54,39 @@ pub async fn process_ingress_form(
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     TypedMultipart(input): TypedMultipart<IngressParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let _user = match auth.current_user {
+    let user = match auth.current_user {
         Some(user) => user,
         None => return Ok(Redirect::to("/").into_response()),
     };
 
     info!("{:?}", input);
 
-    // Process files and create FileInfo objects
-    let mut file_infos = Vec::new();
-    for file in input.files {
-        let file_info = FileInfo::new(file, &state.surreal_db_client)
-            .await
-            .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
-        file_infos.push(file_info);
-    }
+    let file_infos = try_join_all(input.files.into_iter().map(|file| {
+        FileInfo::new(file, &state.surreal_db_client, &user.id)
+            .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))
+    }))
+    .await?;
 
+    let ingress_objects = create_ingress_objects(
+        IngressInput {
+            content: input.content,
+            instructions: input.instructions,
+            category: input.category,
+            files: file_infos,
+        },
+        user.id.as_str(),
+    )
+    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+
+    let futures: Vec<_> = ingress_objects
+        .into_iter()
+        .map(|object| state.rabbitmq_producer.publish(object))
+        .collect();
+
+    try_join_all(futures)
+        .await
+        .map_err(AppError::from)
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
     // Process the ingress (implement your logic here)
 
     Ok(Html("SuccessBRO!").into_response())

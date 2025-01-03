@@ -20,8 +20,7 @@ use zettle_db::{
         middleware_api_auth::api_auth,
         routes::{
             api::{
-                file::upload_handler, ingress::ingress_data, query::query_handler,
-                queue_length::queue_length_handler,
+                ingress::ingress_data, query::query_handler, queue_length::queue_length_handler,
             },
             html::{
                 account::{delete_account, set_api_key, show_account_page},
@@ -134,8 +133,6 @@ fn api_routes_v1(app_state: &AppState) -> Router<AppState> {
         // Ingress routes
         .route("/ingress", post(ingress_data))
         .route("/message_count", get(queue_length_handler))
-        // File routes
-        .route("/file", post(upload_handler))
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         // Query routes
         .route("/query", post(query_handler))
