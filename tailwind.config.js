@@ -4,10 +4,20 @@ module.exports = {
     './templates/**/*',
     '!./templates/email/**/*'          
   ],
-  theme: {
-    extend: {},
+   theme: {
+    extend: {
+      typography: {
+        DEFAULT: {
+          css: {
+            maxWidth: '90ch', // Override max-width for all prose instances
+          },
+        },
+      },
+    },
   },
-  plugins: [require('daisyui')],
+  plugins: [
+    require("@tailwindcss/typography"),
+    require('daisyui')],
   daisyui: {
     themes: ["light", "dark"],
   },

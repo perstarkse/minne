@@ -24,6 +24,7 @@ use zettle_db::{
             },
             html::{
                 account::{delete_account, set_api_key, show_account_page},
+                documentation::index::show_documentation_index,
                 gdpr::{accept_gdpr, deny_gdpr},
                 index::index_handler,
                 ingress::{process_ingress_form, show_ingress_form},
@@ -164,6 +165,7 @@ fn html_routes(
             "/signup",
             get(show_signup_form).post(process_signup_and_show_verification),
         )
+        .route("/documentation", get(show_documentation_index))
         .nest_service("/assets", ServeDir::new("assets/"))
         .layer(
             AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(

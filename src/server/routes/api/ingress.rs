@@ -1,13 +1,10 @@
 use crate::{
     error::{ApiError, AppError},
-    ingress::types::{
-        ingress_input::{create_ingress_objects, IngressInput},
-        ingress_object,
-    },
+    ingress::types::ingress_input::{create_ingress_objects, IngressInput},
     server::AppState,
     storage::types::{file_info::FileInfo, user::User},
 };
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension};
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use futures::{future::try_join_all, TryFutureExt};
 use tempfile::NamedTempFile;
@@ -31,7 +28,7 @@ pub async fn ingress_data(
     info!("Received input: {:?}", input);
 
     let file_infos = try_join_all(input.files.into_iter().map(|file| {
-        FileInfo::new(file, &state.surreal_db_client, &user.id).map_err(|e| AppError::from(e))
+        FileInfo::new(file, &state.surreal_db_client, &user.id).map_err(AppError::from)
     }))
     .await?;
 

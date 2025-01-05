@@ -1,12 +1,13 @@
-<div id="gdpr-banner" class="fixed card mx-auto max-w-screen-sm  bg-neutral text-neutral-content bottom-0">
+<div id="gdpr-banner" class="fixed card mx-auto max-w-screen-sm mb-2 bg-neutral text-neutral-content bottom-0">
   <div class="card-body items-center text-center">
     <p class="text-sm"> We use cookies to enhance your experience. By continuing to visit this site, you agree to
       our use cookies.
       <a href="/privacy-policy" class="link link-primary">Learn more</a>
     </p>
-    <div class="card-actions justify-end">
-      <button class="btn btn-ghost" hx-post="/gdpr/deny" hx-target="#gdpr-banner" hx-swap="outerHTML">Deny</button>
-      <button class="btn btn-primary" hx-post="/gdpr/accept" hx-target="#gdpr-banner"
+    <div class="card-actions justify-end mt-2">
+      <button class="btn btn-ghost btn-sm" hx-post="/gdpr/deny" hx-target="#gdpr-banner"
+        hx-swap="outerHTML">Deny</button>
+      <button class="btn btn-primary btn-sm" hx-post="/gdpr/accept" hx-target="#gdpr-banner"
         hx-swap="outerHTML">Accept</button>
     </div>
   </div>

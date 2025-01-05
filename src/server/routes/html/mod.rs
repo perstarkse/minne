@@ -4,6 +4,7 @@ use axum::response::Html;
 use minijinja_autoreload::AutoReloader;
 
 pub mod account;
+pub mod documentation;
 pub mod gdpr;
 pub mod index;
 pub mod ingress;
