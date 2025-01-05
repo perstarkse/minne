@@ -1,11 +1,5 @@
 use super::ingress_object::IngressObject;
-use crate::{
-    error::AppError,
-    storage::{
-        db::{get_item, SurrealDbClient},
-        types::file_info::FileInfo,
-    },
-};
+use crate::{error::AppError, storage::types::file_info::FileInfo};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use url::Url;

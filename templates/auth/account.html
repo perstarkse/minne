@@ -5,45 +5,47 @@
     opacity: 0.5;
   }
 </style>
-<div class="max-w-lg w-full">
-  <h2 class="text-2xl font-bold text-center mb-8">Account Settings</h2>
-  <div class="form-control">
-    <label class="label">
-      <span class="label-text">Email</span>
-    </label>
-    <input type="email" name="email" value="{{ user.email }}" class="input input-bordered w-full" disabled />
+<main class="flex-grow flex justify-center items-center">
+  <div class="max-w-lg w-full">
+    <h2 class="text-2xl font-bold text-center mb-8">Account Settings</h2>
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">Email</span>
+      </label>
+      <input type="email" name="email" value="{{ user.email }}" class="input input-bordered w-full" disabled />
+    </div>
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">API key</span>
+      </label>
+      {% block api_key_section %}
+      {% if user.api_key %}
+      <input type="text" name="api-key" value="{{ user.api_key }}" class="input input-bordered w-full" disabled />
+      {% else %}
+      <button hx-post="/set-api-key" class="btn btn-secondary w-full" hx-swap="outerHTML">
+        Create API-Key
+      </button>
+      {% endif %}
+      {% endblock %}
+    </div>
+    <div class="form-control mt-4">
+      <button hx-post="/verify-email" class="btn btn-secondary w-full">
+        Verify Email
+      </button>
+    </div>
+    <div class="form-control mt-4">
+      <button hx-get="/change-password" class="btn btn-primary w-full">
+        Change Password
+      </button>
+    </div>
+    <div class="form-control mt-4">
+      <button hx-delete="/delete-account"
+        hx-confirm="This action will permanently delete your account and all data associated. Are you sure you want to continue?"
+        class="btn btn-error w-full">
+        Delete Account
+      </button>
+    </div>
+    <div id="account-result" class="mt-4"></div>
   </div>
-  <div class="form-control">
-    <label class="label">
-      <span class="label-text">API key</span>
-    </label>
-    {% block api_key_section %}
-    {% if user.api_key %}
-    <input type="text" name="api-key" value="{{ user.api_key }}" class="input input-bordered w-full" disabled />
-    {% else %}
-    <button hx-post="/set-api-key" class="btn btn-secondary w-full" hx-swap="outerHTML">
-      Create API-Key
-    </button>
-    {% endif %}
-    {% endblock %}
-  </div>
-  <div class="form-control mt-4">
-    <button hx-post="/verify-email" class="btn btn-secondary w-full">
-      Verify Email
-    </button>
-  </div>
-  <div class="form-control mt-4">
-    <button hx-get="/change-password" class="btn btn-primary w-full">
-      Change Password
-    </button>
-  </div>
-  <div class="form-control mt-4">
-    <button hx-delete="/delete-account"
-      hx-confirm="This action will permanently delete your account and all data associated. Are you sure you want to continue?"
-      class="btn btn-error w-full">
-      Delete Account
-    </button>
-  </div>
-  <div id="account-result" class="mt-4"></div>
-</div>
+</main>
 {% endblock %}

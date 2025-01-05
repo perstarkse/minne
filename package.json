@@ -7,6 +7,7 @@
     "dev": "npm-run-all --parallel watch:css watch:tailwind"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.15",
     "autoprefixer": "^10.4.20",
     "cssnano": "^7.0.6",
     "daisyui": "^4.12.23",

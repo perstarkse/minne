@@ -76,7 +76,7 @@ pub async fn process_ingress_form(
         },
         user.id.as_str(),
     )
-    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     let futures: Vec<_> = ingress_objects
         .into_iter()
@@ -86,9 +86,7 @@ pub async fn process_ingress_form(
     try_join_all(futures)
         .await
         .map_err(AppError::from)
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
-    // Process the ingress (implement your logic here)
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     Ok(Html("SuccessBRO!").into_response())
-    // Ok((HxRedirect::from(Uri::from_static("/")), StatusCode::OK).into_response())
 }
