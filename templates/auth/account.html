@@ -21,6 +21,8 @@
       {% block api_key_section %}
       {% if user.api_key %}
       <input type="text" name="api-key" value="{{ user.api_key }}" class="input input-bordered w-full" disabled />
+      <button hx-get="/get-ios-shortcut" class="btn btn-accent mt-4" hx-swap="outerHTML">Download iOS
+        shortcut</button>
       {% else %}
       <button hx-post="/set-api-key" class="btn btn-secondary w-full" hx-swap="outerHTML">
         Create API-Key
