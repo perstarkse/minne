@@ -6,13 +6,14 @@
   }
 </style>
 <main class="flex-grow flex justify-center items-center">
-  <div class="max-w-lg w-full">
+  <div class="max-w-lg p-5  w-full">
     <h2 class="text-2xl font-bold text-center mb-8">Account Settings</h2>
     <div class="form-control">
       <label class="label">
         <span class="label-text">Email</span>
       </label>
-      <input type="email" name="email" value="{{ user.email }}" class="input input-bordered w-full" disabled />
+      <input type="email" name="email" value="{{ user.email }}" class="input !text-gray-100 input-bordered w-full"
+        disabled />
     </div>
     <div class="form-control">
       <label class="label">
@@ -20,9 +21,11 @@
       </label>
       {% block api_key_section %}
       {% if user.api_key %}
-      <input type="text" name="api-key" value="{{ user.api_key }}" class="input input-bordered w-full" disabled />
-      <button hx-get="/get-ios-shortcut" class="btn btn-accent mt-4" hx-swap="outerHTML">Download iOS
-        shortcut</button>
+      <input type="text" name="api-key" value="{{ user.api_key }}" class="input !text-gray-100 input-bordered w-full"
+        disabled />
+      <a href="https://www.icloud.com/shortcuts/66985f7b98a74aaeac6ba29c3f1f0960" class="btn btn-accent mt-4">Download
+        iOS
+        shortcut</a>
       {% else %}
       <button hx-post="/set-api-key" class="btn btn-secondary w-full" hx-swap="outerHTML">
         Create API-Key
