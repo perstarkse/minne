@@ -23,7 +23,7 @@ use zettle_db::{
                 ingress::ingress_data, query::query_handler, queue_length::queue_length_handler,
             },
             html::{
-                account::{delete_account, set_api_key, show_account_page, show_ios_shortcut},
+                account::{delete_account, set_api_key, show_account_page},
                 documentation::index::show_documentation_index,
                 gdpr::{accept_gdpr, deny_gdpr},
                 index::index_handler,
@@ -160,7 +160,6 @@ fn html_routes(
         )
         .route("/account", get(show_account_page))
         .route("/set-api-key", post(set_api_key))
-        .route("/get-ios-shortcut", get(show_ios_shortcut))
         .route("/delete-account", delete(delete_account))
         .route(
             "/signup",
