@@ -46,6 +46,10 @@ pub enum AppError {
     Io(#[from] std::io::Error),
     #[error("Minijina error: {0}")]
     MiniJinja(#[from] minijinja::Error),
+    #[error("Reqwest error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("Tiktoken error: {0}")]
+    Tiktoken(#[from] anyhow::Error),
 }
 
 // API-specific errors
