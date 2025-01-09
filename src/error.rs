@@ -13,9 +13,7 @@ use serde_json::json;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::{
-    rabbitmq::RabbitMQError, storage::types::file_info::FileError, utils::mailer::EmailError,
-};
+use crate::{storage::types::file_info::FileError, utils::mailer::EmailError};
 
 // Core internal errors
 #[derive(Error, Debug)]
@@ -24,8 +22,6 @@ pub enum AppError {
     Database(#[from] surrealdb::Error),
     #[error("OpenAI error: {0}")]
     OpenAI(#[from] OpenAIError),
-    #[error("RabbitMQ error: {0}")]
-    RabbitMQ(#[from] RabbitMQError),
     #[error("File error: {0}")]
     File(#[from] FileError),
     #[error("Email error: {0}")]
@@ -50,6 +46,8 @@ pub enum AppError {
     Reqwest(#[from] reqwest::Error),
     #[error("Tiktoken error: {0}")]
     Tiktoken(#[from] anyhow::Error),
+    #[error("Ingress Processing error: {0}")]
+    Processing(String),
 }
 
 // API-specific errors

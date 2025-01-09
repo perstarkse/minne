@@ -15,12 +15,15 @@ use tower_http::services::ServeDir;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::{
-    rabbitmq::{consumer::RabbitMQConsumer, publisher::RabbitMQProducer, RabbitMQConfig},
+    ingress::jobqueue::JobQueue,
     server::{
         middleware_api_auth::api_auth,
         routes::{
             api::{
-                ingress::ingress_data, query::query_handler, queue_length::queue_length_handler,
+                ingress::ingress_data,
+                ingress_task::{delete_queue_task, get_queue_tasks},
+                query::query_handler,
+                queue_length::queue_length_handler,
             },
             html::{
                 account::{delete_account, set_api_key, show_account_page},
@@ -28,6 +31,7 @@ use zettle_db::{
                 gdpr::{accept_gdpr, deny_gdpr},
                 index::index_handler,
                 ingress::{process_ingress_form, show_ingress_form},
+                ingress_tasks::{delete_task, show_queue_tasks},
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
                 signout::sign_out_user,
@@ -53,14 +57,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("{:?}", config);
 
-    // Set up RabbitMQ
-    let rabbitmq_config = RabbitMQConfig {
-        amqp_addr: config.rabbitmq_address,
-        exchange: config.rabbitmq_exchange,
-        queue: config.rabbitmq_queue,
-        routing_key: config.rabbitmq_routing_key,
-    };
-
     let reloader = AutoReloader::new(move |notifier| {
         let template_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates");
         let mut env = Environment::new();
@@ -71,19 +67,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(env)
     });
 
+    let surreal_db_client = Arc::new(
+        SurrealDbClient::new(
+            &config.surrealdb_address,
+            &config.surrealdb_username,
+            &config.surrealdb_password,
+            &config.surrealdb_namespace,
+            &config.surrealdb_database,
+        )
+        .await?,
+    );
+
     let app_state = AppState {
-        rabbitmq_producer: Arc::new(RabbitMQProducer::new(&rabbitmq_config).await?),
-        rabbitmq_consumer: Arc::new(RabbitMQConsumer::new(&rabbitmq_config, false).await?),
-        surreal_db_client: Arc::new(
-            SurrealDbClient::new(
-                &config.surrealdb_address,
-                &config.surrealdb_username,
-                &config.surrealdb_password,
-                &config.surrealdb_namespace,
-                &config.surrealdb_database,
-            )
-            .await?,
-        ),
+        surreal_db_client: surreal_db_client.clone(),
         openai_client: Arc::new(async_openai::Client::new()),
         templates: Arc::new(reloader),
         mailer: Arc::new(Mailer::new(
@@ -91,6 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.smtp_relayer,
             config.smtp_password,
         )?),
+        job_queue: Arc::new(JobQueue::new(surreal_db_client)),
     };
 
     // setup_auth(&app_state.surreal_db_client).await?;
@@ -134,6 +131,8 @@ fn api_routes_v1(app_state: &AppState) -> Router<AppState> {
         // Ingress routes
         .route("/ingress", post(ingress_data))
         .route("/message_count", get(queue_length_handler))
+        .route("/queue", get(get_queue_tasks))
+        .route("/queue/:delivery_tag", delete(delete_queue_task))
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         // Query routes
         .route("/query", post(query_handler))
@@ -158,6 +157,8 @@ fn html_routes(
             "/ingress",
             get(show_ingress_form).post(process_ingress_form),
         )
+        .route("/queue", get(show_queue_tasks))
+        .route("/queue/:delivery_tag", post(delete_task))
         .route("/account", get(show_account_page))
         .route("/set-api-key", post(set_api_key))
         .route("/delete-account", delete(delete_account))

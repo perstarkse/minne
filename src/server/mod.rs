@@ -1,5 +1,4 @@
-use crate::rabbitmq::consumer::RabbitMQConsumer;
-use crate::rabbitmq::publisher::RabbitMQProducer;
+use crate::ingress::jobqueue::JobQueue;
 use crate::storage::db::SurrealDbClient;
 use crate::utils::mailer::Mailer;
 use minijinja_autoreload::AutoReloader;
@@ -10,10 +9,9 @@ pub mod routes;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub rabbitmq_producer: Arc<RabbitMQProducer>,
-    pub rabbitmq_consumer: Arc<RabbitMQConsumer>,
     pub surreal_db_client: Arc<SurrealDbClient>,
     pub openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     pub templates: Arc<AutoReloader>,
     pub mailer: Arc<Mailer>,
+    pub job_queue: Arc<JobQueue>,
 }

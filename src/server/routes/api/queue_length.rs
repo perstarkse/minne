@@ -4,6 +4,7 @@ use tracing::info;
 use crate::{
     error::{ApiError, AppError},
     server::AppState,
+    storage::{db::get_all_stored_items, types::job::Job},
 };
 
 pub async fn queue_length_handler(
@@ -11,11 +12,10 @@ pub async fn queue_length_handler(
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Getting queue length");
 
-    let queue_length = state
-        .rabbitmq_consumer
-        .get_queue_length()
+    let queue_length = get_all_stored_items::<Job>(&state.surreal_db_client)
         .await
-        .map_err(AppError::from)?;
+        .map_err(AppError::from)?
+        .len();
 
     info!("Queue length: {}", queue_length);
 
