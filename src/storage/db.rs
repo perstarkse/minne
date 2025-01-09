@@ -40,6 +40,16 @@ impl SurrealDbClient {
         self.client.query("DEFINE INDEX idx_embedding_chunks ON text_chunk FIELDS embedding HNSW DIMENSION 1536").await?;
         self.client.query("DEFINE INDEX idx_embedding_entities ON knowledge_entity FIELDS embedding HNSW DIMENSION 1536").await?;
 
+        self.client
+            .query("DEFINE INDEX idx_job_status ON job FIELDS status")
+            .await?;
+        self.client
+            .query("DEFINE INDEX idx_job_user ON job FIELDS user_id")
+            .await?;
+        self.client
+            .query("DEFINE INDEX idx_job_created ON job FIELDS created_at")
+            .await?;
+
         Ok(())
     }
 

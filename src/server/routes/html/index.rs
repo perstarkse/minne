@@ -29,10 +29,11 @@ pub async fn index_handler(
 
     let queue_length = match auth.current_user.is_some() {
         true => state
-            .rabbitmq_consumer
-            .get_queue_length()
+            .job_queue
+            .get_user_jobs(&auth.current_user.clone().unwrap().id)
             .await
-            .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?,
+            .map_err(|e| HtmlError::new(e, state.templates.clone()))?
+            .len(),
         false => 0,
     };
 
@@ -47,7 +48,7 @@ pub async fn index_handler(
     let output = render_template(
         IndexData::template_name(),
         IndexData {
-            queue_length,
+            queue_length: queue_length.try_into().unwrap(),
             gdpr_accepted,
             user: auth.current_user,
         },

@@ -44,7 +44,7 @@ pub async fn ingress_data(
 
     let futures: Vec<_> = ingress_objects
         .into_iter()
-        .map(|object| state.rabbitmq_producer.publish(object))
+        .map(|object| state.job_queue.enqueue(object.clone(), user.id.clone()))
         .collect();
 
     try_join_all(futures).await.map_err(AppError::from)?;
