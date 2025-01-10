@@ -9,7 +9,7 @@ use tracing::{error, info};
 use crate::{
     error::AppError,
     storage::{
-        db::{store_item, SurrealDbClient},
+        db::{delete_item, get_item, store_item, SurrealDbClient},
         types::{
             job::{Job, JobStatus},
             StoredObject,
@@ -20,10 +20,10 @@ use crate::{
 use super::{content_processor::ContentProcessor, types::ingress_object::IngressObject};
 
 pub struct JobQueue {
-    db: Arc<SurrealDbClient>,
+    pub db: Arc<SurrealDbClient>,
 }
 
-const MAX_ATTEMPTS: u32 = 3;
+pub const MAX_ATTEMPTS: u32 = 3;
 
 impl JobQueue {
     pub fn new(db: Arc<SurrealDbClient>) -> Self {
@@ -50,34 +50,22 @@ impl JobQueue {
     }
 
     pub async fn delete_job(&self, id: &str, user_id: &str) -> Result<(), AppError> {
-        // First, validate that the job exists and belongs to the user
-        let job: Option<Job> = self
-            .db
-            .query("SELECT * FROM job WHERE id = $id AND user_id = $user_id")
-            .bind(("id", id.to_string()))
-            .bind(("user_id", user_id.to_string()))
+        get_item::<Job>(&self.db.client, id)
             .await?
-            .take(0)?;
-
-        // If no job is found or it doesn't belong to the user, return Unauthorized
-        if job.is_none() {
-            error!("Unauthorized attempt to delete job {id} by user {user_id}");
-            return Err(AppError::Auth("Not authorized to delete this job".into()));
-        }
+            .filter(|job| job.user_id == user_id)
+            .ok_or_else(|| {
+                error!("Unauthorized attempt to delete job {id} by user {user_id}");
+                AppError::Auth("Not authorized to delete this job".into())
+            })?;
 
         info!("Deleting job {id} for user {user_id}");
-
-        // If validation passes, delete the job
-        let _deleted: Option<Job> = self
-            .db
-            .delete((Job::table_name(), id))
+        delete_item::<Job>(&self.db.client, id)
             .await
             .map_err(AppError::Database)?;
 
         Ok(())
     }
 
-    /// Update status for job
     pub async fn update_status(
         &self,
         id: &str,
@@ -89,13 +77,10 @@ impl JobQueue {
             .as_millis()
             .to_string();
 
-        let status_value =
-            serde_json::to_value(status).map_err(|e| AppError::LLMParsing(e.to_string()))?;
-
         let job: Option<Job> = self
             .db
             .update((Job::table_name(), id))
-            .patch(PatchOp::replace("/status", status_value))
+            .patch(PatchOp::replace("/status", status))
             .patch(PatchOp::replace("/updated_at", now))
             .await?;
 
@@ -109,14 +94,27 @@ impl JobQueue {
         self.db.select("job").live().await
     }
 
+    /// Get unfinished jobs, ie newly created and in progress up two times
     pub async fn get_unfinished_jobs(&self) -> Result<Vec<Job>, AppError> {
         let jobs: Vec<Job> = self
             .db
             .query(
-                "SELECT * FROM job WHERE status.Created = true OR (status.InProgress.attempts < $max_attempts) ORDER BY created_at ASC")
+                "SELECT * FROM type::table($table) 
+             WHERE 
+                status = 'Created' 
+                OR (
+                    status.InProgress != NONE 
+                    AND status.InProgress.attempts < $max_attempts
+                )
+             ORDER BY created_at ASC",
+            )
+            .bind(("table", Job::table_name()))
             .bind(("max_attempts", MAX_ATTEMPTS))
             .await?
             .take(0)?;
+
+        println!("Unfinished jobs found: {}", jobs.len());
+
         Ok(jobs)
     }
 
