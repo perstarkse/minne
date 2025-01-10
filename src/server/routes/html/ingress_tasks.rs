@@ -2,7 +2,10 @@ use crate::{
     error::{AppError, HtmlError},
     page_data,
     server::AppState,
-    storage::types::{job::Job, user::User},
+    storage::types::{
+        job::{Job, JobStatus},
+        user::User,
+    },
 };
 use axum::{
     extract::{Path, State},
@@ -11,10 +14,11 @@ use axum::{
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use surrealdb::{engine::any::Any, Surreal};
+use tracing::info;
 
 use super::render_template;
 
-page_data!(ShowQueueTasks, "queue_tasks.html", {jobs: Vec<Job>});
+page_data!(ShowQueueTasks, "queue_tasks.html", {user : User,jobs: Vec<Job>});
 
 pub async fn show_queue_tasks(
     State(state): State<AppState>,
@@ -31,9 +35,16 @@ pub async fn show_queue_tasks(
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
+    for job in &jobs {
+        match job.status {
+            JobStatus::Created => info!("Found a created job"),
+            _ => continue,
+        }
+    }
+
     let rendered = render_template(
         ShowQueueTasks::template_name(),
-        ShowQueueTasks { jobs },
+        ShowQueueTasks { jobs, user },
         state.templates.clone(),
     )
     .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;

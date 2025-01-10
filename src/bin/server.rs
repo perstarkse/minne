@@ -158,7 +158,7 @@ fn html_routes(
             get(show_ingress_form).post(process_ingress_form),
         )
         .route("/queue", get(show_queue_tasks))
-        .route("/queue/:delivery_tag", post(delete_task))
+        .route("/queue/:delivery_tag", delete(delete_task))
         .route("/account", get(show_account_page))
         .route("/set-api-key", post(set_api_key))
         .route("/delete-account", delete(delete_account))
