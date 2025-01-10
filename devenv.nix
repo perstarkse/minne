@@ -37,13 +37,13 @@
     surreal_db.exec = "docker run --rm --pull always -p 8000:8000 --net=host --user $(id -u) -v $(pwd)/database:/database surrealdb/surrealdb:latest-dev start rocksdb:/database/database.db --user root_user --pass root_password";
   };
 
-  services = {
-    rabbitmq = {
-      enable =
-        true;
-      # plugins = ["tracing"];
-    };
-  };
+  # services = {
+  #   rabbitmq = {
+  #     enable =
+  #       true;
+  #     # plugins = ["tracing"];
+  #   };
+  # };
   # https://devenv.sh/tasks/
   # tasks = {
   #   "myproj:setup".exec = "mytool build";
