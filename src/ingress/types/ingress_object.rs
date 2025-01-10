@@ -186,7 +186,7 @@ impl IngressObject {
 
         let content = if token_count > MAX_TOKENS {
             // Split content into structural blocks
-            let blocks: Vec<&str> = content.split(|c| c == '\n').collect();
+            let blocks: Vec<&str> = content.split('\n').collect();
             let mut truncated = String::new();
             let mut current_tokens = 0;
 

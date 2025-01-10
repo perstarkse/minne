@@ -7,7 +7,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::{
     ingress::{
         content_processor::ContentProcessor,
-        jobqueue::{self, JobQueue, MAX_ATTEMPTS},
+        jobqueue::{JobQueue, MAX_ATTEMPTS},
     },
     storage::{
         db::{get_item, SurrealDbClient},
