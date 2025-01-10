@@ -5,6 +5,14 @@
 \[x\] hx-redirect
 \[x\] macro for pagedata?
 \[\] add more config structs for clarity
-\[\] user id to fileinfo and data path?
+\[x\] user id to fileinfo and data path?
 \[x\] gdpr
-\[\] ios shortcut generation
+\[x\] ios shortcut generation
+\[x\] job queue
+\[\] html ingression
+\[\] view latest
+\[\] view graph map
+\[\] admin controls re registration
+\[\] smoothie_dom test
+\[\] archive ingressed webpage
+\[\] view content
