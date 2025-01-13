@@ -18,8 +18,11 @@ impl KnowledgeRelationship {
         relationship_type: String,
         metadata: Option<serde_json::Value>,
     ) -> Self {
+        let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),
+            created_at: now,
+            updated_at: now,
             in_,
             out,
             relationship_type,

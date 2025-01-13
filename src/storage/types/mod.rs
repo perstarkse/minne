@@ -23,6 +23,7 @@ macro_rules! stored_object {
         use $crate::storage::types::StoredObject;
         use serde::de::{self, Visitor};
         use std::fmt;
+        use chrono::{DateTime, Utc };
 
         struct FlexibleIdVisitor;
 
@@ -64,10 +65,61 @@ macro_rules! stored_object {
             deserializer.deserialize_any(FlexibleIdVisitor)
         }
 
+        fn serialize_datetime<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            Into::<surrealdb::sql::Datetime>::into(*date).serialize(serializer)
+        }
+
+        // fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+        // where
+        //     D: serde::Deserializer<'de>,
+        // {
+        //     let dt = surrealdb::sql::Datetime::deserialize(deserializer)?;
+        //     Ok(DateTime::<Utc>::from(dt))
+        // }
+        fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    // Accept various formats
+    let value = serde_json::Value::deserialize(deserializer)?;
+
+    match value {
+        // Handle string format
+        serde_json::Value::String(s) => {
+            if s.starts_with("d\"") && s.ends_with('\"') {
+                let cleaned = &s[2..s.len()-1];
+                DateTime::parse_from_rfc3339(cleaned)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(Error::custom)
+            } else {
+                DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(Error::custom)
+            }
+        },
+        // Handle object format (in case SurrealDB returns datetime as an object)
+        serde_json::Value::Object(_) => {
+            let dt = surrealdb::sql::Datetime::deserialize(value)
+                .map_err(Error::custom)?;
+            Ok(DateTime::<Utc>::from(dt))
+        },
+        _ => Err(Error::custom("unexpected datetime format")),
+    }
+}
+
         #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct $name {
             #[serde(deserialize_with = "deserialize_flexible_id")]
             pub id: String,
+            #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime", default)]
+            pub created_at: DateTime<Utc>,
+            #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime", default)]
+            pub updated_at: DateTime<Utc>,
             $(pub $field: $ty),*
         }
 

@@ -8,7 +8,7 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension};
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use futures::{future::try_join_all, TryFutureExt};
 use tempfile::NamedTempFile;
-use tracing::info;
+use tracing::{debug, info};
 
 #[derive(Debug, TryFromMultipart)]
 pub struct IngressParams {
@@ -32,6 +32,8 @@ pub async fn ingress_data(
     }))
     .await?;
 
+    debug!("Got file infos");
+
     let ingress_objects = create_ingress_objects(
         IngressInput {
             content: input.content,
@@ -41,6 +43,7 @@ pub async fn ingress_data(
         },
         user.id.as_str(),
     )?;
+    debug!("Got ingress objects");
 
     let futures: Vec<_> = ingress_objects
         .into_iter()

@@ -40,7 +40,14 @@ use zettle_db::{
         },
         AppState,
     },
-    storage::{db::SurrealDbClient, types::user::User},
+    storage::{
+        db::SurrealDbClient,
+        types::{
+            file_info::FileInfo, job::Job, knowledge_entity::KnowledgeEntity,
+            knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
+            text_content::TextContent, user::User,
+        },
+    },
     utils::{config::get_config, mailer::Mailer},
 };
 
@@ -90,8 +97,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         job_queue: Arc::new(JobQueue::new(surreal_db_client)),
     };
 
-    // setup_auth(&app_state.surreal_db_client).await?;
-
     let session_config = SessionConfig::default()
         .with_table_name("test_session_table")
         .with_secure(true);
@@ -104,6 +109,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
 
     app_state.surreal_db_client.build_indexes().await?;
+    setup_auth(&app_state.surreal_db_client).await?;
+    // app_state.surreal_db_client.drop_table::<FileInfo>().await?;
+    // app_state.surreal_db_client.drop_table::<User>().await?;
+    // app_state.surreal_db_client.drop_table::<Job>().await?;
+    // app_state
+    //     .surreal_db_client
+    //     .drop_table::<KnowledgeEntity>()
+    //     .await?;
+    // app_state
+    //     .surreal_db_client
+    //     .drop_table::<KnowledgeRelationship>()
+    //     .await?;
+    // app_state
+    //     .surreal_db_client
+    //     .drop_table::<TextContent>()
+    //     .await?;
+    // app_state
+    //     .surreal_db_client
+    //     .drop_table::<TextChunk>()
+    //     .await?;
 
     // Create Axum router
     let app = Router::new()
@@ -177,14 +202,14 @@ fn html_routes(
         .layer(SessionLayer::new(session_store))
 }
 
-// async fn setup_auth(db: &SurrealDbClient) -> Result<(), Box<dyn std::error::Error>> {
-//     db.query(
-//         "DEFINE TABLE user SCHEMALESS;
-//         DEFINE INDEX unique_name ON TABLE user FIELDS email UNIQUE;
-//         DEFINE ACCESS account ON DATABASE TYPE RECORD
-//         SIGNUP ( CREATE user SET email = $email, password = crypto::argon2::generate($password), anonymous = false, user_id = $user_id)
-//         SIGNIN ( SELECT * FROM user WHERE email = $email AND crypto::argon2::compare(password, $password) );",
-//     )
-//     .await?;
-//     Ok(())
-// }
+async fn setup_auth(db: &SurrealDbClient) -> Result<(), Box<dyn std::error::Error>> {
+    db.query(
+        "DEFINE TABLE user SCHEMALESS;
+        DEFINE INDEX unique_name ON TABLE user FIELDS email UNIQUE;
+        DEFINE ACCESS account ON DATABASE TYPE RECORD
+        SIGNUP ( CREATE user SET email = $email, password = crypto::argon2::generate($password), anonymous = false, user_id = $user_id)
+        SIGNIN ( SELECT * FROM user WHERE email = $email AND crypto::argon2::compare(password, $password) );",
+    )
+    .await?;
+    Ok(())
+}

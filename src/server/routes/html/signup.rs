@@ -9,6 +9,7 @@ use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use serde::{Deserialize, Serialize};
 use surrealdb::{engine::any::Any, Surreal};
+use tracing::info;
 
 use crate::{
     error::{AppError, HtmlError},
@@ -63,7 +64,8 @@ pub async fn process_signup_and_show_verification(
 ) -> Result<impl IntoResponse, HtmlError> {
     let user = match User::create_new(form.email, form.password, &state.surreal_db_client).await {
         Ok(user) => user,
-        Err(_) => {
+        Err(e) => {
+            info!("{:?}", e);
             return Ok(Html("<p>User already exists</p>").into_response());
         }
     };

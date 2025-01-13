@@ -20,8 +20,11 @@ impl TextContent {
         file_info: Option<FileInfo>,
         user_id: String,
     ) -> Self {
+        let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),
+            created_at: now,
+            updated_at: now,
             text,
             file_info,
             instructions,

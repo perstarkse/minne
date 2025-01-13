@@ -20,6 +20,7 @@ need_stdout = false
 command = [
     "cargo", "clippy",
     "--color", "always",
+    "-j","4"
 ]
 need_stdout = false
 
@@ -88,7 +89,7 @@ background = true
 # Call it as
 #    bacon ex -- my-example
 [jobs.server]
-command = ["cargo", "run", "--color", "always", "--bin", "server"]
+command = ["cargo", "run", "--color", "always", "--bin", "server", "-j", "4"]
 need_stdout = true
 allow_warnings = true
 watch = ["src", "Cargo.toml", "Cargo.lock"]
@@ -96,7 +97,7 @@ background = true
 on_change_strategy = "kill_then_restart"
 
 [jobs.worker]
-command = ["cargo", "run", "--color", "always", "--bin", "worker"]
+command = ["cargo", "run", "--color", "always", "--bin", "worker", "-j", "4"]
 need_stdout = true
 allow_warnings = true
 watch = ["src", "Cargo.toml", "Cargo.lock"]

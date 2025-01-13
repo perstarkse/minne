@@ -7,7 +7,7 @@ use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
-use super::knowledge_entity::KnowledgeEntity;
+use super::{knowledge_entity::KnowledgeEntity, text_content::TextContent};
 
 stored_object!(User, "user", {
     email: String,
@@ -47,6 +47,8 @@ impl User {
             return Err(AppError::Auth("User already exists".into()));
         }
 
+        let now = Utc::now();
+
         let id = Uuid::new_v4().to_string();
         let user: Option<User> = db
             .client
@@ -54,11 +56,15 @@ impl User {
                 "CREATE type::thing('user', $id) SET 
                 email = $email, 
                 password = crypto::argon2::generate($password),
-                anonymous = false",
+                anonymous = false,
+                created_at = $created_at,
+                updated_at = $updated_at",
             )
             .bind(("id", id))
             .bind(("email", email))
             .bind(("password", password))
+            .bind(("created_at", now))
+            .bind(("updated_at", now))
             .await?
             .take(0)?;
 
@@ -168,5 +174,19 @@ impl User {
             .take(0)?;
 
         Ok(entities)
+    }
+
+    pub async fn get_latest_text_contents(
+        id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<TextContent>, AppError> {
+        let items: Vec<TextContent> = db
+            .client
+            .query("SELECT * FROM text_content WHERE user_id = $user_id ORDER BY created_at DESC LIMIT 5")
+            .bind(("user_id", id.to_owned()))
+            .await?
+            .take(0)?;
+
+        Ok(items)
     }
 }
