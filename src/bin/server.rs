@@ -40,14 +40,7 @@ use zettle_db::{
         },
         AppState,
     },
-    storage::{
-        db::SurrealDbClient,
-        types::{
-            file_info::FileInfo, job::Job, knowledge_entity::KnowledgeEntity,
-            knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
-            text_content::TextContent, user::User,
-        },
-    },
+    storage::{db::SurrealDbClient, types::user::User},
     utils::{config::get_config, mailer::Mailer},
 };
 
