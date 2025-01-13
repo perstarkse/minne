@@ -37,6 +37,10 @@ pub async fn index_handler(
         false => 0,
     };
 
+    // let latest_text_contents = match auth.current_user.is_some() {
+    //     true =>
+    // }
+
     // let knowledge_entities = User::get_knowledge_entities(
     //     &auth.current_user.clone().unwrap().id,
     //     &state.surreal_db_client,

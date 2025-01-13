@@ -1,3 +1,4 @@
+use chrono::Utc;
 use futures::Stream;
 use std::{
     sync::Arc,
@@ -33,6 +34,7 @@ impl JobQueue {
     /// Creates a new job and stores it in the database
     pub async fn enqueue(&self, content: IngressObject, user_id: String) -> Result<Job, AppError> {
         let job = Job::new(content, user_id).await;
+        info!("{:?}", job);
         store_item(&self.db, job.clone()).await?;
         Ok(job)
     }
@@ -46,6 +48,7 @@ impl JobQueue {
             .await?
             .take(0)?;
 
+        info!("{:?}", jobs);
         Ok(jobs)
     }
 
@@ -95,8 +98,11 @@ impl JobQueue {
     }
 
     /// Get unfinished jobs, ie newly created and in progress up two times
-    pub async fn get_unfinished_jobs(&self) -> Result<Vec<Job>, AppError> {
-        let jobs: Vec<Job> = self
+    // pub async fn get_unfinished_jobs(&self) -> Result<Vec<Job>, AppError> {
+    pub async fn get_unfinished_jobs(&self) -> Result<(), AppError> {
+        info!("Getting unfinished jobs");
+        // let jobs: Vec<Job> = self
+        let jobs = self
             .db
             .query(
                 "SELECT * FROM type::table($table) 
@@ -110,12 +116,14 @@ impl JobQueue {
             )
             .bind(("table", Job::table_name()))
             .bind(("max_attempts", MAX_ATTEMPTS))
-            .await?
-            .take(0)?;
+            .await?;
+        // .take(0)?;
 
-        println!("Unfinished jobs found: {}", jobs.len());
+        info!("{:?}", jobs);
+        // println!("Unfinished jobs found: {}", jobs.len());
 
-        Ok(jobs)
+        Ok(())
+        // Ok(jobs)
     }
 
     // Method to process a single job
@@ -124,12 +132,6 @@ impl JobQueue {
         job: Job,
         processor: &ContentProcessor,
     ) -> Result<(), AppError> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
-            .to_string();
-
         let current_attempts = match job.status {
             JobStatus::InProgress { attempts, .. } => attempts + 1,
             _ => 1,
@@ -140,7 +142,7 @@ impl JobQueue {
             &job.id,
             JobStatus::InProgress {
                 attempts: current_attempts,
-                last_attempt: now.clone(),
+                last_attempt: Utc::now(),
             },
         )
         .await?;

@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tokio::task;
 
@@ -162,8 +163,11 @@ async fn create_single_entity(
 
     let embedding = generate_embedding(openai_client, &embedding_input).await?;
 
+    let now = Utc::now();
     Ok(KnowledgeEntity {
         id: assigned_id,
+        created_at: now,
+        updated_at: now,
         name: llm_entity.name.to_string(),
         description: llm_entity.description.to_string(),
         entity_type: KnowledgeEntityType::from(llm_entity.entity_type.to_string()),

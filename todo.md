@@ -5,6 +5,7 @@
 \[x\] hx-redirect
 \[x\] macro for pagedata?
 \[\] add more config structs for clarity
+\[\] configs primarily get envs
 \[x\] user id to fileinfo and data path?
 \[x\] gdpr
 \[x\] ios shortcut generation

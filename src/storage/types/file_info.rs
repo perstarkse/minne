@@ -71,9 +71,12 @@ impl FileInfo {
         let uuid = Uuid::new_v4();
         let sanitized_file_name = Self::sanitize_file_name(&file_name);
 
+        let now = Utc::now();
         // Create new FileInfo instance
         let file_info = Self {
             id: uuid.to_string(),
+            created_at: now,
+            updated_at: now,
             sha256,
             path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id)
                 .await?

@@ -12,8 +12,8 @@ axum_session = "0.14.4"
 axum_session_auth = "0.14.1"
 axum_session_surreal = "0.2.1"
 axum_typed_multipart = "0.12.1"
+chrono = { version = "0.4.39", features = ["serde"] }
 config = "0.15.4"
-dom_smoothie = "0.3.0"
 futures = "0.3.31"
 lettre = { version = "0.11.11", features = ["rustls-tls"] }
 mime = "0.3.17"
@@ -46,3 +46,4 @@ path = "src/bin/server.rs"
 [[bin]]
 name = "worker"
 path = "src/bin/worker.rs"
+
