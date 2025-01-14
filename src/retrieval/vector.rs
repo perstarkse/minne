@@ -27,7 +27,7 @@ pub async fn find_items_by_vector_similarity<T>(
     take: u8,
     input_text: &str,
     db_client: &Surreal<Any>,
-    table: String,
+    table: &str,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     user_id: &str,
 ) -> Result<Vec<T>, AppError>

@@ -48,9 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Found {} unfinished jobs", unfinished_jobs.len());
 
             for job in unfinished_jobs {
-                if let Err(e) = job_queue.process_job(job.clone(), &content_processor).await {
-                    error!("Error processing job {}: {}", job.id, e);
-                }
+                job_queue.process_job(job, &content_processor).await?;
             }
         }
 
