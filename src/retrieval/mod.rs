@@ -49,18 +49,11 @@ pub async fn combined_knowledge_entity_retrieval(
             10,
             query,
             db_client,
-            "knowledge_entity".to_string(),
+            "knowledge_entity",
             openai_client,
             user_id,
         ),
-        find_items_by_vector_similarity(
-            5,
-            query,
-            db_client,
-            "text_chunk".to_string(),
-            openai_client,
-            user_id,
-        ),
+        find_items_by_vector_similarity(5, query, db_client, "text_chunk", openai_client, user_id),
     )
     .await?;
 

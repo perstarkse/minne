@@ -40,9 +40,6 @@ impl ContentProcessor {
     }
 
     pub async fn process(&self, content: &TextContent) -> Result<(), AppError> {
-        // Store original content
-        store_item(&self.db_client, content.clone()).await?;
-
         let now = Instant::now();
 
         // Perform analyis, this step also includes retrieval
@@ -64,6 +61,9 @@ impl ContentProcessor {
             self.store_graph_entities(entities, relationships),
             self.store_vector_chunks(content),
         )?;
+
+        // Store original content
+        store_item(&self.db_client, content.to_owned()).await?;
 
         self.db_client.rebuild_indexes().await?;
         Ok(())

@@ -1,6 +1,9 @@
 use chrono::Utc;
 use futures::Stream;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use surrealdb::{opt::PatchOp, Error, Notification};
 use tracing::{error, info};
 
@@ -75,7 +78,10 @@ impl JobQueue {
             .db
             .update((Job::table_name(), id))
             .patch(PatchOp::replace("/status", status))
-            .patch(PatchOp::replace("/updated_at", Utc::now()))
+            .patch(PatchOp::replace(
+                "/updated_at",
+                surrealdb::sql::Datetime::default(),
+            ))
             .await?;
 
         Ok(job)
@@ -90,7 +96,6 @@ impl JobQueue {
 
     /// Get unfinished jobs, ie newly created and in progress up two times
     pub async fn get_unfinished_jobs(&self) -> Result<Vec<Job>, AppError> {
-        info!("Getting unfinished jobs");
         let jobs: Vec<Job> = self
             .db
             .query(
