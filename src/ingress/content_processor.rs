@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use text_splitter::TextSplitter;
 use tracing::{debug, info};
@@ -12,7 +12,7 @@ use crate::{
             text_chunk::TextChunk, text_content::TextContent,
         },
     },
-    utils::{config::AppConfig, embedding::generate_embedding},
+    utils::embedding::generate_embedding,
 };
 
 use super::analysis::{
@@ -20,21 +20,14 @@ use super::analysis::{
 };
 
 pub struct ContentProcessor {
-    db_client: SurrealDbClient,
+    db_client: Arc<SurrealDbClient>,
     openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
 }
 
 impl ContentProcessor {
-    pub async fn new(app_config: &AppConfig) -> Result<Self, AppError> {
+    pub async fn new(surreal_db_client: Arc<SurrealDbClient>) -> Result<Self, AppError> {
         Ok(Self {
-            db_client: SurrealDbClient::new(
-                &app_config.surrealdb_address,
-                &app_config.surrealdb_username,
-                &app_config.surrealdb_password,
-                &app_config.surrealdb_namespace,
-                &app_config.surrealdb_database,
-            )
-            .await?,
+            db_client: surreal_db_client,
             openai_client: async_openai::Client::new(),
         })
     }

@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = get_config()?;
 
-    let job_queue = JobQueue::new(Arc::new(
+    let surreal_db_client = Arc::new(
         SurrealDbClient::new(
             &config.surrealdb_address,
             &config.surrealdb_username,
@@ -36,9 +36,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &config.surrealdb_database,
         )
         .await?,
-    ));
+    );
 
-    let content_processor = ContentProcessor::new(&config).await?;
+    let job_queue = JobQueue::new(surreal_db_client.clone());
+
+    let content_processor = ContentProcessor::new(surreal_db_client).await?;
 
     loop {
         // First, check for any unfinished jobs
