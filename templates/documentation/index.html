@@ -1,8 +1,8 @@
 {% extends "body_base.html" %}
 {% block main %}
-<div class="flex justify-center flex-grow mt-0 sm:mt-4">
+<main class="flex justify-center flex-grow mt-2 sm:mt-4">
   <div class="container">
-    <div class="grid grid-cols-1 lg:grid-cols-[auto,1fr] gap-4 p-4">
+    <div class="grid grid-cols-1 lg:grid-cols-[auto,1fr] gap-4">
       <!-- Documentation Menu -->
       <aside class="bg-base-200 rounded-lg p-4">
         {% include "documentation/menu.html" %}
@@ -31,5 +31,5 @@
       </article>
     </div>
   </div>
-</div>
+</main>
 {% endblock %}
