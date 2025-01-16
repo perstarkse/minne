@@ -78,16 +78,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?,
     );
 
+    let openai_client = Arc::new(async_openai::Client::new());
+
     let app_state = AppState {
         surreal_db_client: surreal_db_client.clone(),
-        openai_client: Arc::new(async_openai::Client::new()),
         templates: Arc::new(reloader),
+        openai_client: openai_client.clone(),
         mailer: Arc::new(Mailer::new(
             config.smtp_username,
             config.smtp_relayer,
             config.smtp_password,
         )?),
-        job_queue: Arc::new(JobQueue::new(surreal_db_client)),
+        job_queue: Arc::new(JobQueue::new(surreal_db_client, openai_client)),
     };
 
     let session_config = SessionConfig::default()

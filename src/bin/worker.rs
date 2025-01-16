@@ -38,9 +38,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?,
     );
 
-    let job_queue = JobQueue::new(surreal_db_client.clone());
+    let openai_client = Arc::new(async_openai::Client::new());
 
-    let content_processor = ContentProcessor::new(surreal_db_client).await?;
+    let job_queue = JobQueue::new(surreal_db_client.clone(), openai_client.clone());
+
+    let content_processor = ContentProcessor::new(surreal_db_client, openai_client).await?;
 
     loop {
         // First, check for any unfinished jobs
