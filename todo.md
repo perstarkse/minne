@@ -1,19 +1,18 @@
-\[x\] add user_id to ingress objects
-\[x\] restrict retrieval to users own objects
-\[x\] templating
-\[x\] redirects
-\[x\] hx-redirect
-\[x\] macro for pagedata?
-\[\] add more config structs for clarity
+\[\] admin controls re registration
+\[\] archive ingressed webpage
 \[\] configs primarily get envs
-\[x\] user id to fileinfo and data path?
+\[\] html ingression
+\[\] view content
+\[\] view graph map
+\[\] view latest
+\[x\] add user_id to ingress objects
 \[x\] gdpr
+\[x\] hx-redirect
 \[x\] ios shortcut generation
 \[x\] job queue
-\[\] html ingression
-\[\] view latest
-\[\] view graph map
-\[\] admin controls re registration
-\[\] smoothie_dom test
-\[\] archive ingressed webpage
-\[\] view content
+\[x\] macro for pagedata?
+\[x\] redirects
+\[x\] restrict retrieval to users own objects
+\[x\] smoothie_dom test
+\[x\] templating
+\[x\] user id to fileinfo and data path?

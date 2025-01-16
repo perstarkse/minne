@@ -9,6 +9,7 @@ pub mod gdpr;
 pub mod index;
 pub mod ingress;
 pub mod ingress_tasks;
+pub mod privacy_policy;
 pub mod search_result;
 pub mod signin;
 pub mod signout;

@@ -32,6 +32,7 @@ use zettle_db::{
                 index::index_handler,
                 ingress::{process_ingress_form, show_ingress_form},
                 ingress_tasks::{delete_task, show_queue_tasks},
+                privacy_policy::show_privacy_policy,
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
                 signout::sign_out_user,
@@ -170,6 +171,7 @@ fn html_routes(
         .route("/", get(index_handler))
         .route("/gdpr/accept", post(accept_gdpr))
         .route("/gdpr/deny", post(deny_gdpr))
+        .route("/privacy-policy", get(show_privacy_policy))
         .route("/search", get(search_result_handler))
         .route("/signout", get(sign_out_user))
         .route("/signin", get(show_signin_form).post(authenticate_user))
