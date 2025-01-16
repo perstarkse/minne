@@ -13,7 +13,6 @@ use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use tiktoken_rs::{o200k_base, CoreBPE};
-use tracing::info;
 
 /// Knowledge object type, containing the content or reference to it, as well as metadata
 #[derive(Debug, Serialize, Deserialize, Clone)]
