@@ -21,14 +21,17 @@ use super::analysis::{
 
 pub struct ContentProcessor {
     db_client: Arc<SurrealDbClient>,
-    openai_client: async_openai::Client<async_openai::config::OpenAIConfig>,
+    openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
 }
 
 impl ContentProcessor {
-    pub async fn new(surreal_db_client: Arc<SurrealDbClient>) -> Result<Self, AppError> {
+    pub async fn new(
+        surreal_db_client: Arc<SurrealDbClient>,
+        openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    ) -> Result<Self, AppError> {
         Ok(Self {
             db_client: surreal_db_client,
-            openai_client: async_openai::Client::new(),
+            openai_client,
         })
     }
 

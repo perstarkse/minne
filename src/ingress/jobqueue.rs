@@ -1,11 +1,8 @@
 use chrono::Utc;
 use futures::Stream;
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 use surrealdb::{opt::PatchOp, Error, Notification};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::{
     error::AppError,
@@ -22,21 +19,28 @@ use super::{content_processor::ContentProcessor, types::ingress_object::IngressO
 
 pub struct JobQueue {
     pub db: Arc<SurrealDbClient>,
+    pub openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
 }
 
 pub const MAX_ATTEMPTS: u32 = 3;
 
 impl JobQueue {
-    pub fn new(db: Arc<SurrealDbClient>) -> Self {
-        Self { db }
+    pub fn new(
+        db: Arc<SurrealDbClient>,
+        openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    ) -> Self {
+        Self { db, openai_client }
     }
 
     /// Creates a new job and stores it in the database
-    pub async fn enqueue(&self, content: IngressObject, user_id: String) -> Result<Job, AppError> {
+    pub async fn enqueue(&self, content: IngressObject, user_id: String) -> Result<(), AppError> {
         let job = Job::new(content, user_id).await;
+
         info!("{:?}", job);
-        store_item(&self.db, job.clone()).await?;
-        Ok(job)
+
+        store_item(&self.db, job).await?;
+
+        Ok(())
     }
 
     /// Gets all jobs for a specific user
@@ -44,11 +48,12 @@ impl JobQueue {
         let jobs: Vec<Job> = self
             .db
             .query("SELECT * FROM job WHERE user_id = $user_id ORDER BY created_at DESC")
-            .bind(("user_id", user_id.to_string()))
+            .bind(("user_id", user_id.to_owned()))
             .await?
             .take(0)?;
 
-        info!("{:?}", jobs);
+        debug!("{:?}", jobs);
+
         Ok(jobs)
     }
 
@@ -69,12 +74,8 @@ impl JobQueue {
         Ok(())
     }
 
-    pub async fn update_status(
-        &self,
-        id: &str,
-        status: JobStatus,
-    ) -> Result<Option<Job>, AppError> {
-        let job: Option<Job> = self
+    pub async fn update_status(&self, id: &str, status: JobStatus) -> Result<(), AppError> {
+        let _job: Option<Job> = self
             .db
             .update((Job::table_name(), id))
             .patch(PatchOp::replace("/status", status))
@@ -84,7 +85,7 @@ impl JobQueue {
             ))
             .await?;
 
-        Ok(job)
+        Ok(())
     }
 
     /// Listen for new jobs
@@ -137,7 +138,7 @@ impl JobQueue {
         )
         .await?;
 
-        let text_content = job.content.to_text_content().await?;
+        let text_content = job.content.to_text_content(&self.openai_client).await?;
 
         match processor.process(&text_content).await {
             Ok(_) => {

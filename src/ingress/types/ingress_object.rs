@@ -1,3 +1,5 @@
+use std::{sync::Arc, time::Duration};
+
 use crate::{
     error::AppError,
     storage::types::{file_info::FileInfo, text_content::TextContent},
@@ -9,7 +11,8 @@ use async_openai::types::{
 use reqwest;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
-use tiktoken_rs::o200k_base;
+use std::fmt::Write;
+use tiktoken_rs::{o200k_base, CoreBPE};
 use tracing::info;
 
 /// Knowledge object type, containing the content or reference to it, as well as metadata
@@ -43,7 +46,10 @@ impl IngressObject {
     ///
     /// # Returns
     /// `TextContent` - An object containing a text representation of the object, could be a scraped URL, parsed PDF, etc.
-    pub async fn to_text_content(&self) -> Result<TextContent, AppError> {
+    pub async fn to_text_content(
+        &self,
+        openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    ) -> Result<TextContent, AppError> {
         match self {
             IngressObject::Url {
                 url,
@@ -51,7 +57,7 @@ impl IngressObject {
                 category,
                 user_id,
             } => {
-                let text = Self::fetch_text_from_url(url).await?;
+                let text = Self::fetch_text_from_url(url, openai_client).await?;
                 Ok(TextContent::new(
                     text,
                     instructions.into(),
@@ -90,69 +96,62 @@ impl IngressObject {
         }
     }
 
-    /// Fetches and extracts text from a URL.
-    async fn fetch_text_from_url(url: &str) -> Result<String, AppError> {
-        let response = reqwest::get(url).await?.text().await?;
-        let document = Html::parse_document(&response);
+    /// Get text from url, will return it as a markdown formatted string
+    async fn fetch_text_from_url(
+        url: &str,
+        openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    ) -> Result<String, AppError> {
+        // Use a client with timeouts and reuse
+        let client = reqwest::ClientBuilder::new()
+            .timeout(Duration::from_secs(30))
+            .build()?;
+        let response = client.get(url).send().await?.text().await?;
 
-        // Select main content areas first
-        let main_selectors = Selector::parse(concat!(
-            "article, main, .article-content,", // Common main content classes
-            ".post-content, .entry-content,",   // Common blog/article classes
-            "[role='main']"                     // Accessibility marker
-        ))
+        // Preallocate string with capacity
+        let mut structured_content = String::with_capacity(response.len() / 2);
+
+        let document = Html::parse_document(&response);
+        let main_selectors = Selector::parse(
+            "article, main, .article-content, .post-content, .entry-content, [role='main']",
+        )
         .unwrap();
 
-        // If no main content found, fallback to body
         let content_element = document
             .select(&main_selectors)
             .next()
             .or_else(|| document.select(&Selector::parse("body").unwrap()).next())
             .ok_or(AppError::NotFound("No content found".into()))?;
 
-        // Remove unwanted elements but preserve structure
-        // let exclude_selector = Selector::parse(concat!(
-        //     "script, style, noscript,",
-        //     "[class*='window'], [id*='window'],",
-        //     "[class*='env'], [id*='env'],",
-        //     "iframe, nav, footer, .comments,",
-        //     ".advertisement, .social-share"
-        // ))
-        // .unwrap();
+        // Compile selectors once
+        let heading_selector = Selector::parse("h1, h2, h3").unwrap();
+        let paragraph_selector = Selector::parse("p").unwrap();
 
-        // Collect structured content
-        let mut structured_content = String::new();
-
-        // Process headings
-        for heading in content_element.select(&Selector::parse("h1, h2, h3").unwrap()) {
-            structured_content.push_str(&format!(
-                "<heading>{}</heading>\n",
-                heading.text().collect::<String>().trim()
-            ));
+        // Process content in one pass
+        for element in content_element.select(&heading_selector) {
+            let _ = writeln!(
+                structured_content,
+                "<heading>{}</heading>",
+                element.text().collect::<String>().trim()
+            );
+        }
+        for element in content_element.select(&paragraph_selector) {
+            let _ = writeln!(
+                structured_content,
+                "<paragraph>{}</paragraph>",
+                element.text().collect::<String>().trim()
+            );
         }
 
-        // Process paragraphs
-        for paragraph in content_element.select(&Selector::parse("p").unwrap()) {
-            structured_content.push_str(&format!(
-                "<paragraph>{}</paragraph>\n",
-                paragraph.text().collect::<String>().trim()
-            ));
-        }
-
-        // Clean up
         let content = structured_content
             .replace(|c: char| c.is_control(), " ")
             .replace("  ", " ");
-
-        let processed_content = Self::process_web_content(content.trim().to_string()).await?;
-
-        info!("Extracted content from page: {:?}", processed_content);
-
-        Ok(processed_content)
+        Self::process_web_content(content, openai_client).await
     }
 
-    pub async fn process_web_content(content: String) -> Result<String, AppError> {
-        let openai_client = async_openai::Client::new();
+    pub async fn process_web_content(
+        content: String,
+        openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    ) -> Result<String, AppError> {
         const MAX_TOKENS: usize = 122000;
         const SYSTEM_PROMPT: &str = r#"
         You are a precise content extractor for web pages. Your task:
@@ -182,25 +181,10 @@ impl IngressObject {
     "#;
 
         let bpe = o200k_base()?;
-        let token_count = bpe.encode_with_special_tokens(&content).len();
 
-        let content = if token_count > MAX_TOKENS {
-            // Split content into structural blocks
-            let blocks: Vec<&str> = content.split('\n').collect();
-            let mut truncated = String::new();
-            let mut current_tokens = 0;
-
-            // Keep adding blocks until we approach the limit
-            for block in blocks {
-                let block_tokens = bpe.encode_with_special_tokens(block).len();
-                if current_tokens + block_tokens > MAX_TOKENS {
-                    break;
-                }
-                truncated.push_str(block);
-                truncated.push('\n');
-                current_tokens += block_tokens;
-            }
-            truncated
+        // Process content in chunks if needed
+        let truncated_content = if bpe.encode_with_special_tokens(&content).len() > MAX_TOKENS {
+            Self::truncate_content(&content, MAX_TOKENS, &bpe)?
         } else {
             content
         };
@@ -211,7 +195,7 @@ impl IngressObject {
             .max_tokens(16200u32)
             .messages([
                 ChatCompletionRequestSystemMessage::from(SYSTEM_PROMPT).into(),
-                ChatCompletionRequestUserMessage::from(content).into(),
+                ChatCompletionRequestUserMessage::from(truncated_content).into(),
             ])
             .build()?;
 
@@ -221,8 +205,39 @@ impl IngressObject {
             .choices
             .first()
             .and_then(|choice| choice.message.content.as_ref())
-            .map(|content| content.to_string())
+            .map(|content| content.to_owned())
             .ok_or(AppError::LLMParsing("No content in response".into()))
+    }
+
+    fn truncate_content(
+        content: &str,
+        max_tokens: usize,
+        tokenizer: &CoreBPE,
+    ) -> Result<String, AppError> {
+        // Pre-allocate with estimated size
+        let mut result = String::with_capacity(content.len() / 2);
+        let mut current_tokens = 0;
+
+        // Process content by paragraph to maintain context
+        for paragraph in content.split("\n\n") {
+            let tokens = tokenizer.encode_with_special_tokens(paragraph).len();
+
+            // Check if adding paragraph exceeds limit
+            if current_tokens + tokens > max_tokens {
+                break;
+            }
+
+            result.push_str(paragraph);
+            result.push_str("\n\n");
+            current_tokens += tokens;
+        }
+
+        // Ensure we return valid content
+        if result.is_empty() {
+            return Err(AppError::Processing("Content exceeds token limit".into()));
+        }
+
+        Ok(result.trim_end().to_string())
     }
 
     /// Extracts text from a file based on its MIME type.
