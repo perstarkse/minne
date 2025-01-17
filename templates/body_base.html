@@ -13,8 +13,15 @@
           <ul class="menu menu-horizontal px-1">
             <li><a hx-boost="true" class="" href="/documentation">Docs</a></li>
             {% if user %}
-            <li><a hx-boost="true" class="" href="/account">Account</a></li>
-            <li><a hx-boost="true" href="/signout">Sign out</a></li>
+            <li>
+              <details>
+                <summary>Settings</summary>
+                <ul class="bg-base-100 rounded-t-none p-2">
+                  <li><a hx-boost="true" class="" href="/account">Account</a></li>
+                  <li><a hx-boost="true" href="/signout">Sign out</a></li>
+                </ul>
+              </details>
+            </li>
             {% else %}
             <li><a hx-boost="true" class="" href="/signin">Login</a></li>
             <li><a hx-boost="true" class="" href="/signup">Sign up</a></li>
