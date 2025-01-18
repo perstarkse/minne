@@ -11,20 +11,21 @@
         </div>
         <div>
           <ul class="menu menu-horizontal px-1">
+            {% include "theme_toggle.html" %}
             <li><a hx-boost="true" class="" href="/documentation">Docs</a></li>
             {% if user %}
             <li>
               <details>
-                <summary>Settings</summary>
+                <summary>Account</summary>
                 <ul class="bg-base-100 rounded-t-none p-2">
                   <li><a hx-boost="true" class="" href="/account">Account</a></li>
+                  <li><a hx-boost="true" class="" href="/admin">Admin Panel</a></li>
                   <li><a hx-boost="true" href="/signout">Sign out</a></li>
                 </ul>
               </details>
             </li>
             {% else %}
-            <li><a hx-boost="true" class="" href="/signin">Login</a></li>
-            <li><a hx-boost="true" class="" href="/signup">Sign up</a></li>
+            <li><a hx-boost="true" class="" href="/signin">Sign in</a></li>
             {% endif %}
           </ul>
         </div>
