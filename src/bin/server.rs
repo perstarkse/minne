@@ -171,7 +171,6 @@ fn html_routes(
         .route("/", get(index_handler))
         .route("/gdpr/accept", post(accept_gdpr))
         .route("/gdpr/deny", post(deny_gdpr))
-        .route("/privacy-policy", get(show_privacy_policy))
         .route("/search", get(search_result_handler))
         .route("/signout", get(sign_out_user))
         .route("/signin", get(show_signin_form).post(authenticate_user))
@@ -189,6 +188,7 @@ fn html_routes(
             get(show_signup_form).post(process_signup_and_show_verification),
         )
         .route("/documentation", get(show_documentation_index))
+        .route("/documentation/privacy-policy", get(show_privacy_policy))
         .nest_service("/assets", ServeDir::new("assets/"))
         .layer(
             AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(

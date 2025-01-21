@@ -1,0 +1,19 @@
+{% extends "body_base.html" %}
+{% block main %}
+<main class="flex justify-center grow mt-2 sm:mt-4">
+  <div class="container">
+    <div class="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-4">
+      <!-- Documentation Menu -->
+      <aside class="bg-base-200 rounded-lg p-4">
+        {% include "documentation/menu.html" %}
+      </aside>
+      <!-- Main Content -->
+
+      <article class="prose flex mx-auto justify-center flex-col">
+        {% block article %}
+        {% endblock %}
+      </article>
+    </div>
+  </div>
+</main>
+{% endblock %}

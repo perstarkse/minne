@@ -10,7 +10,7 @@ use crate::{
     storage::types::user::User,
 };
 
-page_data!(PrivacyPolicyData, "privacy_policy.html", {
+page_data!(PrivacyPolicyData, "documentation/privacy.html", {
     user: Option<User>
 });
 
