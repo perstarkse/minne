@@ -18,7 +18,7 @@
     <div class="form-control">
       <label class="floating-label">
         <span>Email</span>
-        <input type="email" placeholder="Email" required class="input input-md w-full validator" />
+        <input type="email" placeholder="Email" name="email" required class="input input-md w-full validator" />
         <div class="validator-hint hidden">Enter valid email address</div>
       </label>
     </div>
@@ -26,8 +26,8 @@
     <div class="form-control mt-4">
       <label class="floating-label">
         <span>Password</span>
-        <input type="password" class="input validator w-full" required placeholder="Password" minlength="8"
-          pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+        <input type="password" name="password" class="input validator w-full" required placeholder="Password"
+          minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
           title="Must be more than 8 characters, including number, lowercase letter, uppercase letter" />
         <p class="validator-hint hidden">
           Must be more than 8 characters, including
@@ -37,13 +37,12 @@
         </p>
       </label>
     </div>
-    <div class="mt-4" id="signup-result"></div>
+    <div class="mt-2 text-error" id="signup-result"></div>
     <div class="form-control mt-6">
       <button id="submit-btn" class="btn btn-primary w-full">
         Create Account
       </button>
     </div>
-
   </form>
 
   <div class="divider">OR</div>
