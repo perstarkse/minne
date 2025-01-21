@@ -35,8 +35,7 @@ pub async fn show_account_page(
         AccountData::template_name(),
         AccountData { user },
         state.templates.clone(),
-    )
-    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    )?;
 
     Ok(output.into_response())
 }
@@ -70,8 +69,7 @@ pub async fn set_api_key(
         "api_key_section",
         AccountData { user: updated_user },
         state.templates.clone(),
-    )
-    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    )?;
 
     Ok(output.into_response())
 }

@@ -9,12 +9,7 @@ use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use surrealdb::{engine::any::Any, Surreal};
 
-use crate::{
-    error::{AppError, HtmlError},
-    page_data,
-    server::AppState,
-    storage::types::user::User,
-};
+use crate::{error::HtmlError, page_data, server::AppState, storage::types::user::User};
 
 use super::{render_block, render_template};
 
@@ -41,14 +36,12 @@ pub async fn show_signin_form(
             "body",
             ShowSignInForm {},
             state.templates.clone(),
-        )
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?,
+        )?,
         false => render_template(
             ShowSignInForm::template_name(),
             ShowSignInForm {},
             state.templates.clone(),
-        )
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?,
+        )?,
     };
 
     Ok(output.into_response())

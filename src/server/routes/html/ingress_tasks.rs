@@ -1,5 +1,5 @@
 use crate::{
-    error::{AppError, HtmlError},
+    error::HtmlError,
     page_data,
     server::AppState,
     storage::types::{job::Job, user::User},
@@ -35,8 +35,7 @@ pub async fn show_queue_tasks(
         ShowQueueTasks::template_name(),
         ShowQueueTasks { jobs, user },
         state.templates.clone(),
-    )
-    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    )?;
 
     Ok(rendered.into_response())
 }

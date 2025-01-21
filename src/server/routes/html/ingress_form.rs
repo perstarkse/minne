@@ -6,24 +6,19 @@ use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use futures::{future::try_join_all, TryFutureExt};
-use serde::Serialize;
 use surrealdb::{engine::any::Any, Surreal};
 use tempfile::NamedTempFile;
 use tracing::info;
 
 use crate::{
-    error::{AppError, HtmlError},
+    error::{AppError, HtmlError, IntoHtmlError},
     ingress::types::ingress_input::{create_ingress_objects, IngressInput},
+    page_data,
     server::AppState,
     storage::types::{file_info::FileInfo, user::User},
 };
 
 use super::render_template;
-
-#[derive(Serialize)]
-struct PageData {
-    // name: String,
-}
 
 pub async fn show_ingress_form(
     State(state): State<AppState>,
@@ -33,8 +28,7 @@ pub async fn show_ingress_form(
         return Ok(Redirect::to("/").into_response());
     }
 
-    let output = render_template("ingress_form.html", PageData {}, state.templates.clone())
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    let output = render_template("ingress_form.html", {}, state.templates.clone())?;
 
     Ok(output.into_response())
 }
@@ -49,15 +43,47 @@ pub struct IngressParams {
     pub files: Vec<FieldData<NamedTempFile>>,
 }
 
+page_data!(IngressFormData, "ingress_form.html", {
+    instructions: String,
+    content: String,
+});
+
 pub async fn process_ingress_form(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     TypedMultipart(input): TypedMultipart<IngressParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user = match auth.current_user {
-        Some(user) => user,
-        None => return Ok(Redirect::to("/").into_response()),
-    };
+    let user = auth.current_user.ok_or_else(|| {
+        AppError::Auth("You must be signed in".to_string()).with_template(state.templates.clone())
+    })?;
+    // let user = match auth.current_user {
+    //     Some(user) => user,
+    //     None => {
+    //         return Err(HtmlError::new(
+    //             AppError::Auth("You must be signed in".to_string()),
+    //             state.templates,
+    //         ))
+    //     }
+    // };
+
+    if input.content.clone().is_some_and(|c| c.len() < 2) && input.files.is_empty() {
+        let output = render_template(
+            IngressFormData::template_name(),
+            IngressFormData {
+                instructions: input.instructions.clone(),
+                content: input.content.clone().unwrap(),
+            },
+            state.templates.clone(),
+        )?;
+
+        return Ok(output.into_response());
+
+        // return Ok((
+        //     StatusCode::UNAUTHORIZED,
+        //     Html("Invalid input, make sure you fill in either content or add files"),
+        // )
+        //     .into_response());
+    }
 
     info!("{:?}", input);
 
@@ -88,5 +114,8 @@ pub async fn process_ingress_form(
         .map_err(AppError::from)
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    Ok(Html("SuccessBRO!").into_response())
+    Ok(Html(
+        "<a class='btn btn-primary' hx-get='/ingress-form' hx-swap='outerHTML'>Add Content</a>",
+    )
+    .into_response())
 }

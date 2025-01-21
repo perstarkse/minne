@@ -109,6 +109,26 @@ impl IntoResponse for ApiError {
         (status, Json(body)).into_response()
     }
 }
+
+pub type TemplateResult<T> = Result<T, HtmlError>;
+
+// Helper trait for converting to HtmlError with templates
+pub trait IntoHtmlError {
+    fn with_template(self, templates: Arc<AutoReloader>) -> HtmlError;
+}
+// // Implement for AppError
+impl IntoHtmlError for AppError {
+    fn with_template(self, templates: Arc<AutoReloader>) -> HtmlError {
+        HtmlError::new(self, templates)
+    }
+}
+// // Implement for minijinja::Error directly
+impl IntoHtmlError for minijinja::Error {
+    fn with_template(self, templates: Arc<AutoReloader>) -> HtmlError {
+        HtmlError::from_template_error(self, templates)
+    }
+}
+
 #[derive(Clone)]
 pub struct ErrorContext {
     #[allow(dead_code)]
@@ -129,7 +149,6 @@ pub enum HtmlError {
     Template(String, Arc<AutoReloader>),
 }
 
-// Implement From<ApiError> for HtmlError
 impl HtmlError {
     pub fn new(error: AppError, templates: Arc<AutoReloader>) -> Self {
         match error {

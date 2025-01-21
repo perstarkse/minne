@@ -11,11 +11,7 @@ use serde::{Deserialize, Serialize};
 use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
-use crate::{
-    error::{AppError, HtmlError},
-    server::AppState,
-    storage::types::user::User,
-};
+use crate::{error::HtmlError, server::AppState, storage::types::user::User};
 
 use super::{render_block, render_template};
 
@@ -44,14 +40,12 @@ pub async fn show_signup_form(
             "body",
             PageData {},
             state.templates.clone(),
-        )
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?,
+        )?,
         false => render_template(
             "auth/signup_form.html",
             PageData {},
             state.templates.clone(),
-        )
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?,
+        )?,
     };
 
     Ok(output.into_response())

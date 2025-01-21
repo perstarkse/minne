@@ -24,8 +24,7 @@ pub async fn show_documentation_index(
             user: auth.current_user,
         },
         state.templates.clone(),
-    )
-    .map_err(|e| HtmlError::from_template_error(e, state.templates.clone()))?;
+    )?;
 
     Ok(output.into_response())
 }

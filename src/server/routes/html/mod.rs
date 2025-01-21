@@ -3,11 +3,13 @@ use std::sync::Arc;
 use axum::response::Html;
 use minijinja_autoreload::AutoReloader;
 
+use crate::error::{HtmlError, IntoHtmlError};
+
 pub mod account;
 pub mod documentation;
 pub mod gdpr;
 pub mod index;
-pub mod ingress;
+pub mod ingress_form;
 pub mod ingress_tasks;
 pub mod privacy_policy;
 pub mod search_result;
@@ -19,21 +21,26 @@ pub trait PageData {
     fn template_name() -> &'static str;
 }
 
+// Helper function for render_template
 pub fn render_template<T>(
     template_name: &str,
     context: T,
     templates: Arc<AutoReloader>,
-) -> Result<Html<String>, minijinja::Error>
+) -> Result<Html<String>, HtmlError>
 where
     T: serde::Serialize,
 {
-    let env = templates.acquire_env()?;
-    let tmpl = env.get_template(template_name)?;
-
+    let env = templates
+        .acquire_env()
+        .map_err(|e| e.with_template(templates.clone()))?;
+    let tmpl = env
+        .get_template(template_name)
+        .map_err(|e| e.with_template(templates.clone()))?;
     let context = minijinja::Value::from_serialize(&context);
-    let output = tmpl.render(context)?;
-
-    Ok(output.into())
+    let output = tmpl
+        .render(context)
+        .map_err(|e| e.with_template(templates.clone()))?;
+    Ok(Html(output))
 }
 
 pub fn render_block<T>(
@@ -41,15 +48,23 @@ pub fn render_block<T>(
     block: &str,
     context: T,
     templates: Arc<AutoReloader>,
-) -> Result<Html<String>, minijinja::Error>
+) -> Result<Html<String>, HtmlError>
 where
     T: serde::Serialize,
 {
-    let env = templates.acquire_env()?;
-    let tmpl = env.get_template(template_name)?;
+    let env = templates
+        .acquire_env()
+        .map_err(|e| e.with_template(templates.clone()))?;
+    let tmpl = env
+        .get_template(template_name)
+        .map_err(|e| e.with_template(templates.clone()))?;
 
     let context = minijinja::Value::from_serialize(&context);
-    let output = tmpl.eval_to_state(context)?.render_block(block)?;
+    let output = tmpl
+        .eval_to_state(context)
+        .map_err(|e| e.with_template(templates.clone()))?
+        .render_block(block)
+        .map_err(|e| e.with_template(templates.clone()))?;
 
     Ok(output.into())
 }

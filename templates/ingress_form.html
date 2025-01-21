@@ -1,22 +1,19 @@
-{% extends "body_base.html" %}
-{% block main %}
-<div class="flex justify-center grow mt-2 sm:mt-4">
-  <div class="container">
+<div class="card">
+  <form class="space-y-2" hx-post="/ingress-form" enctype="multipart/form-data">
     <h1 class="text-2xl">Add content to the database </h1>
-    <form class="space-y-2" hx-post="/ingress" enctype="multipart/form-data">
-      <label class="label label-text">Instructions</label>
-      <textarea name="instructions" class="textarea w-full input-bordered"
-        placeholder="Enter instructions for the AI here, help it understand what its seeing or how it should relate to the database"></textarea>
-      <label class="label label-text">Content (optional)</label>
-      <textarea name="content" class="textarea w-full input-bordered" placeholder="Additional content"></textarea>
-      <label class="label label-text">Category</label>
-      <input type="text" name="category" class="input input-bordered" placeholder="Category for ingress">
+    <label class="label label-text">Instructions</label>
+    <textarea name="instructions" class="textarea w-full input-bordered"
+      placeholder="Enter instructions for the AI here, help it understand what its seeing or how it should relate to the database">{{instructions
+      }}</textarea>
+    <label class="label label-text">Content (optional)</label>
+    <textarea name="content" class="textarea w-full input-bordered" placeholder="Additional content">{{content
+      }}</textarea>
+    <label class="label label-text">Category</label>
+    <input type="text" name="category" class="input input-bordered" placeholder="Category for ingress">
 
-      <label class="label label-text">Files</label>
-      <input type="file" name="files" multiple class="file-input file-input-bordered" />
-      <button type="submit" class="btn btn-primary">Submit</button>
-    </form>
-    <div id="ingress-result"></div>
-  </div>
+    <label class="label label-text">Files</label>
+    <input type="file" name="files" multiple class="file-input file-input-bordered" />
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </form>
+  <div id="ingress-result"></div>
 </div>
-{% endblock %}

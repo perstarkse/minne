@@ -6,7 +6,7 @@ use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
 use crate::{
-    error::{AppError, HtmlError},
+    error::HtmlError,
     page_data,
     server::{routes::html::render_template, AppState},
     storage::types::user::User,
@@ -57,8 +57,7 @@ pub async fn index_handler(
             user: auth.current_user,
         },
         state.templates.clone(),
-    )
-    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    )?;
 
     Ok(output.into_response())
 }
