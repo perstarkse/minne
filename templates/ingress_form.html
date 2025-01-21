@@ -1,6 +1,6 @@
 {% extends "body_base.html" %}
 {% block main %}
-<div class="container px-4 max-w-screen-lg">
+<div class="container px-4 max-w-(--breakpoint-lg)">
   <form class="space-y-2" hx-post="/ingress" enctype="multipart/form-data">
     <h1 class="text-2xl">Add content to the database </h1>
     <label class="label label-text">Instructions</label>
