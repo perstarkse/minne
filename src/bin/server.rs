@@ -30,7 +30,7 @@ use zettle_db::{
                 documentation::index::show_documentation_index,
                 gdpr::{accept_gdpr, deny_gdpr},
                 index::index_handler,
-                ingress::{process_ingress_form, show_ingress_form},
+                ingress_form::{process_ingress_form, show_ingress_form},
                 ingress_tasks::{delete_task, show_queue_tasks},
                 privacy_policy::show_privacy_policy,
                 search_result::search_result_handler,
@@ -175,7 +175,7 @@ fn html_routes(
         .route("/signout", get(sign_out_user))
         .route("/signin", get(show_signin_form).post(authenticate_user))
         .route(
-            "/ingress",
+            "/ingress-form",
             get(show_ingress_form).post(process_ingress_form),
         )
         .route("/queue", get(show_queue_tasks))
