@@ -16,18 +16,26 @@
 
   <form hx-post="/signup" hx-target="#signup-result" class="">
     <div class="form-control">
-      <label class="label">
-        <span class="label-text">Email</span>
+      <label class="floating-label">
+        <span>Email</span>
+        <input type="email" placeholder="Email" required class="input input-md w-full validator" />
+        <div class="validator-hint hidden">Enter valid email address</div>
       </label>
-      <input type="email" name="email" placeholder="Enter your email" class="input input-bordered w-full" required />
     </div>
 
-    <div class="form-control">
-      <label class="label">
-        <span class="label-text">Password</span>
+    <div class="form-control mt-4">
+      <label class="floating-label">
+        <span>Password</span>
+        <input type="password" class="input validator w-full" required placeholder="Password" minlength="8"
+          pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+          title="Must be more than 8 characters, including number, lowercase letter, uppercase letter" />
+        <p class="validator-hint hidden">
+          Must be more than 8 characters, including
+          <br />At least one number
+          <br />At least one lowercase letter
+          <br />At least one uppercase letter
+        </p>
       </label>
-      <input type="password" name="password" placeholder="Create a password" class="input input-bordered w-full"
-        required minlength="8" />
     </div>
     <div class="mt-4" id="signup-result"></div>
     <div class="form-control mt-6">
