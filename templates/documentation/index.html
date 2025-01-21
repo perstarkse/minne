@@ -1,35 +1,22 @@
-{% extends "body_base.html" %}
-{% block main %}
-<main class="flex justify-center grow mt-2 sm:mt-4">
-  <div class="container">
-    <div class="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-4">
-      <!-- Documentation Menu -->
-      <aside class="bg-base-200 rounded-lg p-4">
-        {% include "documentation/menu.html" %}
-      </aside>
-      <!-- Main Content -->
-      <article class="prose flex mx-auto justify-center flex-col">
-        <h1 class="">Personalised Knowledge Management (PKM)</h1>
-        <p class="">
-          Personalised Knowledge Management (PKM) is a system designed to help individuals organise, store, and retrieve
-          information effectively. It empowers users to create a personalised workflow for managing knowledge, enabling
-          better decision-making and productivity.
-        </p>
-        <p class="">
-          This documentation will guide you through the core concepts, tools, and best practices for building and
-          maintaining your own PKM system.
-        </p>
-        <div class="card p-6 rounded-lg shadow-md">
-          <h2 class="">Getting Started</h2>
-          <p class="">
-            To begin, explore the sections in the navigation menu. Each section provides detailed insights into
-            different
-            aspects of PKM, from foundational principles to advanced techniques.
-          </p>
-          <a href="/documentation/submenu1" class="btn btn-primary" hx-boost="true">Learn More</a>
-        </div>
-      </article>
-    </div>
-  </div>
-</main>
+{% extends "documentation/base.html" %}
+{% block article %}
+<h1 class="">Personalised Knowledge Management (PKM)</h1>
+<p class="">
+  Personalised Knowledge Management (PKM) is a system designed to help individuals organise, store, and retrieve
+  information effectively. It empowers users to create a personalised workflow for managing knowledge, enabling
+  better decision-making and productivity.
+</p>
+<p class="">
+  This documentation will guide you through the core concepts, tools, and best practices for building and
+  maintaining your own PKM system.
+</p>
+<div class="card p-6 rounded-lg shadow-md">
+  <h2 class="">Getting Started</h2>
+  <p class="">
+    To begin, explore the sections in the navigation menu. Each section provides detailed insights into
+    different
+    aspects of PKM, from foundational principles to advanced techniques.
+  </p>
+  <a href="/documentation/submenu1" class="btn btn-primary" hx-boost="true">Learn More</a>
+</div>
 {% endblock %}

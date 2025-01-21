@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "dev": "npx @tailwindcss/cli --input assets/input.css --output assets/style.css --watch"
+    "dev": "npx @tailwindcss/cli --input assets/input.css --output assets/style.css --watch --minify"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.15",
