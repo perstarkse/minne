@@ -7,6 +7,7 @@ use axum::{
 use axum_htmx::{HxBoosted, HxRedirect};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
+use chrono::RoundingError;
 use serde::{Deserialize, Serialize};
 use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
@@ -59,8 +60,8 @@ pub async fn process_signup_and_show_verification(
     let user = match User::create_new(form.email, form.password, &state.surreal_db_client).await {
         Ok(user) => user,
         Err(e) => {
-            info!("{:?}", e);
-            return Ok(Html("<p>User already exists</p>").into_response());
+            tracing::error!("{:?}", e);
+            return Ok(Html(format!("<p>{}</p>", e)).into_response());
         }
     };
 
