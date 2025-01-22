@@ -46,6 +46,8 @@ pub struct IngressParams {
 page_data!(IngressFormData, "ingress_form.html", {
     instructions: String,
     content: String,
+    category: String,
+    error: String,
 });
 
 pub async fn process_ingress_form(
@@ -56,15 +58,6 @@ pub async fn process_ingress_form(
     let user = auth.current_user.ok_or_else(|| {
         AppError::Auth("You must be signed in".to_string()).with_template(state.templates.clone())
     })?;
-    // let user = match auth.current_user {
-    //     Some(user) => user,
-    //     None => {
-    //         return Err(HtmlError::new(
-    //             AppError::Auth("You must be signed in".to_string()),
-    //             state.templates,
-    //         ))
-    //     }
-    // };
 
     if input.content.clone().is_some_and(|c| c.len() < 2) && input.files.is_empty() {
         let output = render_template(
@@ -72,17 +65,13 @@ pub async fn process_ingress_form(
             IngressFormData {
                 instructions: input.instructions.clone(),
                 content: input.content.clone().unwrap(),
+                category: input.category.clone(),
+                error: "You need to either add files or content".to_string(),
             },
             state.templates.clone(),
         )?;
 
         return Ok(output.into_response());
-
-        // return Ok((
-        //     StatusCode::UNAUTHORIZED,
-        //     Html("Invalid input, make sure you fill in either content or add files"),
-        // )
-        //     .into_response());
     }
 
     info!("{:?}", input);
