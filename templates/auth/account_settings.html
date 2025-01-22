@@ -5,7 +5,7 @@
     opacity: 0.5;
   }
 </style>
-<main class="grow flex flex-col prose container mx-auto mt-2">
+<main class="grow flex flex-col prose container mx-auto mt-2 sm:mt-4">
   <h1 class="text-center">Account Settings</h1>
   <div class="form-control">
     <label class="label">
@@ -22,7 +22,8 @@
     {% if user.api_key %}
     <input type="text" name="api-key" value="{{ user.api_key }}" class="input text-gray-100! input-bordered w-full"
       disabled />
-    <a href="https://www.icloud.com/shortcuts/66985f7b98a74aaeac6ba29c3f1f0960" class="btn btn-accent mt-4">Download
+    <a href="https://www.icloud.com/shortcuts/66985f7b98a74aaeac6ba29c3f1f0960"
+      class="btn btn-accent mt-4 w-full">Download
       iOS
       shortcut</a>
     {% else %}

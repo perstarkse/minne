@@ -18,7 +18,7 @@
     <div class="form-control">
       <label class="floating-label">
         <span>Email</span>
-        <input type="email" placeholder="Email" class="input input-md w-full validator" required />
+        <input name="email" type="email" placeholder="Email" class="input input-md w-full validator" required />
         <div class="validator-hint hidden">Enter valid email address</div>
       </label>
     </div>
@@ -26,7 +26,8 @@
     <div class="form-control mt-4">
       <label class="floating-label">
         <span>Password</span>
-        <input type="password" class="input validator w-full" required placeholder="Password" minlength="8" />
+        <input name="password" type="password" class="input validator w-full" required placeholder="Password"
+          minlength="8" />
     </div>
 
     <div class="form-control mt-4">
@@ -35,12 +36,15 @@
         <span class="label-text">Remember me</span>
       </label>
     </div>
+
     <div class="mt-4" id="login-result"></div>
+
     <div class="form-control mt-6">
       <button id="submit-btn" class="btn btn-primary w-full">
         Login
       </button>
     </div>
+
   </form>
   <div class="divider">OR</div>
   <div class="text-center text-sm">

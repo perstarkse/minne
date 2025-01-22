@@ -1,19 +1,40 @@
-<div class="card">
-  <form class="space-y-2" hx-post="/ingress-form" enctype="multipart/form-data">
-    <h1 class="text-2xl">Add content to the database </h1>
-    <label class="label label-text">Instructions</label>
-    <textarea name="instructions" class="textarea w-full input-bordered"
-      placeholder="Enter instructions for the AI here, help it understand what its seeing or how it should relate to the database">{{instructions
-      }}</textarea>
-    <label class="label label-text">Content (optional)</label>
-    <textarea name="content" class="textarea w-full input-bordered" placeholder="Additional content">{{content
-      }}</textarea>
-    <label class="label label-text">Category</label>
-    <input type="text" name="category" class="input input-bordered" placeholder="Category for ingress">
+<form class="space-y-4 mt-2 w-full" hx-post="/ingress-form" enctype="multipart/form-data">
+  <div class="form-control">
+    <label class="floating-label">
+      <span>Instructions</span>
+      <textarea name="instructions" class="textarea w-full validator"
+        placeholder="Enter instructions for the AI here, help it understand what its seeing or how it should relate to the database"
+        required>{{ instructions }}</textarea>
+      <div class="validator-hint hidden">Instructions are required</div>
+    </label>
+  </div>
 
+  <div class="form-control">
+    <label class="floating-label">
+      <span>Content</span>
+      <textarea name="content" class="textarea input-bordered w-full"
+        placeholder="Enter the content you want to ingress, it can be an URL or a text snippet">{{ content
+        }}</textarea>
+    </label>
+  </div>
+
+  <div class="form-control">
+    <label class="floating-label">
+      <span>Category</span>
+      <input type="text" name="category" class="input input-bordered validator w-full"
+        placeholder="Category for ingress" value="{{ category }}" required />
+      <div class="validator-hint hidden">Category is required</div>
+    </label>
+  </div>
+
+  <div class="form-control">
     <label class="label label-text">Files</label>
-    <input type="file" name="files" multiple class="file-input file-input-bordered" />
-    <button type="submit" class="btn btn-primary">Submit</button>
-  </form>
-  <div id="ingress-result"></div>
-</div>
+    <input type="file" name="files" multiple class="file-input file-input-bordered w-full" />
+  </div>
+
+  <div id="error-message" class="text-error text-center {% if not error %}hidden{% endif %}">{{ error }}</div>
+
+  <div class="form-control mt-6">
+    <button type="submit" class="btn btn-primary w-full">Submit</button>
+  </div>
+</form>

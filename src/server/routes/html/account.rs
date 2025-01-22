@@ -17,7 +17,7 @@ use crate::{
 
 use super::render_block;
 
-page_data!(AccountData, "auth/account.html", {
+page_data!(AccountData, "auth/account_settings.html", {
     user: User
 });
 
