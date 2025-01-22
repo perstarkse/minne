@@ -1,9 +1,11 @@
 use axum::async_trait;
 use serde::{Deserialize, Serialize};
+pub mod analytics;
 pub mod file_info;
 pub mod job;
 pub mod knowledge_entity;
 pub mod knowledge_relationship;
+pub mod system_settings;
 pub mod text_chunk;
 pub mod text_content;
 pub mod user;
@@ -58,7 +60,7 @@ macro_rules! stored_object {
             }
         }
 
-        fn deserialize_flexible_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+        pub fn deserialize_flexible_id<'de, D>(deserializer: D) -> Result<String, D::Error>
         where
             D: Deserializer<'de>,
         {

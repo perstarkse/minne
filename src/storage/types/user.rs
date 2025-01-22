@@ -7,13 +7,16 @@ use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
-use super::{knowledge_entity::KnowledgeEntity, text_content::TextContent};
+use super::{
+    knowledge_entity::KnowledgeEntity, system_settings::SystemSettings, text_content::TextContent,
+};
 
 stored_object!(User, "user", {
     email: String,
     password: String,
     anonymous: bool,
-    api_key: Option<String>
+    api_key: Option<String>,
+    admin: bool
 });
 
 #[async_trait]
@@ -42,31 +45,35 @@ impl User {
         password: String,
         db: &SurrealDbClient,
     ) -> Result<Self, AppError> {
-        // Check if user exists
-        if (Self::find_by_email(&email, db).await?).is_some() {
-            return Err(AppError::Auth("User already exists".into()));
+        // verify that the application allows new creations
+        let systemsettings = SystemSettings::get_current(db).await?;
+        if !systemsettings.registrations_enabled {
+            return Err(AppError::Auth("Registration is not allowed".into()));
         }
 
         let now = Utc::now();
-
         let id = Uuid::new_v4().to_string();
+
         let user: Option<User> = db
             .client
             .query(
-                "CREATE type::thing('user', $id) SET 
-                email = $email, 
+                "LET $count = (SELECT count() FROM type::table($table))[0].count;
+             CREATE type::thing('user', $id) SET
+                email = $email,
                 password = crypto::argon2::generate($password),
+                admin = $count < 1,  // Changed from == 0 to < 1
                 anonymous = false,
                 created_at = $created_at,
                 updated_at = $updated_at",
             )
+            .bind(("table", "user"))
             .bind(("id", id))
             .bind(("email", email))
             .bind(("password", password))
             .bind(("created_at", now))
             .bind(("updated_at", now))
             .await?
-            .take(0)?;
+            .take(1)?;
 
         user.ok_or(AppError::Auth("User failed to create".into()))
     }

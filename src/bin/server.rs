@@ -27,6 +27,7 @@ use zettle_db::{
             },
             html::{
                 account::{delete_account, set_api_key, show_account_page},
+                admin_panel::show_admin_panel,
                 documentation::index::show_documentation_index,
                 gdpr::{accept_gdpr, deny_gdpr},
                 index::index_handler,
@@ -41,7 +42,10 @@ use zettle_db::{
         },
         AppState,
     },
-    storage::{db::SurrealDbClient, types::user::User},
+    storage::{
+        db::SurrealDbClient,
+        types::{analytics::Analytics, system_settings::SystemSettings, user::User},
+    },
     utils::{config::get_config, mailer::Mailer},
 };
 
@@ -106,25 +110,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     app_state.surreal_db_client.build_indexes().await?;
     setup_auth(&app_state.surreal_db_client).await?;
-    // app_state.surreal_db_client.drop_table::<FileInfo>().await?;
-    // app_state.surreal_db_client.drop_table::<User>().await?;
-    // app_state.surreal_db_client.drop_table::<Job>().await?;
-    // app_state
-    //     .surreal_db_client
-    //     .drop_table::<KnowledgeEntity>()
-    //     .await?;
-    // app_state
-    //     .surreal_db_client
-    //     .drop_table::<KnowledgeRelationship>()
-    //     .await?;
-    // app_state
-    //     .surreal_db_client
-    //     .drop_table::<TextContent>()
-    //     .await?;
-    // app_state
-    //     .surreal_db_client
-    //     .drop_table::<TextChunk>()
-    //     .await?;
+    Analytics::ensure_initialized(&app_state.surreal_db_client).await?;
+    SystemSettings::ensure_initialized(&app_state.surreal_db_client).await?;
 
     // Create Axum router
     let app = Router::new()
@@ -181,6 +168,7 @@ fn html_routes(
         .route("/queue", get(show_queue_tasks))
         .route("/queue/:delivery_tag", delete(delete_task))
         .route("/account", get(show_account_page))
+        .route("/admin", get(show_admin_panel))
         .route("/set-api-key", post(set_api_key))
         .route("/delete-account", delete(delete_account))
         .route(

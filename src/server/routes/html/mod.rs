@@ -6,6 +6,7 @@ use minijinja_autoreload::AutoReloader;
 use crate::error::{HtmlError, IntoHtmlError};
 
 pub mod account;
+pub mod admin_panel;
 pub mod documentation;
 pub mod gdpr;
 pub mod index;

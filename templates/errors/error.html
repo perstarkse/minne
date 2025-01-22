@@ -1,7 +1,6 @@
-{% extends "body_base.html" %}
-
+{% extends 'body_base.html' %}
 {% block main %}
-<div class="container mx-auto flex items-center justify-center">
+<main class="container justify-center flex-grow flex mx-auto mt-4 p-5">
   <div class="flex flex-col space-y-4 text-center">
     <h1 class="text-2xl font-bold  text-error">
       {{ status_code }}
@@ -10,5 +9,5 @@
     <p class="text-base-content/60">{{ description }}</p>
     <a href="/" class="btn btn-primary mt-8">Go Home</a>
   </div>
-</div>
+</main>
 {% endblock %}
