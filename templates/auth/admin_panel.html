@@ -1,13 +1,40 @@
 {% extends 'body_base.html' %}
 {% block main %}
-<main class="container justify-center flex-grow flex mx-auto mt-4 p-5">
-  Hello
-  {% if user.admin %}
-  admin
-  {% else %}
-  user
-  {% endif %}
+<main class="container flex-grow flex flex-col mx-auto mt-4 p-5 space-y-6">
+  <h1 class="text-3xl font-bold">Admin Dashboard</h1>
 
-  {{settings}}
+  <div class="stats stats-vertical lg:stats-horizontal shadow">
+    <div class="stat">
+      <div class="stat-title">Page loads</div>
+      <div class="stat-value text-secondary">{{analytics.page_loads}}</div>
+      <div class="stat-desc">Amount of page loads</div>
+    </div>
+
+    <div class="stat">
+      <div class="stat-title">Unique visitors</div>
+      <div class="stat-value text-primary">{{analytics.visitors}}</div>
+      <div class="stat-desc">Amount of unique visitors</div>
+    </div>
+
+    <div class="stat">
+      <div class="stat-title">Users</div>
+      <div class="stat-value text-accent">{{users}}</div>
+      <div class="stat-desc">Amount of registered users</div>
+    </div>
+  </div>
+
+
+  <!-- Settings in Fieldset -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+    <fieldset class="fieldset p-4 shadow rounded-box">
+      <legend class="fieldset-legend">Registration</legend>
+      <label class="fieldset-label">
+        <input type="checkbox" class="checkbox" hx-post="/toggle-registrations" hx-target="#registration-status" {% if
+          settings.registrations_enabled %}checked{% endif %} />
+        Enable Registrations
+      </label>
+      <div id="registration-status" class="text-sm mt-2"></div>
+    </fieldset>
+  </div>
 </main>
 {% endblock %}
