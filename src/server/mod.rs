@@ -4,6 +4,7 @@ use crate::utils::mailer::Mailer;
 use minijinja_autoreload::AutoReloader;
 use std::sync::Arc;
 
+pub mod middleware_analytics;
 pub mod middleware_api_auth;
 pub mod routes;
 

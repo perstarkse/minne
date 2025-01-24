@@ -7,10 +7,8 @@ use axum::{
 use axum_htmx::{HxBoosted, HxRedirect};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
-use chrono::RoundingError;
 use serde::{Deserialize, Serialize};
 use surrealdb::{engine::any::Any, Surreal};
-use tracing::info;
 
 use crate::{error::HtmlError, server::AppState, storage::types::user::User};
 
