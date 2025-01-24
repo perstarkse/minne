@@ -17,6 +17,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zettle_db::{
     ingress::jobqueue::JobQueue,
     server::{
+        middleware_analytics::analytics_middleware,
         middleware_api_auth::api_auth,
         routes::{
             api::{
@@ -122,6 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 session_store,
                 auth_config,
                 app_state.surreal_db_client.client.clone(),
+                &app_state,
             ),
         )
         .with_state(app_state);
@@ -148,11 +150,11 @@ fn api_routes_v1(app_state: &AppState) -> Router<AppState> {
 }
 
 /// Router for HTML endpoints
-///
 fn html_routes(
     session_store: SessionStore<SessionSurrealPool<Any>>,
     auth_config: AuthConfig<String>,
     db_client: Surreal<Any>,
+    app_state: &AppState,
 ) -> Router<AppState> {
     Router::new()
         .route("/", get(index_handler))
@@ -178,6 +180,7 @@ fn html_routes(
         .route("/documentation", get(show_documentation_index))
         .route("/documentation/privacy-policy", get(show_privacy_policy))
         .nest_service("/assets", ServeDir::new("assets/"))
+        .layer(from_fn_with_state(app_state.clone(), analytics_middleware))
         .layer(
             AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(
                 db_client,

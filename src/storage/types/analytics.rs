@@ -1,6 +1,5 @@
 use crate::storage::types::{file_info::deserialize_flexible_id, user::User, StoredObject};
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::{error::AppError, storage::db::SurrealDbClient};
 

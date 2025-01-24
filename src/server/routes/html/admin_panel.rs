@@ -1,15 +1,13 @@
 use axum::{
     extract::State,
-    http::{StatusCode, Uri},
     response::{IntoResponse, Redirect},
 };
-use axum_htmx::HxRedirect;
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use surrealdb::{engine::any::Any, Surreal};
 
 use crate::{
-    error::{AppError, HtmlError},
+    error::HtmlError,
     page_data,
     server::{routes::html::render_template, AppState},
     storage::types::{analytics::Analytics, system_settings::SystemSettings, user::User},
