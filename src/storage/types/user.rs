@@ -170,13 +170,13 @@ impl User {
     }
 
     pub async fn get_knowledge_entities(
-        id: &str,
+        user_id: &str,
         db: &SurrealDbClient,
     ) -> Result<Vec<KnowledgeEntity>, AppError> {
         let entities: Vec<KnowledgeEntity> = db
             .client
             .query("SELECT * FROM knowledge_entity WHERE user_id = $user_id")
-            .bind(("user_id", id.to_owned()))
+            .bind(("user_id", user_id.to_owned()))
             .await?
             .take(0)?;
 
@@ -184,13 +184,31 @@ impl User {
     }
 
     pub async fn get_latest_text_contents(
-        id: &str,
+        user_id: &str,
         db: &SurrealDbClient,
     ) -> Result<Vec<TextContent>, AppError> {
         let items: Vec<TextContent> = db
             .client
-            .query("SELECT * FROM text_content WHERE user_id = $user_id ORDER BY created_at DESC LIMIT 5")
-            .bind(("user_id", id.to_owned()))
+            .query("SELECT * FROM type::table($table_name) WHERE user_id = $user_id ORDER BY created_at DESC LIMIT 5")
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("table_name", TextContent::table_name()))
+            .await?
+            .take(0)?;
+
+        Ok(items)
+    }
+
+    pub async fn get_latest_knowledge_entities(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<KnowledgeEntity>, AppError> {
+        let items: Vec<KnowledgeEntity> = db
+            .client
+            .query(
+                "SELECT * FROM type::table($table_name) WHERE user_id = $user_id ORDER BY created_at DESC LIMIT 5",
+            )
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("table_name", KnowledgeEntity::table_name()))
             .await?
             .take(0)?;
 

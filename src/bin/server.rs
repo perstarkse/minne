@@ -70,6 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         notifier.set_fast_reload(true);
         notifier.watch_path(&template_path, true);
+        minijinja_contrib::add_to_environment(&mut env);
         Ok(env)
     });
 

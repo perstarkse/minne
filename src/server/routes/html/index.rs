@@ -9,13 +9,14 @@ use crate::{
     error::HtmlError,
     page_data,
     server::{routes::html::render_template, AppState},
-    storage::types::user::User,
+    storage::types::{text_content::TextContent, user::User},
 };
 
 page_data!(IndexData, "index/index.html", {
     gdpr_accepted: bool,
     queue_length: u32,
-    user: Option<User>
+    user: Option<User>,
+    latest_text_contents: Vec<TextContent>
 });
 
 pub async fn index_handler(
@@ -37,17 +38,29 @@ pub async fn index_handler(
         false => 0,
     };
 
-    // let latest_text_contents = match auth.current_user.is_some() {
-    //     true =>
-    // }
+    let latest_text_contents = match auth.current_user.is_some() {
+        true => User::get_latest_text_contents(
+            auth.current_user.clone().unwrap().id.as_str(),
+            &state.surreal_db_client,
+        )
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
+        false => vec![],
+    };
 
-    // let knowledge_entities = User::get_knowledge_entities(
-    //     &auth.current_user.clone().unwrap().id,
-    //     &state.surreal_db_client,
-    // )
-    // .await?;
+    info!("{:?}", latest_text_contents);
 
-    // info!("{:?}", knowledge_entities);
+    let latest_knowledge_entities = match auth.current_user.is_some() {
+        true => User::get_latest_knowledge_entities(
+            auth.current_user.clone().unwrap().id.as_str(),
+            &state.surreal_db_client,
+        )
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
+        false => vec![],
+    };
+
+    info!("{:?}", latest_knowledge_entities);
 
     let output = render_template(
         IndexData::template_name(),
@@ -55,6 +68,7 @@ pub async fn index_handler(
             queue_length: queue_length.try_into().unwrap(),
             gdpr_accepted,
             user: auth.current_user,
+            latest_text_contents,
         },
         state.templates.clone(),
     )?;

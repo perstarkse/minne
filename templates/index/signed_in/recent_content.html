@@ -1,13 +1,16 @@
 <div class="card bg-base-100 shadow-xl mt-4">
+  <!-- <div class="mt-4"> -->
+  <p>{{latest_text_contents}}</p>
   <div class="card-body">
     <h2 class="card-title">Recently Added Content</h2>
     <ul class="list bg-base-100 rounded-box shadow-md">
-
+      {% for item in latest_text_contents %}
       <li class="list-row">
-        <div><img class="size-10 rounded-box" src="https://img.daisyui.com/images/profile/demo/1@94.webp" /></div>
+        <div class="text-2xl text-ellipsis text-nowrap overflow-hidden">
+          {{item.created_at|datetimeformat(format="short", tz="Europe/Stockholm")}}</div>
         <div>
-          <div>Dio Lupa</div>
-          <div class="text-xs uppercase font-semibold opacity-60">Remaining Reason</div>
+          <div>{{item.category}}</div>
+          <div class="text-xs uppercase font-semibold opacity-60">{{item.text}}</div>
         </div>
         <button class="btn btn-outline">
           Edit
@@ -15,6 +18,7 @@
         <button class="btn btn-error">
           Delete </button>
       </li>
+      {% endfor %}
     </ul>
   </div>
 </div>

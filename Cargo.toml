@@ -20,6 +20,7 @@ mime = "0.3.17"
 mime_guess = "2.0.5"
 minijinja = { version = "2.5.0", features = ["loader", "multi_template"] }
 minijinja-autoreload = "2.5.0"
+minijinja-contrib = { version = "2.6.0", features = ["datetime", "timezone"] }
 mockall = "0.13.0"
 reqwest = {version = "0.12.12", features = ["charset", "json"]}
 scraper = "0.22.0"
