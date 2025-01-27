@@ -14,6 +14,7 @@
     <input type="email" name="email" value="{{ user.email }}" class="input text-primary-content input-bordered w-full"
       disabled />
   </div>
+
   <div class="form-control">
     <label class="label">
       <span class="label-text">API key</span>
@@ -33,6 +34,20 @@
     {% endif %}
     {% endblock %}
   </div>
+
+  <div class="form-control mt-4">
+    <label class="label">
+      <span class="label-text">Timezone</span>
+    </label>
+    {% block timezone_section %}
+    <select name="timezone" class="select w-full" hx-patch="/update-timezone" hx-swap="outerHTML">
+      {% for tz in timezones %}
+      <option value="{{ tz }}" {% if tz==user.timezone %}selected{% endif %}>{{ tz }}</option>
+      {% endfor %}
+    </select>
+    {% endblock %}
+  </div>
+
   <div class="form-control mt-4">
     <button hx-post="/verify-email" class="btn btn-secondary w-full">
       Verify Email

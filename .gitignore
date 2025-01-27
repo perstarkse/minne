@@ -7,7 +7,7 @@ config.yaml
 flake.nix
 
 
-/target
+target
 .aider
 .aider.chat.history.md .aider.input.history .aider.tags.cache.v3 .aider.tags.cache.v3/cache.db
 data
