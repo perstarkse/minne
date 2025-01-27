@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{error::AppError, storage::db::SurrealDbClient};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SystemSettings {
     #[serde(deserialize_with = "deserialize_flexible_id")]
     pub id: String,

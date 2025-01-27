@@ -28,7 +28,7 @@ use zettle_db::{
             },
             html::{
                 account::{delete_account, set_api_key, show_account_page, update_timezone},
-                admin_panel::show_admin_panel,
+                admin_panel::{show_admin_panel, toggle_registration_status},
                 documentation::index::show_documentation_index,
                 gdpr::{accept_gdpr, deny_gdpr},
                 index::index_handler,
@@ -172,6 +172,7 @@ fn html_routes(
         .route("/queue/:delivery_tag", delete(delete_task))
         .route("/account", get(show_account_page))
         .route("/admin", get(show_admin_panel))
+        .route("/toggle-registrations", patch(toggle_registration_status))
         .route("/set-api-key", post(set_api_key))
         .route("/update-timezone", patch(update_timezone))
         .route("/delete-account", delete(delete_account))

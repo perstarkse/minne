@@ -29,8 +29,12 @@
     <fieldset class="fieldset p-4 shadow rounded-box">
       <legend class="fieldset-legend">Registration</legend>
       <label class="fieldset-label">
-        <input type="checkbox" class="checkbox" hx-post="/toggle-registrations" hx-target="#registration-status" {% if
-          settings.registrations_enabled %}checked{% endif %} />
+        {% block registration_status_input %}
+        <form hx-patch="/toggle-registrations" hx-swap="outerHTML" hx-trigger="change">
+          <input name="registration_open" type="checkbox" class="checkbox" {% if settings.registrations_enabled
+            %}checked{% endif %} />
+        </form>
+        {% endblock %}
         Enable Registrations
       </label>
       <div id="registration-status" class="text-sm mt-2"></div>

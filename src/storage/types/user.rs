@@ -41,6 +41,19 @@ impl Authentication<User, String, Surreal<Any>> for User {
     }
 }
 
+fn validate_timezone(input: &str) -> String {
+    use chrono_tz::Tz;
+
+    // Check if it's a valid IANA timezone identifier
+    match input.parse::<Tz>() {
+        Ok(_) => input.to_owned(),
+        Err(_) => {
+            tracing::warn!("Invalid timezone '{}' received, defaulting to UTC", input);
+            "UTC".to_owned()
+        }
+    }
+}
+
 impl User {
     pub async fn create_new(
         email: String,
@@ -54,6 +67,7 @@ impl User {
             return Err(AppError::Auth("Registration is not allowed".into()));
         }
 
+        let validated_tz = validate_timezone(&timezone);
         let now = Utc::now();
         let id = Uuid::new_v4().to_string();
 
@@ -76,7 +90,7 @@ impl User {
             .bind(("password", password))
             .bind(("created_at", now))
             .bind(("updated_at", now))
-            .bind(("timezone", timezone))
+            .bind(("timezone", validated_tz))
             .await?
             .take(1)?;
 

@@ -1,12 +1,12 @@
 \[\] admin controls re registration
 \[\] archive ingressed webpage
 \[\] configs primarily get envs
-\[\] html ingression
 \[\] view content
 \[\] view graph map
 \[\] view latest
 \[x\] add user_id to ingress objects
 \[x\] gdpr
+\[x\] html ingression
 \[x\] hx-redirect
 \[x\] ios shortcut generation
 \[x\] job queue
