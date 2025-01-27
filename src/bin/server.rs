@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     middleware::from_fn_with_state,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Router,
 };
 use axum_session::{SessionConfig, SessionLayer, SessionStore};
@@ -27,7 +27,7 @@ use zettle_db::{
                 queue_length::queue_length_handler,
             },
             html::{
-                account::{delete_account, set_api_key, show_account_page},
+                account::{delete_account, set_api_key, show_account_page, update_timezone},
                 admin_panel::show_admin_panel,
                 documentation::index::show_documentation_index,
                 gdpr::{accept_gdpr, deny_gdpr},
@@ -173,6 +173,7 @@ fn html_routes(
         .route("/account", get(show_account_page))
         .route("/admin", get(show_admin_panel))
         .route("/set-api-key", post(set_api_key))
+        .route("/update-timezone", patch(update_timezone))
         .route("/delete-account", delete(delete_account))
         .route(
             "/signup",

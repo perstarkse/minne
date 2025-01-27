@@ -43,6 +43,7 @@
         Create Account
       </button>
     </div>
+    <input type="hidden" name="timezone" id="timezone" />
   </form>
 
   <div class="divider">OR</div>
@@ -52,4 +53,9 @@
     <a href="/signin" hx-boost="true" class="link link-primary">Sign in</a>
   </div>
 </div>
+<script>
+  // Detect timezone and set hidden input
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  document.getElementById("timezone").value = timezone;
+</script>
 {% endblock %}

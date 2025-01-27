@@ -2,10 +2,12 @@ use axum::{
     extract::State,
     http::{StatusCode, Uri},
     response::{IntoResponse, Redirect},
+    Form,
 };
 use axum_htmx::HxRedirect;
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
+use chrono_tz::TZ_VARIANTS;
 use surrealdb::{engine::any::Any, Surreal};
 
 use crate::{
@@ -18,7 +20,8 @@ use crate::{
 use super::render_block;
 
 page_data!(AccountData, "auth/account_settings.html", {
-    user: User
+    user: User,
+    timezones: Vec<String>
 });
 
 pub async fn show_account_page(
@@ -31,9 +34,11 @@ pub async fn show_account_page(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
+    let timezones = TZ_VARIANTS.iter().map(|tz| tz.to_string()).collect();
+
     let output = render_template(
         AccountData::template_name(),
-        AccountData { user },
+        AccountData { user, timezones },
         state.templates.clone(),
     )?;
 
@@ -67,7 +72,10 @@ pub async fn set_api_key(
     let output = render_block(
         AccountData::template_name(),
         "api_key_section",
-        AccountData { user: updated_user },
+        AccountData {
+            user: updated_user,
+            timezones: vec![],
+        },
         state.templates.clone(),
     )?;
 
@@ -93,4 +101,47 @@ pub async fn delete_account(
     auth.session.destroy();
 
     Ok((HxRedirect::from(Uri::from_static("/")), StatusCode::OK).into_response())
+}
+
+#[derive(Deserialize)]
+pub struct UpdateTimezoneForm {
+    timezone: String,
+}
+
+pub async fn update_timezone(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Form(form): Form<UpdateTimezoneForm>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let user = match &auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/").into_response()),
+    };
+
+    User::update_timezone(&user.id, &form.timezone, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    auth.cache_clear_user(user.id.to_string());
+
+    // Update the user's API key
+    let updated_user = User {
+        timezone: form.timezone,
+        ..user.clone()
+    };
+
+    let timezones = TZ_VARIANTS.iter().map(|tz| tz.to_string()).collect();
+
+    // Render the API key section block
+    let output = render_block(
+        AccountData::template_name(),
+        "timezone_section",
+        AccountData {
+            user: updated_user,
+            timezones,
+        },
+        state.templates.clone(),
+    )?;
+
+    Ok(output.into_response())
 }

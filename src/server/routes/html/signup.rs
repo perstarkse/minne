@@ -18,6 +18,7 @@ use super::{render_block, render_template};
 pub struct SignupParams {
     pub email: String,
     pub password: String,
+    pub timezone: String,
 }
 
 #[derive(Serialize)]
@@ -55,7 +56,14 @@ pub async fn process_signup_and_show_verification(
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     Form(form): Form<SignupParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user = match User::create_new(form.email, form.password, &state.surreal_db_client).await {
+    let user = match User::create_new(
+        form.email,
+        form.password,
+        &state.surreal_db_client,
+        form.timezone,
+    )
+    .await
+    {
         Ok(user) => user,
         Err(e) => {
             tracing::error!("{:?}", e);

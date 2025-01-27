@@ -16,7 +16,9 @@ stored_object!(User, "user", {
     password: String,
     anonymous: bool,
     api_key: Option<String>,
-    admin: bool
+    admin: bool,
+    #[serde(default)]
+    timezone: String
 });
 
 #[async_trait]
@@ -44,6 +46,7 @@ impl User {
         email: String,
         password: String,
         db: &SurrealDbClient,
+        timezone: String,
     ) -> Result<Self, AppError> {
         // verify that the application allows new creations
         let systemsettings = SystemSettings::get_current(db).await?;
@@ -64,7 +67,8 @@ impl User {
                 admin = $count < 1,  // Changed from == 0 to < 1
                 anonymous = false,
                 created_at = $created_at,
-                updated_at = $updated_at",
+                updated_at = $updated_at,
+                timezone = $timezone",
             )
             .bind(("table", "user"))
             .bind(("id", id))
@@ -72,6 +76,7 @@ impl User {
             .bind(("password", password))
             .bind(("created_at", now))
             .bind(("updated_at", now))
+            .bind(("timezone", timezone))
             .await?
             .take(1)?;
 
@@ -213,5 +218,17 @@ impl User {
             .take(0)?;
 
         Ok(items)
+    }
+    pub async fn update_timezone(
+        user_id: &str,
+        timezone: &str,
+        db: &Surreal<Any>,
+    ) -> Result<(), AppError> {
+        db.query("UPDATE type::thing('user', $user_id) SET timezone = $timezone")
+            .bind(("table_name", User::table_name()))
+            .bind(("user_id", user_id.to_string()))
+            .bind(("timezone", timezone.to_string()))
+            .await?;
+        Ok(())
     }
 }

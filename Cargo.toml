@@ -13,6 +13,7 @@ axum_session_auth = "0.14.1"
 axum_session_surreal = "0.2.1"
 axum_typed_multipart = "0.12.1"
 chrono = { version = "0.4.39", features = ["serde"] }
+chrono-tz = "0.10.1"
 config = "0.15.4"
 futures = "0.3.31"
 lettre = { version = "0.11.11", features = ["rustls-tls"] }
