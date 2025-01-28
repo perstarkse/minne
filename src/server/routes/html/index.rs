@@ -1,4 +1,7 @@
-use axum::{extract::State, response::IntoResponse};
+use axum::{
+    extract::{Path, State},
+    response::{IntoResponse, Redirect},
+};
 use axum_session::Session;
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
@@ -6,17 +9,23 @@ use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
 use crate::{
-    error::HtmlError,
+    error::{AppError, HtmlError},
     page_data,
-    server::{routes::html::render_template, AppState},
-    storage::types::{text_content::TextContent, user::User},
+    server::{
+        routes::html::{render_block, render_template},
+        AppState,
+    },
+    storage::{
+        db::delete_item,
+        types::{job::Job, text_content::TextContent, user::User},
+    },
 };
 
 page_data!(IndexData, "index/index.html", {
     gdpr_accepted: bool,
-    queue_length: u32,
     user: Option<User>,
-    latest_text_contents: Vec<TextContent>
+    latest_text_contents: Vec<TextContent>,
+    active_jobs: Vec<Job>
 });
 
 pub async fn index_handler(
@@ -28,17 +37,16 @@ pub async fn index_handler(
 
     let gdpr_accepted = auth.current_user.is_some() | session.get("gdpr_accepted").unwrap_or(false);
 
-    let queue_length = match auth.current_user.is_some() {
+    let active_jobs = match auth.current_user.is_some() {
         true => state
             .job_queue
-            .get_user_jobs(&auth.current_user.clone().unwrap().id)
+            .get_unfinished_user_jobs(&auth.current_user.clone().unwrap().id)
             .await
-            .map_err(|e| HtmlError::new(e, state.templates.clone()))?
-            .len(),
-        false => 0,
+            .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
+        false => vec![],
     };
 
-    let latest_text_contents = match auth.current_user.is_some() {
+    let latest_text_contents = match auth.current_user.clone().is_some() {
         true => User::get_latest_text_contents(
             auth.current_user.clone().unwrap().id.as_str(),
             &state.surreal_db_client,
@@ -65,10 +73,90 @@ pub async fn index_handler(
     let output = render_template(
         IndexData::template_name(),
         IndexData {
-            queue_length: queue_length.try_into().unwrap(),
             gdpr_accepted,
             user: auth.current_user,
             latest_text_contents,
+            active_jobs,
+        },
+        state.templates.clone(),
+    )?;
+
+    Ok(output.into_response())
+}
+
+#[derive(Serialize)]
+pub struct LatestTextContentData {
+    latest_text_contents: Vec<TextContent>,
+    user: User,
+}
+
+pub async fn delete_text_content(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let user = match &auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/").into_response()),
+    };
+
+    delete_item::<TextContent>(&state.surreal_db_client, &id)
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+
+    let latest_text_contents = User::get_latest_text_contents(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    info!("{:?}", latest_text_contents);
+
+    let output = render_block(
+        "index/signed_in/recent_content.html",
+        "latest_content_section",
+        LatestTextContentData {
+            user: user.clone(),
+            latest_text_contents,
+        },
+        state.templates.clone(),
+    )?;
+
+    Ok(output.into_response())
+}
+
+#[derive(Serialize)]
+pub struct ActiveJobsData {
+    active_jobs: Vec<Job>,
+    user: User,
+}
+
+pub async fn delete_job(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/signin").into_response()),
+    };
+
+    state
+        .job_queue
+        .delete_job(&id, &user.id)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let active_jobs = state
+        .job_queue
+        .get_unfinished_user_jobs(&user.id)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let output = render_block(
+        "index/signed_in/active_jobs.html",
+        "active_jobs_section",
+        ActiveJobsData {
+            user: user.clone(),
+            active_jobs,
         },
         state.templates.clone(),
     )?;

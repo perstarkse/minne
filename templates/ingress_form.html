@@ -1,4 +1,4 @@
-<form class="space-y-4 mt-2 w-full" hx-post="/ingress-form" enctype="multipart/form-data">
+<form id="ingress-form" class="space-y-4 mt-2 w-full" hx-post="/ingress-form" enctype="multipart/form-data">
   <div class="form-control">
     <label class="floating-label">
       <span>Instructions</span>
@@ -34,7 +34,9 @@
 
   <div id="error-message" class="text-error text-center {% if not error %}hidden{% endif %}">{{ error }}</div>
 
-  <div class="form-control mt-6">
-    <button type="submit" class="btn btn-primary w-full">Submit</button>
+  <div class="form-control mt-6 flex flex-col sm:flex-row gap-1">
+    <button hx-get="/hide-ingress-form" hx-target="#ingress-form" hx-swap=outerHTML"
+      class="btn btn-outline w-full sm:w-fit">Cancel</button>
+    <button type="submit" class="btn btn-primary w-full sm:w-fit">Submit</button>
   </div>
 </form>

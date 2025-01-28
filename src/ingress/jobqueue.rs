@@ -57,6 +57,31 @@ impl JobQueue {
         Ok(jobs)
     }
 
+    /// Gets all active jobs for a specific user
+    pub async fn get_unfinished_user_jobs(&self, user_id: &str) -> Result<Vec<Job>, AppError> {
+        let jobs: Vec<Job> = self
+            .db
+            .query(
+                "SELECT * FROM type::table($table) 
+             WHERE user_id = $user_id 
+             AND (
+                status = 'Created' 
+                OR (
+                    status.InProgress != NONE 
+                    AND status.InProgress.attempts < $max_attempts
+                )
+             )
+             ORDER BY created_at DESC",
+            )
+            .bind(("table", Job::table_name()))
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("max_attempts", MAX_ATTEMPTS))
+            .await?
+            .take(0)?;
+        debug!("{:?}", jobs);
+        Ok(jobs)
+    }
+
     pub async fn delete_job(&self, id: &str, user_id: &str) -> Result<(), AppError> {
         get_item::<Job>(&self.db.client, id)
             .await?

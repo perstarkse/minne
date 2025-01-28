@@ -31,9 +31,8 @@ use zettle_db::{
                 admin_panel::{show_admin_panel, toggle_registration_status},
                 documentation::index::show_documentation_index,
                 gdpr::{accept_gdpr, deny_gdpr},
-                index::index_handler,
-                ingress_form::{process_ingress_form, show_ingress_form},
-                ingress_tasks::{delete_task, show_queue_tasks},
+                index::{delete_job, delete_text_content, index_handler},
+                ingress_form::{hide_ingress_form, process_ingress_form, show_ingress_form},
                 privacy_policy::show_privacy_policy,
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
@@ -168,8 +167,9 @@ fn html_routes(
             "/ingress-form",
             get(show_ingress_form).post(process_ingress_form),
         )
-        .route("/queue", get(show_queue_tasks))
-        .route("/queue/:delivery_tag", delete(delete_task))
+        .route("/hide-ingress-form", get(hide_ingress_form))
+        .route("/text-content/:id", delete(delete_text_content))
+        .route("/jobs/:job_id", delete(delete_job))
         .route("/account", get(show_account_page))
         .route("/admin", get(show_admin_panel))
         .route("/toggle-registrations", patch(toggle_registration_status))
