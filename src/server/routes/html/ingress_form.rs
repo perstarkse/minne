@@ -33,6 +33,19 @@ pub async fn show_ingress_form(
     Ok(output.into_response())
 }
 
+pub async fn hide_ingress_form(
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+) -> Result<impl IntoResponse, HtmlError> {
+    if !auth.is_authenticated() {
+        return Ok(Redirect::to("/").into_response());
+    }
+
+    Ok(Html(
+        "<a class='btn btn-primary' hx-get='/ingress-form' hx-swap='outerHTML'>Add Content</a>",
+    )
+    .into_response())
+}
+
 #[derive(Debug, TryFromMultipart)]
 pub struct IngressParams {
     pub content: Option<String>,
