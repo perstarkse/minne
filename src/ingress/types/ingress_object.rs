@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use tiktoken_rs::{o200k_base, CoreBPE};
 
-/// Knowledge object type, containing the content or reference to it, as well as metadata
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum IngressObject {
     Url {
@@ -62,6 +61,7 @@ impl IngressObject {
                     instructions.into(),
                     category.into(),
                     None,
+                    Some(url.into()),
                     user_id.into(),
                 ))
             }
@@ -74,6 +74,7 @@ impl IngressObject {
                 text.into(),
                 instructions.into(),
                 category.into(),
+                None,
                 None,
                 user_id.into(),
             )),
@@ -89,6 +90,7 @@ impl IngressObject {
                     instructions.into(),
                     category.into(),
                     Some(file_info.to_owned()),
+                    None,
                     user_id.into(),
                 ))
             }

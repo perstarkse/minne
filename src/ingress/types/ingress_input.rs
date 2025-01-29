@@ -41,13 +41,15 @@ pub fn create_ingress_objects(
                 });
             }
             Err(_) => {
-                info!("Treating input as plain text");
-                object_list.push(IngressObject::Text {
-                    text: input_content.to_string(),
-                    instructions: input.instructions.clone(),
-                    category: input.category.clone(),
-                    user_id: user_id.into(),
-                });
+                if input_content.len() > 2 {
+                    info!("Treating input as plain text");
+                    object_list.push(IngressObject::Text {
+                        text: input_content.to_string(),
+                        instructions: input.instructions.clone(),
+                        category: input.category.clone(),
+                        user_id: user_id.into(),
+                    });
+                }
             }
         }
     }
