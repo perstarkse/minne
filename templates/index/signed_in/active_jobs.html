@@ -1,5 +1,4 @@
 {% block active_jobs_section %}
-{% if active_jobs %}
 <ul id="active_jobs_section" class="list ">
   <li class="p-4 pb-2 text-xs opacity-60 tracking-wide">Active Jobs</li>
   {% for item in active_jobs %}
@@ -15,7 +14,11 @@
     </div>
     <div>
       <div class="uppercase">
+        {% if item.status.InProgress %}
+        In Progress, attempt {{item.status.InProgress.attempts}}
+        {% else %}
         {{item.status}}
+        {% endif %}
       </div>
       <div class="text-xs font-semibold opacity-60">
         {{item.created_at|datetimeformat(format="short", tz=user.timezone)}} </div>
@@ -49,5 +52,4 @@
   </li>
   {% endfor %}
 </ul>
-{% endif %}
 {% endblock %}
