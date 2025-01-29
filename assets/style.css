@@ -2643,6 +2643,9 @@
   .my-4 {
     margin-block: calc(var(--spacing) * 4);
   }
+  .my-10 {
+    margin-block: calc(var(--spacing) * 10);
+  }
   .my-12 {
     margin-block: calc(var(--spacing) * 12);
   }
@@ -3482,6 +3485,9 @@
     width: 1.2em;
     height: 1.2em;
   }
+  .h-1 {
+    height: calc(var(--spacing) * 1);
+  }
   .h-5 {
     height: calc(var(--spacing) * 5);
   }
@@ -3500,11 +3506,23 @@
   .w-32 {
     width: calc(var(--spacing) * 32);
   }
+  .w-200 {
+    width: calc(var(--spacing) * 200);
+  }
   .w-full {
     width: 100%;
   }
   .max-w-\(--breakpoint-sm\) {
     max-width: var(--breakpoint-sm);
+  }
+  .max-w-\[150px\] {
+    max-width: 150px;
+  }
+  .max-w-\[160px\] {
+    max-width: 160px;
+  }
+  .max-w-\[200px\] {
+    max-width: 200px;
   }
   .flex-1 {
     flex: 1;
@@ -3653,6 +3671,14 @@
       margin-block-start: calc(calc(var(--spacing) * 8) * var(--tw-space-y-reverse));
       margin-block-end: calc(calc(var(--spacing) * 8) * calc(1 - var(--tw-space-y-reverse)));
     }
+  }
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .overflow-clip {
+    overflow: clip;
   }
   .overflow-hidden {
     overflow: hidden;
@@ -3827,6 +3853,9 @@
     --tw-tracking: var(--tracking-wide);
     letter-spacing: var(--tracking-wide);
   }
+  .\!text-nowrap {
+    text-wrap: nowrap !important;
+  }
   .text-nowrap {
     text-wrap: nowrap;
   }
@@ -3836,8 +3865,14 @@
   .break-all {
     word-break: break-all;
   }
+  .overflow-ellipsis {
+    text-overflow: ellipsis;
+  }
   .text-ellipsis {
     text-overflow: ellipsis;
+  }
+  .whitespace-nowrap {
+    white-space: nowrap;
   }
   .link-primary {
     color: var(--color-primary);
@@ -3881,6 +3916,9 @@
   .text-transparent {
     color: transparent;
   }
+  .capitalize {
+    text-transform: capitalize;
+  }
   .lowercase {
     text-transform: lowercase;
   }
@@ -3910,6 +3948,9 @@
   }
   .underline {
     text-decoration-line: underline;
+  }
+  .accent-accent {
+    accent-color: var(--color-accent);
   }
   .accent-accent-content {
     accent-color: var(--color-accent-content);
@@ -4132,6 +4173,18 @@
   .\[\&\:before\]\:content-\[\'Text\:_\'\] {
     &:before {
       --tw-content: 'Text: ';
+      content: var(--tw-content);
+    }
+  }
+  .\[\&\:before\]\:content-\[\'Url\:_\'\] {
+    &:before {
+      --tw-content: 'Url: ';
+      content: var(--tw-content);
+    }
+  }
+  .\[\&\:before\]\:content-\[\'source\:_\'\] {
+    &:before {
+      --tw-content: 'source: ';
       content: var(--tw-content);
     }
   }

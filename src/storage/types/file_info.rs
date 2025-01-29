@@ -39,6 +39,7 @@ pub enum FileError {
 stored_object!(FileInfo, "file", {
     sha256: String,
     path: String,
+    file_name: String,
     mime_type: String
 });
 
@@ -77,6 +78,7 @@ impl FileInfo {
             id: uuid.to_string(),
             created_at: now,
             updated_at: now,
+            file_name,
             sha256,
             path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id)
                 .await?

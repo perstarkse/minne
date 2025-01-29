@@ -7,6 +7,8 @@ use super::file_info::FileInfo;
 stored_object!(TextContent, "text_content", {
     text: String,
     file_info: Option<FileInfo>,
+
+    url: Option<String>,
     instructions: String,
     category: String,
     user_id: String
@@ -18,6 +20,7 @@ impl TextContent {
         instructions: String,
         category: String,
         file_info: Option<FileInfo>,
+        url: Option<String>,
         user_id: String,
     ) -> Self {
         let now = Utc::now();
@@ -27,6 +30,7 @@ impl TextContent {
             updated_at: now,
             text,
             file_info,
+            url,
             instructions,
             category,
             user_id,
