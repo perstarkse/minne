@@ -32,22 +32,12 @@
       {{item.content.Text.text}}
       {% endif %}
     </p>
-    <!-- <button class="btn disabled btn-square btn-ghost"> -->
-    <!-- <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"> -->
-    <!-- <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"> -->
-    <!-- <path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75z"></path> -->
-    <!-- <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75z"></path> -->
-    <!-- </g> -->
-    <!-- </svg> -->
+    <!-- <button class="btn disabled btn-square btn-ghost btn-sm"> -->
+    <!-- {% include "icons/edit_icon.html" %} -->
     <!-- </button> -->
     <button hx-delete="/jobs/{{item.id}}" hx-target="#active_jobs_section" hx-swap="outerHTML"
-      class="btn btn-square btn-ghost">
-      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-        <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
-          <path d="M3 6h18"></path>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-        </g>
-      </svg>
+      class="btn btn-square btn-ghost btn-sm">
+      {% include "icons/delete_icon.html" %}
     </button>
   </li>
   {% endfor %}
