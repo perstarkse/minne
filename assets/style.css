@@ -2406,6 +2406,9 @@
       }
     }
   }
+  .z-4 {
+    z-index: 4;
+  }
   .tab-content {
     order {
     }
@@ -3503,6 +3506,9 @@
   .h-5 {
     height: calc(var(--spacing) * 5);
   }
+  .h-6 {
+    height: calc(var(--spacing) * 6);
+  }
   .h-32 {
     height: calc(var(--spacing) * 32);
   }
@@ -3511,6 +3517,9 @@
   }
   .min-h-screen {
     min-height: 100vh;
+  }
+  .w-2 {
+    width: calc(var(--spacing) * 2);
   }
   .w-5 {
     width: calc(var(--spacing) * 5);

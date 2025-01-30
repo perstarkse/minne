@@ -1,13 +1,14 @@
-use crate::{error::AppError, stored_object};
-use surrealdb::{engine::any::Any, Surreal};
+use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
+use surrealdb::{engine::any::Any, sql::Subquery, Surreal};
 use tracing::debug;
 use uuid::Uuid;
 
-stored_object!(KnowledgeRelationship, "knowledge_relationship", {
+stored_object!(KnowledgeRelationship, "relates_to", {
     #[serde(rename = "in")]
     in_: String,
     out: String,
     relationship_type: String,
+    source_id: String,
     metadata: Option<serde_json::Value>
 });
 
@@ -15,6 +16,7 @@ impl KnowledgeRelationship {
     pub fn new(
         in_: String,
         out: String,
+        source_id: String,
         relationship_type: String,
         metadata: Option<serde_json::Value>,
     ) -> Self {
@@ -25,6 +27,7 @@ impl KnowledgeRelationship {
             updated_at: now,
             in_,
             out,
+            source_id,
             relationship_type,
             metadata,
         }
@@ -38,6 +41,20 @@ impl KnowledgeRelationship {
         let result = db_client.query(query).await?;
 
         debug!("{:?}", result);
+
+        Ok(())
+    }
+
+    pub async fn delete_relationships_by_source_id(
+        source_id: &str,
+        db_client: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        let query = format!(
+            "DELETE knowledge_entity -> relates_to WHERE source_id = '{}'",
+            source_id
+        );
+
+        db_client.query(query).await?;
 
         Ok(())
     }
