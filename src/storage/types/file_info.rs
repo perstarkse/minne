@@ -7,11 +7,12 @@ use std::{
 };
 use tempfile::NamedTempFile;
 use thiserror::Error;
+use tokio::fs::remove_dir_all;
 use tracing::info;
 use uuid::Uuid;
 
 use crate::{
-    storage::db::{store_item, SurrealDbClient},
+    storage::db::{delete_item, get_item, store_item, SurrealDbClient},
     stored_object,
 };
 
@@ -197,5 +198,51 @@ impl FileInfo {
             .into_iter()
             .next()
             .ok_or(FileError::FileNotFound(sha256.to_string()))
+    }
+
+    /// Removes FileInfo from database and file from disk
+    ///
+    /// # Arguments
+    /// * `id` - Id of the FileInfo
+    /// * `db_client` - Reference to SurrealDbClient
+    ///
+    /// # Returns
+    ///  `Result<(), FileError>`
+    pub async fn delete_by_id(id: &str, db_client: &SurrealDbClient) -> Result<(), FileError> {
+        // Get the FileInfo from the database
+        let file_info = match get_item::<FileInfo>(db_client, id).await? {
+            Some(info) => info,
+            None => {
+                return Err(FileError::FileNotFound(format!(
+                    "File with id {} was not found",
+                    id
+                )))
+            }
+        };
+
+        // Remove the file and its parent directory
+        let file_path = Path::new(&file_info.path);
+        if file_path.exists() {
+            // Get the parent directory of the file
+            if let Some(parent_dir) = file_path.parent() {
+                // Remove the entire directory containing the file
+                remove_dir_all(parent_dir).await?;
+                info!("Removed directory {:?} and its contents", parent_dir);
+            } else {
+                return Err(FileError::FileNotFound(
+                    "File has no parent directory".to_string(),
+                ));
+            }
+        } else {
+            return Err(FileError::FileNotFound(format!(
+                "File at path {:?} was not found",
+                file_path
+            )));
+        }
+
+        // Delete the FileInfo from the database
+        delete_item::<FileInfo>(db_client, id).await?;
+
+        Ok(())
     }
 }

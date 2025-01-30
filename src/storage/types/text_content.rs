@@ -7,7 +7,6 @@ use super::file_info::FileInfo;
 stored_object!(TextContent, "text_content", {
     text: String,
     file_info: Option<FileInfo>,
-
     url: Option<String>,
     instructions: String,
     category: String,

@@ -1,4 +1,4 @@
-use crate::stored_object;
+use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -57,5 +57,19 @@ impl KnowledgeEntity {
             embedding,
             user_id,
         }
+    }
+
+    pub async fn delete_by_source_id(
+        source_id: &str,
+        db_client: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        let query = format!(
+            "DELETE {} WHERE source_id = '{}'",
+            Self::table_name(),
+            source_id
+        );
+        db_client.query(query).await?;
+
+        Ok(())
     }
 }

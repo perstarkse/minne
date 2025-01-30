@@ -16,8 +16,12 @@ use crate::{
         AppState,
     },
     storage::{
-        db::delete_item,
-        types::{job::Job, text_content::TextContent, user::User},
+        db::{delete_item, get_all_stored_items, get_item},
+        types::{
+            file_info::FileInfo, job::Job, knowledge_entity::KnowledgeEntity,
+            knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
+            text_content::TextContent, user::User,
+        },
     },
 };
 
@@ -56,19 +60,15 @@ pub async fn index_handler(
         false => vec![],
     };
 
-    info!("{:?}", latest_text_contents);
-
-    let latest_knowledge_entities = match auth.current_user.is_some() {
-        true => User::get_latest_knowledge_entities(
-            auth.current_user.clone().unwrap().id.as_str(),
-            &state.surreal_db_client,
-        )
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
-        false => vec![],
-    };
-
-    info!("{:?}", latest_knowledge_entities);
+    // let latest_knowledge_entities = match auth.current_user.is_some() {
+    //     true => User::get_latest_knowledge_entities(
+    //         auth.current_user.clone().unwrap().id.as_str(),
+    //         &state.surreal_db_client,
+    //     )
+    //     .await
+    //     .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
+    //     false => vec![],
+    // };
 
     let output = render_template(
         IndexData::template_name(),
@@ -100,15 +100,65 @@ pub async fn delete_text_content(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    delete_item::<TextContent>(&state.surreal_db_client, &id)
+    // Get TextContent from db
+    let text_content = match get_item::<TextContent>(&state.surreal_db_client, &id)
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?
+    {
+        Some(text_content) => text_content,
+        None => {
+            return Err(HtmlError::new(
+                AppError::NotFound("No item found".to_string()),
+                state.templates,
+            ))
+        }
+    };
+
+    // Validate that the user is the owner
+    if text_content.user_id != user.id {
+        return Err(HtmlError::new(
+            AppError::Auth("You are not the owner of that content".to_string()),
+            state.templates,
+        ));
+    }
+
+    // If TextContent has file_info, delete it from db and file from disk.
+    if text_content.file_info.is_some() {
+        FileInfo::delete_by_id(
+            &text_content.file_info.unwrap().id,
+            &state.surreal_db_client,
+        )
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    }
+
+    // Delete textcontent from db
+    delete_item::<TextContent>(&state.surreal_db_client, &text_content.id)
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 
-    let latest_text_contents = User::get_latest_text_contents(&user.id, &state.surreal_db_client)
+    // Delete TextChunks
+    TextChunk::delete_by_source_id(&text_content.id, &state.surreal_db_client)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    info!("{:?}", latest_text_contents);
+    // Delete KnowledgeEntities
+    KnowledgeEntity::delete_by_source_id(&text_content.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    // Delete KnowledgeRelationships
+    KnowledgeRelationship::delete_relationships_by_source_id(
+        &text_content.id,
+        &state.surreal_db_client,
+    )
+    .await
+    .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    // Get latest text contents after updates
+    let latest_text_contents = User::get_latest_text_contents(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     let output = render_block(
         "index/signed_in/recent_content.html",
