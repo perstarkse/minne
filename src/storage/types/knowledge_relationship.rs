@@ -1,5 +1,5 @@
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
-use surrealdb::{engine::any::Any, sql::Subquery, Surreal};
+use surrealdb::{engine::any::Any, Surreal};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -50,7 +50,7 @@ impl KnowledgeRelationship {
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
         let query = format!(
-            "DELETE knowledge_entity -> relates_to WHERE source_id = '{}'",
+            "DELETE knowledge_entity -> relates_to WHERE source_id = `{}`",
             source_id
         );
 
