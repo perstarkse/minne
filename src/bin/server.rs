@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_auth(&app_state.surreal_db_client).await?;
     Analytics::ensure_initialized(&app_state.surreal_db_client).await?;
     SystemSettings::ensure_initialized(&app_state.surreal_db_client).await?;
-
+    // app_state.surreal_db_client.drop_table::<KnowledgeEntity>().await?;
     // Create Axum router
     let app = Router::new()
         .nest("/api/v1", api_routes_v1(&app_state))

@@ -8,34 +8,33 @@
       <div class="validator-hint hidden">Instructions are required</div>
     </label>
   </div>
-
   <div class="form-control">
     <label class="floating-label">
       <span>Content</span>
       <textarea name="content" class="textarea input-bordered w-full"
-        placeholder="Enter the content you want to ingress, it can be an URL or a text snippet">{{ content
-        }}</textarea>
+        placeholder="Enter the content you want to ingress, it can be an URL or a text snippet">{{ content }}</textarea>
     </label>
   </div>
-
   <div class="form-control">
     <label class="floating-label">
       <span>Category</span>
       <input type="text" name="category" class="input input-bordered validator w-full"
-        placeholder="Category for ingress" value="{{ category }}" required />
+        placeholder="Category for ingress" value="{{ category }}" list="category-list" required />
+      <datalist id="category-list">
+        {% for category in user_categories %}
+        <option value="{{ category }}" />
+        {% endfor %}
+      </datalist>
       <div class="validator-hint hidden">Category is required</div>
     </label>
   </div>
-
   <div class="form-control">
     <label class="label label-text">Files</label>
     <input type="file" name="files" multiple class="file-input file-input-bordered w-full" />
   </div>
-
   <div id="error-message" class="text-error text-center {% if not error %}hidden{% endif %}">{{ error }}</div>
-
   <div class="form-control mt-6 flex flex-col sm:flex-row gap-1">
-    <button hx-get="/hide-ingress-form" hx-target="#ingress-form" hx-swap=outerHTML"
+    <button hx-get="/hide-ingress-form" hx-target="#ingress-form" hx-swap="outerHTML"
       class="btn btn-outline w-full sm:w-fit">Cancel</button>
     <button type="submit" class="btn btn-primary w-full sm:w-fit">Submit</button>
   </div>

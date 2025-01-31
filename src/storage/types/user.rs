@@ -11,6 +11,11 @@ use super::{
     knowledge_entity::KnowledgeEntity, system_settings::SystemSettings, text_content::TextContent,
 };
 
+#[derive(Deserialize)]
+pub struct CategoryResponse {
+    category: String,
+}
+
 stored_object!(User, "user", {
     email: String,
     password: String,
@@ -244,5 +249,24 @@ impl User {
             .bind(("timezone", timezone.to_string()))
             .await?;
         Ok(())
+    }
+
+    pub async fn get_user_categories(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<String>, AppError> {
+        // Query to select distinct categories for the user
+        let response: Vec<CategoryResponse> = db
+             .client
+             .query("SELECT category FROM type::table($table_name) WHERE user_id = $user_id GROUP BY category")
+             .bind(("user_id", user_id.to_owned()))
+             .bind(("table_name", TextContent::table_name()))
+             .await?
+             .take(0)?;
+
+        // Extract the categories from the response
+        let categories: Vec<String> = response.into_iter().map(|item| item.category).collect();
+
+        Ok(categories)
     }
 }
