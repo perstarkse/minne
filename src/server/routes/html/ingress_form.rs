@@ -20,6 +20,11 @@ use crate::{
 
 use super::render_template;
 
+#[derive(Serialize)]
+pub struct ShowIngressFormData {
+    user_categories: Vec<String>,
+}
+
 pub async fn show_ingress_form(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
@@ -28,7 +33,15 @@ pub async fn show_ingress_form(
         return Ok(Redirect::to("/").into_response());
     }
 
-    let output = render_template("ingress_form.html", {}, state.templates.clone())?;
+    let user_categories = User::get_user_categories(&auth.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let output = render_template(
+        "ingress_form.html",
+        ShowIngressFormData { user_categories },
+        state.templates.clone(),
+    )?;
 
     Ok(output.into_response())
 }
