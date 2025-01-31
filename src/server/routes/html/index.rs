@@ -6,6 +6,7 @@ use axum_session::Session;
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use surrealdb::{engine::any::Any, Surreal};
+use tokio::join;
 use tracing::info;
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
         AppState,
     },
     storage::{
-        db::{delete_item, get_all_stored_items, get_item},
+        db::{delete_item, get_item},
         types::{
             file_info::FileInfo, job::Job, knowledge_entity::KnowledgeEntity,
             knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
@@ -100,62 +101,39 @@ pub async fn delete_text_content(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    // Get TextContent from db
-    let text_content = match get_item::<TextContent>(&state.surreal_db_client, &id)
-        .await
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?
-    {
-        Some(text_content) => text_content,
-        None => {
+    // Get and validate TextContent
+    let text_content = get_and_validate_text_content(&state, &id, user).await?;
+
+    // Perform concurrent deletions
+    let deletion_tasks = join!(
+        async {
+            if let Some(file_info) = text_content.file_info {
+                FileInfo::delete_by_id(&file_info.id, &state.surreal_db_client).await
+            } else {
+                Ok(())
+            }
+        },
+        delete_item::<TextContent>(&state.surreal_db_client, &text_content.id),
+        TextChunk::delete_by_source_id(&text_content.id, &state.surreal_db_client),
+        KnowledgeEntity::delete_by_source_id(&text_content.id, &state.surreal_db_client),
+        KnowledgeRelationship::delete_relationships_by_source_id(
+            &text_content.id,
+            &state.surreal_db_client
+        )
+    );
+
+    // Handle potential errors from concurrent operations
+    match deletion_tasks {
+        (Ok(_), Ok(_), Ok(_), Ok(_), Ok(_)) => (),
+        _ => {
             return Err(HtmlError::new(
-                AppError::NotFound("No item found".to_string()),
-                state.templates,
+                AppError::Processing("Failed to delete one or more items".to_string()),
+                state.templates.clone(),
             ))
         }
-    };
-
-    // Validate that the user is the owner
-    if text_content.user_id != user.id {
-        return Err(HtmlError::new(
-            AppError::Auth("You are not the owner of that content".to_string()),
-            state.templates,
-        ));
     }
 
-    // If TextContent has file_info, delete it from db and file from disk.
-    if text_content.file_info.is_some() {
-        FileInfo::delete_by_id(
-            &text_content.file_info.unwrap().id,
-            &state.surreal_db_client,
-        )
-        .await
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
-    }
-
-    // Delete textcontent from db
-    delete_item::<TextContent>(&state.surreal_db_client, &text_content.id)
-        .await
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
-
-    // Delete TextChunks
-    TextChunk::delete_by_source_id(&text_content.id, &state.surreal_db_client)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
-
-    // Delete KnowledgeEntities
-    KnowledgeEntity::delete_by_source_id(&text_content.id, &state.surreal_db_client)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
-
-    // Delete KnowledgeRelationships
-    KnowledgeRelationship::delete_relationships_by_source_id(
-        &text_content.id,
-        &state.surreal_db_client,
-    )
-    .await
-    .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
-
-    // Get latest text contents after updates
+    // Render updated content
     let latest_text_contents = User::get_latest_text_contents(&user.id, &state.surreal_db_client)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
@@ -172,6 +150,114 @@ pub async fn delete_text_content(
 
     Ok(output.into_response())
 }
+
+// Helper function to get and validate text content
+async fn get_and_validate_text_content(
+    state: &AppState,
+    id: &str,
+    user: &User,
+) -> Result<TextContent, HtmlError> {
+    let text_content = get_item::<TextContent>(&state.surreal_db_client, id)
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?
+        .ok_or_else(|| {
+            HtmlError::new(
+                AppError::NotFound("No item found".to_string()),
+                state.templates.clone(),
+            )
+        })?;
+
+    if text_content.user_id != user.id {
+        return Err(HtmlError::new(
+            AppError::Auth("You are not the owner of that content".to_string()),
+            state.templates.clone(),
+        ));
+    }
+
+    Ok(text_content)
+}
+// pub async fn delete_text_content(
+//     State(state): State<AppState>,
+//     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+//     Path(id): Path<String>,
+// ) -> Result<impl IntoResponse, HtmlError> {
+//     let user = match &auth.current_user {
+//         Some(user) => user,
+//         None => return Ok(Redirect::to("/").into_response()),
+//     };
+
+//     // Get TextContent from db
+//     let text_content = match get_item::<TextContent>(&state.surreal_db_client, &id)
+//         .await
+//         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?
+//     {
+//         Some(text_content) => text_content,
+//         None => {
+//             return Err(HtmlError::new(
+//                 AppError::NotFound("No item found".to_string()),
+//                 state.templates,
+//             ))
+//         }
+//     };
+
+//     // Validate that the user is the owner
+//     if text_content.user_id != user.id {
+//         return Err(HtmlError::new(
+//             AppError::Auth("You are not the owner of that content".to_string()),
+//             state.templates,
+//         ));
+//     }
+
+//     // If TextContent has file_info, delete it from db and file from disk.
+//     if text_content.file_info.is_some() {
+//         FileInfo::delete_by_id(
+//             &text_content.file_info.unwrap().id,
+//             &state.surreal_db_client,
+//         )
+//         .await
+//         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+//     }
+
+//     // Delete textcontent from db
+//     delete_item::<TextContent>(&state.surreal_db_client, &text_content.id)
+//         .await
+//         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+
+//     // Delete TextChunks
+//     TextChunk::delete_by_source_id(&text_content.id, &state.surreal_db_client)
+//         .await
+//         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+//     // Delete KnowledgeEntities
+//     KnowledgeEntity::delete_by_source_id(&text_content.id, &state.surreal_db_client)
+//         .await
+//         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+//     // Delete KnowledgeRelationships
+//     KnowledgeRelationship::delete_relationships_by_source_id(
+//         &text_content.id,
+//         &state.surreal_db_client,
+//     )
+//     .await
+//     .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+//     // Get latest text contents after updates
+//     let latest_text_contents = User::get_latest_text_contents(&user.id, &state.surreal_db_client)
+//         .await
+//         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+//     let output = render_block(
+//         "index/signed_in/recent_content.html",
+//         "latest_content_section",
+//         LatestTextContentData {
+//             user: user.clone(),
+//             latest_text_contents,
+//         },
+//         state.templates.clone(),
+//     )?;
+
+//     Ok(output.into_response())
+// }
 
 #[derive(Serialize)]
 pub struct ActiveJobsData {
