@@ -17,10 +17,10 @@
             <li>
               <details>
                 <summary>Account</summary>
-                <ul class="bg-base-100 rounded-t-none p-2">
-                  <li><a hx-boost="true" class="" href="/account">Account</a></li>
+                <ul class="bg-base-100 rounded-t-none p-2 z-50">
+                  <li><a hx-boost="true" href="/account">Account</a></li>
                   {% if user.admin %}
-                  <li><a hx-boost="true" class="" href="/admin">Admin</a></li>
+                  <li><a hx-boost="true" href="/admin">Admin</a></li>
                   {% endif %}
                   <li><a hx-boost="true" href="/signout">Sign out</a></li>
                 </ul>
