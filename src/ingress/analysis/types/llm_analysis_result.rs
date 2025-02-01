@@ -66,7 +66,7 @@ impl LLMGraphAnalysisResult {
             .await?;
 
         // Process relationships
-        let relationships = self.process_relationships(source_id, Arc::clone(&mapper))?;
+        let relationships = self.process_relationships(source_id, user_id, Arc::clone(&mapper))?;
 
         Ok((entities, relationships))
     }
@@ -117,6 +117,7 @@ impl LLMGraphAnalysisResult {
     fn process_relationships(
         &self,
         source_id: &str,
+        user_id: &str,
         mapper: Arc<Mutex<GraphMapper>>,
     ) -> Result<Vec<KnowledgeRelationship>, AppError> {
         let mut mapper_guard = mapper
@@ -131,9 +132,9 @@ impl LLMGraphAnalysisResult {
                 Ok(KnowledgeRelationship::new(
                     source_db_id.to_string(),
                     target_db_id.to_string(),
+                    user_id.to_string(),
                     source_id.to_string(),
                     rel.type_.clone(),
-                    None,
                 ))
             })
             .collect()

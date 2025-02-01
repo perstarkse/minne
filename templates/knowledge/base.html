@@ -1,0 +1,20 @@
+{% extends 'body_base.html' %}
+{% block main %}
+<main class="flex justify-center grow mt-2 sm:mt-4 gap-6">
+  <div class="container">
+    <div class="p-4">
+
+      <h2>Entities</h2>
+
+      {% for entity in entities %}
+      <p>{{entity.description}} /p>
+        {% endfor %}
+
+
+      <h2 class="mt-10">Relationships</h2>
+      <p>{{relationships}}</p>
+
+    </div>
+  </div>
+</main>
+{% endblock %}
