@@ -18,8 +18,8 @@
   <div class="form-control">
     <label class="floating-label">
       <span>Category</span>
-      <input type="text" name="category" class="input input-bordered validator w-full"
-        placeholder="Category for ingress" value="{{ category }}" list="category-list" required />
+      <input type="text" name="category" class="input input-bordered validator w-full" value="{{ category }}"
+        list="category-list" required />
       <datalist id="category-list">
         {% for category in user_categories %}
         <option value="{{ category }}" />
