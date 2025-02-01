@@ -11,6 +11,7 @@ pub mod documentation;
 pub mod gdpr;
 pub mod index;
 pub mod ingress_form;
+pub mod knowledge;
 pub mod privacy_policy;
 pub mod search_result;
 pub mod signin;

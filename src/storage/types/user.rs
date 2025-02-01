@@ -5,10 +5,12 @@ use crate::{
 };
 use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
+use tracing::info;
 use uuid::Uuid;
 
 use super::{
-    knowledge_entity::KnowledgeEntity, system_settings::SystemSettings, text_content::TextContent,
+    knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
+    system_settings::SystemSettings, text_content::TextContent,
 };
 
 #[derive(Deserialize)]
@@ -199,12 +201,28 @@ impl User {
     ) -> Result<Vec<KnowledgeEntity>, AppError> {
         let entities: Vec<KnowledgeEntity> = db
             .client
-            .query("SELECT * FROM knowledge_entity WHERE user_id = $user_id")
+            .query("SELECT * FROM type::table($table) WHERE user_id = $user_id")
+            .bind(("table", KnowledgeEntity::table_name()))
             .bind(("user_id", user_id.to_owned()))
             .await?
             .take(0)?;
 
         Ok(entities)
+    }
+
+    pub async fn get_knowledge_relationships(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<KnowledgeRelationship>, AppError> {
+        let relationships: Vec<KnowledgeRelationship> = db
+            .client
+            .query("SELECT * FROM type::table($table) WHERE metadata.user_id = $user_id")
+            .bind(("table", "relates_to"))
+            .bind(("user_id", user_id.to_owned()))
+            .await?
+            .take(0)?;
+
+        Ok(relationships)
     }
 
     pub async fn get_latest_text_contents(

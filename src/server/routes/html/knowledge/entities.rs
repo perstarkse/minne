@@ -26,16 +26,42 @@ use crate::{
     },
 };
 
-page_data!(KnowledgeEntitiesData, "todo", {
-    gdpr_accepted: bool,
-    user: Option<User>,
-    latest_text_contents: Vec<TextContent>,
-    active_jobs: Vec<Job>
+page_data!(KnowledgeBaseData, "knowledge/base.html", {
+    entities: Vec<KnowledgeEntity>,
+    relationships: Vec<KnowledgeRelationship>,
+    user: User
 });
-pub async fn index_handler(
+
+pub async fn show_knowledge_page(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     session: Session<SessionSurrealPool<Any>>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    Ok("Hi".into_response())
+    // Early return if the user is not authenticated
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/signin").into_response()),
+    };
+
+    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    info!("Got entities ok");
+
+    let relationships = User::get_knowledge_relationships(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let output = render_template(
+        KnowledgeBaseData::template_name(),
+        KnowledgeBaseData {
+            entities,
+            relationships,
+            user,
+        },
+        state.templates,
+    )?;
+
+    Ok(output.into_response())
 }
