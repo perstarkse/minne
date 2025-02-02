@@ -35,7 +35,6 @@ page_data!(KnowledgeBaseData, "knowledge/base.html", {
 pub async fn show_knowledge_page(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
-    session: Session<SessionSurrealPool<Any>>,
 ) -> Result<impl IntoResponse, HtmlError> {
     // Early return if the user is not authenticated
     let user = match auth.current_user {
