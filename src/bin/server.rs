@@ -29,12 +29,14 @@ use zettle_db::{
             html::{
                 account::{delete_account, set_api_key, show_account_page, update_timezone},
                 admin_panel::{show_admin_panel, toggle_registration_status},
-                documentation::index::show_documentation_index,
+                documentation::{
+                    show_documentation_index, show_get_started, show_mobile_friendly,
+                    show_privacy_policy,
+                },
                 gdpr::{accept_gdpr, deny_gdpr},
                 index::{delete_job, delete_text_content, index_handler},
                 ingress_form::{hide_ingress_form, process_ingress_form, show_ingress_form},
-                knowledge::entities::show_knowledge_page,
-                privacy_policy::show_privacy_policy,
+                knowledge::show_knowledge_page,
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
                 signout::sign_out_user,
@@ -184,6 +186,8 @@ fn html_routes(
         )
         .route("/documentation", get(show_documentation_index))
         .route("/documentation/privacy-policy", get(show_privacy_policy))
+        .route("/documentation/get-started", get(show_get_started))
+        .route("/documentation/mobile-friendly", get(show_mobile_friendly))
         .nest_service("/assets", ServeDir::new("assets/"))
         .layer(from_fn_with_state(app_state.clone(), analytics_middleware))
         .layer(

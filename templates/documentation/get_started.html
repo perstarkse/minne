@@ -1,0 +1,56 @@
+{% extends 'documentation/base.html' %}
+{% block article %}
+<h2>Get Started with Minne</h2>
+<p>Minne offers two installation options to suit your needs:</p>
+<ol>
+  <li>
+    <strong>Hosted Version:</strong> Enjoy a hassle‐free experience by signing up for the ready‐to‐use service.
+    Simply navigate to <code>/signup</code> to create an account.
+  </li>
+  <li>
+    <strong>Self-Hosted:</strong> Gain full control by running Minne on your own infrastructure. Visit
+    <a href="https://github.com/perstarkse/minne">GitHub</a> to download the latest release. After extracting the
+    release, open the <code>config.yaml</code> file and set the following configurations:
+  </li>
+</ol>
+<pre><code>OPENAI_API_KEY: your_api_key
+    SMTP_EMAIL_RELAYER: your_email_relayer
+    SMTP_USERNAME: your_smtp_username
+    SMTP_PASSWORD: your_smtp_password
+    DB_ADDRESS: your_db_address
+    DB_USER: your_db_user
+    DB_PASSWORD: your_db_password</code></pre>
+<p>The database settings relate to a running instance of SurrealDB. You can opt for their cloud solution or run your
+  own instance.</p>
+
+<p>Once your configuration is complete, start both the server and the worker. They can be hosted on separate
+  machines, with different resource requirements:</p>
+<ul>
+  <li>
+    <strong>Server:</strong> Lightweight, using roughly 50MB of RAM. A minimum of 1 core and 256MB of RAM is
+    recommended.
+  </li>
+  <li>
+    <strong>Worker:</strong> Handles content parsing, typically consuming about 60MB of RAM—occasionally peaking up
+    to 1GB. We recommend allocating at least 2 cores and 1024MB of RAM.
+  </li>
+</ul>
+
+<p>After launching the services, navigate to <code>&lt;your_url&gt;:3000/signup</code> to register. The first
+  account created will automatically receive admin permissions, allowing you to later disable further registrations
+  via the <code>/admin</code> page if desired.</p>
+
+<p>From the homepage (<code>/</code>), you can:</p>
+<ul>
+  <li>Submit content, including files, videos, and URLs for ingestion.</li>
+  <li>Monitor job statuses and manage your existing content.</li>
+  <li>Search your content or start a chat conversation for assistance.</li>
+</ul>
+
+<p>Visit the <code>/knowledge</code> page to view your content organized by different sections. This page also
+  provides a visual demonstration of the graph database structure, enhancing your understanding of content
+  relationships.</p>
+
+<p>This streamlined setup ensures intuitive onboarding while offering robust customization options. Whether you are
+  a novice or an advanced user, Minne is designed to deliver a smooth experience and reliable performance.</p>
+{% endblock %}

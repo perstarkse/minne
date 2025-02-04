@@ -1,6 +1,11 @@
-<ul class="menu bg-base-200 rounded-box w-full">
-  <li><a hx-boost="true" href="/documentation">Start</a></li>
-  <li><a hx-boost="true" class="" href="/documentation/privacy-policy">Privacy Policy</a></li>
+<ul class="menu bg-base-200 rounded-box w-full ">
+  <li><a hx-boost="true" class="{{'menu-active' if current_path=='/index' }}" href="/documentation">Start</a></li>
+  <li><a hx-boost="true" class="{{'menu-active' if current_path=='/get-started' }}"
+      href="/documentation/get-started">Get Started</a></li>
+  <li><a hx-boost="true" class="{{'menu-active' if current_path=='/mobile-friendly' }}"
+      href="/documentation/mobile-friendly">Mobile friendly</a></li>
+  <li><a hx-boost="true" class="{{'menu-active' if current_path=='/privacy-policy' }}"
+      href="/documentation/privacy-policy">Privacy Policy</a></li>
   <li>
     <details open>
       <summary>Core Concepts</summary>
