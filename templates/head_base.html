@@ -33,4 +33,14 @@
 </head>
 {% block body %}{% endblock %}
 
+<script>
+  (function wait_for_htmx() {
+    if (window.htmx) {
+      htmx.config.globalViewTransitions = true;
+    } else {
+      setTimeout(wait_for_htmx, 50);
+    }
+  })();
+</script>
+
 </html>

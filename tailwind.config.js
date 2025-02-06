@@ -15,6 +15,9 @@ module.exports = {
       },      
     },
     extend: {
+      fontFamily: {
+        satoshi: ['Satoshi', 'sans-serif'],
+      },
       typography: {
         DEFAULT: {
           css: {
