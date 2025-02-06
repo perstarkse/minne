@@ -4,35 +4,7 @@
 <body>
   <div class="min-h-screen flex flex-col">
     <!-- Navbar -->
-    <nav class="navbar bg-base-200">
-      <div class="container flex mx-auto">
-        <div class="flex-1 flex items-center">
-          <a class="text-2xl text-primary " href="/" hx-boost="true">Minne</a>
-        </div>
-        <div>
-          <ul class="menu menu-horizontal px-1">
-            {% include "theme_toggle.html" %}
-            <li><a hx-boost="true" class="" href="/documentation">Docs</a></li>
-            {% if user %}
-            <li>
-              <details>
-                <summary>Account</summary>
-                <ul class="bg-base-100 rounded-t-none p-2 z-50">
-                  <li><a hx-boost="true" href="/account">Account</a></li>
-                  {% if user.admin %}
-                  <li><a hx-boost="true" href="/admin">Admin</a></li>
-                  {% endif %}
-                  <li><a hx-boost="true" href="/signout">Sign out</a></li>
-                </ul>
-              </details>
-            </li>
-            {% else %}
-            <li><a hx-boost="true" class="" href="/signin">Sign in</a></li>
-            {% endif %}
-          </ul>
-        </div>
-      </div>
-    </nav>
+    {% include "navigation_bar.html" %}
 
     <!-- Main Content -->
     {% block main %}{% endblock %}
