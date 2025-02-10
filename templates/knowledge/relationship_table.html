@@ -1,8 +1,7 @@
-<div class="overflow-x-auto shadow rounded-box border border-base-content/5 bg-base-100 ">
+<div class="overflow-x-auto shadow rounded-box border border-base-content/5 bg-base-100">
   <table class="table">
     <thead>
       <tr>
-        <th>ID</th>
         <th>Origin</th>
         <th>Target</th>
         <th>Type</th>
@@ -12,8 +11,6 @@
     <tbody>
       {% for relationship in relationships %}
       <tr>
-        <td>{{ loop.index }}</td>
-
         <!-- Origin column -->
         <td>
           {% for entity in entities if entity.id == relationship.in %}
@@ -51,7 +48,6 @@
       {% endfor %}
       <!-- New linking row -->
       <tr id="new_relationship">
-        <td></td>
         <td>
           <select name="origin_id" class="select select-bordered w-full new_relationship_input">
             <option disabled selected>Select Origin</option>
