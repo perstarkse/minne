@@ -1,17 +1,18 @@
 {% extends 'body_base.html' %}
 {% block main %}
-<main class="flex justify-center grow mt-2 sm:mt-4 gap-6">
+<main class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10">
   <div class="container">
-    {{plot_html|safe}}
-    <h2>Entities</h2>
-
-    {% for entity in entities %}
-    <p>{{entity.id}} - {{entity.description}} </p>
-    {% endfor %}
+    <h2 class="text-2xl font-bold mb-2">Entities</h2>
+    {% include "knowledge/entity_list.html" %}
 
 
-    <h2 class="mt-10">Relationships</h2>
-    <p>{{relationships}}</p>
+
+    <h2 class="text-2xl font-bold mb-2 mt-10">Relationships</h2>
+    {% include "knowledge/relationship_table.html" %}
+
+    <div class="rounded-box overflow-clip mt-10 shadow">
+      {{plot_html|safe}}
+    </div>
 
   </div>
 </main>
