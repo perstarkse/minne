@@ -1,6 +1,6 @@
 {% block active_jobs_section %}
 <ul id="active_jobs_section" class="list ">
-  <li class="py-4 text-center text-xs opacity-60 tracking-wide">Active Jobs</li>
+  <li class="py-4 text-center font-bold tracking-wide">Active Jobs</li>
   {% for item in active_jobs %}
   <li class="list-row">
     <div class="bg-secondary rounded-box size-10 flex justify-center items-center text-secondary-content">
@@ -13,7 +13,7 @@
       {% endif %}
     </div>
     <div>
-      <div class="uppercase">
+      <div class="[&:before]:content-['Status:_'] [&:before]:opacity-60">
         {% if item.status.InProgress %}
         In Progress, attempt {{item.status.InProgress.attempts}}
         {% else %}
@@ -23,7 +23,7 @@
       <div class="text-xs font-semibold opacity-60">
         {{item.created_at|datetimeformat(format="short", tz=user.timezone)}} </div>
     </div>
-    <p class="list-col-wrap text-xs [&:before]:content-['Content:_'] [&:before]:uppercase [&:before]:opacity-60">
+    <p class="list-col-wrap text-xs [&:before]:content-['Content:_']  [&:before]:opacity-60">
       {% if item.content.Url %}
       {{item.content.Url.url}}
       {% elif item.content.File %}
