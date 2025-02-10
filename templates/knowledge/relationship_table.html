@@ -1,0 +1,89 @@
+<div class="overflow-x-auto shadow rounded-box border border-base-content/5 bg-base-100 ">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Origin</th>
+        <th>Target</th>
+        <th>Type</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for relationship in relationships %}
+      <tr>
+        <td>{{ loop.index }}</td>
+
+        <!-- Origin column -->
+        <td>
+          {% for entity in entities if entity.id == relationship.in %}
+          <span class="cursor-pointer tooltip tooltip-info" data-tip="Click for more details"
+            hx-get="/knowledge-entity/{{entity.id}}" hx-trigger="click" hx-target="#entity_detail_modal"
+            hx-swap="innerHTML">
+            {{ entity.name }}
+          </span>
+          {% else %}
+          {{ relationship.in }}
+          {% endfor %}
+        </td>
+
+        <!-- Target column -->
+        <td>
+          {% for entity in entities if entity.id == relationship.out %}
+          <span class="cursor-pointer tooltip tooltip-info" data-tip="Click for more details"
+            hx-get="/knowledge-entity/{{entity.id}}" hx-trigger="click" hx-target="#entity_detail_modal"
+            hx-swap="innerHTML">
+            {{ entity.name }}
+          </span>
+          {% else %}
+          {{ relationship.out }}
+          {% endfor %}
+        </td>
+
+        <td>{{ relationship.metadata.relationship_type }}</td>
+        <td>
+          <button class="btn btn-sm btn-outline" hx-get="/relationship/{{ relationship.id }}/edit"
+            hx-target="#modal_container" hx-swap="innerHTML">
+            Edit
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+      <!-- New linking row -->
+      <tr id="new_relationship">
+        <td></td>
+        <td>
+          <select name="origin_id" class="select select-bordered w-full new_relationship_input">
+            <option disabled selected>Select Origin</option>
+            {% for entity in entities %}
+            <option value="{{ entity.id }}">{{ entity.name }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>
+          <select name="target_id" class="select select-bordered w-full new_relationship_input">
+            <option disabled selected>Select Target</option>
+            {% for entity in entities %}
+            <option value="{{ entity.id }}">{{ entity.name }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>
+          <input name="relationship_type" type="text" placeholder="RelatedTo"
+            class="input input-bordered w-full new_relationship_input" />
+        </td>
+        <td>
+          <button type="button" class="btn btn-primary btn-sm" hx-post="/relationship/create"
+            hx-target="#relationship_table" hx-swap="outerHTML" hx-include=".new_relationship_input">
+            Save
+          </button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<!-- Modal containers for dynamic content -->
+<div id="entity_detail_modal" class="mt-4"></div>
+<div id="modal_container"></div>

@@ -29,12 +29,12 @@
   machines, with different resource requirements:</p>
 <ul>
   <li>
-    <strong>Server:</strong> Lightweight, using roughly 50MB of RAM. A minimum of 1 core and 256MB of RAM is
-    recommended.
+    <strong>Server:</strong> Lightweight. A minimum of 1 core and 256MB of RAM is recommended.
   </li>
   <li>
-    <strong>Worker:</strong> Handles content parsing, typically consuming about 60MB of RAM—occasionally peaking up
-    to 1GB. We recommend allocating at least 2 cores and 1024MB of RAM.
+    <strong>Worker:</strong> Handles content parsing and creation of database entities. It's recommended to allocate at
+    least two cores and 1024 MB RAM. It will run on less but might run into constraints depending on the content being
+    parsed.
   </li>
 </ul>
 

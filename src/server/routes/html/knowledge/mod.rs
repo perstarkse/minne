@@ -5,7 +5,12 @@ use axum::{
 use axum_session::Session;
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
-use plotly::{Configuration, Layout, Plot, Scatter};
+use futures::SinkExt;
+use plotly::{
+    common::{Line, Marker, Mode},
+    layout::{Axis, Camera, LayoutScene, ProjectionType},
+    Configuration, Layout, Plot, Scatter, Scatter3D,
+};
 use surrealdb::{engine::any::Any, Surreal};
 use tokio::join;
 use tracing::info;
@@ -54,46 +59,79 @@ pub async fn show_knowledge_page(
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    // In your handler function
     let mut plot = Plot::new();
 
-    // Create node positions (you might want to use a proper layout algorithm)
-    let node_x: Vec<f64> = entities.iter().enumerate().map(|(i, _)| i as f64).collect();
-    let node_y: Vec<f64> = vec![0.0; entities.len()];
-    let node_text: Vec<String> = entities.iter().map(|e| e.description.clone()).collect();
+    // Fibonacci sphere distribution
+    let node_count = entities.len();
+    let golden_ratio = (1.0 + 5.0_f64.sqrt()) / 2.0;
+    let node_positions: Vec<(f64, f64, f64)> = (0..node_count)
+        .map(|i| {
+            let i = i as f64;
+            let theta = 2.0 * std::f64::consts::PI * i / golden_ratio;
+            let phi = (1.0 - 2.0 * (i + 0.5) / node_count as f64).acos();
+            let x = phi.sin() * theta.cos();
+            let y = phi.sin() * theta.sin();
+            let z = phi.cos();
+            (x, y, z)
+        })
+        .collect();
 
-    // Add nodes
-    let nodes = Scatter::new(node_x.clone(), node_y.clone())
-        .mode(plotly::common::Mode::Markers)
-        .text_array(node_text)
-        .name("Entities")
-        .hover_template("%{text}");
+    let node_x: Vec<f64> = node_positions.iter().map(|(x, _, _)| *x).collect();
+    let node_y: Vec<f64> = node_positions.iter().map(|(_, y, _)| *y).collect();
+    let node_z: Vec<f64> = node_positions.iter().map(|(_, _, z)| *z).collect();
 
-    // Add edges
-    let mut edge_x = Vec::new();
-    let mut edge_y = Vec::new();
+    // Nodes trace
+    let nodes = Scatter3D::new(node_x.clone(), node_y.clone(), node_z.clone())
+        .mode(Mode::Markers)
+        .marker(Marker::new().size(8).color("#1f77b4"))
+        .text_array(
+            entities
+                .iter()
+                .map(|e| e.description.clone())
+                .collect::<Vec<_>>(),
+        )
+        .hover_template("Entity: %{text}<br>");
+
+    // Edges traces
     for rel in &relationships {
         let from_idx = entities.iter().position(|e| e.id == rel.out).unwrap_or(0);
         let to_idx = entities.iter().position(|e| e.id == rel.in_).unwrap_or(0);
 
-        edge_x.extend_from_slice(&[from_idx as f64, to_idx as f64, std::f64::NAN]);
-        edge_y.extend_from_slice(&[0.0, 0.0, std::f64::NAN]);
+        let edge_x = vec![node_x[from_idx], node_x[to_idx]];
+        let edge_y = vec![node_y[from_idx], node_y[to_idx]];
+        let edge_z = vec![node_z[from_idx], node_z[to_idx]];
+
+        let edge_trace = Scatter3D::new(edge_x, edge_y, edge_z)
+            .mode(Mode::Lines)
+            .line(Line::new().color("#888").width(2.0))
+            .hover_template(&format!(
+                "Relationship: {}<br>",
+                rel.metadata.relationship_type
+            ))
+            .show_legend(false);
+
+        plot.add_trace(edge_trace);
     }
-
-    let edges = Scatter::new(edge_x, edge_y)
-        .mode(plotly::common::Mode::Lines)
-        .name("Relationships");
-
-    plot.add_trace(edges);
     plot.add_trace(nodes);
 
+    // Layout
     let layout = Layout::new()
-        .title("Knowledge Graph")
+        .scene(
+            LayoutScene::new()
+                .x_axis(Axis::new().visible(false))
+                .y_axis(Axis::new().visible(false))
+                .z_axis(Axis::new().visible(false))
+                .camera(
+                    Camera::new()
+                        .projection(ProjectionType::Perspective.into())
+                        .eye((1.5, 1.5, 1.5).into()),
+                ),
+        )
         .show_legend(false)
-        .height(600);
+        .paper_background_color("rbga(250,100,0,0)")
+        .plot_background_color("rbga(0,0,0,0)");
 
     plot.set_layout(layout);
-
     // Convert to HTML
     let html = plot.to_html();
 
