@@ -1,0 +1,33 @@
+<dialog id="body_modal" class="modal">
+  <div class="modal-box">
+    <form id="modal_form" {% block form_attributes %}{% endblock %}>
+      {% block modal_content %}
+      <!-- Form fields go here in child templates -->
+      {% endblock %}
+
+      <div class="modal-action">
+        <!-- Close button (always visible) -->
+        <button type="button" class="btn" onclick="document.getElementById('body_modal').close()">
+          Close
+        </button>
+
+        <!-- Primary actions block -->
+        {% block primary_actions %}
+        <!-- Submit/Save buttons go here in child templates -->
+        {% endblock %}
+      </div>
+    </form>
+  </div>
+
+  <script>
+    // Auto-open modal when injected
+    document.getElementById('body_modal').showModal();
+
+    // Close modal on successful form submission
+    document.getElementById('modal_form').addEventListener('htmx:afterRequest', (evt) => {
+      if (evt.detail.successful) {
+        document.getElementById('body_modal').close();
+      }
+    });
+  </script>
+</dialog>

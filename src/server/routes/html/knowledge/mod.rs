@@ -1,6 +1,7 @@
 use axum::{
     extract::{Path, State},
     response::{IntoResponse, Redirect},
+    Form,
 };
 use axum_session::Session;
 use axum_session_auth::AuthSession;
@@ -147,4 +148,88 @@ pub async fn show_knowledge_page(
     )?;
 
     Ok(output.into_response())
+}
+
+#[derive(Serialize)]
+pub struct EntityData {
+    entity: KnowledgeEntity,
+    user: User,
+}
+
+pub async fn show_edit_knowledge_entity_form(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Early return if the user is not authenticated
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/signin").into_response()),
+    };
+
+    // SORT OUT ERROR HANDLING AND VALIDATE INPUT
+    let entity = get_item(&state.surreal_db_client, &id)
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+
+    let output = render_template(
+        "knowledge/edit_knowledge_entity_modal.html",
+        EntityData {
+            entity: entity.unwrap(),
+            user,
+        },
+        state.templates,
+    )?;
+
+    Ok(output.into_response())
+}
+
+#[derive(Serialize)]
+pub struct EntityListData {
+    entities: Vec<KnowledgeEntity>,
+    user: User,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PatchKnowledgeEntityParams {
+    name: String,
+    description: String,
+}
+
+pub async fn patch_knowledge_entity(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Form(form): Form<PatchKnowledgeEntityParams>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Early return if the user is not authenticated
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/signin").into_response()),
+    };
+
+    info!("{:#?}", form);
+
+    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let output = render_template(
+        "knowledge/entity_list.html",
+        EntityListData { entities, user },
+        state.templates,
+    )?;
+
+    Ok(output.into_response())
+}
+
+pub async fn delete_knowledge_entity(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Early return if the user is not authenticated
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/signin").into_response()),
+    };
+    Ok("Thanks".into_response())
 }
