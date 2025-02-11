@@ -192,8 +192,8 @@ pub struct EntityListData {
 
 #[derive(Debug, Deserialize)]
 pub struct PatchKnowledgeEntityParams {
-    name: String,
-    description: String,
+    pub name: String,
+    pub description: String,
 }
 
 pub async fn patch_knowledge_entity(
