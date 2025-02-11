@@ -36,7 +36,10 @@ use zettle_db::{
                 gdpr::{accept_gdpr, deny_gdpr},
                 index::{delete_job, delete_text_content, index_handler},
                 ingress_form::{hide_ingress_form, process_ingress_form, show_ingress_form},
-                knowledge::show_knowledge_page,
+                knowledge::{
+                    delete_knowledge_entity, patch_knowledge_entity,
+                    show_edit_knowledge_entity_form, show_knowledge_page,
+                },
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
                 signout::sign_out_user,
@@ -174,6 +177,12 @@ fn html_routes(
         .route("/text-content/:id", delete(delete_text_content))
         .route("/jobs/:job_id", delete(delete_job))
         .route("/knowledge", get(show_knowledge_page))
+        .route(
+            "/knowledge-entity/:id",
+            get(show_edit_knowledge_entity_form)
+                .delete(delete_knowledge_entity)
+                .patch(patch_knowledge_entity),
+        )
         .route("/account", get(show_account_page))
         .route("/admin", get(show_admin_panel))
         .route("/toggle-registrations", patch(toggle_registration_status))

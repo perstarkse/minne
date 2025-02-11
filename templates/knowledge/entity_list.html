@@ -1,4 +1,4 @@
-<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4" id="entity_list">
+<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4" id="entity-list">
   {% for entity in entities %}
   <div class="card min-w-72 bg-base-100 shadow">
     <div class="card-body">
@@ -8,10 +8,11 @@
       <div class="flex justify-between items-center">
         <p>{{entity.updated_at | datetimeformat(format="short", tz=user.timezeone)}}</p>
         <div>
-          <button hx-patch="/knowledge-entity/{{entity.id}}" class="btn  btn-square btn-ghost btn-sm">
+          <button hx-get="/knowledge-entity/{{entity.id}}" hx-target="#modal" hx-swap="innerHTML"
+            class="btn  btn-square btn-ghost btn-sm">
             {% include "icons/edit_icon.html" %}
           </button>
-          <button hx-delete="/knowledge-entity/{{entity.id}}" hx-target="#entity_list" hx-swap="outerHTML"
+          <button hx-delete="/knowledge-entity/{{entity.id}}" hx-target="#entity-list" hx-swap="outerHTML"
             class="btn btn-square btn-ghost btn-sm">
             {% include "icons/delete_icon.html" %}
           </button>
