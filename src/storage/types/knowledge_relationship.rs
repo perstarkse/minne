@@ -73,4 +73,15 @@ impl KnowledgeRelationship {
 
         Ok(())
     }
+
+    pub async fn delete_relationship_by_id(
+        id: &str,
+        db_client: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        let query = format!("DELETE relates_to:`{}`", id);
+
+        db_client.query(query).await?;
+
+        Ok(())
+    }
 }

@@ -1,5 +1,9 @@
 @import 'tailwindcss';
-@plugin "daisyui";
+
+@plugin "daisyui" {
+  exclude: rootscrollbargutter;
+}
+
 @plugin "@tailwindcss/typography";
 
 @config '../tailwind.config.js';
@@ -20,6 +24,10 @@
 @layer base {
   body {
     @apply font-satoshi;
+  }
+
+  html {
+    scrollbar-gutter: stable;
   }
 
   *,

@@ -14,7 +14,10 @@ use crate::{
     error::{AppError, HtmlError, IntoHtmlError},
     ingress::types::ingress_input::{create_ingress_objects, IngressInput},
     page_data,
-    server::AppState,
+    server::{
+        routes::html::{index::ActiveJobsData, render_block},
+        AppState,
+    },
     storage::types::{file_info::FileInfo, user::User},
 };
 
@@ -38,7 +41,7 @@ pub async fn show_ingress_form(
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     let output = render_template(
-        "ingress_form.html",
+        "index/signed_in/ingress_modal.html",
         ShowIngressFormData { user_categories },
         state.templates.clone(),
     )?;
@@ -129,8 +132,22 @@ pub async fn process_ingress_form(
         .map_err(AppError::from)
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    Ok(Html(
-        "<a class='btn btn-primary' hx-get='/ingress-form' hx-swap='outerHTML'>Add Content</a>",
-    )
-    .into_response())
+    // Update the active jobs page with the newly created job
+    let active_jobs = state
+        .job_queue
+        .get_unfinished_user_jobs(&user.id)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let output = render_block(
+        "index/signed_in/active_jobs.html",
+        "active_jobs_section",
+        ActiveJobsData {
+            user: user.clone(),
+            active_jobs,
+        },
+        state.templates.clone(),
+    )?;
+
+    Ok(output.into_response())
 }

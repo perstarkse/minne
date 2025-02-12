@@ -1,4 +1,5 @@
-<div class="overflow-x-auto shadow rounded-box border border-base-content/5 bg-base-100">
+<div id="relationship_table_section"
+  class="overflow-x-auto shadow rounded-box border border-base-content/5 bg-base-100">
   <table class="table">
     <thead>
       <tr>
@@ -39,9 +40,9 @@
 
         <td>{{ relationship.metadata.relationship_type }}</td>
         <td>
-          <button class="btn btn-sm btn-outline" hx-get="/relationship/{{ relationship.id }}/edit"
-            hx-target="#modal_container" hx-swap="innerHTML">
-            Edit
+          <button class="btn btn-sm btn-outline" hx-delete="/knowledge-relationship/{{ relationship.id }}"
+            hx-target="#relationship_table_section" hx-swap="outerHTML">
+            {% include "icons/delete_icon.html" %}
           </button>
         </td>
       </tr>

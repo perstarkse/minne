@@ -1,4 +1,5 @@
-<div class="flex gap-4 flex-col">
+<div class="flex gap-4 flex-col sm:flex-row">
   <a class="btn btn-secondary" href="/knowledge" hx-boost="true">View Knowledge</a>
-  <button class="btn btn-primary" hx-get="/ingress-form" hx-swap="outerHTML">Add Content</button>
+  <button class="btn btn-primary" hx-get="/ingress-form" hx-target="#modal" hx-swap="innerHTML">Add
+    Content</button>
 </div>
