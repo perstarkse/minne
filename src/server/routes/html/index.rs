@@ -179,8 +179,8 @@ async fn get_and_validate_text_content(
 
 #[derive(Serialize)]
 pub struct ActiveJobsData {
-    active_jobs: Vec<Job>,
-    user: User,
+    pub active_jobs: Vec<Job>,
+    pub user: User,
 }
 
 pub async fn delete_job(
@@ -198,6 +198,34 @@ pub async fn delete_job(
         .delete_job(&id, &user.id)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let active_jobs = state
+        .job_queue
+        .get_unfinished_user_jobs(&user.id)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let output = render_block(
+        "index/signed_in/active_jobs.html",
+        "active_jobs_section",
+        ActiveJobsData {
+            user: user.clone(),
+            active_jobs,
+        },
+        state.templates.clone(),
+    )?;
+
+    Ok(output.into_response())
+}
+
+pub async fn show_active_jobs(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/signin").into_response()),
+    };
 
     let active_jobs = state
         .job_queue

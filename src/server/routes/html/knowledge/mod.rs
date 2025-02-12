@@ -263,3 +263,45 @@ pub async fn delete_knowledge_entity(
 
     Ok(output.into_response())
 }
+
+#[derive(Serialize)]
+pub struct RelationshipTableData {
+    entities: Vec<KnowledgeEntity>,
+    relationships: Vec<KnowledgeRelationship>,
+}
+
+pub async fn delete_knowledge_relationship(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Early return if the user is not authenticated
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/signin").into_response()),
+    };
+
+    KnowledgeRelationship::delete_relationship_by_id(&id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let relationships = User::get_knowledge_relationships(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    // Render updated list
+    let output = render_template(
+        "knowledge/relationship_table.html",
+        RelationshipTableData {
+            entities,
+            relationships,
+        },
+        state.templates,
+    )?;
+
+    Ok(output.into_response())
+}
