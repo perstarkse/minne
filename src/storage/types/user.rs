@@ -5,7 +5,6 @@ use crate::{
 };
 use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
-use tracing::info;
 use uuid::Uuid;
 
 use super::{
@@ -259,7 +258,7 @@ impl User {
     pub async fn update_timezone(
         user_id: &str,
         timezone: &str,
-        db: &Surreal<Any>,
+        db: &SurrealDbClient,
     ) -> Result<(), AppError> {
         db.query("UPDATE type::thing('user', $user_id) SET timezone = $timezone")
             .bind(("table_name", User::table_name()))
@@ -286,5 +285,20 @@ impl User {
         let categories: Vec<String> = response.into_iter().map(|item| item.category).collect();
 
         Ok(categories)
+    }
+    pub async fn get_and_validate_knowledge_entity(
+        id: &str,
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<KnowledgeEntity, AppError> {
+        let entity: KnowledgeEntity = get_item(db, &id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Entity not found".into()))?;
+
+        if entity.user_id != user_id {
+            return Err(AppError::Auth("Access denied".into()));
+        }
+
+        Ok(entity)
     }
 }

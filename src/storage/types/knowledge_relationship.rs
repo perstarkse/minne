@@ -2,7 +2,6 @@ use crate::storage::types::file_info::deserialize_flexible_id;
 use crate::{error::AppError, storage::db::SurrealDbClient};
 use serde::{Deserialize, Serialize};
 use surrealdb::{engine::any::Any, Surreal};
-use tracing::{debug, info};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
