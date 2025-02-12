@@ -72,4 +72,29 @@ impl KnowledgeEntity {
 
         Ok(())
     }
+
+    pub async fn patch(
+        id: &str,
+        name: &str,
+        description: &str,
+        db_client: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        db_client
+            .client
+            .query(
+                "UPDATE type::thing($table, $id)
+                SET name = $name,
+                    description = $description,
+                    updated_at = $updated_at
+                RETURN AFTER",
+            )
+            .bind(("table", Self::table_name()))
+            .bind(("id", id.to_string()))
+            .bind(("name", name.to_string()))
+            .bind(("updated_at", Utc::now()))
+            .bind(("description", description.to_string()))
+            .await?;
+
+        Ok(())
+    }
 }

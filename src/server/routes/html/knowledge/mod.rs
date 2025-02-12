@@ -3,32 +3,25 @@ use axum::{
     response::{IntoResponse, Redirect},
     Form,
 };
-use axum_session::Session;
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
-use futures::SinkExt;
 use plotly::{
     common::{Line, Marker, Mode},
     layout::{Axis, Camera, LayoutScene, ProjectionType},
-    Configuration, Layout, Plot, Scatter, Scatter3D,
+    Layout, Plot, Scatter3D,
 };
 use surrealdb::{engine::any::Any, Surreal};
-use tokio::join;
 use tracing::info;
 
 use crate::{
     error::{AppError, HtmlError},
     page_data,
-    server::{
-        routes::html::{render_block, render_template},
-        AppState,
-    },
+    server::{routes::html::render_template, AppState},
     storage::{
-        db::{delete_item, get_item},
+        db::delete_item,
         types::{
-            file_info::FileInfo, job::Job, knowledge_entity::KnowledgeEntity,
-            knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
-            text_content::TextContent, user::User,
+            knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
+            user::User,
         },
     },
 };
@@ -167,17 +160,14 @@ pub async fn show_edit_knowledge_entity_form(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    // SORT OUT ERROR HANDLING AND VALIDATE INPUT
-    let entity = get_item(&state.surreal_db_client, &id)
+    // Get the entity and validate ownership
+    let entity = User::get_and_validate_knowledge_entity(&id, &user.id, &state.surreal_db_client)
         .await
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     let output = render_template(
         "knowledge/edit_knowledge_entity_modal.html",
-        EntityData {
-            entity: entity.unwrap(),
-            user,
-        },
+        EntityData { entity, user },
         state.templates,
     )?;
 
@@ -192,6 +182,7 @@ pub struct EntityListData {
 
 #[derive(Debug, Deserialize)]
 pub struct PatchKnowledgeEntityParams {
+    pub id: String,
     pub name: String,
     pub description: String,
 }
@@ -207,12 +198,27 @@ pub async fn patch_knowledge_entity(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    info!("{:#?}", form);
+    // Get the existing entity and validate that the user is allowed
+    User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
+    // Update the entity
+    KnowledgeEntity::patch(
+        &form.id,
+        &form.name,
+        &form.description,
+        &state.surreal_db_client,
+    )
+    .await
+    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+
+    // Get updated list of entities
     let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
+    // Render updated list
     let output = render_template(
         "knowledge/entity_list.html",
         EntityListData { entities, user },
@@ -225,11 +231,35 @@ pub async fn patch_knowledge_entity(
 pub async fn delete_knowledge_entity(
     State(state): State<AppState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
     // Early return if the user is not authenticated
     let user = match auth.current_user {
         Some(user) => user,
         None => return Ok(Redirect::to("/signin").into_response()),
     };
-    Ok("Thanks".into_response())
+
+    // Get the existing entity and validate that the user is allowed
+    User::get_and_validate_knowledge_entity(&id, &user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    // Delete the entity
+    delete_item::<KnowledgeEntity>(&state.surreal_db_client, &id)
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+
+    // Get updated list of entities
+    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    // Render updated list
+    let output = render_template(
+        "knowledge/entity_list.html",
+        EntityListData { entities, user },
+        state.templates,
+    )?;
+
+    Ok(output.into_response())
 }
