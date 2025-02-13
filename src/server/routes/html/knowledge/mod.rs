@@ -281,7 +281,62 @@ pub async fn delete_knowledge_relationship(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
+    // GOTTA ADD AUTH VALIDATION
+
     KnowledgeRelationship::delete_relationship_by_id(&id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let relationships = User::get_knowledge_relationships(&user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    // Render updated list
+    let output = render_template(
+        "knowledge/relationship_table.html",
+        RelationshipTableData {
+            entities,
+            relationships,
+        },
+        state.templates,
+    )?;
+
+    Ok(output.into_response())
+}
+
+#[derive(Deserialize)]
+pub struct SaveKnowledgeRelationshipInput {
+    pub in_: String,
+    pub out: String,
+    pub relationship_type: String,
+}
+
+pub async fn save_knowledge_relationship(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Form(form): Form<SaveKnowledgeRelationshipInput>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Early return if the user is not authenticated
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/signin").into_response()),
+    };
+
+    // Construct relationship
+    let relationship = KnowledgeRelationship::new(
+        form.in_,
+        form.out,
+        user.id.clone(),
+        "manual".into(),
+        form.relationship_type,
+    );
+
+    relationship
+        .store_relationship(&state.surreal_db_client)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 

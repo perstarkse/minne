@@ -15,29 +15,22 @@
         <!-- Origin column -->
         <td>
           {% for entity in entities if entity.id == relationship.in %}
-          <span class="cursor-pointer tooltip tooltip-info" data-tip="Click for more details"
-            hx-get="/knowledge-entity/{{entity.id}}" hx-trigger="click" hx-target="#entity_detail_modal"
-            hx-swap="innerHTML">
-            {{ entity.name }}
+          <span> {{ entity.name }}
           </span>
           {% else %}
           {{ relationship.in }}
           {% endfor %}
         </td>
-
         <!-- Target column -->
         <td>
           {% for entity in entities if entity.id == relationship.out %}
-          <span class="cursor-pointer tooltip tooltip-info" data-tip="Click for more details"
-            hx-get="/knowledge-entity/{{entity.id}}" hx-trigger="click" hx-target="#entity_detail_modal"
-            hx-swap="innerHTML">
+          <span>
             {{ entity.name }}
           </span>
           {% else %}
           {{ relationship.out }}
           {% endfor %}
         </td>
-
         <td>{{ relationship.metadata.relationship_type }}</td>
         <td>
           <button class="btn btn-sm btn-outline" hx-delete="/knowledge-relationship/{{ relationship.id }}"
@@ -50,15 +43,17 @@
       <!-- New linking row -->
       <tr id="new_relationship">
         <td>
-          <select name="origin_id" class="select select-bordered w-full new_relationship_input">
+          <select name="in_" class="select select-bordered w-full new_relationship_input">
             <option disabled selected>Select Origin</option>
             {% for entity in entities %}
-            <option value="{{ entity.id }}">{{ entity.name }}</option>
+            <option value="{{ entity.id }}">
+              {{ entity.name }}
+            </option>
             {% endfor %}
           </select>
         </td>
         <td>
-          <select name="target_id" class="select select-bordered w-full new_relationship_input">
+          <select name="out" class="select select-bordered w-full new_relationship_input">
             <option disabled selected>Select Target</option>
             {% for entity in entities %}
             <option value="{{ entity.id }}">{{ entity.name }}</option>
@@ -66,12 +61,13 @@
           </select>
         </td>
         <td>
-          <input name="relationship_type" type="text" placeholder="RelatedTo"
+          <input id="relationship_type_input" name="relationship_type" type="text" placeholder="RelatedTo"
             class="input input-bordered w-full new_relationship_input" />
         </td>
         <td>
-          <button type="button" class="btn btn-primary btn-sm" hx-post="/relationship/create"
-            hx-target="#relationship_table" hx-swap="outerHTML" hx-include=".new_relationship_input">
+          <button id="save_relationship_button" type="button" class="btn btn-primary btn-sm"
+            hx-post="/knowledge-relationship" hx-target="#relationship_table_section" hx-swap="outerHTML"
+            hx-include=".new_relationship_input">
             Save
           </button>
         </td>
@@ -79,8 +75,11 @@
     </tbody>
   </table>
 </div>
-
-
-<!-- Modal containers for dynamic content -->
-<div id="entity_detail_modal" class="mt-4"></div>
-<div id="modal_container"></div>
+<script>
+  document.getElementById('relationship_type_input').addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+      event.preventDefault(); // Prevent form submission if within a form
+      document.getElementById('save_relationship_button').click();
+    }
+  });
+</script>

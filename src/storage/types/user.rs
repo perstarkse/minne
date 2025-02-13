@@ -239,6 +239,21 @@ impl User {
         Ok(items)
     }
 
+    pub async fn get_text_contents(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<TextContent>, AppError> {
+        let items: Vec<TextContent> = db
+            .client
+            .query("SELECT * FROM type::table($table_name) WHERE user_id = $user_id ORDER BY created_at DESC")
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("table_name", TextContent::table_name()))
+            .await?
+            .take(0)?;
+
+        Ok(items)
+    }
+
     pub async fn get_latest_knowledge_entities(
         user_id: &str,
         db: &SurrealDbClient,
@@ -286,6 +301,7 @@ impl User {
 
         Ok(categories)
     }
+
     pub async fn get_and_validate_knowledge_entity(
         id: &str,
         user_id: &str,
@@ -300,5 +316,21 @@ impl User {
         }
 
         Ok(entity)
+    }
+
+    pub async fn get_and_validate_text_content(
+        id: &str,
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<TextContent, AppError> {
+        let text_content: TextContent = get_item(db, &id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Content not found".into()))?;
+
+        if text_content.user_id != user_id {
+            return Err(AppError::Auth("Access denied".into()));
+        }
+
+        Ok(text_content)
     }
 }

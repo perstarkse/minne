@@ -18,7 +18,6 @@
       </div>
     </form>
   </div>
-
   <script>
     // Auto-open modal when injected
     document.getElementById('body_modal').showModal();
@@ -28,6 +27,11 @@
       if (evt.detail.successful) {
         document.getElementById('body_modal').close();
       }
+    });
+
+    // Clear modal content on close to prevent browser back from reopening it
+    document.getElementById('body_modal').addEventListener('close', (evt) => {
+      evt.target.innerHTML = '';
     });
   </script>
 </dialog>
