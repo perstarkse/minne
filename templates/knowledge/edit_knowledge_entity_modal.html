@@ -7,7 +7,7 @@ hx-swap="outerHTML"
 {% endblock %}
 
 {% block modal_content %}
-<h3 class="text-lg font-bold mb-4">Edit Entity</h3>
+<h3 class="text-lg font-bold">Edit Entity</h3>
 
 <div class="form-control">
   <label class="floating-label">
@@ -18,7 +18,7 @@ hx-swap="outerHTML"
 
 <input type="text" name="id" value="{{ entity.id }}" class="hidden">
 
-<div class="form-control mt-4">
+<div class="form-control">
   <label class="floating-label">
     <span class="label-text">Description</span>
     <textarea name="description" class="w-full textarea textarea-bordered h-32">{{ entity.description }}</textarea>

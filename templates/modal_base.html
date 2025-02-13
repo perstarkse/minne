@@ -1,9 +1,10 @@
 <dialog id="body_modal" class="modal">
   <div class="modal-box">
     <form id="modal_form" {% block form_attributes %}{% endblock %}>
-      {% block modal_content %}
-      <!-- Form fields go here in child templates -->
-      {% endblock %}
+      <div class="flex flex-col space-y-4">
+        {% block modal_content %} <!-- Form fields go here in child templates -->
+        {% endblock %}
+      </div>
 
       <div class="modal-action">
         <!-- Close button (always visible) -->
