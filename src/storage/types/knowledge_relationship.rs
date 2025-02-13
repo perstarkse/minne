@@ -1,7 +1,6 @@
 use crate::storage::types::file_info::deserialize_flexible_id;
 use crate::{error::AppError, storage::db::SurrealDbClient};
 use serde::{Deserialize, Serialize};
-use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -40,7 +39,7 @@ impl KnowledgeRelationship {
             },
         }
     }
-    pub async fn store_relationship(&self, db_client: &Surreal<Any>) -> Result<(), AppError> {
+    pub async fn store_relationship(&self, db_client: &SurrealDbClient) -> Result<(), AppError> {
         let query = format!(
             r#"RELATE knowledge_entity:`{}`->relates_to:`{}`->knowledge_entity:`{}`
             SET

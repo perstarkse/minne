@@ -29,6 +29,7 @@ use zettle_db::{
             html::{
                 account::{delete_account, set_api_key, show_account_page, update_timezone},
                 admin_panel::{show_admin_panel, toggle_registration_status},
+                content::{patch_text_content, show_content_page, show_text_content_edit_form},
                 documentation::{
                     show_documentation_index, show_get_started, show_mobile_friendly,
                     show_privacy_policy,
@@ -38,7 +39,8 @@ use zettle_db::{
                 ingress_form::{hide_ingress_form, process_ingress_form, show_ingress_form},
                 knowledge::{
                     delete_knowledge_entity, delete_knowledge_relationship, patch_knowledge_entity,
-                    show_edit_knowledge_entity_form, show_knowledge_page,
+                    save_knowledge_relationship, show_edit_knowledge_entity_form,
+                    show_knowledge_page,
                 },
                 search_result::search_result_handler,
                 signin::{authenticate_user, show_signin_form},
@@ -177,6 +179,11 @@ fn html_routes(
         .route("/text-content/:id", delete(delete_text_content))
         .route("/jobs/:job_id", delete(delete_job))
         .route("/active-jobs", get(show_active_jobs))
+        .route("/content", get(show_content_page))
+        .route(
+            "/content/:id",
+            get(show_text_content_edit_form).patch(patch_text_content),
+        )
         .route("/knowledge", get(show_knowledge_page))
         .route(
             "/knowledge-entity/:id",
@@ -184,6 +191,7 @@ fn html_routes(
                 .delete(delete_knowledge_entity)
                 .patch(patch_knowledge_entity),
         )
+        .route("/knowledge-relationship", post(save_knowledge_relationship))
         .route(
             "/knowledge-relationship/:id",
             delete(delete_knowledge_relationship),

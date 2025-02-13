@@ -10,19 +10,19 @@ hx-swap="outerHTML"
 <h3 class="text-lg font-bold mb-4">Edit Entity</h3>
 
 <div class="form-control">
-  <label class="label">
+  <label class="floating-label">
     <span class="label-text">Entity Name</span>
+    <input type="text" name="name" value="{{ entity.name }}" class="input input-bordered w-full">
   </label>
-  <input type="text" name="name" value="{{ entity.name }}" class="input input-bordered">
 </div>
 
 <input type="text" name="id" value="{{ entity.id }}" class="hidden">
 
 <div class="form-control mt-4">
-  <label class="label">
+  <label class="floating-label">
     <span class="label-text">Description</span>
+    <textarea name="description" class="w-full textarea textarea-bordered h-32">{{ entity.description }}</textarea>
   </label>
-  <textarea name="description" class="textarea textarea-bordered h-32">{{ entity.description }}</textarea>
 </div>
 {% endblock %}
 
