@@ -1,6 +1,6 @@
 {% extends 'documentation/base.html' %}
 {% block article %}
-<h2>Get Started with Minne</h2>
+<h1>Get Started with Minne</h1>
 <p>Minne offers two installation options to suit your needs:</p>
 <ol>
   <li>
@@ -13,7 +13,8 @@
     release, open the <code>config.yaml</code> file and set the following configurations:
   </li>
 </ol>
-<pre><code>
+<pre class="overflow-x-auto text-sm">
+  <code class="break-words whitespace-pre-wrap">
     OPENAI_API_KEY: your_api_key
     SMTP_EMAIL_RELAYER: your_email_relayer
     SMTP_USERNAME: your_smtp_username
@@ -21,7 +22,8 @@
     DB_ADDRESS: your_db_address
     DB_USER: your_db_user
     DB_PASSWORD: your_db_password
-  </code></pre>
+  </code>
+</pre>
 <p>The database settings relate to a running instance of SurrealDB. You can opt for their cloud solution or run your
   own instance.</p>
 
@@ -43,6 +45,7 @@
   via the <code>/admin</code> page if desired.</p>
 
 <p>From the homepage (<code>/</code>), you can:</p>
+
 <ul>
   <li>Submit content, including files, videos, and URLs for ingestion.</li>
   <li>Monitor job statuses and manage your existing content.</li>
