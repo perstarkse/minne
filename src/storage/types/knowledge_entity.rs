@@ -2,10 +2,7 @@ use crate::{
     error::AppError, storage::db::SurrealDbClient, stored_object,
     utils::embedding::generate_embedding,
 };
-use async_openai::{
-    config::{Config, OpenAIConfig},
-    Client,
-};
+use async_openai::{config::OpenAIConfig, Client};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -16,6 +13,11 @@ pub enum KnowledgeEntityType {
     Page,
     TextSnippet,
     // Add more types as needed
+}
+impl KnowledgeEntityType {
+    pub fn variants() -> &'static [&'static str] {
+        &["Idea", "Project", "Document", "Page", "TextSnippet"]
+    }
 }
 
 impl From<String> for KnowledgeEntityType {
@@ -101,6 +103,7 @@ impl KnowledgeEntity {
                 SET name = $name,
                     description = $description,
                     updated_at = $updated_at,
+                    entity_type = $entity_type,
                     embedding = $embedding
                 RETURN AFTER",
             )
@@ -108,6 +111,7 @@ impl KnowledgeEntity {
             .bind(("id", id.to_string()))
             .bind(("name", name.to_string()))
             .bind(("updated_at", Utc::now()))
+            .bind(("entity_type", entity_type.to_owned()))
             .bind(("embedding", embedding))
             .bind(("description", description.to_string()))
             .await?;

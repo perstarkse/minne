@@ -20,7 +20,8 @@ use crate::{
     storage::{
         db::delete_item,
         types::{
-            knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
+            knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
+            knowledge_relationship::KnowledgeRelationship,
             user::User,
         },
     },
@@ -146,6 +147,7 @@ pub async fn show_knowledge_page(
 #[derive(Serialize)]
 pub struct EntityData {
     entity: KnowledgeEntity,
+    entity_types: Vec<String>,
     user: User,
 }
 
@@ -160,6 +162,12 @@ pub async fn show_edit_knowledge_entity_form(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
+    // Get entity types
+    let entity_types: Vec<String> = KnowledgeEntityType::variants()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
     // Get the entity and validate ownership
     let entity = User::get_and_validate_knowledge_entity(&id, &user.id, &state.surreal_db_client)
         .await
@@ -167,7 +175,11 @@ pub async fn show_edit_knowledge_entity_form(
 
     let output = render_template(
         "knowledge/edit_knowledge_entity_modal.html",
-        EntityData { entity, user },
+        EntityData {
+            entity,
+            user,
+            entity_types,
+        },
         state.templates,
     )?;
 
@@ -184,6 +196,7 @@ pub struct EntityListData {
 pub struct PatchKnowledgeEntityParams {
     pub id: String,
     pub name: String,
+    pub entity_type: String,
     pub description: String,
 }
 
@@ -199,17 +212,18 @@ pub async fn patch_knowledge_entity(
     };
 
     // Get the existing entity and validate that the user is allowed
-    let existing_entity =
-        User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.surreal_db_client)
-            .await
-            .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.surreal_db_client)
+        .await
+        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+
+    let entity_type: KnowledgeEntityType = KnowledgeEntityType::from(form.entity_type);
 
     // Update the entity
     KnowledgeEntity::patch(
         &form.id,
         &form.name,
         &form.description,
-        &existing_entity.entity_type,
+        &entity_type,
         &state.surreal_db_client,
         &state.openai_client,
     )
