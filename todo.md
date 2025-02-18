@@ -1,3 +1,6 @@
+\[\] chat functionality
+\[\] filtering on categories
+\[\] link to ingressed urls or archives
 \[\] archive ingressed webpage
 \[\] configs primarily get envs
 \[\] on updates of knowledgeentity create new embeddings

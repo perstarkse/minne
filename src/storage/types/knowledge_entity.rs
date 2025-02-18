@@ -1,4 +1,11 @@
-use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
+use crate::{
+    error::AppError, storage::db::SurrealDbClient, stored_object,
+    utils::embedding::generate_embedding,
+};
+use async_openai::{
+    config::{Config, OpenAIConfig},
+    Client,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -77,21 +84,31 @@ impl KnowledgeEntity {
         id: &str,
         name: &str,
         description: &str,
+        entity_type: &KnowledgeEntityType,
         db_client: &SurrealDbClient,
+        ai_client: &Client<OpenAIConfig>,
     ) -> Result<(), AppError> {
+        let embedding_input = format!(
+            "name: {}, description: {}, type: {:?}",
+            name, description, entity_type
+        );
+        let embedding = generate_embedding(ai_client, &embedding_input).await?;
+
         db_client
             .client
             .query(
                 "UPDATE type::thing($table, $id)
                 SET name = $name,
                     description = $description,
-                    updated_at = $updated_at
+                    updated_at = $updated_at,
+                    embedding = $embedding
                 RETURN AFTER",
             )
             .bind(("table", Self::table_name()))
             .bind(("id", id.to_string()))
             .bind(("name", name.to_string()))
             .bind(("updated_at", Utc::now()))
+            .bind(("embedding", embedding))
             .bind(("description", description.to_string()))
             .await?;
 
