@@ -28,11 +28,11 @@ pub enum EmailError {
 
 impl Mailer {
     pub fn new(
-        username: String,
-        relayer: String,
-        password: String,
+        username: &str,
+        relayer: &str,
+        password: &str,
     ) -> Result<Self, lettre::transport::smtp::Error> {
-        let creds = Credentials::new(username, password);
+        let creds = Credentials::new(username.to_owned(), password.to_owned());
 
         let mailer = SmtpTransport::relay(&relayer)?.credentials(creds).build();
 

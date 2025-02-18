@@ -1,4 +1,8 @@
-use super::types::StoredObject;
+use crate::error::AppError;
+
+use super::types::{analytics::Analytics, system_settings::SystemSettings, StoredObject};
+use axum_session::{SessionConfig, SessionError, SessionStore};
+use axum_session_surreal::SessionSurrealPool;
 use std::ops::Deref;
 use surrealdb::{
     engine::any::{connect, Any},
@@ -34,6 +38,40 @@ impl SurrealDbClient {
         db.use_ns(namespace).use_db(database).await?;
 
         Ok(SurrealDbClient { client: db })
+    }
+
+    pub async fn create_session_store(
+        &self,
+    ) -> Result<SessionStore<SessionSurrealPool<Any>>, SessionError> {
+        SessionStore::new(
+            Some(self.client.clone().into()),
+            SessionConfig::default()
+                .with_table_name("test_session_table")
+                .with_secure(true),
+        )
+        .await
+    }
+
+    pub async fn ensure_initialized(&self) -> Result<(), AppError> {
+        Self::build_indexes(&self).await?;
+        Self::setup_auth(&self).await?;
+
+        Analytics::ensure_initialized(self).await?;
+        SystemSettings::ensure_initialized(self).await?;
+
+        Ok(())
+    }
+
+    pub async fn setup_auth(&self) -> Result<(), Error> {
+        self.client.query(
+        "DEFINE TABLE user SCHEMALESS;
+        DEFINE INDEX unique_name ON TABLE user FIELDS email UNIQUE;
+        DEFINE ACCESS account ON DATABASE TYPE RECORD
+        SIGNUP ( CREATE user SET email = $email, password = crypto::argon2::generate($password), anonymous = false, user_id = $user_id)
+        SIGNIN ( SELECT * FROM user WHERE email = $email AND crypto::argon2::compare(password, $password) );",
+    )
+    .await?;
+        Ok(())
     }
 
     pub async fn build_indexes(&self) -> Result<(), Error> {

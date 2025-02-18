@@ -199,16 +199,19 @@ pub async fn patch_knowledge_entity(
     };
 
     // Get the existing entity and validate that the user is allowed
-    User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.surreal_db_client)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let existing_entity =
+        User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.surreal_db_client)
+            .await
+            .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     // Update the entity
     KnowledgeEntity::patch(
         &form.id,
         &form.name,
         &form.description,
+        &existing_entity.entity_type,
         &state.surreal_db_client,
+        &state.openai_client,
     )
     .await
     .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
