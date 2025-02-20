@@ -13,7 +13,13 @@
           {% endif %}
         </div>
         <h2 class="card-title truncate">
-          {{ text_content.text }}
+          {% if text_content.url %}
+          <a href="{{ text_content.url}}">{{text_content.url}}</a>
+          {% elif text_content.file_info %}
+          {{text_content.file_info.file_name}}
+          {% else %}
+          {{text_content.text}}
+          {% endif %}
         </h2>
       </div>
       <div class="flex items-center">

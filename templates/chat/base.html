@@ -1,0 +1,44 @@
+{% extends 'body_base.html' %}
+{% block main %}
+<div class="drawer xl:drawer-open">
+  <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
+
+  <!-- Drawer Content -->
+  <div class="drawer-content flex justify-center">
+    <main class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10 max-w-3xl w-full absolute left-0 right-0 mx-auto">
+      <div class="relative w-full">
+        {% include "chat/history.html" %}
+
+        <div class="fixed w-full mx-auto max-w-3xl left-0 right-0 bottom-0">
+          {% include "chat/input_field.html" %}
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Drawer Sidebar -->
+  {% include "chat/drawer.html" %}
+</div>
+
+<style>
+  /* Custom styles to override DaisyUI defaults */
+  .drawer-content {
+    width: 100%;
+    padding: 0;
+  }
+
+  .drawer-side {
+    z-index: 20;
+    /* Ensure drawer is above content */
+  }
+
+  @media (min-width: 1280px) {
+
+    /* xl breakpoint */
+    .drawer-open .drawer-content {
+      margin-left: 0;
+      /* Prevent content shift */
+    }
+  }
+</style>
+{% endblock %}

@@ -17,12 +17,13 @@ hx-swap="outerHTML"
 </div>
 
 <div class="form-control relative" style="margin-top: -1.5rem;">
-  <span class="absolute left-2.5 top-2.5 z-[100] p-0.5 bg-white text-xs text-light">Type</span>
-      <select name="entity_type" class="select select-bordered w-full">
+  <div class="absolute !left-3 !top-2.5 z-50 p-0.5 bg-white text-xs text-light">Type</div>
+      <select name="entity_type" class="select w-full">
+    <option disabled>You must select a type</option>
          {% for et in entity_types %}
           <option value="{{ et }}" {% if entity.entity_type==et %}selected{% endif %}>{{ et }}</option>
          {% endfor %}
-        </select>
+  </select>
 </div>
 
 <input type="text" name="id" value="{{ entity.id }}" class="hidden">

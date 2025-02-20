@@ -7,6 +7,7 @@ use crate::error::{HtmlError, IntoHtmlError};
 
 pub mod account;
 pub mod admin_panel;
+pub mod chat;
 pub mod content;
 pub mod documentation;
 pub mod gdpr;
