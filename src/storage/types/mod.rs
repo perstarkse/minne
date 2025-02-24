@@ -1,10 +1,12 @@
 use axum::async_trait;
 use serde::{Deserialize, Serialize};
 pub mod analytics;
+pub mod conversation;
 pub mod file_info;
 pub mod job;
 pub mod knowledge_entity;
 pub mod knowledge_relationship;
+pub mod message;
 pub mod system_settings;
 pub mod text_chunk;
 pub mod text_content;

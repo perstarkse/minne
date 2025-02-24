@@ -17,3 +17,23 @@
   {% endif %}
   {% endfor %}
 </div>
+
+<script>
+  // Scroll to latest message after HTMX swap
+  document.body.addEventListener('htmx:afterSwap', function (evt) {
+    const chatContainer = document.getElementById('chat_container');
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  });
+</script>
+
+<style>
+  #chat_container {
+    max-height: 70vh;
+    /* Adjust as needed */
+    overflow-y: auto;
+    /* Enable scrolling */
+    padding: 1rem;
+  }
+</style>

@@ -1,18 +1,29 @@
+use std::time::Duration;
+
 use axum::{
-    extract::State,
-    response::{IntoResponse, Redirect},
+    extract::{Path, Query, State},
+    response::{
+        sse::{Event, KeepAlive},
+        Html, IntoResponse, Redirect, Sse,
+    },
     Form,
 };
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
+use futures::{stream, Stream, StreamExt};
 use surrealdb::{engine::any::Any, Surreal};
+use tokio::time::sleep;
 use tracing::info;
+use uuid::Uuid;
 
 use crate::{
     error::HtmlError,
     page_data,
     server::{routes::html::render_template, AppState},
-    storage::types::user::User,
+    storage::types::{
+        message::{Message, MessageRole},
+        user::User,
+    },
 };
 
 // Update your ChatStartParams struct to properly deserialize the references
@@ -36,27 +47,8 @@ where
 page_data!(ChatData, "chat/base.html", {
     user: User,
     history: Vec<Message>,
-});
-
-#[derive(Deserialize, Debug, Serialize)]
-pub enum MessageRole {
-    User,
-    AI,
-    System,
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-pub struct Message {
     conversation_id: String,
-    role: MessageRole,
-    content: String,
-    references: Option<Vec<String>>,
-}
-
-pub struct Conversation {
-    user_id: String,
-    title: String,
-}
+});
 
 pub async fn show_initialized_chat(
     State(state): State<AppState>,
@@ -72,19 +64,16 @@ pub async fn show_initialized_chat(
 
     info!("{:?}", form);
 
-    let user_message = Message {
-        conversation_id: "test".to_string(),
-        role: MessageRole::User,
-        content: form.user_query,
-        references: None,
-    };
+    let conversation_id = Uuid::new_v4().to_string();
 
-    let ai_message = Message {
-        conversation_id: "test".to_string(),
-        role: MessageRole::AI,
-        content: form.llm_response,
-        references: Some(form.references),
-    };
+    let user_message = Message::new("test".to_string(), MessageRole::User, form.user_query, None);
+
+    let ai_message = Message::new(
+        "test".to_string(),
+        MessageRole::AI,
+        form.llm_response,
+        Some(form.references),
+    );
 
     let messages = vec![user_message, ai_message];
 
@@ -93,6 +82,7 @@ pub async fn show_initialized_chat(
         ChatData {
             history: messages,
             user,
+            conversation_id,
         },
         state.templates.clone(),
     )?;
@@ -111,14 +101,98 @@ pub async fn show_chat_base(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
+    let conversation_id = Uuid::new_v4().to_string();
+
     let output = render_template(
         ChatData::template_name(),
         ChatData {
             history: vec![],
             user,
+            conversation_id,
         },
         state.templates.clone(),
     )?;
 
     Ok(output.into_response())
+}
+
+#[derive(Deserialize)]
+pub struct NewMessageForm {
+    content: String,
+}
+
+pub async fn new_user_message(
+    Path(conversation_id): Path<String>,
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Form(form): Form<NewMessageForm>,
+) -> Result<impl IntoResponse, HtmlError> {
+    info!("Displaying empty chat start");
+
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/").into_response()),
+    };
+
+    let query_id = Uuid::new_v4().to_string();
+    let user_message = form.content.clone();
+
+    // Save to database
+    // state
+    //     .db
+    //     .save(conversation_id, query_id.clone(), user_message)
+    //     .await;
+
+    #[derive(Serialize)]
+    struct SSEResponseInitData {
+        user_message: String,
+        query_id: String,
+    }
+
+    let output = render_template(
+        "chat/streaming_response.html",
+        SSEResponseInitData {
+            user_message,
+            query_id,
+        },
+        state.templates.clone(),
+    )?;
+
+    Ok(output.into_response())
+}
+
+#[derive(Deserialize)]
+pub struct QueryParams {
+    query_id: String,
+}
+
+pub async fn get_response_stream(
+    State(_state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Query(params): Query<QueryParams>,
+) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
+    let stream = stream::iter(vec![
+        Event::default()
+            .event("chat_message")
+            .data("Hello, starting stream!"),
+        Event::default()
+            .event("chat_message")
+            .data("This is message 2"),
+        Event::default().event("chat_message").data("Final message"),
+        Event::default()
+            .event("close_stream")
+            .data("Stream complete"), // Signal to close
+    ])
+    .then(|event| async move {
+        sleep(Duration::from_millis(500)).await; // Delay between messages
+        Ok(event)
+    });
+
+    info!("Streaming started");
+
+    Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("keep-alive"),
+    )
 }
