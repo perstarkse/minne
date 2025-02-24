@@ -1,0 +1,25 @@
+<div class="chat chat-end">
+  <div class="chat-header">User</div>
+  <div class="chat-bubble">
+    {{user_message}}
+  </div>
+</div>
+<div class="chat chat-start">
+  <div class="chat-header">AI</div>
+  <div class="chat-bubble" hx-ext="sse" sse-connect="/chat/response-stream?query_id={{query_id}}"
+    sse-swap="chat_message" sse-close="close_stream" hx-swap="beforeend">
+    <span class="loading loading-dots loading-sm loading-id-{{query_id}}"></span>
+  </div>
+</div>
+<script>
+  document.body.addEventListener('htmx:sseBeforeMessage', (e) => {
+    const targetElement = e.detail.elt;
+    const loadingSpinner = targetElement.querySelector('.loading-id-{{query_id}}');
+
+    // Hiding the loading spinner before data is swapped in
+    if (loadingSpinner) {
+      loadingSpinner.style.display = 'none';
+    }
+  }
+  )
+</script>
