@@ -2428,6 +2428,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "json-stream-parser"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a70ab2b05e827e0604229fcf11b24560b036a21286a41517a6cac271f12a6a9"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "json5"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6042,6 +6051,7 @@ dependencies = [
  "chrono-tz",
  "config",
  "futures",
+ "json-stream-parser",
  "lettre",
  "mime",
  "mime_guess",

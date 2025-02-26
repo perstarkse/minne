@@ -7,7 +7,10 @@
           "icons/edit_icon.html" %}
         </span></a></li>
     <div class="divider"></div>
-    <li><a>Sidebar Item 1</a></li>
-    <li><a>Sidebar Item 2</a></li>
+    {% for conversation in conversation_archive %}
+    <li><a href="/chat/{{conversation.id}}" hx-boost="true">{{conversation.title}} - {{conversation.created_at}}</a>
+    </li>
+    {% endfor %}
+    {{conversation_archive}}
   </ul>
 </div>

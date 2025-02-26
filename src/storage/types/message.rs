@@ -2,7 +2,7 @@ use uuid::Uuid;
 
 use crate::stored_object;
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub enum MessageRole {
     User,
     AI,
