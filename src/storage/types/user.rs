@@ -8,8 +8,9 @@ use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
 use super::{
-    knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
-    system_settings::SystemSettings, text_content::TextContent,
+    conversation::Conversation, knowledge_entity::KnowledgeEntity,
+    knowledge_relationship::KnowledgeRelationship, system_settings::SystemSettings,
+    text_content::TextContent,
 };
 
 #[derive(Deserialize)]
@@ -332,5 +333,20 @@ impl User {
         }
 
         Ok(text_content)
+    }
+
+    pub async fn get_user_conversations(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<Conversation>, AppError> {
+        let conversations: Vec<Conversation> = db
+            .client
+            .query("SELECT * FROM type::table($table_name) WHERE user_id = $user_id")
+            .bind(("table_name", Conversation::table_name()))
+            .bind(("user_id", user_id.to_string()))
+            .await?
+            .take(0)?;
+
+        Ok(conversations)
     }
 }

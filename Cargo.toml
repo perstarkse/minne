@@ -16,6 +16,7 @@ chrono = { version = "0.4.39", features = ["serde"] }
 chrono-tz = "0.10.1"
 config = "0.15.4"
 futures = "0.3.31"
+json-stream-parser = "0.1.4"
 lettre = { version = "0.11.11", features = ["rustls-tls"] }
 mime = "0.3.17"
 mime_guess = "2.0.5"
