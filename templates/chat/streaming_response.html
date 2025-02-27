@@ -1,14 +1,16 @@
 <div class="chat chat-end">
-  <div class="chat-header">User</div>
   <div class="chat-bubble">
     {{user_message.content}}
   </div>
 </div>
 <div class="chat chat-start">
-  <div class="chat-header">AI</div>
-  <div class="chat-bubble" hx-ext="sse" sse-connect="/chat/response-stream?message_id={{user_message.id}}"
-    sse-swap="chat_message" sse-close="close_stream" hx-swap="beforeend">
-    <span class="loading loading-dots loading-sm loading-id-{{user_message.id}}"></span>
+  <div hx-ext="sse" sse-connect="/chat/response-stream?message_id={{user_message.id}}" sse-close="close_stream"
+    hx-swap="beforeend">
+    <div class="chat-bubble" sse-swap="chat_message">
+      <span class="loading loading-dots loading-sm loading-id-{{user_message.id}}"></span>
+    </div>
+    <div class="chat-footer opacity-50 max-w-[90%] flex-wrap" sse-swap="references">
+    </div>
   </div>
 </div>
 <script>

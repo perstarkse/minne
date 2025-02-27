@@ -6041,6 +6041,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-openai",
+ "async-stream",
  "axum",
  "axum-htmx",
  "axum_session",
