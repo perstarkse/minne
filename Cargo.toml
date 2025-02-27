@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.94"
 async-openai = "0.24.1"
+async-stream = "0.3.6"
 axum = { version = "0.7.5", features = ["multipart", "macros"] }
 axum-htmx = "0.6.0"
 axum_session = "0.14.4"
