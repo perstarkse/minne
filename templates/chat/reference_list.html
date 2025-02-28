@@ -5,26 +5,86 @@
     {% include "icons/chevron_icon.html" %}
   </button>
   <div id="references-content-{{user_message_id}}" class="hidden max-w-full mt-1">
-    <div class="flex flex-wrap">
+    <div class="flex flex-wrap gap-1">
       {% for reference in references %}
-      <span class="badge badge-sm text-xs truncate max-w-[20ch] overflow-hidden text-left block tooltip"
-        hx-get="/knowledge/{{reference}}" hx-trigger="mouseenter once delay:500ms"
-        hx-target="#tooltip-content-{{loop.index}}-{{user_message_id}}" hx-swap="innerHTML">
-        {{reference}}
-        <div id="tooltip-content-{{loop.index}}-{{user_message_id}}" class="tooltip-content">
-          <!-- Loading indicator while content is fetched -->
-          <div class="animate-pulse text-gray-400 text-xs">Loading...</div>
-        </div>
-      </span>
+      <div class="reference-badge-container" data-reference="{{reference}}" data-message-id="{{user_message_id}}"
+        data-index="{{loop.index}}">
+        <span class="badge badge-xs badge-neutral truncate max-w-[20ch] overflow-hidden text-left block cursor-pointer">
+          {{reference}}
+        </span>
+      </div>
       {% endfor %}
     </div>
   </div>
 </div>
+
 <script>
   document.getElementById('references-toggle-{{user_message_id}}').addEventListener('click', function () {
     const content = document.getElementById('references-content-{{user_message_id}}');
     const icon = document.getElementById('toggle-icon');
     content.classList.toggle('hidden');
     icon.classList.toggle('rotate-180');
+  });
+
+  // Initialize portal tooltips
+  document.querySelectorAll('.reference-badge-container').forEach(container => {
+    const reference = container.dataset.reference;
+    const messageId = container.dataset.messageId;
+    const index = container.dataset.index;
+    let tooltipId = `tooltip-${messageId}-${index}`;
+    let tooltipContent = null;
+    let tooltipTimeout;
+
+    // Create tooltip element (initially hidden)
+    function createTooltip() {
+      const tooltip = document.createElement('div');
+      tooltip.id = tooltipId;
+      tooltip.className = 'fixed z-[9999] bg-neutral-800 text-white p-3 rounded-md shadow-lg text-sm w-72 max-w-xs border border-neutral-700 hidden';
+      tooltip.innerHTML = '<div class="animate-pulse">Loading...</div>';
+      document.body.appendChild(tooltip);
+      return tooltip;
+    }
+
+    container.addEventListener('mouseenter', function () {
+      // Clear any existing timeout
+      if (tooltipTimeout) clearTimeout(tooltipTimeout);
+
+      // Get or create tooltip
+      let tooltip = document.getElementById(tooltipId);
+      if (!tooltip) tooltip = createTooltip();
+
+      // Position tooltip
+      const rect = container.getBoundingClientRect();
+      tooltip.style.top = `${rect.bottom + window.scrollY + 5}px`;
+      tooltip.style.left = `${rect.left + window.scrollX}px`;
+
+      // Adjust position if it would overflow viewport
+      const tooltipRect = tooltip.getBoundingClientRect();
+      if (rect.left + tooltipRect.width > window.innerWidth - 20) {
+        tooltip.style.left = `${window.innerWidth - tooltipRect.width - 20 + window.scrollX}px`;
+      }
+
+      // Show tooltip
+      tooltip.classList.remove('hidden');
+
+      // Load content if needed
+      if (!tooltipContent) {
+        fetch(`/knowledge/${encodeURIComponent(reference)}`)
+          .then(response => response.text())
+          .then(html => {
+            tooltipContent = html;
+            if (document.getElementById(tooltipId)) {
+              document.getElementById(tooltipId).innerHTML = html;
+            }
+          });
+      }
+    });
+
+    container.addEventListener('mouseleave', function () {
+      tooltipTimeout = setTimeout(() => {
+        const tooltip = document.getElementById(tooltipId);
+        if (tooltip) tooltip.classList.add('hidden');
+      }, 200);
+    });
   });
 </script>

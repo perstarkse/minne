@@ -1,0 +1,29 @@
+{% include "chat/streaming_response.html" %}
+
+<!-- OOB swap targeting the form element directly -->
+<form id="chat-form" hx-post="/chat/{{conversation.id}}" hx-target="#chat_container" hx-swap="beforeend"
+  class="relative flex gap-2" hx-swap-oob="true">
+  <textarea autofocus required name="content" placeholder="Type your message..." rows="2"
+    class="textarea textarea-ghost rounded-2xl rounded-b-none h-24 sm:rounded-b-2xl pr-8 bg-base-200 flex-grow resize-none"
+    id="chat-input"></textarea>
+  <button type="submit" class="absolute p-2 cursor-pointer right-0.5 btn-ghost btn-sm top-1">
+    {% include "icons/send_icon.html" %}
+  </button>
+  <label for="my-drawer-2" class="absolute cursor-pointer top-9 right-0.5 p-2 drawer-button xl:hidden z-20 ">
+    {% include "icons/hamburger_icon.html" %}
+  </label>
+</form>
+<script>
+  document.getElementById('chat-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      htmx.trigger('#chat-form', 'submit');
+    }
+  });
+  // Clear textarea after successful submission
+  document.getElementById('chat-form').addEventListener('htmx:afterRequest', function (e) {
+    if (e.detail.successful) { // Check if the request was successful
+      document.getElementById('chat-input').value = ''; // Clear the textarea
+    }
+  });
+</script>

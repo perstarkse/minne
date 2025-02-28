@@ -34,4 +34,21 @@ impl Message {
             references,
         }
     }
+    pub fn new_ai_message(
+        conversation_id: String,
+        id: String,
+        content: String,
+        references: Option<Vec<String>>,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id,
+            created_at: now,
+            updated_at: now,
+            role: MessageRole::AI,
+            content,
+            references,
+            conversation_id,
+        }
+    }
 }

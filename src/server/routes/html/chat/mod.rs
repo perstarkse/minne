@@ -1,4 +1,5 @@
 pub mod message_response_stream;
+pub mod references;
 
 use axum::{
     extract::{Path, State},
@@ -16,7 +17,7 @@ use crate::{
     page_data,
     server::{routes::html::render_template, AppState},
     storage::{
-        db::store_item,
+        db::{get_item, store_item},
         types::{
             conversation::Conversation,
             message::{Message, MessageRole},
@@ -46,7 +47,7 @@ where
 page_data!(ChatData, "chat/base.html", {
     user: User,
     history: Vec<Message>,
-    conversation: Conversation,
+    conversation: Option<Conversation>,
     conversation_archive: Vec<Conversation>
 });
 
@@ -101,7 +102,7 @@ pub async fn show_initialized_chat(
             history: messages,
             user,
             conversation_archive,
-            conversation: conversation.clone(),
+            conversation: Some(conversation.clone()),
         },
         state.templates.clone(),
     )?;
@@ -129,15 +130,13 @@ pub async fn show_chat_base(
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let conversation = Conversation::new(user.id.clone(), "New Chat".to_string());
-
     let output = render_template(
         ChatData::template_name(),
         ChatData {
             history: vec![],
             user,
             conversation_archive,
-            conversation,
+            conversation: None,
         },
         state.templates.clone(),
     )?;
@@ -179,7 +178,7 @@ pub async fn show_existing_chat(
         ChatData {
             history: messages,
             user,
-            conversation: conversation.clone(),
+            conversation: Some(conversation.clone()),
             conversation_archive,
         },
         state.templates.clone(),
@@ -194,9 +193,26 @@ pub async fn new_user_message(
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     Form(form): Form<NewMessageForm>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let _user = match auth.current_user {
+    let user = match auth.current_user {
         Some(user) => user,
         None => return Ok(Redirect::to("/").into_response()),
+    };
+
+    let conversation: Conversation = get_item(&state.surreal_db_client, &conversation_id)
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?
+        .ok_or_else(|| {
+            HtmlError::new(
+                AppError::NotFound("Conversation was not found".to_string()),
+                state.templates.clone(),
+            )
+        })?;
+
+    if conversation.user_id != user.id {
+        return Err(HtmlError::new(
+            AppError::Auth("The user does not have permission for this conversation".to_string()),
+            state.templates.clone(),
+        ));
     };
 
     let user_message = Message::new(conversation_id, MessageRole::User, form.content, None);
@@ -216,5 +232,58 @@ pub async fn new_user_message(
         state.templates.clone(),
     )?;
 
-    Ok(output.into_response())
+    let mut response = output.into_response();
+    response.headers_mut().insert(
+        "HX-Push",
+        HeaderValue::from_str(&format!("/chat/{}", conversation.id)).unwrap(),
+    );
+    Ok(response)
+}
+
+pub async fn new_chat_user_message(
+    State(state): State<AppState>,
+    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    Form(form): Form<NewMessageForm>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let user = match auth.current_user {
+        Some(user) => user,
+        None => return Ok(Redirect::to("/").into_response()),
+    };
+
+    let conversation = Conversation::new(user.id, "New chat".to_string());
+    let user_message = Message::new(
+        conversation.id.clone(),
+        MessageRole::User,
+        form.content,
+        None,
+    );
+
+    store_item(&state.surreal_db_client, conversation.clone())
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    store_item(&state.surreal_db_client, user_message.clone())
+        .await
+        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+
+    #[derive(Serialize)]
+    struct SSEResponseInitData {
+        user_message: Message,
+        conversation: Conversation,
+    }
+
+    let output = render_template(
+        "chat/new_chat_first_response.html",
+        SSEResponseInitData {
+            user_message,
+            conversation: conversation.clone(),
+        },
+        state.templates.clone(),
+    )?;
+
+    let mut response = output.into_response();
+    response.headers_mut().insert(
+        "HX-Push",
+        HeaderValue::from_str(&format!("/chat/{}", conversation.id)).unwrap(),
+    );
+    Ok(response)
 }

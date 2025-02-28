@@ -19,7 +19,8 @@
         </div>
       </div>{% endif %}
       <div class="mt-4">
-        <form hx-post="/chat" hx-target="body" hx-swap="outerHTML" method="POST" class="flex items-center space-x-4">
+        <form hx-post="/initialized-chat" hx-target="body" hx-swap="outerHTML" method="POST"
+          class="flex items-center space-x-4">
           <input type="hidden" name="user_query" value="{{ user_query }}">
           <input type="hidden" name="llm_response" value="{{ answer_content }}">
           <input type="hidden" name="references" value="{{ answer_references }}">
