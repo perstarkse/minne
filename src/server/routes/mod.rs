@@ -17,8 +17,9 @@ use html::{
     account::{delete_account, set_api_key, show_account_page, update_timezone},
     admin_panel::{show_admin_panel, toggle_registration_status},
     chat::{
-        message_response_stream::get_response_stream, new_user_message, show_chat_base,
-        show_existing_chat, show_initialized_chat,
+        message_response_stream::get_response_stream, new_chat_user_message, new_user_message,
+        references::show_reference_tooltip, show_chat_base, show_existing_chat,
+        show_initialized_chat,
     },
     content::{patch_text_content, show_content_page, show_text_content_edit_form},
     documentation::{
@@ -67,9 +68,11 @@ pub fn html_routes(app_state: &AppState) -> Router<AppState> {
         .route("/gdpr/accept", post(accept_gdpr))
         .route("/gdpr/deny", post(deny_gdpr))
         .route("/search", get(search_result_handler))
-        .route("/chat", get(show_chat_base).post(show_initialized_chat))
+        .route("/chat", get(show_chat_base).post(new_chat_user_message))
+        .route("/initialized-chat", post(show_initialized_chat))
         .route("/chat/:id", get(show_existing_chat).post(new_user_message))
         .route("/chat/response-stream", get(get_response_stream))
+        .route("/knowledge/:id", get(show_reference_tooltip))
         .route("/signout", get(sign_out_user))
         .route("/signin", get(show_signin_form).post(authenticate_user))
         .route(

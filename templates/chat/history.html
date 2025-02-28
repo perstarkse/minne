@@ -1,15 +1,18 @@
-<div id="chat_container">
+<div id="chat_container" class="pl-3 overflow-y-auto h-[calc(100vh-160px)] pb-32">
   {% for message in history %}
   {% if message.role == "AI" %}
   <div class="chat chat-start">
-    <div class="chat-header">{{ message.role }}</div>
-    <div class="chat-bubble">
-      {{ message.content }}
+    <div>
+      <div class="chat-bubble">
+        {{ message.content }}
+      </div>
+      {% if message.references %}
+      {% include "chat/reference_list.html" %}
+      {% endif %}
     </div>
   </div>
   {% else %}
   <div class="chat chat-end">
-    <div class="chat-header">{{ message.role }}</div>
     <div class="chat-bubble">
       {{ message.content }}
     </div>
@@ -19,21 +22,20 @@
 </div>
 
 <script>
-  // Scroll to latest message after HTMX swap
   document.body.addEventListener('htmx:afterSwap', function (evt) {
+    const chatContainer = document.getElementById('chat_container');
+    if (chatContainer) {
+      setTimeout(() => {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }, 0);
+    }
+  });
+
+  // Also scroll when page loads
+  window.addEventListener('load', function () {
     const chatContainer = document.getElementById('chat_container');
     if (chatContainer) {
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
   });
 </script>
-
-<style>
-  #chat_container {
-    max-height: 70vh;
-    /* Adjust as needed */
-    overflow-y: auto;
-    /* Enable scrolling */
-    padding: 1rem;
-  }
-</style>
