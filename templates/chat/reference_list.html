@@ -1,13 +1,13 @@
 <div class="relative my-2">
-  <button id="references-toggle-{{user_message_id}}"
+  <button id="references-toggle-{{message.id}}"
     class="text-xs text-blue-500 hover:text-blue-700 hover:underline focus:outline-none flex items-center">
     References
     {% include "icons/chevron_icon.html" %}
   </button>
-  <div id="references-content-{{user_message_id}}" class="hidden max-w-full mt-1">
+  <div id="references-content-{{message.id}}" class="hidden max-w-full mt-1">
     <div class="flex flex-wrap gap-1">
-      {% for reference in references %}
-      <div class="reference-badge-container" data-reference="{{reference}}" data-message-id="{{user_message_id}}"
+      {% for reference in message.references %}
+      <div class="reference-badge-container" data-reference="{{reference}}" data-message-id="{{message.id}}"
         data-index="{{loop.index}}">
         <span class="badge badge-xs badge-neutral truncate max-w-[20ch] overflow-hidden text-left block cursor-pointer">
           {{reference}}
@@ -19,8 +19,8 @@
 </div>
 
 <script>
-  document.getElementById('references-toggle-{{user_message_id}}').addEventListener('click', function () {
-    const content = document.getElementById('references-content-{{user_message_id}}');
+  document.getElementById('references-toggle-{{message.id}}').addEventListener('click', function () {
+    const content = document.getElementById('references-content-{{message.id}}');
     const icon = document.getElementById('toggle-icon');
     content.classList.toggle('hidden');
     icon.classList.toggle('rotate-180');

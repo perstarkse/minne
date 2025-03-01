@@ -1,6 +1,6 @@
 <div class="drawer-side z-50">
   <label for="my-drawer-2" aria-label="close sidebar" class="drawer-overlay"></label>
-  <ul class="menu bg-base-200 text-base-content min-h-full w-72">
+  <ul class="menu bg-base-200 text-base-content w-72">
     <!-- Sidebar content here -->
     <li class="mt-4 cursor-pointer "><a href="/chat" hx-boost="true" class="flex justify-between">Create new
         chat<span>{% include
@@ -11,6 +11,5 @@
     <li><a href="/chat/{{conversation.id}}" hx-boost="true">{{conversation.title}} - {{conversation.created_at}}</a>
     </li>
     {% endfor %}
-    {{conversation_archive}}
   </ul>
 </div>

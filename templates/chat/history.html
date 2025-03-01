@@ -1,4 +1,4 @@
-<div id="chat_container" class="pl-3 overflow-y-auto h-[calc(100vh-160px)] pb-32">
+<div id="chat_container" class="pl-3 overflow-y-auto h-[calc(100vh-175px)] hide-scrollbar">
   {% for message in history %}
   {% if message.role == "AI" %}
   <div class="chat chat-start">
@@ -31,7 +31,6 @@
     }
   });
 
-  // Also scroll when page loads
   window.addEventListener('load', function () {
     const chatContainer = document.getElementById('chat_container');
     if (chatContainer) {
@@ -39,3 +38,17 @@
     }
   });
 </script>
+<style>
+  /* Hide scrollbar but keep functionality */
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari and Opera */
+  }
+</style>
