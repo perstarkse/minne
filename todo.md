@@ -1,17 +1,20 @@
-\[\] chat functionality
+\[\] archive ingressed webpage
+\[x\] chat styling overhaul
+\[\] configs primarily get envs
 \[\] filtering on categories
 \[\] link to ingressed urls or archives
-\[\] archive ingressed webpage
-\[\] configs primarily get envs
-\[\] on updates of knowledgeentity create new embeddings
+\[\] three js graph explorer
+\[\] three js vector explorer
 \[x\] add user_id to ingress objects
 \[x\] admin controls re registration
+\[x\] chat functionality
 \[x\] gdpr
 \[x\] html ingression
 \[x\] hx-redirect
 \[x\] ios shortcut generation
 \[x\] job queue
 \[x\] macro for pagedata?
+\[x\] on updates of knowledgeentity create new embeddings
 \[x\] redirects
 \[x\] restrict retrieval to users own objects
 \[x\] smoothie_dom test

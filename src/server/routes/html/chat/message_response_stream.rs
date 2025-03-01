@@ -139,7 +139,7 @@ pub async fn get_response_stream(
     // 5. Create channel for collecting complete response
     let (tx, mut rx) = channel::<String>(1000);
     let tx_clone = tx.clone();
-    let (tx_final, mut rx_final) = channel::<Vec<String>>(1);
+    let (tx_final, mut rx_final) = channel::<Message>(1);
 
     // 6. Set up the collection task for DB storage
     let db_client = state.surreal_db_client.clone();
@@ -160,14 +160,14 @@ pub async fn get_response_stream(
                 .map(|r| r.reference)
                 .collect();
 
-            let _ = tx_final.send(references.clone()).await;
-
             let ai_message = Message::new(
                 user_message.conversation_id,
                 MessageRole::AI,
                 response.answer,
                 Some(references),
             );
+
+            let _ = tx_final.send(ai_message.clone()).await;
 
             match store_item(&db_client, ai_message).await {
                 Ok(_) => info!("Successfully stored AI message with references"),
@@ -181,7 +181,7 @@ pub async fn get_response_stream(
                 user_message.conversation_id,
                 MessageRole::AI,
                 full_json,
-                Some(vec![]),
+                None,
             );
 
             let _ = store_item(&db_client, ai_message).await;
@@ -234,31 +234,27 @@ pub async fn get_response_stream(
         })
         .flatten()
         .chain(stream::once(async move {
-            if let Some(references) = rx_final.recv().await {
+            if let Some(message) = rx_final.recv().await {
                 // Don't send any event if references is empty
-                if references.is_empty() {
+                if message.references.as_ref().is_some_and(|x| x.is_empty()) {
                     return Ok(Event::default().event("empty")); // This event won't be sent
                 }
 
                 // Prepare data for template
                 #[derive(Serialize)]
                 struct ReferenceData {
-                    references: Vec<String>,
-                    user_message_id: String,
+                    message: Message,
                 }
 
                 // Render template with references
                 match render_template(
                     "chat/reference_list.html",
-                    ReferenceData {
-                        references,
-                        user_message_id: user_message.id,
-                    },
+                    ReferenceData { message },
                     state.templates.clone(),
                 ) {
                     Ok(html) => {
                         // Extract the String from Html<String>
-                        let html_string = html.0; // Convert Html<String> to String
+                        let html_string = html.0;
 
                         // Return the rendered HTML
                         Ok(Event::default().event("references").data(html_string))
