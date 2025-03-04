@@ -1,0 +1,47 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+axum = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+
+async-openai = "0.24.1"
+async-stream = "0.3.6"
+axum-htmx = "0.6.0"
+axum_session = "0.14.4"
+axum_session_auth = "0.14.1"
+axum_session_surreal = "0.2.1"
+axum_typed_multipart = "0.12.1"
+chrono = { version = "0.4.39", features = ["serde"] }
+chrono-tz = "0.10.1"
+config = "0.15.4"
+futures = "0.3.31"
+json-stream-parser = "0.1.4"
+lettre = { version = "0.11.11", features = ["rustls-tls"] }
+mime = "0.3.17"
+mime_guess = "2.0.5"
+minijinja = { version = "2.5.0", features = ["loader", "multi_template"] }
+minijinja-autoreload = "2.5.0"
+minijinja-contrib = { version = "2.6.0", features = ["datetime", "timezone"] }
+mockall = "0.13.0"
+plotly = "0.12.1"
+reqwest = {version = "0.12.12", features = ["charset", "json"]}
+scraper = "0.22.0"
+sha2 = "0.10.8"
+surrealdb = "2.0.4"
+tempfile = "3.12.0"
+text-splitter = "0.18.1"
+tiktoken-rs = "0.6.0"
+tower-http = { version = "0.6.2", features = ["fs"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+url = { version = "2.5.2", features = ["serde"] }
+uuid = { version = "1.10.0", features = ["v4", "serde"] }
+

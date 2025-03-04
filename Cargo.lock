@@ -157,6 +157,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1fd03a028ef38ba2276dce7e33fcd6369c158a1bca17946c4b1b701891c1ff7"
 
 [[package]]
+name = "api-router"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "axum_typed_multipart",
+ "common",
+ "futures",
+ "serde",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "approx"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1027,6 +1042,50 @@ checksum = "773f3b9af64447d2ce9850330c473515014aa235e6a783b02db81ff39e4a3dad"
 dependencies = [
  "crypto-common",
  "inout",
+]
+
+[[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-openai",
+ "async-stream",
+ "axum",
+ "axum-htmx",
+ "axum_session",
+ "axum_session_auth",
+ "axum_session_surreal",
+ "axum_typed_multipart",
+ "chrono",
+ "chrono-tz",
+ "config",
+ "futures",
+ "json-stream-parser",
+ "lettre",
+ "mime",
+ "mime_guess",
+ "minijinja",
+ "minijinja-autoreload",
+ "minijinja-contrib",
+ "mockall",
+ "plotly",
+ "reqwest",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha2",
+ "surrealdb",
+ "tempfile",
+ "text-splitter",
+ "thiserror",
+ "tiktoken-rs",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -1982,6 +2041,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "html-router"
+version = "0.1.0"
+dependencies = [
+ "async-openai",
+ "async-stream",
+ "axum",
+ "axum-htmx",
+ "axum_session",
+ "axum_session_auth",
+ "axum_session_surreal",
+ "axum_typed_multipart",
+ "chrono-tz",
+ "common",
+ "futures",
+ "json-stream-parser",
+ "minijinja",
+ "minijinja-autoreload",
+ "minijinja-contrib",
+ "plotly",
+ "serde",
+ "serde_json",
+ "surrealdb",
+ "tempfile",
+ "tokio",
+ "tower-http",
+ "tracing",
+]
+
+[[package]]
 name = "html5ever"
 version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2625,6 +2713,53 @@ name = "mac"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
+
+[[package]]
+name = "main"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "api-router",
+ "async-openai",
+ "async-stream",
+ "axum",
+ "axum-htmx",
+ "axum_session",
+ "axum_session_auth",
+ "axum_session_surreal",
+ "axum_typed_multipart",
+ "chrono",
+ "chrono-tz",
+ "common",
+ "config",
+ "futures",
+ "html-router",
+ "json-stream-parser",
+ "lettre",
+ "mime",
+ "mime_guess",
+ "minijinja",
+ "minijinja-autoreload",
+ "minijinja-contrib",
+ "mockall",
+ "plotly",
+ "reqwest",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha2",
+ "surrealdb",
+ "tempfile",
+ "text-splitter",
+ "thiserror",
+ "tiktoken-rs",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
 
 [[package]]
 name = "maplit"
@@ -6033,48 +6168,4 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.87",
-]
-
-[[package]]
-name = "zettle_db"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-openai",
- "async-stream",
- "axum",
- "axum-htmx",
- "axum_session",
- "axum_session_auth",
- "axum_session_surreal",
- "axum_typed_multipart",
- "chrono",
- "chrono-tz",
- "config",
- "futures",
- "json-stream-parser",
- "lettre",
- "mime",
- "mime_guess",
- "minijinja",
- "minijinja-autoreload",
- "minijinja-contrib",
- "mockall",
- "plotly",
- "reqwest",
- "scraper",
- "serde",
- "serde_json",
- "sha2",
- "surrealdb",
- "tempfile",
- "text-splitter",
- "thiserror",
- "tiktoken-rs",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "url",
- "uuid",
 ]
