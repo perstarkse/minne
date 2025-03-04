@@ -1,0 +1,35 @@
+[package]
+name = "html-router"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+axum = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+
+
+axum-htmx = "0.6.0"
+axum_session = "0.14.4"
+axum_session_auth = "0.14.1"
+axum_session_surreal = "0.2.1"
+axum_typed_multipart = "0.12.1"
+futures = "0.3.31"
+tempfile = "3.12.0"
+async-stream = "0.3.6"
+json-stream-parser = "0.1.4"
+minijinja = { version = "2.5.0", features = ["loader", "multi_template"] }
+minijinja-autoreload = "2.5.0"
+minijinja-contrib = { version = "2.6.0", features = ["datetime", "timezone"] }
+plotly = "0.12.1"
+surrealdb = "2.0.4"
+tower-http = { version = "0.6.2", features = ["fs"] }
+chrono-tz = "0.10.1"
+async-openai = "0.24.1"
+
+
+
+common = { path = "../common" }

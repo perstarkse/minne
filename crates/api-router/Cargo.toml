@@ -1,0 +1,18 @@
+[package]
+name = "api-router"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+axum = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+
+tempfile = "3.12.0"
+futures = "0.3.31"
+axum_typed_multipart = "0.12.1"
+
+common = { path = "../common" }
