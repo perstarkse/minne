@@ -1,15 +1,19 @@
 use std::{sync::Arc, time::Instant};
 
+use chrono::Utc;
 use text_splitter::TextSplitter;
 use tracing::{debug, info};
 
 use crate::{
     error::AppError,
     storage::{
-        db::{store_item, SurrealDbClient},
+        db::SurrealDbClient,
         types::{
-            knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
-            text_chunk::TextChunk, text_content::TextContent,
+            job::{Job, JobStatus, MAX_ATTEMPTS},
+            knowledge_entity::KnowledgeEntity,
+            knowledge_relationship::KnowledgeRelationship,
+            text_chunk::TextChunk,
+            text_content::TextContent,
         },
     },
     utils::embedding::generate_embedding,
@@ -20,19 +24,53 @@ use super::analysis::{
 };
 
 pub struct ContentProcessor {
-    db_client: Arc<SurrealDbClient>,
+    db: Arc<SurrealDbClient>,
     openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
 }
 
 impl ContentProcessor {
     pub async fn new(
-        surreal_db_client: Arc<SurrealDbClient>,
+        db: Arc<SurrealDbClient>,
         openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     ) -> Result<Self, AppError> {
-        Ok(Self {
-            db_client: surreal_db_client,
-            openai_client,
-        })
+        Ok(Self { db, openai_client })
+    }
+    pub async fn process_job(&self, job: Job) -> Result<(), AppError> {
+        let current_attempts = match job.status {
+            JobStatus::InProgress { attempts, .. } => attempts + 1,
+            _ => 1,
+        };
+
+        // Update status to InProgress with attempt count
+        Job::update_status(
+            &job.id,
+            JobStatus::InProgress {
+                attempts: current_attempts,
+                last_attempt: Utc::now(),
+            },
+            &self.db,
+        )
+        .await?;
+
+        let text_content = job.content.to_text_content(&self.openai_client).await?;
+
+        match self.process(&text_content).await {
+            Ok(_) => {
+                Job::update_status(&job.id, JobStatus::Completed, &self.db).await?;
+                Ok(())
+            }
+            Err(e) => {
+                if current_attempts >= MAX_ATTEMPTS {
+                    Job::update_status(
+                        &job.id,
+                        JobStatus::Error(format!("Max attempts reached: {}", e)),
+                        &self.db,
+                    )
+                    .await?;
+                }
+                Err(AppError::Processing(e.to_string()))
+            }
+        }
     }
 
     pub async fn process(&self, content: &TextContent) -> Result<(), AppError> {
@@ -59,9 +97,9 @@ impl ContentProcessor {
         )?;
 
         // Store original content
-        store_item(&self.db_client, content.to_owned()).await?;
+        self.db.store_item(content.to_owned()).await?;
 
-        self.db_client.rebuild_indexes().await?;
+        self.db.rebuild_indexes().await?;
         Ok(())
     }
 
@@ -69,7 +107,7 @@ impl ContentProcessor {
         &self,
         content: &TextContent,
     ) -> Result<LLMGraphAnalysisResult, AppError> {
-        let analyser = IngressAnalyzer::new(&self.db_client, &self.openai_client);
+        let analyser = IngressAnalyzer::new(&self.db, &self.openai_client);
         analyser
             .analyze_content(
                 &content.category,
@@ -87,12 +125,12 @@ impl ContentProcessor {
     ) -> Result<(), AppError> {
         for entity in &entities {
             debug!("Storing entity: {:?}", entity);
-            store_item(&self.db_client, entity.clone()).await?;
+            self.db.store_item(entity.clone()).await?;
         }
 
         for relationship in &relationships {
             debug!("Storing relationship: {:?}", relationship);
-            relationship.store_relationship(&self.db_client).await?;
+            relationship.store_relationship(&self.db).await?;
         }
 
         info!(
@@ -116,7 +154,7 @@ impl ContentProcessor {
                 embedding,
                 content.user_id.to_string(),
             );
-            store_item(&self.db_client, text_chunk).await?;
+            self.db.store_item(text_chunk).await?;
         }
 
         Ok(())

@@ -33,15 +33,15 @@ pub async fn show_admin_panel(
         _ => return Ok(Redirect::to("/").into_response()),
     };
 
-    let settings = SystemSettings::get_current(&state.surreal_db_client)
+    let settings = SystemSettings::get_current(&state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let analytics = Analytics::get_current(&state.surreal_db_client)
+    let analytics = Analytics::get_current(&state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let users_count = Analytics::get_users_amount(&state.surreal_db_client)
+    let users_count = Analytics::get_users_amount(&state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -92,7 +92,7 @@ pub async fn toggle_registration_status(
         _ => return Ok(Redirect::to("/").into_response()),
     };
 
-    let current_settings = SystemSettings::get_current(&state.surreal_db_client)
+    let current_settings = SystemSettings::get_current(&state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -101,7 +101,7 @@ pub async fn toggle_registration_status(
         ..current_settings.clone()
     };
 
-    SystemSettings::update(&state.surreal_db_client, new_settings.clone())
+    SystemSettings::update(&state.db, new_settings.clone())
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 

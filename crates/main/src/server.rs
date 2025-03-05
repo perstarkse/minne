@@ -20,8 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up router states
     let html_state = HtmlState::new(&config).await?;
     let api_state = ApiState {
-        surreal_db_client: html_state.surreal_db_client.clone(),
-        job_queue: html_state.job_queue.clone(),
+        db: html_state.db.clone(),
     };
 
     // Create Axum router

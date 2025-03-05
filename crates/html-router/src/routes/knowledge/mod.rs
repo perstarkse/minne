@@ -15,13 +15,10 @@ use tracing::info;
 
 use common::{
     error::{AppError, HtmlError},
-    storage::{
-        db::delete_item,
-        types::{
-            knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
-            knowledge_relationship::KnowledgeRelationship,
-            user::User,
-        },
+    storage::types::{
+        knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
+        knowledge_relationship::KnowledgeRelationship,
+        user::User,
     },
 };
 
@@ -44,13 +41,13 @@ pub async fn show_knowledge_page(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+    let entities = User::get_knowledge_entities(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     info!("Got entities ok");
 
-    let relationships = User::get_knowledge_relationships(&user.id, &state.surreal_db_client)
+    let relationships = User::get_knowledge_relationships(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -169,7 +166,7 @@ pub async fn show_edit_knowledge_entity_form(
         .collect();
 
     // Get the entity and validate ownership
-    let entity = User::get_and_validate_knowledge_entity(&id, &user.id, &state.surreal_db_client)
+    let entity = User::get_and_validate_knowledge_entity(&id, &user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -212,7 +209,7 @@ pub async fn patch_knowledge_entity(
     };
 
     // Get the existing entity and validate that the user is allowed
-    User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.surreal_db_client)
+    User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -224,14 +221,14 @@ pub async fn patch_knowledge_entity(
         &form.name,
         &form.description,
         &entity_type,
-        &state.surreal_db_client,
+        &state.db,
         &state.openai_client,
     )
     .await
     .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 
     // Get updated list of entities
-    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+    let entities = User::get_knowledge_entities(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -257,17 +254,19 @@ pub async fn delete_knowledge_entity(
     };
 
     // Get the existing entity and validate that the user is allowed
-    User::get_and_validate_knowledge_entity(&id, &user.id, &state.surreal_db_client)
+    User::get_and_validate_knowledge_entity(&id, &user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     // Delete the entity
-    delete_item::<KnowledgeEntity>(&state.surreal_db_client, &id)
+    state
+        .db
+        .delete_item::<KnowledgeEntity>(&id)
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 
     // Get updated list of entities
-    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+    let entities = User::get_knowledge_entities(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -300,15 +299,15 @@ pub async fn delete_knowledge_relationship(
 
     // GOTTA ADD AUTH VALIDATION
 
-    KnowledgeRelationship::delete_relationship_by_id(&id, &state.surreal_db_client)
+    KnowledgeRelationship::delete_relationship_by_id(&id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+    let entities = User::get_knowledge_entities(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let relationships = User::get_knowledge_relationships(&user.id, &state.surreal_db_client)
+    let relationships = User::get_knowledge_relationships(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -353,15 +352,15 @@ pub async fn save_knowledge_relationship(
     );
 
     relationship
-        .store_relationship(&state.surreal_db_client)
+        .store_relationship(&state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let entities = User::get_knowledge_entities(&user.id, &state.surreal_db_client)
+    let entities = User::get_knowledge_entities(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let relationships = User::get_knowledge_relationships(&user.id, &state.surreal_db_client)
+    let relationships = User::get_knowledge_relationships(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 

@@ -17,7 +17,7 @@ pub async fn api_auth(
         "You have to be authenticated".to_string(),
     ))?;
 
-    let user = User::find_by_api_key(&api_key, &state.surreal_db_client).await?;
+    let user = User::find_by_api_key(&api_key, &state.db).await?;
     let user = user.ok_or(ApiError::Unauthorized(
         "You have to be authenticated".to_string(),
     ))?;

@@ -1,8 +1,9 @@
+\[\] fix patch_text_conent
 \[\] archive ingressed webpage
 \[x\] chat styling overhaul
 \[\] configs primarily get envs
 \[\] filtering on categories
-\[\] link to ingressed urls or archives
+\[x\] link to ingressed urls or archives
 \[\] three js graph explorer
 \[\] three js vector explorer
 \[x\] add user_id to ingress objects

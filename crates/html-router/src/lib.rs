@@ -102,7 +102,7 @@ where
         .layer(from_fn_with_state(app_state.clone(), analytics_middleware))
         .layer(
             AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(
-                app_state.surreal_db_client.client.clone(),
+                app_state.db.client.clone(),
             ))
             .with_config(AuthConfig::<String>::default()),
         )

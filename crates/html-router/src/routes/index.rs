@@ -11,13 +11,10 @@ use tracing::info;
 
 use common::{
     error::{AppError, HtmlError},
-    storage::{
-        db::{delete_item, get_item},
-        types::{
-            file_info::FileInfo, job::Job, knowledge_entity::KnowledgeEntity,
-            knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
-            text_content::TextContent, user::User,
-        },
+    storage::types::{
+        file_info::FileInfo, job::Job, knowledge_entity::KnowledgeEntity,
+        knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
+        text_content::TextContent, user::User,
     },
 };
 
@@ -42,9 +39,7 @@ pub async fn index_handler(
     let gdpr_accepted = auth.current_user.is_some() | session.get("gdpr_accepted").unwrap_or(false);
 
     let active_jobs = match auth.current_user.is_some() {
-        true => state
-            .job_queue
-            .get_unfinished_user_jobs(&auth.current_user.clone().unwrap().id)
+        true => User::get_unfinished_jobs(&auth.current_user.clone().unwrap().id, &state.db)
             .await
             .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
         false => vec![],
@@ -53,7 +48,7 @@ pub async fn index_handler(
     let latest_text_contents = match auth.current_user.clone().is_some() {
         true => User::get_latest_text_contents(
             auth.current_user.clone().unwrap().id.as_str(),
-            &state.surreal_db_client,
+            &state.db,
         )
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
@@ -63,7 +58,7 @@ pub async fn index_handler(
     // let latest_knowledge_entities = match auth.current_user.is_some() {
     //     true => User::get_latest_knowledge_entities(
     //         auth.current_user.clone().unwrap().id.as_str(),
-    //         &state.surreal_db_client,
+    //         &state.db,
     //     )
     //     .await
     //     .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
@@ -107,18 +102,15 @@ pub async fn delete_text_content(
     let deletion_tasks = join!(
         async {
             if let Some(file_info) = text_content.file_info {
-                FileInfo::delete_by_id(&file_info.id, &state.surreal_db_client).await
+                FileInfo::delete_by_id(&file_info.id, &state.db).await
             } else {
                 Ok(())
             }
         },
-        delete_item::<TextContent>(&state.surreal_db_client, &text_content.id),
-        TextChunk::delete_by_source_id(&text_content.id, &state.surreal_db_client),
-        KnowledgeEntity::delete_by_source_id(&text_content.id, &state.surreal_db_client),
-        KnowledgeRelationship::delete_relationships_by_source_id(
-            &text_content.id,
-            &state.surreal_db_client
-        )
+        state.db.delete_item::<TextContent>(&text_content.id),
+        TextChunk::delete_by_source_id(&text_content.id, &state.db),
+        KnowledgeEntity::delete_by_source_id(&text_content.id, &state.db),
+        KnowledgeRelationship::delete_relationships_by_source_id(&text_content.id, &state.db)
     );
 
     // Handle potential errors from concurrent operations
@@ -133,7 +125,7 @@ pub async fn delete_text_content(
     }
 
     // Render updated content
-    let latest_text_contents = User::get_latest_text_contents(&user.id, &state.surreal_db_client)
+    let latest_text_contents = User::get_latest_text_contents(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -156,7 +148,9 @@ async fn get_and_validate_text_content(
     id: &str,
     user: &User,
 ) -> Result<TextContent, HtmlError> {
-    let text_content = get_item::<TextContent>(&state.surreal_db_client, id)
+    let text_content = state
+        .db
+        .get_item::<TextContent>(id)
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?
         .ok_or_else(|| {
@@ -192,15 +186,11 @@ pub async fn delete_job(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    state
-        .job_queue
-        .delete_job(&id, &user.id)
+    User::validate_and_delete_job(&id, &user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let active_jobs = state
-        .job_queue
-        .get_unfinished_user_jobs(&user.id)
+    let active_jobs = User::get_unfinished_jobs(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -226,9 +216,7 @@ pub async fn show_active_jobs(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    let active_jobs = state
-        .job_queue
-        .get_unfinished_user_jobs(&user.id)
+    let active_jobs = User::get_unfinished_jobs(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 

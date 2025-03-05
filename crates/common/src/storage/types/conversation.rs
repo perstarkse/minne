@@ -1,10 +1,6 @@
 use uuid::Uuid;
 
-use crate::{
-    error::AppError,
-    storage::db::{get_item, SurrealDbClient},
-    stored_object,
-};
+use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 
 use super::message::Message;
 
@@ -30,7 +26,8 @@ impl Conversation {
         user_id: &str,
         db: &SurrealDbClient,
     ) -> Result<(Self, Vec<Message>), AppError> {
-        let conversation: Conversation = get_item(&db, conversation_id)
+        let conversation: Conversation = db
+            .get_item(conversation_id)
             .await?
             .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
 

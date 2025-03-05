@@ -22,11 +22,11 @@ pub async fn analytics_middleware(
     // Only count if it's a main page request (not assets or other resources)
     if !path.starts_with("/assets") && !path.starts_with("/_next") && !path.contains('.') {
         if !session.get::<bool>("counted_visitor").unwrap_or(false) {
-            let _ = Analytics::increment_visitors(&state.surreal_db_client).await;
+            let _ = Analytics::increment_visitors(&state.db).await;
             session.set("counted_visitor", true);
         }
 
-        let _ = Analytics::increment_page_loads(&state.surreal_db_client).await;
+        let _ = Analytics::increment_page_loads(&state.db).await;
     }
 
     next.run(request).await

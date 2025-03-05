@@ -11,10 +11,7 @@ use tokio::fs::remove_dir_all;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::{
-    storage::db::{delete_item, get_item, store_item, SurrealDbClient},
-    stored_object,
-};
+use crate::{storage::db::SurrealDbClient, stored_object};
 
 #[derive(Error, Debug)]
 pub enum FileError {
@@ -89,7 +86,7 @@ impl FileInfo {
         };
 
         // Store in database
-        store_item(&db_client.client, file_info.clone()).await?;
+        db_client.store_item(file_info.clone()).await?;
 
         Ok(file_info)
     }
@@ -210,7 +207,7 @@ impl FileInfo {
     ///  `Result<(), FileError>`
     pub async fn delete_by_id(id: &str, db_client: &SurrealDbClient) -> Result<(), FileError> {
         // Get the FileInfo from the database
-        let file_info = match get_item::<FileInfo>(db_client, id).await? {
+        let file_info = match db_client.get_item::<FileInfo>(id).await? {
             Some(info) => info,
             None => {
                 return Err(FileError::FileNotFound(format!(
@@ -241,7 +238,7 @@ impl FileInfo {
         }
 
         // Delete the FileInfo from the database
-        delete_item::<FileInfo>(db_client, id).await?;
+        db_client.delete_item::<FileInfo>(id).await?;
 
         Ok(())
     }

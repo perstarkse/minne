@@ -13,7 +13,7 @@ use tracing::info;
 use common::{
     error::{AppError, HtmlError, IntoHtmlError},
     ingress::ingress_input::{create_ingress_objects, IngressInput},
-    storage::types::{file_info::FileInfo, user::User},
+    storage::types::{file_info::FileInfo, job::Job, user::User},
 };
 
 use crate::{
@@ -37,7 +37,7 @@ pub async fn show_ingress_form(
         return Ok(Redirect::to("/").into_response());
     }
 
-    let user_categories = User::get_user_categories(&auth.id, &state.surreal_db_client)
+    let user_categories = User::get_user_categories(&auth.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -107,7 +107,7 @@ pub async fn process_ingress_form(
     info!("{:?}", input);
 
     let file_infos = try_join_all(input.files.into_iter().map(|file| {
-        FileInfo::new(file, &state.surreal_db_client, &user.id)
+        FileInfo::new(file, &state.db, &user.id)
             .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))
     }))
     .await?;
@@ -125,7 +125,7 @@ pub async fn process_ingress_form(
 
     let futures: Vec<_> = ingress_objects
         .into_iter()
-        .map(|object| state.job_queue.enqueue(object.clone(), user.id.clone()))
+        .map(|object| Job::create_and_add_to_db(object.clone(), user.id.clone(), &state.db))
         .collect();
 
     try_join_all(futures)
@@ -134,9 +134,7 @@ pub async fn process_ingress_form(
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     // Update the active jobs page with the newly created job
-    let active_jobs = state
-        .job_queue
-        .get_unfinished_user_jobs(&user.id)
+    let active_jobs = User::get_unfinished_jobs(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 

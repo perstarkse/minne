@@ -12,7 +12,7 @@ use surrealdb::{engine::any::Any, Surreal};
 
 use common::{
     error::{AppError, HtmlError},
-    storage::{db::delete_item, types::user::User},
+    storage::types::user::User,
 };
 
 use crate::{html_state::HtmlState, page_data};
@@ -56,7 +56,7 @@ pub async fn set_api_key(
     };
 
     // Generate and set the API key
-    let api_key = User::set_api_key(&user.id, &state.surreal_db_client)
+    let api_key = User::set_api_key(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -92,7 +92,9 @@ pub async fn delete_account(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    delete_item::<User>(&state.surreal_db_client, &user.id)
+    state
+        .db
+        .delete_item::<User>(&user.id)
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 
@@ -118,7 +120,7 @@ pub async fn update_timezone(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    User::update_timezone(&user.id, &form.timezone, &state.surreal_db_client)
+    User::update_timezone(&user.id, &form.timezone, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
