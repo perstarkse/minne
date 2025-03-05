@@ -29,7 +29,7 @@ use common::{
         },
     },
     storage::{
-        db::{get_item, store_item, SurrealDbClient},
+        db::SurrealDbClient,
         types::{
             message::{Message, MessageRole},
             user::User,
@@ -64,7 +64,7 @@ async fn get_message_and_user(
     };
 
     // Retrieve message
-    let message = match get_item::<Message>(db, message_id).await {
+    let message = match db.get_item::<Message>(message_id).await {
         Ok(Some(message)) => message,
         Ok(None) => {
             return Err(Sse::new(create_error_stream(
@@ -93,20 +93,15 @@ pub async fn get_response_stream(
     Query(params): Query<QueryParams>,
 ) -> Sse<Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>> {
     // 1. Authentication and initial data validation
-    let (user_message, user) = match get_message_and_user(
-        &state.surreal_db_client,
-        auth.current_user,
-        &params.message_id,
-    )
-    .await
-    {
-        Ok((user_message, user)) => (user_message, user),
-        Err(error_stream) => return error_stream,
-    };
+    let (user_message, user) =
+        match get_message_and_user(&state.db, auth.current_user, &params.message_id).await {
+            Ok((user_message, user)) => (user_message, user),
+            Err(error_stream) => return error_stream,
+        };
 
     // 2. Retrieve knowledge entities
     let entities = match combined_knowledge_entity_retrieval(
-        &state.surreal_db_client,
+        &state.db,
         &state.openai_client,
         &user_message.content,
         &user.id,
@@ -143,7 +138,7 @@ pub async fn get_response_stream(
     let (tx_final, mut rx_final) = channel::<Message>(1);
 
     // 6. Set up the collection task for DB storage
-    let db_client = state.surreal_db_client.clone();
+    let db_client = state.db.clone();
     tokio::spawn(async move {
         drop(tx); // Close sender when no longer needed
 
@@ -170,7 +165,7 @@ pub async fn get_response_stream(
 
             let _ = tx_final.send(ai_message.clone()).await;
 
-            match store_item(&db_client, ai_message).await {
+            match db_client.store_item(ai_message).await {
                 Ok(_) => info!("Successfully stored AI message with references"),
                 Err(e) => error!("Failed to store AI message: {:?}", e),
             }
@@ -185,7 +180,7 @@ pub async fn get_response_stream(
                 None,
             );
 
-            let _ = store_item(&db_client, ai_message).await;
+            let _ = db_client.store_item(ai_message).await;
         }
     });
 

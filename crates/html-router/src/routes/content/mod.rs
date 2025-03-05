@@ -30,7 +30,7 @@ pub async fn show_content_page(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    let text_contents = User::get_text_contents(&user.id, &state.surreal_db_client)
+    let text_contents = User::get_text_contents(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -63,7 +63,7 @@ pub async fn show_text_content_edit_form(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.surreal_db_client)
+    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -87,11 +87,13 @@ pub async fn patch_text_content(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.surreal_db_client)
+    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let text_contents = User::get_text_contents(&user.id, &state.surreal_db_client)
+    // ADD FUNCTION TO PATCH CONTENT
+
+    let text_contents = User::get_text_contents(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 

@@ -1,13 +1,14 @@
 use crate::error::AppError;
 
-use super::types::{analytics::Analytics, system_settings::SystemSettings, StoredObject};
+use super::types::{analytics::Analytics, job::Job, system_settings::SystemSettings, StoredObject};
 use axum_session::{SessionConfig, SessionError, SessionStore};
 use axum_session_surreal::SessionSurrealPool;
+use futures::Stream;
 use std::ops::Deref;
 use surrealdb::{
     engine::any::{connect, Any},
     opt::auth::Root,
-    Error, Surreal,
+    Error, Notification, Surreal,
 };
 
 #[derive(Clone)]
@@ -53,8 +54,8 @@ impl SurrealDbClient {
     }
 
     pub async fn ensure_initialized(&self) -> Result<(), AppError> {
-        Self::build_indexes(&self).await?;
-        Self::setup_auth(&self).await?;
+        Self::build_indexes(self).await?;
+        Self::setup_auth(self).await?;
 
         Analytics::ensure_initialized(self).await?;
         SystemSettings::ensure_initialized(self).await?;
@@ -107,6 +108,75 @@ impl SurrealDbClient {
     {
         self.client.delete(T::table_name()).await
     }
+
+    /// Operation to store a object in SurrealDB, requires the struct to implement StoredObject
+    ///
+    /// # Arguments
+    /// * `item` - The item to be stored
+    ///
+    /// # Returns
+    /// * `Result` - Item or Error
+    pub async fn store_item<T>(&self, item: T) -> Result<Option<T>, Error>
+    where
+        T: StoredObject + Send + Sync + 'static,
+    {
+        self.client
+            .create((T::table_name(), item.get_id()))
+            .content(item)
+            .await
+    }
+
+    /// Operation to retrieve all objects from a certain table, requires the struct to implement StoredObject
+    ///
+    /// # Returns
+    /// * `Result` - Vec<T> or Error
+    pub async fn get_all_stored_items<T>(&self) -> Result<Vec<T>, Error>
+    where
+        T: for<'de> StoredObject,
+    {
+        self.client.select(T::table_name()).await
+    }
+
+    /// Operation to retrieve a single object by its ID, requires the struct to implement StoredObject
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the item to retrieve
+    ///
+    /// # Returns
+    /// * `Result<Option<T>, Error>` - The found item or Error
+    pub async fn get_item<T>(&self, id: &str) -> Result<Option<T>, Error>
+    where
+        T: for<'de> StoredObject,
+    {
+        self.client.select((T::table_name(), id)).await
+    }
+
+    /// Operation to delete a single object by its ID, requires the struct to implement StoredObject
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the item to delete
+    ///
+    /// # Returns
+    /// * `Result<Option<T>, Error>` - The deleted item or Error
+    pub async fn delete_item<T>(&self, id: &str) -> Result<Option<T>, Error>
+    where
+        T: for<'de> StoredObject,
+    {
+        self.client.delete((T::table_name(), id)).await
+    }
+
+    /// Operation to listen to a table for updates, requires the struct to implement StoredObject
+    ///
+    /// # Returns
+    /// * `Result<Option<T>, Error>` - The deleted item or Error
+    pub async fn listen<T>(
+        &self,
+    ) -> Result<impl Stream<Item = Result<Notification<Job>, Error>>, Error>
+    where
+        T: for<'de> StoredObject,
+    {
+        self.client.select(T::table_name()).live().await
+    }
 }
 
 impl Deref for SurrealDbClient {
@@ -115,66 +185,4 @@ impl Deref for SurrealDbClient {
     fn deref(&self) -> &Self::Target {
         &self.client
     }
-}
-
-/// Operation to store a object in SurrealDB, requires the struct to implement StoredObject
-///
-/// # Arguments
-/// * `db_client` - A initialized database client
-/// * `item` - The item to be stored
-///
-/// # Returns
-/// * `Result` - Item or Error
-pub async fn store_item<T>(db_client: &Surreal<Any>, item: T) -> Result<Option<T>, Error>
-where
-    T: StoredObject + Send + Sync + 'static,
-{
-    db_client
-        .create((T::table_name(), item.get_id()))
-        .content(item)
-        .await
-}
-
-/// Operation to retrieve all objects from a certain table, requires the struct to implement StoredObject
-///
-/// # Arguments
-/// * `db_client` - A initialized database client
-///
-/// # Returns
-/// * `Result` - Vec<T> or Error
-pub async fn get_all_stored_items<T>(db_client: &Surreal<Any>) -> Result<Vec<T>, Error>
-where
-    T: for<'de> StoredObject,
-{
-    db_client.select(T::table_name()).await
-}
-
-/// Operation to retrieve a single object by its ID, requires the struct to implement StoredObject
-///
-/// # Arguments
-/// * `db_client` - An initialized database client
-/// * `id` - The ID of the item to retrieve
-///
-/// # Returns
-/// * `Result<Option<T>, Error>` - The found item or Error
-pub async fn get_item<T>(db_client: &Surreal<Any>, id: &str) -> Result<Option<T>, Error>
-where
-    T: for<'de> StoredObject,
-{
-    db_client.select((T::table_name(), id)).await
-}
-
-/// Operation to delete a single object by its ID, requires the struct to implement StoredObject
-///
-/// # Arguments
-/// * `db_client` - An initialized database client
-/// * `id` - The ID of the item to delete
-///
-/// # Returns
-/// * `Result<Option<T>, Error>` - The deleted item or Error
-pub async fn delete_item<T>(db_client: &Surreal<Any>, id: &str) -> Result<Option<T>, Error>
-where
-    T: for<'de> StoredObject,
-{
-    db_client.delete((T::table_name(), id)).await
 }

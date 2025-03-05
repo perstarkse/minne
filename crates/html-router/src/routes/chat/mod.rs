@@ -14,19 +14,15 @@ use tracing::info;
 
 use common::{
     error::{AppError, HtmlError},
-    storage::{
-        db::{get_item, store_item},
-        types::{
-            conversation::Conversation,
-            message::{Message, MessageRole},
-            user::User,
-        },
+    storage::types::{
+        conversation::Conversation,
+        message::{Message, MessageRole},
+        user::User,
     },
 };
 
 use crate::{html_state::HtmlState, page_data, routes::render_template};
 
-// Update your ChatStartParams struct to properly deserialize the references
 #[derive(Debug, Deserialize)]
 pub struct ChatStartParams {
     user_query: String,
@@ -80,9 +76,9 @@ pub async fn show_initialized_chat(
     );
 
     let (conversation_result, ai_message_result, user_message_result) = futures::join!(
-        store_item(&state.surreal_db_client, conversation.clone()),
-        store_item(&state.surreal_db_client, ai_message.clone()),
-        store_item(&state.surreal_db_client, user_message.clone())
+        state.db.store_item(conversation.clone()),
+        state.db.store_item(ai_message.clone()),
+        state.db.store_item(user_message.clone())
     );
 
     // Check each result individually
@@ -90,7 +86,7 @@ pub async fn show_initialized_chat(
     user_message_result.map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
     ai_message_result.map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 
-    let conversation_archive = User::get_user_conversations(&user.id, &state.surreal_db_client)
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -126,7 +122,7 @@ pub async fn show_chat_base(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    let conversation_archive = User::get_user_conversations(&user.id, &state.surreal_db_client)
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -161,17 +157,14 @@ pub async fn show_existing_chat(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    let conversation_archive = User::get_user_conversations(&user.id, &state.surreal_db_client)
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let (conversation, messages) = Conversation::get_complete_conversation(
-        conversation_id.as_str(),
-        &user.id,
-        &state.surreal_db_client,
-    )
-    .await
-    .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let (conversation, messages) =
+        Conversation::get_complete_conversation(conversation_id.as_str(), &user.id, &state.db)
+            .await
+            .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     let output = render_template(
         ChatData::template_name(),
@@ -198,7 +191,9 @@ pub async fn new_user_message(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    let conversation: Conversation = get_item(&state.surreal_db_client, &conversation_id)
+    let conversation: Conversation = state
+        .db
+        .get_item(&conversation_id)
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?
         .ok_or_else(|| {
@@ -217,7 +212,9 @@ pub async fn new_user_message(
 
     let user_message = Message::new(conversation_id, MessageRole::User, form.content, None);
 
-    store_item(&state.surreal_db_client, user_message.clone())
+    state
+        .db
+        .store_item(user_message.clone())
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 
@@ -258,10 +255,14 @@ pub async fn new_chat_user_message(
         None,
     );
 
-    store_item(&state.surreal_db_client, conversation.clone())
+    state
+        .db
+        .store_item(conversation.clone())
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
-    store_item(&state.surreal_db_client, user_message.clone())
+    state
+        .db
+        .store_item(user_message.clone())
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
 

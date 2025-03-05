@@ -1,14 +1,10 @@
-use crate::{
-    error::AppError,
-    storage::db::{get_item, SurrealDbClient},
-    stored_object,
-};
+use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
 use super::{
-    conversation::Conversation, knowledge_entity::KnowledgeEntity,
+    conversation::Conversation, job::Job, knowledge_entity::KnowledgeEntity,
     knowledge_relationship::KnowledgeRelationship, system_settings::SystemSettings,
     text_content::TextContent,
 };
@@ -32,7 +28,10 @@ stored_object!(User, "user", {
 impl Authentication<User, String, Surreal<Any>> for User {
     async fn load_user(userid: String, db: Option<&Surreal<Any>>) -> Result<User, anyhow::Error> {
         let db = db.unwrap();
-        Ok(get_item::<Self>(db, userid.as_str()).await?.unwrap())
+        Ok(db
+            .select((Self::table_name(), userid.as_str()))
+            .await?
+            .unwrap())
     }
 
     fn is_authenticated(&self) -> bool {
@@ -308,7 +307,8 @@ impl User {
         user_id: &str,
         db: &SurrealDbClient,
     ) -> Result<KnowledgeEntity, AppError> {
-        let entity: KnowledgeEntity = get_item(db, &id)
+        let entity: KnowledgeEntity = db
+            .get_item(id)
             .await?
             .ok_or_else(|| AppError::NotFound("Entity not found".into()))?;
 
@@ -324,7 +324,8 @@ impl User {
         user_id: &str,
         db: &SurrealDbClient,
     ) -> Result<TextContent, AppError> {
-        let text_content: TextContent = get_item(db, &id)
+        let text_content: TextContent = db
+            .get_item(id)
             .await?
             .ok_or_else(|| AppError::NotFound("Content not found".into()))?;
 
@@ -348,5 +349,50 @@ impl User {
             .take(0)?;
 
         Ok(conversations)
+    }
+
+    /// Gets all active jobs for the specified user
+    pub async fn get_unfinished_jobs(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<Job>, AppError> {
+        let jobs: Vec<Job> = db
+            .query(
+                "SELECT * FROM type::table($table) 
+             WHERE user_id = $user_id 
+             AND (
+                status = 'Created' 
+                OR (
+                    status.InProgress != NONE 
+                    AND status.InProgress.attempts < $max_attempts
+                )
+             )
+             ORDER BY created_at DESC",
+            )
+            .bind(("table", Job::table_name()))
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("max_attempts", 3))
+            .await?
+            .take(0)?;
+
+        Ok(jobs)
+    }
+
+    /// Validate and delete job
+    pub async fn validate_and_delete_job(
+        id: &str,
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        db.get_item::<Job>(id)
+            .await?
+            .filter(|job| job.user_id == user_id)
+            .ok_or_else(|| AppError::Auth("Not authorized to delete this job".into()))?;
+
+        db.delete_item::<Job>(id)
+            .await
+            .map_err(AppError::Database)?;
+
+        Ok(())
     }
 }

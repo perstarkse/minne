@@ -1,6 +1,5 @@
 use axum_session::SessionStore;
 use axum_session_surreal::SessionSurrealPool;
-use common::ingress::jobqueue::JobQueue;
 use common::storage::db::SurrealDbClient;
 use common::utils::config::AppConfig;
 use common::utils::mailer::Mailer;
@@ -12,11 +11,10 @@ use surrealdb::engine::any::Any;
 
 #[derive(Clone)]
 pub struct HtmlState {
-    pub surreal_db_client: Arc<SurrealDbClient>,
+    pub db: Arc<SurrealDbClient>,
     pub openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     pub templates: Arc<AutoReloader>,
     pub mailer: Arc<Mailer>,
-    pub job_queue: Arc<JobQueue>,
     pub session_store: Arc<SessionStore<SessionSurrealPool<Any>>>,
 }
 
@@ -51,7 +49,7 @@ impl HtmlState {
         let session_store = Arc::new(surreal_db_client.create_session_store().await?);
 
         let app_state = HtmlState {
-            surreal_db_client: surreal_db_client.clone(),
+            db: surreal_db_client.clone(),
             templates: Arc::new(reloader),
             openai_client: openai_client.clone(),
             mailer: Arc::new(Mailer::new(
@@ -59,7 +57,6 @@ impl HtmlState {
                 &config.smtp_relayer,
                 &config.smtp_password,
             )?),
-            job_queue: Arc::new(JobQueue::new(surreal_db_client)),
             session_store,
         };
 

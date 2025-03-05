@@ -10,10 +10,7 @@ use tracing::info;
 
 use common::{
     error::{AppError, HtmlError},
-    storage::{
-        db::get_item,
-        types::{knowledge_entity::KnowledgeEntity, user::User},
-    },
+    storage::types::{knowledge_entity::KnowledgeEntity, user::User},
 };
 
 use crate::{html_state::HtmlState, routes::render_template};
@@ -30,7 +27,9 @@ pub async fn show_reference_tooltip(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    let entity: KnowledgeEntity = get_item(&state.surreal_db_client, &reference_id)
+    let entity: KnowledgeEntity = state
+        .db
+        .get_item(&reference_id)
         .await
         .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?
         .ok_or_else(|| {

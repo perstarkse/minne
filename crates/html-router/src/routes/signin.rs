@@ -54,7 +54,7 @@ pub async fn authenticate_user(
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     Form(form): Form<SignupParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user = match User::authenticate(form.email, form.password, &state.surreal_db_client).await {
+    let user = match User::authenticate(form.email, form.password, &state.db).await {
         Ok(user) => user,
         Err(_) => {
             return Ok(Html("<p>Incorrect email or password </p>").into_response());
