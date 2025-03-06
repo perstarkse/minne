@@ -4,7 +4,7 @@ use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
 use super::{
-    conversation::Conversation, job::Job, knowledge_entity::KnowledgeEntity,
+    conversation::Conversation, ingestion_task::IngestionTask, knowledge_entity::KnowledgeEntity,
     knowledge_relationship::KnowledgeRelationship, system_settings::SystemSettings,
     text_content::TextContent,
 };
@@ -351,12 +351,12 @@ impl User {
         Ok(conversations)
     }
 
-    /// Gets all active jobs for the specified user
-    pub async fn get_unfinished_jobs(
+    /// Gets all active ingestion tasks for the specified user
+    pub async fn get_unfinished_ingestion_tasks(
         user_id: &str,
         db: &SurrealDbClient,
-    ) -> Result<Vec<Job>, AppError> {
-        let jobs: Vec<Job> = db
+    ) -> Result<Vec<IngestionTask>, AppError> {
+        let jobs: Vec<IngestionTask> = db
             .query(
                 "SELECT * FROM type::table($table) 
              WHERE user_id = $user_id 
@@ -369,7 +369,7 @@ impl User {
              )
              ORDER BY created_at DESC",
             )
-            .bind(("table", Job::table_name()))
+            .bind(("table", IngestionTask::table_name()))
             .bind(("user_id", user_id.to_owned()))
             .bind(("max_attempts", 3))
             .await?
@@ -384,12 +384,12 @@ impl User {
         user_id: &str,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        db.get_item::<Job>(id)
+        db.get_item::<IngestionTask>(id)
             .await?
             .filter(|job| job.user_id == user_id)
             .ok_or_else(|| AppError::Auth("Not authorized to delete this job".into()))?;
 
-        db.delete_item::<Job>(id)
+        db.delete_item::<IngestionTask>(id)
             .await
             .map_err(AppError::Database)?;
 

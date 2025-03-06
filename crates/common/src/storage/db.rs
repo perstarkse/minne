@@ -1,6 +1,6 @@
 use crate::error::AppError;
 
-use super::types::{analytics::Analytics, job::Job, system_settings::SystemSettings, StoredObject};
+use super::types::{analytics::Analytics, system_settings::SystemSettings, StoredObject};
 use axum_session::{SessionConfig, SessionError, SessionStore};
 use axum_session_surreal::SessionSurrealPool;
 use futures::Stream;
@@ -171,9 +171,9 @@ impl SurrealDbClient {
     /// * `Result<Option<T>, Error>` - The deleted item or Error
     pub async fn listen<T>(
         &self,
-    ) -> Result<impl Stream<Item = Result<Notification<Job>, Error>>, Error>
+    ) -> Result<impl Stream<Item = Result<Notification<T>, Error>>, Error>
     where
-        T: for<'de> StoredObject,
+        T: for<'de> StoredObject + std::marker::Unpin,
     {
         self.client.select(T::table_name()).live().await
     }

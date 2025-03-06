@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use middleware_api_auth::api_auth;
-use routes::ingress::ingress_data;
+use routes::ingress::ingest_data;
 
 pub mod api_state;
 mod middleware_api_auth;
@@ -19,7 +19,7 @@ where
     ApiState: FromRef<S>,
 {
     Router::new()
-        .route("/ingress", post(ingress_data))
+        .route("/ingress", post(ingest_data))
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         .route_layer(from_fn_with_state(app_state.clone(), api_auth))
 }
