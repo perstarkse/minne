@@ -3,7 +3,7 @@ members = [
   "crates/main",
   "crates/common",
   "crates/api-router"
-, "crates/html-router"]
+, "crates/html-router", "crates/ingestion-pipeline"]
 resolver = "2"
 
 [workspace.dependencies]

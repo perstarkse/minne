@@ -12,7 +12,7 @@ use tracing::info;
 use common::{
     error::{AppError, HtmlError},
     storage::types::{
-        file_info::FileInfo, job::Job, knowledge_entity::KnowledgeEntity,
+        file_info::FileInfo, ingestion_task::IngestionTask, knowledge_entity::KnowledgeEntity,
         knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
         text_content::TextContent, user::User,
     },
@@ -26,7 +26,7 @@ page_data!(IndexData, "index/index.html", {
     gdpr_accepted: bool,
     user: Option<User>,
     latest_text_contents: Vec<TextContent>,
-    active_jobs: Vec<Job>
+    active_jobs: Vec<IngestionTask>
 });
 
 pub async fn index_handler(
@@ -39,9 +39,11 @@ pub async fn index_handler(
     let gdpr_accepted = auth.current_user.is_some() | session.get("gdpr_accepted").unwrap_or(false);
 
     let active_jobs = match auth.current_user.is_some() {
-        true => User::get_unfinished_jobs(&auth.current_user.clone().unwrap().id, &state.db)
-            .await
-            .map_err(|e| HtmlError::new(e, state.templates.clone()))?,
+        true => {
+            User::get_unfinished_ingestion_tasks(&auth.current_user.clone().unwrap().id, &state.db)
+                .await
+                .map_err(|e| HtmlError::new(e, state.templates.clone()))?
+        }
         false => vec![],
     };
 
@@ -172,7 +174,7 @@ async fn get_and_validate_text_content(
 
 #[derive(Serialize)]
 pub struct ActiveJobsData {
-    pub active_jobs: Vec<Job>,
+    pub active_jobs: Vec<IngestionTask>,
     pub user: User,
 }
 
@@ -190,7 +192,7 @@ pub async fn delete_job(
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let active_jobs = User::get_unfinished_jobs(&user.id, &state.db)
+    let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
@@ -216,7 +218,7 @@ pub async fn show_active_jobs(
         None => return Ok(Redirect::to("/signin").into_response()),
     };
 
-    let active_jobs = User::get_unfinished_jobs(&user.id, &state.db)
+    let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 

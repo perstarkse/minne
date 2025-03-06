@@ -45,6 +45,7 @@ url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4", "serde"] }
 
 # Reference to api-router
+ingestion-pipeline = { path = "../ingestion-pipeline" }
 api-router = { path = "../api-router" }
 html-router = { path = "../html-router" }
 common = { path = "../common" }

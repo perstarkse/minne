@@ -12,8 +12,10 @@ use tracing::info;
 
 use common::{
     error::{AppError, HtmlError, IntoHtmlError},
-    ingress::ingress_object::IngressObject,
-    storage::types::{file_info::FileInfo, job::Job, user::User},
+    storage::types::{
+        file_info::FileInfo, ingestion_payload::IngestionPayload, ingestion_task::IngestionTask,
+        user::User,
+    },
 };
 
 use crate::{
@@ -112,7 +114,7 @@ pub async fn process_ingress_form(
     }))
     .await?;
 
-    let ingress_objects = IngressObject::create_ingress_objects(
+    let payloads = IngestionPayload::create_ingestion_payload(
         input.content,
         input.instructions,
         input.category,
@@ -121,9 +123,11 @@ pub async fn process_ingress_form(
     )
     .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
-    let futures: Vec<_> = ingress_objects
+    let futures: Vec<_> = payloads
         .into_iter()
-        .map(|object| Job::create_and_add_to_db(object.clone(), user.id.clone(), &state.db))
+        .map(|object| {
+            IngestionTask::create_and_add_to_db(object.clone(), user.id.clone(), &state.db)
+        })
         .collect();
 
     try_join_all(futures)
@@ -132,7 +136,7 @@ pub async fn process_ingress_form(
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 
     // Update the active jobs page with the newly created job
-    let active_jobs = User::get_unfinished_jobs(&user.id, &state.db)
+    let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db)
         .await
         .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
 

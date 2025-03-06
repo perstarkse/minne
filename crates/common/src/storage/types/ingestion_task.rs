@@ -2,13 +2,12 @@ use futures::Stream;
 use surrealdb::{opt::PatchOp, Notification};
 use uuid::Uuid;
 
-use crate::{
-    error::AppError, ingress::ingress_object::IngressObject, storage::db::SurrealDbClient,
-    stored_object,
-};
+use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
+
+use super::ingestion_payload::IngestionPayload;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum JobStatus {
+pub enum IngestionTaskStatus {
     Created,
     InProgress {
         attempts: u32,
@@ -19,22 +18,22 @@ pub enum JobStatus {
     Cancelled,
 }
 
-stored_object!(Job, "job", {
-    content: IngressObject,
-    status: JobStatus,
+stored_object!(IngestionTask, "job", {
+    content: IngestionPayload,
+    status: IngestionTaskStatus,
     user_id: String
 });
 
 pub const MAX_ATTEMPTS: u32 = 3;
 
-impl Job {
-    pub async fn new(content: IngressObject, user_id: String) -> Self {
+impl IngestionTask {
+    pub async fn new(content: IngestionPayload, user_id: String) -> Self {
         let now = Utc::now();
 
         Self {
             id: Uuid::new_v4().to_string(),
             content,
-            status: JobStatus::Created,
+            status: IngestionTaskStatus::Created,
             created_at: now,
             updated_at: now,
             user_id,
@@ -43,7 +42,7 @@ impl Job {
 
     /// Creates a new job and stores it in the database
     pub async fn create_and_add_to_db(
-        content: IngressObject,
+        content: IngestionPayload,
         user_id: String,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
@@ -57,10 +56,10 @@ impl Job {
     // Update job status
     pub async fn update_status(
         id: &str,
-        status: JobStatus,
+        status: IngestionTaskStatus,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        let _job: Option<Job> = db
+        let _job: Option<Self> = db
             .update((Self::table_name(), id))
             .patch(PatchOp::replace("/status", status))
             .patch(PatchOp::replace(
@@ -73,16 +72,16 @@ impl Job {
     }
 
     /// Listen for new jobs
-    pub async fn listen_for_jobs(
+    pub async fn listen_for_tasks(
         db: &SurrealDbClient,
-    ) -> Result<impl Stream<Item = Result<Notification<Job>, surrealdb::Error>>, surrealdb::Error>
+    ) -> Result<impl Stream<Item = Result<Notification<Self>, surrealdb::Error>>, surrealdb::Error>
     {
-        db.listen::<Job>().await
+        db.listen::<Self>().await
     }
 
-    /// Get all unfinished jobs, ie newly created and in progress up two times
-    pub async fn get_unfinished_jobs(db: &SurrealDbClient) -> Result<Vec<Job>, AppError> {
-        let jobs: Vec<Job> = db
+    /// Get all unfinished tasks, ie newly created and in progress up two times
+    pub async fn get_unfinished_tasks(db: &SurrealDbClient) -> Result<Vec<Self>, AppError> {
+        let jobs: Vec<Self> = db
             .query(
                 "SELECT * FROM type::table($table) 
              WHERE 

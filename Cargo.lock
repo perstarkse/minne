@@ -1071,7 +1071,6 @@ dependencies = [
  "mockall",
  "plotly",
  "reqwest",
- "scraper",
  "serde",
  "serde_json",
  "sha2",
@@ -1079,7 +1078,6 @@ dependencies = [
  "tempfile",
  "text-splitter",
  "thiserror",
- "tiktoken-rs",
  "tokio",
  "tower-http",
  "tracing",
@@ -2430,6 +2428,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ingestion-pipeline"
+version = "0.1.0"
+dependencies = [
+ "async-openai",
+ "axum",
+ "chrono",
+ "common",
+ "reqwest",
+ "scraper",
+ "serde",
+ "serde_json",
+ "text-splitter",
+ "tiktoken-rs",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "inotify"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2734,6 +2750,7 @@ dependencies = [
  "config",
  "futures",
  "html-router",
+ "ingestion-pipeline",
  "json-stream-parser",
  "lettre",
  "mime",
