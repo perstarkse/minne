@@ -9,11 +9,13 @@ use crate::{
         graph::{find_entities_by_relationship_by_id, find_entities_by_source_ids},
         vector::find_items_by_vector_similarity,
     },
-    storage::types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk},
+    storage::{
+        db::SurrealDbClient,
+        types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk},
+    },
 };
 use futures::future::{try_join, try_join_all};
 use std::collections::HashMap;
-use surrealdb::{engine::any::Any, Surreal};
 
 /// Performs a comprehensive knowledge entity retrieval using multiple search strategies
 /// to find the most relevant entities for a given query.
@@ -37,7 +39,7 @@ use surrealdb::{engine::any::Any, Surreal};
 /// * `Result<Vec<KnowledgeEntity>, AppError>` - A deduplicated vector of relevant
 ///   knowledge entities, or an error if the retrieval process fails
 pub async fn combined_knowledge_entity_retrieval(
-    db_client: &Surreal<Any>,
+    db_client: &SurrealDbClient,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     query: &str,
     user_id: &str,

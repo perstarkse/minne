@@ -1,7 +1,7 @@
-use surrealdb::{engine::any::Any, Error, Surreal};
+use surrealdb::Error;
 use tracing::debug;
 
-use crate::storage::types::{knowledge_entity::KnowledgeEntity, StoredObject};
+use crate::storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity};
 
 /// Retrieves database entries that match a specific source identifier.
 ///
@@ -33,15 +33,14 @@ use crate::storage::types::{knowledge_entity::KnowledgeEntity, StoredObject};
 pub async fn find_entities_by_source_ids<T>(
     source_id: Vec<String>,
     table_name: String,
-    db_client: &Surreal<Any>,
+    db: &SurrealDbClient,
 ) -> Result<Vec<T>, Error>
 where
     T: for<'de> serde::Deserialize<'de>,
 {
     let query = "SELECT * FROM type::table($table) WHERE source_id IN $source_ids";
 
-    db_client
-        .query(query)
+    db.query(query)
         .bind(("table", table_name))
         .bind(("source_ids", source_id))
         .await?
@@ -50,7 +49,7 @@ where
 
 /// Find entities by their relationship to the id
 pub async fn find_entities_by_relationship_by_id(
-    db_client: &Surreal<Any>,
+    db: &SurrealDbClient,
     entity_id: String,
 ) -> Result<Vec<KnowledgeEntity>, Error> {
     let query = format!(
@@ -60,15 +59,5 @@ pub async fn find_entities_by_relationship_by_id(
 
     debug!("{}", query);
 
-    db_client.query(query).await?.take(0)
-}
-
-/// Get a specific KnowledgeEntity by its id
-pub async fn get_entity_by_id(
-    db_client: &Surreal<Any>,
-    entity_id: &str,
-) -> Result<Option<KnowledgeEntity>, Error> {
-    db_client
-        .select((KnowledgeEntity::table_name(), entity_id))
-        .await
+    db.query(query).await?.take(0)
 }

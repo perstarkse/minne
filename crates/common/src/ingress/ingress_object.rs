@@ -13,6 +13,8 @@ use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use tiktoken_rs::{o200k_base, CoreBPE};
+use tracing::info;
+use url::Url;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum IngressObject {
@@ -37,6 +39,72 @@ pub enum IngressObject {
 }
 
 impl IngressObject {
+    /// Creates ingress objects from the provided content, instructions, and files.
+    ///
+    /// # Arguments
+    /// * `content` - Optional textual content to be ingressed
+    /// * `instructions` - Instructions for processing the ingress content
+    /// * `category` - Category to classify the ingressed content
+    /// * `files` - Vector of `FileInfo` objects containing information about uploaded files
+    /// * `user_id` - Identifier of the user performing the ingress operation
+    ///
+    /// # Returns
+    /// * `Result<Vec<IngressObject>, AppError>` - On success, returns a vector of ingress objects
+    ///   (one per file/content type). On failure, returns an `AppError`.
+    pub fn create_ingress_objects(
+        content: Option<String>,
+        instructions: String,
+        category: String,
+        files: Vec<FileInfo>,
+        user_id: &str,
+    ) -> Result<Vec<IngressObject>, AppError> {
+        // Initialize list
+        let mut object_list = Vec::new();
+
+        // Create a IngressObject from content if it exists, checking for URL or text
+        if let Some(input_content) = content {
+            match Url::parse(&input_content) {
+                Ok(url) => {
+                    info!("Detected URL: {}", url);
+                    object_list.push(IngressObject::Url {
+                        url: url.to_string(),
+                        instructions: instructions.clone(),
+                        category: category.clone(),
+                        user_id: user_id.into(),
+                    });
+                }
+                Err(_) => {
+                    if input_content.len() > 2 {
+                        info!("Treating input as plain text");
+                        object_list.push(IngressObject::Text {
+                            text: input_content.to_string(),
+                            instructions: instructions.clone(),
+                            category: category.clone(),
+                            user_id: user_id.into(),
+                        });
+                    }
+                }
+            }
+        }
+
+        for file in files {
+            object_list.push(IngressObject::File {
+                file_info: file,
+                instructions: instructions.clone(),
+                category: category.clone(),
+                user_id: user_id.into(),
+            })
+        }
+
+        // If no objects are constructed, we return Err
+        if object_list.is_empty() {
+            return Err(AppError::NotFound(
+                "No valid content or files provided".into(),
+            ));
+        }
+
+        Ok(object_list)
+    }
     /// Creates a new `TextContent` instance from a `IngressObject`.
     ///
     /// # Arguments

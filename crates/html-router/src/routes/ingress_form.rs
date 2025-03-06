@@ -12,7 +12,7 @@ use tracing::info;
 
 use common::{
     error::{AppError, HtmlError, IntoHtmlError},
-    ingress::ingress_input::{create_ingress_objects, IngressInput},
+    ingress::ingress_object::IngressObject,
     storage::types::{file_info::FileInfo, job::Job, user::User},
 };
 
@@ -112,13 +112,11 @@ pub async fn process_ingress_form(
     }))
     .await?;
 
-    let ingress_objects = create_ingress_objects(
-        IngressInput {
-            content: input.content,
-            instructions: input.instructions,
-            category: input.category,
-            files: file_infos,
-        },
+    let ingress_objects = IngressObject::create_ingress_objects(
+        input.content,
+        input.instructions,
+        input.category,
+        file_infos,
         user.id.as_str(),
     )
     .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
