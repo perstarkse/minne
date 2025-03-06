@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = get_config()?;
 
-    let surreal_db_client = Arc::new(
+    let db = Arc::new(
         SurrealDbClient::new(
             &config.surrealdb_address,
             &config.surrealdb_username,
@@ -37,12 +37,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let openai_client = Arc::new(async_openai::Client::new());
 
-    let content_processor =
-        ContentProcessor::new(surreal_db_client.clone(), openai_client.clone()).await?;
+    let content_processor = ContentProcessor::new(db.clone(), openai_client.clone()).await?;
 
     loop {
         // First, check for any unfinished jobs
-        let unfinished_jobs = Job::get_unfinished_jobs(&surreal_db_client).await?;
+        let unfinished_jobs = Job::get_unfinished_jobs(&db).await?;
 
         if !unfinished_jobs.is_empty() {
             info!("Found {} unfinished jobs", unfinished_jobs.len());
@@ -54,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // If no unfinished jobs, start listening for new ones
         info!("Listening for new jobs...");
-        let mut job_stream = Job::listen_for_jobs(&surreal_db_client).await?;
+        let mut job_stream = Job::listen_for_jobs(&db).await?;
 
         while let Some(notification) = job_stream.next().await {
             match notification {
@@ -80,9 +79,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 JobStatus::InProgress { attempts, .. } => {
                                     // Only process if this is a retry after an error, not our own update
-                                    if let Ok(Some(current_job)) = surreal_db_client
-                                        .get_item::<Job>(&notification.data.id)
-                                        .await
+                                    if let Ok(Some(current_job)) =
+                                        db.get_item::<Job>(&notification.data.id).await
                                     {
                                         match current_job.status {
                                             JobStatus::Error(_)

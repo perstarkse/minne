@@ -2,7 +2,7 @@ use crate::{
     error::AppError,
     ingress::analysis::prompt::{get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE},
     retrieval::combined_knowledge_entity_retrieval,
-    storage::types::knowledge_entity::KnowledgeEntity,
+    storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity},
 };
 use async_openai::{
     error::OpenAIError,
@@ -13,20 +13,18 @@ use async_openai::{
     },
 };
 use serde_json::json;
-use surrealdb::engine::any::Any;
-use surrealdb::Surreal;
 use tracing::debug;
 
 use super::types::llm_analysis_result::LLMGraphAnalysisResult;
 
 pub struct IngressAnalyzer<'a> {
-    db_client: &'a Surreal<Any>,
+    db_client: &'a SurrealDbClient,
     openai_client: &'a async_openai::Client<async_openai::config::OpenAIConfig>,
 }
 
 impl<'a> IngressAnalyzer<'a> {
     pub fn new(
-        db_client: &'a Surreal<Any>,
+        db_client: &'a SurrealDbClient,
         openai_client: &'a async_openai::Client<async_openai::config::OpenAIConfig>,
     ) -> Self {
         Self {

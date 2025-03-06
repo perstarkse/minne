@@ -2,7 +2,7 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension};
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use common::{
     error::{ApiError, AppError},
-    ingress::ingress_input::{create_ingress_objects, IngressInput},
+    ingress::ingress_object::IngressObject,
     storage::types::{file_info::FileInfo, job::Job, user::User},
 };
 use futures::{future::try_join_all, TryFutureExt};
@@ -38,13 +38,11 @@ pub async fn ingress_data(
 
     debug!("Got file infos");
 
-    let ingress_objects = create_ingress_objects(
-        IngressInput {
-            content: input.content,
-            instructions: input.instructions,
-            category: input.category,
-            files: file_infos,
-        },
+    let ingress_objects = IngressObject::create_ingress_objects(
+        input.content,
+        input.instructions,
+        input.category,
+        file_infos,
         user.id.as_str(),
     )?;
     debug!("Got ingress objects");
