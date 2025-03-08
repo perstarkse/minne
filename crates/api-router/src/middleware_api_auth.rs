@@ -4,9 +4,9 @@ use axum::{
     response::Response,
 };
 
-use common::{error::ApiError, storage::types::user::User};
+use common::storage::types::user::User;
 
-use crate::api_state::ApiState;
+use crate::{api_state::ApiState, error::ApiError};
 
 pub async fn api_auth(
     State(state): State<ApiState>,

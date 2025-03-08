@@ -1,9 +1,5 @@
-use crate::{
-    error::AppError,
-    ingress::analysis::prompt::{get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE},
-    retrieval::combined_knowledge_entity_retrieval,
-    storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity},
-};
+use std::sync::Arc;
+
 use async_openai::{
     error::OpenAIError,
     types::{
@@ -12,20 +8,28 @@ use async_openai::{
         ResponseFormatJsonSchema,
     },
 };
+use common::{
+    error::AppError,
+    storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity},
+};
+use composite_retrieval::retrieve_entities;
 use serde_json::json;
 use tracing::debug;
 
-use super::types::llm_analysis_result::LLMGraphAnalysisResult;
+use crate::{
+    types::llm_enrichment_result::LLMEnrichmentResult,
+    utils::llm_instructions::{get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE},
+};
 
-pub struct IngressAnalyzer<'a> {
-    db_client: &'a SurrealDbClient,
-    openai_client: &'a async_openai::Client<async_openai::config::OpenAIConfig>,
+pub struct IngestionEnricher {
+    db_client: Arc<SurrealDbClient>,
+    openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
 }
 
-impl<'a> IngressAnalyzer<'a> {
+impl IngestionEnricher {
     pub fn new(
-        db_client: &'a SurrealDbClient,
-        openai_client: &'a async_openai::Client<async_openai::config::OpenAIConfig>,
+        db_client: Arc<SurrealDbClient>,
+        openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     ) -> Self {
         Self {
             db_client,
@@ -39,7 +43,7 @@ impl<'a> IngressAnalyzer<'a> {
         instructions: &str,
         text: &str,
         user_id: &str,
-    ) -> Result<LLMGraphAnalysisResult, AppError> {
+    ) -> Result<LLMEnrichmentResult, AppError> {
         let similar_entities = self
             .find_similar_entities(category, instructions, text, user_id)
             .await?;
@@ -60,13 +64,7 @@ impl<'a> IngressAnalyzer<'a> {
             text, category, instructions
         );
 
-        combined_knowledge_entity_retrieval(
-            self.db_client,
-            self.openai_client,
-            &input_text,
-            user_id,
-        )
-        .await
+        retrieve_entities(&self.db_client, &self.openai_client, &input_text, user_id).await
     }
 
     fn prepare_llm_request(
@@ -120,7 +118,7 @@ impl<'a> IngressAnalyzer<'a> {
     async fn perform_analysis(
         &self,
         request: CreateChatCompletionRequest,
-    ) -> Result<LLMGraphAnalysisResult, AppError> {
+    ) -> Result<LLMEnrichmentResult, AppError> {
         let response = self.openai_client.chat().create(request).await?;
         debug!("Received LLM response: {:?}", response);
 

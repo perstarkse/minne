@@ -1,7 +1,7 @@
 use surrealdb::Error;
 use tracing::debug;
 
-use crate::storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity};
+use common::storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity};
 
 /// Retrieves database entries that match a specific source identifier.
 ///

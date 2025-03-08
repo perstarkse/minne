@@ -1,78 +1,54 @@
-use axum::{extract::State, response::IntoResponse};
-use axum_session_auth::AuthSession;
-use axum_session_surreal::SessionSurrealPool;
-use surrealdb::{engine::any::Any, Surreal};
+use axum::response::IntoResponse;
+use common::storage::types::user::User;
+use serde::Serialize;
 
-use common::{error::HtmlError, storage::types::user::User};
+use crate::template_response::{HtmlError, TemplateResponse};
+use crate::AuthSessionType;
 
-use crate::{html_state::HtmlState, page_data};
-
-use super::render_template;
-
-page_data!(DocumentationData, "do_not_use_this", {
+#[derive(Serialize)]
+pub struct DocumentationPageData {
     user: Option<User>,
-    current_path: String
-});
-
-pub async fn show_privacy_policy(
-    State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
-) -> Result<impl IntoResponse, HtmlError> {
-    let output = render_template(
-        "documentation/privacy.html",
-        DocumentationData {
-            user: auth.current_user,
-            current_path: "/privacy_policy".to_string(),
-        },
-        state.templates.clone(),
-    )?;
-
-    Ok(output.into_response())
+    current_path: String,
 }
 
-pub async fn show_get_started(
-    State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
-) -> Result<impl IntoResponse, HtmlError> {
-    let output = render_template(
+pub async fn show_privacy_policy(auth: AuthSessionType) -> Result<impl IntoResponse, HtmlError> {
+    Ok(TemplateResponse::new_template(
+        "documentation/privacy.html",
+        DocumentationPageData {
+            user: auth.current_user,
+            current_path: "/privacy-policy".to_string(),
+        },
+    ))
+}
+
+pub async fn show_get_started(auth: AuthSessionType) -> Result<impl IntoResponse, HtmlError> {
+    Ok(TemplateResponse::new_template(
         "documentation/get_started.html",
-        DocumentationData {
+        DocumentationPageData {
             user: auth.current_user,
             current_path: "/get-started".to_string(),
         },
-        state.templates.clone(),
-    )?;
-
-    Ok(output.into_response())
+    ))
 }
-pub async fn show_mobile_friendly(
-    State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
-) -> Result<impl IntoResponse, HtmlError> {
-    let output = render_template(
+
+pub async fn show_mobile_friendly(auth: AuthSessionType) -> Result<impl IntoResponse, HtmlError> {
+    Ok(TemplateResponse::new_template(
         "documentation/mobile_friendly.html",
-        DocumentationData {
+        DocumentationPageData {
             user: auth.current_user,
             current_path: "/mobile-friendly".to_string(),
         },
-        state.templates.clone(),
-    )?;
-
-    Ok(output.into_response())
+    ))
 }
 
 pub async fn show_documentation_index(
-    State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    auth: AuthSessionType,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let output = render_template(
+    Ok(TemplateResponse::new_template(
         "documentation/index.html",
-        DocumentationData {
+        DocumentationPageData {
             user: auth.current_user,
             current_path: "/index".to_string(),
         },
-        state.templates.clone(),
-    )?;
-
-    Ok(output.into_response())
+    ))
 }

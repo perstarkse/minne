@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
-use common::{error::HtmlError, storage::types::user::User};
+use crate::routes::HtmlError;
+use common::storage::types::user::User;
 
 use crate::{html_state::HtmlState, routes::render_template};
 #[derive(Deserialize)]

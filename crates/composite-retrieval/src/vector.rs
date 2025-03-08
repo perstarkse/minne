@@ -1,6 +1,6 @@
 use surrealdb::{engine::any::Any, Surreal};
 
-use crate::{error::AppError, utils::embedding::generate_embedding};
+use common::{error::AppError, utils::embedding::generate_embedding};
 
 /// Compares vectors and retrieves a number of items from the specified table.
 ///

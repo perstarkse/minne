@@ -9,6 +9,7 @@ use middleware_api_auth::api_auth;
 use routes::ingress::ingest_data;
 
 pub mod api_state;
+pub mod error;
 mod middleware_api_auth;
 mod routes;
 

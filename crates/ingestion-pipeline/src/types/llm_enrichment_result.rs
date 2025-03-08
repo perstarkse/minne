@@ -4,7 +4,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tokio::task;
 
-use crate::{
+use common::{
     error::AppError,
     storage::types::{
         knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
@@ -14,7 +14,7 @@ use crate::{
 };
 use futures::future::try_join_all;
 
-use super::graph_mapper::GraphMapper; // For future parallelization
+use crate::utils::GraphMapper;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LLMKnowledgeEntity {
@@ -35,12 +35,12 @@ pub struct LLMRelationship {
 
 /// Represents the entire graph analysis result from the LLM.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct LLMGraphAnalysisResult {
+pub struct LLMEnrichmentResult {
     pub knowledge_entities: Vec<LLMKnowledgeEntity>,
     pub relationships: Vec<LLMRelationship>,
 }
 
-impl LLMGraphAnalysisResult {
+impl LLMEnrichmentResult {
     /// Converts the LLM graph analysis result into database entities and relationships.
     ///
     /// # Arguments

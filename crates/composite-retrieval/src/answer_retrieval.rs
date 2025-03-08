@@ -10,13 +10,14 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tracing::debug;
 
-use crate::{
+use common::{
     error::AppError,
-    retrieval::combined_knowledge_entity_retrieval,
     storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity},
 };
 
-use super::query_helper_prompt::{get_query_response_schema, QUERY_SYSTEM_PROMPT};
+use crate::retrieve_entities;
+
+use super::answer_retrieval_helper::{get_query_response_schema, QUERY_SYSTEM_PROMPT};
 
 #[derive(Debug, Deserialize)]
 pub struct Reference {
@@ -30,47 +31,6 @@ pub struct LLMResponseFormat {
     #[allow(dead_code)]
     pub references: Vec<Reference>,
 }
-
-// /// Orchestrator function that takes a query and clients and returns a answer with references
-// ///
-// /// # Arguments
-// /// * `surreal_db_client` - Client for interacting with SurrealDn
-// /// * `openai_client` - Client for interacting with openai
-// /// * `query` - The query
-// ///
-// /// # Returns
-// /// * `Result<(String, Vec<String>, ApiError)` - Will return the answer, and the list of references or Error
-// pub async fn get_answer_with_references(
-//     surreal_db_client: &SurrealDbClient,
-//     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-//     query: &str,
-// ) -> Result<(String, Vec<String>), ApiError> {
-//     let entities =
-//         combined_knowledge_entity_retrieval(surreal_db_client, openai_client, query.into()).await?;
-
-//     // Format entities and create message
-//     let entities_json = format_entities_json(&entities);
-//     let user_message = create_user_message(&entities_json, query);
-
-//     // Create and send request
-//     let request = create_chat_request(user_message)?;
-//     let response = openai_client
-//         .chat()
-//         .create(request)
-//         .await
-//         .map_err(|e| ApiError::QueryError(e.to_string()))?;
-
-//     // Process response
-//     let answer = process_llm_response(response).await?;
-
-//     let references: Vec<String> = answer
-//         .references
-//         .into_iter()
-//         .map(|reference| reference.reference)
-//         .collect();
-
-//     Ok((answer.answer, references))
-// }
 
 /// Orchestrates query processing and returns an answer with references
 ///
@@ -98,9 +58,7 @@ pub async fn get_answer_with_references(
     query: &str,
     user_id: &str,
 ) -> Result<Answer, AppError> {
-    let entities =
-        combined_knowledge_entity_retrieval(surreal_db_client, openai_client, query, user_id)
-            .await?;
+    let entities = retrieve_entities(surreal_db_client, openai_client, query, user_id).await?;
 
     let entities_json = format_entities_json(&entities);
     debug!("{:?}", entities_json);

@@ -1,21 +1,19 @@
+pub mod answer_retrieval;
+pub mod answer_retrieval_helper;
 pub mod graph;
-pub mod query_helper;
-pub mod query_helper_prompt;
 pub mod vector;
 
-use crate::{
+use common::{
     error::AppError,
-    retrieval::{
-        graph::{find_entities_by_relationship_by_id, find_entities_by_source_ids},
-        vector::find_items_by_vector_similarity,
-    },
     storage::{
         db::SurrealDbClient,
         types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk},
     },
 };
 use futures::future::{try_join, try_join_all};
+use graph::{find_entities_by_relationship_by_id, find_entities_by_source_ids};
 use std::collections::HashMap;
+use vector::find_items_by_vector_similarity;
 
 /// Performs a comprehensive knowledge entity retrieval using multiple search strategies
 /// to find the most relevant entities for a given query.
@@ -38,7 +36,7 @@ use std::collections::HashMap;
 /// # Returns
 /// * `Result<Vec<KnowledgeEntity>, AppError>` - A deduplicated vector of relevant
 ///   knowledge entities, or an error if the retrieval process fails
-pub async fn combined_knowledge_entity_retrieval(
+pub async fn retrieve_entities(
     db_client: &SurrealDbClient,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     query: &str,

@@ -6,12 +6,9 @@ use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use surrealdb::{engine::any::Any, Surreal};
 
-use common::{
-    error::HtmlError,
-    storage::types::{text_content::TextContent, user::User},
-};
+use common::storage::types::{text_content::TextContent, user::User};
 
-use crate::{html_state::HtmlState, page_data};
+use crate::{error::HtmlError, html_state::HtmlState, page_data};
 
 use super::render_template;
 

@@ -10,7 +10,8 @@ serde = { workspace = true }
 axum = { workspace = true }
 tracing = { workspace = true }
 serde_json = { workspace = true }
-
+async-openai = { workspace = true }
+thiserror = { workspace = true }
 
 axum-htmx = "0.6.0"
 axum_session = "0.14.4"
@@ -28,8 +29,6 @@ plotly = "0.12.1"
 surrealdb = "2.0.4"
 tower-http = { version = "0.6.2", features = ["fs"] }
 chrono-tz = "0.10.1"
-async-openai = "0.24.1"
-
-
 
 common = { path = "../common" }
+composite-retrieval = { path = "../composite-retrieval" }

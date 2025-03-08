@@ -1,62 +1,39 @@
-use axum::{
-    extract::State,
-    response::{IntoResponse, Redirect},
-    Form,
+use axum::{extract::State, response::IntoResponse, Form};
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    middleware_auth::RequireUser,
+    template_response::{HtmlError, TemplateResponse},
 };
-use axum_session_auth::AuthSession;
-use axum_session_surreal::SessionSurrealPool;
-use surrealdb::{engine::any::Any, Surreal};
+use common::storage::types::{analytics::Analytics, system_settings::SystemSettings, user::User};
 
-use common::{
-    error::HtmlError,
-    storage::types::{analytics::Analytics, system_settings::SystemSettings, user::User},
-};
+use crate::html_state::HtmlState;
 
-use crate::{html_state::HtmlState, page_data};
-
-use super::{render_block, render_template};
-
-page_data!(AdminPanelData, "auth/admin_panel.html", {
+#[derive(Serialize)]
+pub struct AdminPanelData {
     user: User,
     settings: SystemSettings,
     analytics: Analytics,
     users: i64,
-});
+}
 
 pub async fn show_admin_panel(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not authenticated and admin
-    let user = match auth.current_user {
-        Some(user) if user.admin => user,
-        _ => return Ok(Redirect::to("/").into_response()),
-    };
+    let settings = SystemSettings::get_current(&state.db).await?;
+    let analytics = Analytics::get_current(&state.db).await?;
+    let users_count = Analytics::get_users_amount(&state.db).await?;
 
-    let settings = SystemSettings::get_current(&state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
-
-    let analytics = Analytics::get_current(&state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
-
-    let users_count = Analytics::get_users_amount(&state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
-
-    let output = render_template(
-        AdminPanelData::template_name(),
+    Ok(TemplateResponse::new_template(
+        "auth/admin_panel.html",
         AdminPanelData {
             user,
             settings,
             analytics,
             users: users_count,
         },
-        state.templates.clone(),
-    )?;
-
-    Ok(output.into_response())
+    ))
 }
 
 fn checkbox_to_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
@@ -83,36 +60,28 @@ pub struct RegistrationToggleData {
 
 pub async fn toggle_registration_status(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
     Form(input): Form<RegistrationToggleInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not authenticated and admin
-    let _user = match auth.current_user {
-        Some(user) if user.admin => user,
-        _ => return Ok(Redirect::to("/").into_response()),
+    // Early return if the user is not admin
+    if !user.admin {
+        return Ok(TemplateResponse::redirect("/"));
     };
 
-    let current_settings = SystemSettings::get_current(&state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let current_settings = SystemSettings::get_current(&state.db).await?;
 
     let new_settings = SystemSettings {
         registrations_enabled: input.registration_open,
         ..current_settings.clone()
     };
 
-    SystemSettings::update(&state.db, new_settings.clone())
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    SystemSettings::update(&state.db, new_settings.clone()).await?;
 
-    let output = render_block(
-        AdminPanelData::template_name(),
+    Ok(TemplateResponse::new_partial(
+        "auth/admin_panel.html",
         "registration_status_input",
         RegistrationToggleData {
             settings: new_settings,
         },
-        state.templates.clone(),
-    )?;
-
-    Ok(output.into_response())
+    ))
 }

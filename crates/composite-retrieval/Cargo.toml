@@ -1,5 +1,5 @@
 [package]
-name = "ingestion-pipeline"
+name = "composite-retrieval"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,16 +9,11 @@ tokio = { workspace = true }
 serde = { workspace = true }
 axum = { workspace = true }
 tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
 serde_json = { workspace = true }
+surrealdb = { workspace = true }
 futures = { workspace = true }
 async-openai = { workspace = true }
-
-tiktoken-rs = "0.6.0"
-reqwest = {version = "0.12.12", features = ["charset", "json"]}
-scraper = "0.22.0"
-chrono = { version = "0.4.39", features = ["serde"] }
-text-splitter = "0.18.1"
-uuid = { version = "1.10.0", features = ["v4", "serde"] }
-
+ 
 common = { path = "../common" }
-composite-retrieval = { path = "../composite-retrieval" }
