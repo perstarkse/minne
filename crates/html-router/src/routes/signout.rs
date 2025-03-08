@@ -1,18 +1,16 @@
-use axum::response::{IntoResponse, Redirect};
-use axum_session_auth::AuthSession;
-use axum_session_surreal::SessionSurrealPool;
-use surrealdb::{engine::any::Any, Surreal};
+use axum::response::IntoResponse;
 
-use common::{error::ApiError, storage::types::user::User};
+use crate::{
+    template_response::{HtmlError, TemplateResponse},
+    AuthSessionType,
+};
 
-pub async fn sign_out_user(
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
-) -> Result<impl IntoResponse, ApiError> {
+pub async fn sign_out_user(auth: AuthSessionType) -> Result<impl IntoResponse, HtmlError> {
     if !auth.is_authenticated() {
-        return Ok(Redirect::to("/").into_response());
+        return Ok(TemplateResponse::redirect("/"));
     }
 
     auth.logout_user();
 
-    Ok(Redirect::to("/").into_response())
+    Ok(TemplateResponse::redirect("/"))
 }

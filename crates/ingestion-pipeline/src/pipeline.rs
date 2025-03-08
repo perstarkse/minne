@@ -19,11 +19,10 @@ use common::{
     utils::embedding::generate_embedding,
 };
 
-use common::ingress::analysis::{
-    ingress_analyser::IngressAnalyzer, types::llm_analysis_result::LLMGraphAnalysisResult,
+use crate::{
+    enricher::IngestionEnricher,
+    types::{llm_enrichment_result::LLMEnrichmentResult, to_text_content},
 };
-
-use crate::types::to_text_content;
 
 pub struct IngestionPipeline {
     db: Arc<SurrealDbClient>,
@@ -109,8 +108,8 @@ impl IngestionPipeline {
     async fn perform_semantic_analysis(
         &self,
         content: &TextContent,
-    ) -> Result<LLMGraphAnalysisResult, AppError> {
-        let analyser = IngressAnalyzer::new(&self.db, &self.openai_client);
+    ) -> Result<LLMEnrichmentResult, AppError> {
+        let analyser = IngestionEnricher::new(self.db.clone(), self.openai_client.clone());
         analyser
             .analyze_content(
                 &content.category,

@@ -1,22 +1,15 @@
 use axum::response::{Html, IntoResponse};
-use axum_session::Session;
-use axum_session_surreal::SessionSurrealPool;
-use surrealdb::engine::any::Any;
 
-use common::error::HtmlError;
+use crate::SessionType;
 
-pub async fn accept_gdpr(
-    session: Session<SessionSurrealPool<Any>>,
-) -> Result<impl IntoResponse, HtmlError> {
+pub async fn accept_gdpr(session: SessionType) -> impl IntoResponse {
     session.set("gdpr_accepted", true);
 
-    Ok(Html("").into_response())
+    Html("").into_response()
 }
 
-pub async fn deny_gdpr(
-    session: Session<SessionSurrealPool<Any>>,
-) -> Result<impl IntoResponse, HtmlError> {
+pub async fn deny_gdpr(session: SessionType) -> impl IntoResponse {
     session.set("gdpr_accepted", true);
 
-    Ok(Html("").into_response())
+    Html("").into_response()
 }

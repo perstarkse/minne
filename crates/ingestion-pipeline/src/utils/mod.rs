@@ -1,3 +1,5 @@
+pub mod llm_instructions;
+
 use std::collections::HashMap;
 use uuid::Uuid;
 

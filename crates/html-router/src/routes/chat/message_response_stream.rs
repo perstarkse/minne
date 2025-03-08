@@ -10,6 +10,12 @@ use axum::{
 };
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
+use composite_retrieval::{
+    answer_retrieval::{
+        create_chat_request, create_user_message, format_entities_json, LLMResponseFormat,
+    },
+    retrieve_entities,
+};
 use futures::{
     stream::{self, once},
     Stream, StreamExt, TryStreamExt,
@@ -21,19 +27,11 @@ use surrealdb::{engine::any::Any, Surreal};
 use tokio::sync::{mpsc::channel, Mutex};
 use tracing::{error, info};
 
-use common::{
-    retrieval::{
-        combined_knowledge_entity_retrieval,
-        query_helper::{
-            create_chat_request, create_user_message, format_entities_json, LLMResponseFormat,
-        },
-    },
-    storage::{
-        db::SurrealDbClient,
-        types::{
-            message::{Message, MessageRole},
-            user::User,
-        },
+use common::storage::{
+    db::SurrealDbClient,
+    types::{
+        message::{Message, MessageRole},
+        user::User,
     },
 };
 
@@ -100,7 +98,7 @@ pub async fn get_response_stream(
         };
 
     // 2. Retrieve knowledge entities
-    let entities = match combined_knowledge_entity_retrieval(
+    let entities = match retrieve_entities(
         &state.db,
         &state.openai_client,
         &user_message.content,

@@ -8,8 +8,9 @@ use serde::Serialize;
 use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
+use crate::routes::HtmlError;
 use common::{
-    error::{AppError, HtmlError},
+    error::AppError,
     storage::types::{knowledge_entity::KnowledgeEntity, user::User},
 };
 

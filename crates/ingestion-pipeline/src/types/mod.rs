@@ -1,3 +1,5 @@
+pub mod llm_enrichment_result;
+
 use std::{sync::Arc, time::Duration};
 
 use async_openai::types::{

@@ -2,8 +2,11 @@
 members = [
   "crates/main",
   "crates/common",
-  "crates/api-router"
-, "crates/html-router", "crates/ingestion-pipeline"]
+  "crates/api-router",
+  "crates/html-router",
+  "crates/ingestion-pipeline",
+  "crates/composite-retrieval"
+]
 resolver = "2"
 
 [workspace.dependencies]
@@ -14,3 +17,6 @@ serde_json = "1.0.128"
 thiserror = "1.0.63"
 anyhow = "1.0.94"
 tracing = "0.1.40"
+surrealdb = "2.0.4"
+futures = "0.3.31"
+async-openai = "0.24.1"

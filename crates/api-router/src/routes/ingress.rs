@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension};
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use common::{
-    error::{ApiError, AppError},
+    error::AppError,
     storage::types::{
         file_info::FileInfo, ingestion_payload::IngestionPayload, ingestion_task::IngestionTask,
         user::User,
@@ -11,7 +11,7 @@ use futures::{future::try_join_all, TryFutureExt};
 use tempfile::NamedTempFile;
 use tracing::info;
 
-use crate::api_state::ApiState;
+use crate::{api_state::ApiState, error::ApiError};
 
 #[derive(Debug, TryFromMultipart)]
 pub struct IngestParams {

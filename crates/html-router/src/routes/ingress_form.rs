@@ -11,7 +11,7 @@ use tempfile::NamedTempFile;
 use tracing::info;
 
 use common::{
-    error::{AppError, HtmlError, IntoHtmlError},
+    error::AppError,
     storage::types::{
         file_info::FileInfo, ingestion_payload::IngestionPayload, ingestion_task::IngestionTask,
         user::User,
@@ -19,6 +19,7 @@ use common::{
 };
 
 use crate::{
+    error::{HtmlError, IntoHtmlError},
     html_state::HtmlState,
     page_data,
     routes::{index::ActiveJobsData, render_block},

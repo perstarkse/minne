@@ -14,7 +14,7 @@ use surrealdb::{engine::any::Any, Surreal};
 use tracing::info;
 
 use common::{
-    error::{AppError, HtmlError},
+    error::AppError,
     storage::types::{
         knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
         knowledge_relationship::KnowledgeRelationship,
@@ -22,7 +22,7 @@ use common::{
     },
 };
 
-use crate::{html_state::HtmlState, page_data, routes::render_template};
+use crate::{error::HtmlError, html_state::HtmlState, page_data, routes::render_template};
 
 page_data!(KnowledgeBaseData, "knowledge/base.html", {
     entities: Vec<KnowledgeEntity>,

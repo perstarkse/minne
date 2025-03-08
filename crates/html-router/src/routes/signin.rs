@@ -1,19 +1,17 @@
 use axum::{
     extract::State,
-    http::{StatusCode, Uri},
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
     Form,
 };
-use axum_htmx::{HxBoosted, HxRedirect};
-use axum_session_auth::AuthSession;
-use axum_session_surreal::SessionSurrealPool;
-use surrealdb::{engine::any::Any, Surreal};
+use axum_htmx::HxBoosted;
+use serde::{Deserialize, Serialize};
 
-use common::{error::HtmlError, storage::types::user::User};
-
-use crate::{html_state::HtmlState, page_data};
-
-use super::{render_block, render_template};
+use crate::{
+    html_state::HtmlState,
+    template_response::{HtmlError, TemplateResponse},
+    AuthSessionType,
+};
+use common::storage::types::user::User;
 
 #[derive(Deserialize, Serialize)]
 pub struct SignupParams {
@@ -22,36 +20,26 @@ pub struct SignupParams {
     pub remember_me: Option<String>,
 }
 
-page_data!(ShowSignInForm, "auth/signin_form.html", {});
-
 pub async fn show_signin_form(
-    State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    auth: AuthSessionType,
     HxBoosted(boosted): HxBoosted,
 ) -> Result<impl IntoResponse, HtmlError> {
     if auth.is_authenticated() {
-        return Ok(Redirect::to("/").into_response());
+        return Ok(TemplateResponse::redirect("/"));
     }
-    let output = match boosted {
-        true => render_block(
-            ShowSignInForm::template_name(),
+    match boosted {
+        true => Ok(TemplateResponse::new_partial(
+            "auth/signin_form.html",
             "body",
-            ShowSignInForm {},
-            state.templates.clone(),
-        )?,
-        false => render_template(
-            ShowSignInForm::template_name(),
-            ShowSignInForm {},
-            state.templates.clone(),
-        )?,
-    };
-
-    Ok(output.into_response())
+            {},
+        )),
+        false => Ok(TemplateResponse::new_template("auth/signin_form.html", {})),
+    }
 }
 
 pub async fn authenticate_user(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    auth: AuthSessionType,
     Form(form): Form<SignupParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
     let user = match User::authenticate(form.email, form.password, &state.db).await {
@@ -67,5 +55,5 @@ pub async fn authenticate_user(
         auth.remember_user(true);
     }
 
-    Ok((HxRedirect::from(Uri::from_static("/")), StatusCode::OK).into_response())
+    Ok(TemplateResponse::redirect("/").into_response())
 }
