@@ -10,7 +10,7 @@ use minijinja_autoreload::AutoReloader;
 use serde::Serialize;
 use std::sync::Arc;
 
-use crate::{html_state::HtmlState, AuthSessionType};
+use crate::html_state::HtmlState;
 
 // Enum for template types
 #[derive(Clone)]
@@ -113,10 +113,8 @@ impl IntoResponse for TemplateResponse {
     }
 }
 
-// Wrapper to avoid recursion
 struct TemplateStateWrapper {
     state: HtmlState,
-    auth: AuthSessionType,
     template_response: TemplateResponse,
 }
 
@@ -228,7 +226,6 @@ fn fallback_error() -> Html<String> {
 
 pub async fn with_template_response(
     State(state): State<HtmlState>,
-    auth: AuthSessionType,
     response: Response,
 ) -> Response {
     // Clone the TemplateResponse from extensions
@@ -237,7 +234,6 @@ pub async fn with_template_response(
     if let Some(template_response) = template_response {
         TemplateStateWrapper {
             state,
-            auth,
             template_response,
         }
         .into_response()
@@ -249,7 +245,6 @@ pub async fn with_template_response(
 // Define HtmlError
 pub enum HtmlError {
     AppError(AppError),
-    TemplateError(String),
 }
 
 // Conversion from AppError to HtmlError
@@ -282,7 +277,6 @@ impl IntoResponse for HtmlError {
                 };
                 template_response.into_response()
             }
-            HtmlError::TemplateError(_) => TemplateResponse::server_error().into_response(),
         }
     }
 }

@@ -83,7 +83,7 @@ pub async fn delete_text_content(
     let text_content = get_and_validate_text_content(&state, &id, &user).await?;
 
     // Perform concurrent deletions
-    join!(
+    let (_res1, _res2, _res3, _res4, _res5) = join!(
         async {
             if let Some(file_info) = text_content.file_info {
                 FileInfo::delete_by_id(&file_info.id, &state.db).await
