@@ -1,55 +1,42 @@
 use axum::{
     extract::{Path, State},
-    response::{IntoResponse, Redirect},
+    response::IntoResponse,
     Form,
 };
-use axum_session_auth::AuthSession;
-use axum_session_surreal::SessionSurrealPool;
 use plotly::{
     common::{Line, Marker, Mode},
     layout::{Axis, Camera, LayoutScene, ProjectionType},
     Layout, Plot, Scatter3D,
 };
-use surrealdb::{engine::any::Any, Surreal};
-use tracing::info;
+use serde::{Deserialize, Serialize};
 
-use common::{
-    error::AppError,
-    storage::types::{
-        knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
-        knowledge_relationship::KnowledgeRelationship,
-        user::User,
-    },
+use common::storage::types::{
+    knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
+    knowledge_relationship::KnowledgeRelationship,
+    user::User,
 };
 
-use crate::{error::HtmlError, html_state::HtmlState, page_data, routes::render_template};
-
-page_data!(KnowledgeBaseData, "knowledge/base.html", {
-    entities: Vec<KnowledgeEntity>,
-    relationships: Vec<KnowledgeRelationship>,
-    user: User,
-    plot_html: String
-});
+use crate::{
+    html_state::HtmlState,
+    middleware_auth::RequireUser,
+    template_response::{HtmlError, TemplateResponse},
+};
 
 pub async fn show_knowledge_page(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not authenticated
-    let user = match auth.current_user {
-        Some(user) => user,
-        None => return Ok(Redirect::to("/signin").into_response()),
-    };
+    #[derive(Serialize)]
+    pub struct KnowledgeBaseData {
+        entities: Vec<KnowledgeEntity>,
+        relationships: Vec<KnowledgeRelationship>,
+        user: User,
+        plot_html: String,
+    }
 
-    let entities = User::get_knowledge_entities(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
-    info!("Got entities ok");
-
-    let relationships = User::get_knowledge_relationships(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
 
     let mut plot = Plot::new();
 
@@ -124,40 +111,32 @@ pub async fn show_knowledge_page(
         .plot_background_color("rbga(0,0,0,0)");
 
     plot.set_layout(layout);
+
     // Convert to HTML
     let html = plot.to_html();
 
-    let output = render_template(
-        KnowledgeBaseData::template_name(),
+    Ok(TemplateResponse::new_template(
+        "knowledge/base.html",
         KnowledgeBaseData {
             entities,
             relationships,
             user,
             plot_html: html,
         },
-        state.templates,
-    )?;
-
-    Ok(output.into_response())
-}
-
-#[derive(Serialize)]
-pub struct EntityData {
-    entity: KnowledgeEntity,
-    entity_types: Vec<String>,
-    user: User,
+    ))
 }
 
 pub async fn show_edit_knowledge_entity_form(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not authenticated
-    let user = match auth.current_user {
-        Some(user) => user,
-        None => return Ok(Redirect::to("/signin").into_response()),
-    };
+    #[derive(Serialize)]
+    pub struct EntityData {
+        entity: KnowledgeEntity,
+        entity_types: Vec<String>,
+        user: User,
+    }
 
     // Get entity types
     let entity_types: Vec<String> = KnowledgeEntityType::variants()
@@ -166,27 +145,16 @@ pub async fn show_edit_knowledge_entity_form(
         .collect();
 
     // Get the entity and validate ownership
-    let entity = User::get_and_validate_knowledge_entity(&id, &user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let entity = User::get_and_validate_knowledge_entity(&id, &user.id, &state.db).await?;
 
-    let output = render_template(
+    Ok(TemplateResponse::new_template(
         "knowledge/edit_knowledge_entity_modal.html",
         EntityData {
             entity,
             user,
             entity_types,
         },
-        state.templates,
-    )?;
-
-    Ok(output.into_response())
-}
-
-#[derive(Serialize)]
-pub struct EntityListData {
-    entities: Vec<KnowledgeEntity>,
-    user: User,
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,21 +165,19 @@ pub struct PatchKnowledgeEntityParams {
     pub description: String,
 }
 
+#[derive(Serialize)]
+pub struct EntityListData {
+    entities: Vec<KnowledgeEntity>,
+    user: User,
+}
+
 pub async fn patch_knowledge_entity(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
     Form(form): Form<PatchKnowledgeEntityParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not authenticated
-    let user = match auth.current_user {
-        Some(user) => user,
-        None => return Ok(Redirect::to("/signin").into_response()),
-    };
-
     // Get the existing entity and validate that the user is allowed
-    User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.db).await?;
 
     let entity_type: KnowledgeEntityType = KnowledgeEntityType::from(form.entity_type);
 
@@ -224,60 +190,36 @@ pub async fn patch_knowledge_entity(
         &state.db,
         &state.openai_client,
     )
-    .await
-    .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    .await?;
 
     // Get updated list of entities
-    let entities = User::get_knowledge_entities(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
     // Render updated list
-    let output = render_template(
+    Ok(TemplateResponse::new_template(
         "knowledge/entity_list.html",
         EntityListData { entities, user },
-        state.templates,
-    )?;
-
-    Ok(output.into_response())
+    ))
 }
 
 pub async fn delete_knowledge_entity(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not authenticated
-    let user = match auth.current_user {
-        Some(user) => user,
-        None => return Ok(Redirect::to("/signin").into_response()),
-    };
-
     // Get the existing entity and validate that the user is allowed
-    User::get_and_validate_knowledge_entity(&id, &user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    User::get_and_validate_knowledge_entity(&id, &user.id, &state.db).await?;
 
     // Delete the entity
-    state
-        .db
-        .delete_item::<KnowledgeEntity>(&id)
-        .await
-        .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))?;
+    state.db.delete_item::<KnowledgeEntity>(&id).await?;
 
     // Get updated list of entities
-    let entities = User::get_knowledge_entities(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
-    // Render updated list
-    let output = render_template(
+    Ok(TemplateResponse::new_template(
         "knowledge/entity_list.html",
         EntityListData { entities, user },
-        state.templates,
-    )?;
-
-    Ok(output.into_response())
+    ))
 }
 
 #[derive(Serialize)]
@@ -288,40 +230,25 @@ pub struct RelationshipTableData {
 
 pub async fn delete_knowledge_relationship(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not authenticated
-    let user = match auth.current_user {
-        Some(user) => user,
-        None => return Ok(Redirect::to("/signin").into_response()),
-    };
-
     // GOTTA ADD AUTH VALIDATION
 
-    KnowledgeRelationship::delete_relationship_by_id(&id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    KnowledgeRelationship::delete_relationship_by_id(&id, &state.db).await?;
 
-    let entities = User::get_knowledge_entities(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
-    let relationships = User::get_knowledge_relationships(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
 
     // Render updated list
-    let output = render_template(
+    Ok(TemplateResponse::new_template(
         "knowledge/relationship_table.html",
         RelationshipTableData {
             entities,
             relationships,
         },
-        state.templates,
-    )?;
-
-    Ok(output.into_response())
+    ))
 }
 
 #[derive(Deserialize)]
@@ -333,15 +260,9 @@ pub struct SaveKnowledgeRelationshipInput {
 
 pub async fn save_knowledge_relationship(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
     Form(form): Form<SaveKnowledgeRelationshipInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not authenticated
-    let user = match auth.current_user {
-        Some(user) => user,
-        None => return Ok(Redirect::to("/signin").into_response()),
-    };
-
     // Construct relationship
     let relationship = KnowledgeRelationship::new(
         form.in_,
@@ -351,28 +272,18 @@ pub async fn save_knowledge_relationship(
         form.relationship_type,
     );
 
-    relationship
-        .store_relationship(&state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    relationship.store_relationship(&state.db).await?;
 
-    let entities = User::get_knowledge_entities(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
-    let relationships = User::get_knowledge_relationships(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
 
     // Render updated list
-    let output = render_template(
+    Ok(TemplateResponse::new_template(
         "knowledge/relationship_table.html",
         RelationshipTableData {
             entities,
             relationships,
         },
-        state.templates,
-    )?;
-
-    Ok(output.into_response())
+    ))
 }

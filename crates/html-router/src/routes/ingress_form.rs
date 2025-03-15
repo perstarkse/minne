@@ -1,12 +1,10 @@
 use axum::{
     extract::State,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
 };
-use axum_session_auth::AuthSession;
-use axum_session_surreal::SessionSurrealPool;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use futures::{future::try_join_all, TryFutureExt};
-use surrealdb::{engine::any::Any, Surreal};
+use serde::Serialize;
 use tempfile::NamedTempFile;
 use tracing::info;
 
@@ -19,47 +17,32 @@ use common::{
 };
 
 use crate::{
-    error::{HtmlError, IntoHtmlError},
     html_state::HtmlState,
-    page_data,
-    routes::{index::ActiveJobsData, render_block},
+    middleware_auth::RequireUser,
+    routes::index::ActiveJobsData,
+    template_response::{HtmlError, TemplateResponse},
 };
-
-use super::render_template;
-
-#[derive(Serialize)]
-pub struct ShowIngressFormData {
-    user_categories: Vec<String>,
-}
 
 pub async fn show_ingress_form(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    if !auth.is_authenticated() {
-        return Ok(Redirect::to("/").into_response());
+    let user_categories = User::get_user_categories(&user.id, &state.db).await?;
+
+    #[derive(Serialize)]
+    pub struct ShowIngressFormData {
+        user_categories: Vec<String>,
     }
 
-    let user_categories = User::get_user_categories(&auth.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
-
-    let output = render_template(
+    Ok(TemplateResponse::new_template(
         "index/signed_in/ingress_modal.html",
         ShowIngressFormData { user_categories },
-        state.templates.clone(),
-    )?;
-
-    Ok(output.into_response())
+    ))
 }
 
 pub async fn hide_ingress_form(
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(_user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    if !auth.is_authenticated() {
-        return Ok(Redirect::to("/").into_response());
-    }
-
     Ok(Html(
         "<a class='btn btn-primary' hx-get='/ingress-form' hx-swap='outerHTML'>Add Content</a>",
     )
@@ -76,43 +59,39 @@ pub struct IngressParams {
     pub files: Vec<FieldData<NamedTempFile>>,
 }
 
-page_data!(IngressFormData, "ingress_form.html", {
-    instructions: String,
-    content: String,
-    category: String,
-    error: String,
-});
-
 pub async fn process_ingress_form(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
     TypedMultipart(input): TypedMultipart<IngressParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user = auth.current_user.ok_or_else(|| {
-        AppError::Auth("You must be signed in".to_string()).with_template(state.templates.clone())
-    })?;
+    #[derive(Serialize)]
+    pub struct IngressFormData {
+        instructions: String,
+        content: String,
+        category: String,
+        error: String,
+    }
 
-    if input.content.clone().is_some_and(|c| c.len() < 2) && input.files.is_empty() {
-        let output = render_template(
-            IngressFormData::template_name(),
+    if input.content.as_ref().map_or(true, |c| c.len() < 2) && input.files.is_empty() {
+        return Ok(TemplateResponse::new_template(
+            "index/signed_in/ingress_form.html",
             IngressFormData {
                 instructions: input.instructions.clone(),
-                content: input.content.clone().unwrap(),
+                content: input.content.clone().unwrap_or_default(),
                 category: input.category.clone(),
                 error: "You need to either add files or content".to_string(),
             },
-            state.templates.clone(),
-        )?;
-
-        return Ok(output.into_response());
+        ));
     }
 
     info!("{:?}", input);
 
-    let file_infos = try_join_all(input.files.into_iter().map(|file| {
-        FileInfo::new(file, &state.db, &user.id)
-            .map_err(|e| HtmlError::new(AppError::from(e), state.templates.clone()))
-    }))
+    let file_infos = try_join_all(
+        input
+            .files
+            .into_iter()
+            .map(|file| FileInfo::new(file, &state.db, &user.id).map_err(|e| AppError::from(e))),
+    )
     .await?;
 
     let payloads = IngestionPayload::create_ingestion_payload(
@@ -121,8 +100,7 @@ pub async fn process_ingress_form(
         input.category,
         file_infos,
         user.id.as_str(),
-    )
-    .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    )?;
 
     let futures: Vec<_> = payloads
         .into_iter()
@@ -131,25 +109,17 @@ pub async fn process_ingress_form(
         })
         .collect();
 
-    try_join_all(futures)
-        .await
-        .map_err(AppError::from)
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    try_join_all(futures).await?;
 
     // Update the active jobs page with the newly created job
-    let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db)
-        .await
-        .map_err(|e| HtmlError::new(e, state.templates.clone()))?;
+    let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
 
-    let output = render_block(
+    Ok(TemplateResponse::new_partial(
         "index/signed_in/active_jobs.html",
         "active_jobs_section",
         ActiveJobsData {
             user: user.clone(),
             active_jobs,
         },
-        state.templates.clone(),
-    )?;
-
-    Ok(output.into_response())
+    ))
 }
