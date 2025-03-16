@@ -12,7 +12,8 @@ use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use composite_retrieval::{
     answer_retrieval::{
-        create_chat_request, create_user_message, format_entities_json, LLMResponseFormat,
+        create_chat_request, create_user_message_with_history, format_entities_json,
+        LLMResponseFormat,
     },
     retrieve_entities,
 };
@@ -30,6 +31,7 @@ use tracing::{error, info};
 use common::storage::{
     db::SurrealDbClient,
     types::{
+        conversation::Conversation,
         message::{Message, MessageRole},
         user::User,
     },
@@ -50,7 +52,10 @@ async fn get_message_and_user(
     db: &SurrealDbClient,
     current_user: Option<User>,
     message_id: &str,
-) -> Result<(Message, User), Sse<Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>>> {
+) -> Result<
+    (Message, User, Conversation, Vec<Message>),
+    Sse<Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>>,
+> {
     // Check authentication
     let user = match current_user {
         Some(user) => user,
@@ -77,7 +82,23 @@ async fn get_message_and_user(
         }
     };
 
-    Ok((message, user))
+    // Get conversation history
+    let (conversation, mut history) =
+        match Conversation::get_complete_conversation(&message.conversation_id, &user.id, db).await
+        {
+            Err(e) => {
+                error!("Database error retrieving message {}: {:?}", message_id, e);
+                return Err(Sse::new(create_error_stream(
+                    "Failed to retrieve message: database error",
+                )));
+            }
+            Ok((conversation, history)) => (conversation, history),
+        };
+
+    // Remove the last message, its the same as the message
+    history.pop();
+
+    Ok((message, user, conversation, history))
 }
 
 #[derive(Deserialize)]
@@ -91,9 +112,11 @@ pub async fn get_response_stream(
     Query(params): Query<QueryParams>,
 ) -> Sse<Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>> {
     // 1. Authentication and initial data validation
-    let (user_message, user) =
+    let (user_message, user, _conversation, history) =
         match get_message_and_user(&state.db, auth.current_user, &params.message_id).await {
-            Ok((user_message, user)) => (user_message, user),
+            Ok((user_message, user, conversation, history)) => {
+                (user_message, user, conversation, history)
+            }
             Err(error_stream) => return error_stream,
         };
 
@@ -114,7 +137,8 @@ pub async fn get_response_stream(
 
     // 3. Create the OpenAI request
     let entities_json = format_entities_json(&entities);
-    let formatted_user_message = create_user_message(&entities_json, &user_message.content);
+    let formatted_user_message =
+        create_user_message_with_history(&entities_json, &history, &user_message.content);
     let request = match create_chat_request(formatted_user_message) {
         Ok(req) => req,
         Err(..) => {

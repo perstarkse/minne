@@ -35,3 +35,28 @@ impl Message {
         }
     }
 }
+
+impl fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageRole::User => write!(f, "User"),
+            MessageRole::AI => write!(f, "AI"),
+            MessageRole::System => write!(f, "System"),
+        }
+    }
+}
+
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.role, self.content)
+    }
+}
+
+// helper function to format a vector of messages
+pub fn format_history(history: &[Message]) -> String {
+    history
+        .iter()
+        .map(|msg| format!("{}", msg))
+        .collect::<Vec<String>>()
+        .join("\n")
+}
