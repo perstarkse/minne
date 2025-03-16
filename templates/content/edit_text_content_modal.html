@@ -11,23 +11,21 @@ hx-swap="outerHTML"
 <div class="form-control">
   <label class="floating-label">
     <span class="label-text">Instructions</span>
-    <input type="text" name="name" value="{{ text_content.instructions}}" class="w-full input input-bordered">
+    <input type="text" name="instructions" value="{{ text_content.instructions}}" class="w-full input input-bordered">
   </label>
 </div>
 
 <div class="form-control ">
   <label class="floating-label">
     <span class="label-text">Category</span>
-    <input type="text" name="name" value="{{ text_content.category}}" class="w-full input input-bordered">
+    <input type="text" name="category" value="{{ text_content.category}}" class="w-full input input-bordered">
   </label>
 </div>
-
-<input type="text" name="id" value="{{ text_content.id }}" class="hidden">
 
 <div class="form-control">
   <label class="floating-label">
     <span class="label-text">Text</span>
-    <textarea name="description" class="textarea textarea-bordered h-32 w-full">{{ text_content.text}}</textarea>
+    <textarea name="text" class="textarea textarea-bordered h-32 w-full">{{ text_content.text}}</textarea>
   </label>
 </div>
 {% endblock %}

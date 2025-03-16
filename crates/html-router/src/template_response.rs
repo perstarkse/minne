@@ -261,7 +261,6 @@ impl From<surrealdb::Error> for HtmlError {
     }
 }
 
-// Now implement IntoResponse for HtmlError
 impl IntoResponse for HtmlError {
     fn into_response(self) -> Response {
         match self {

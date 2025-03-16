@@ -1,19 +1,20 @@
-\[\] fix patch_text_conent
 \[\] archive ingressed webpage
-\[x\] chat styling overhaul
 \[\] configs primarily get envs
 \[\] filtering on categories
-\[x\] link to ingressed urls or archives
 \[\] three js graph explorer
 \[\] three js vector explorer
 \[x\] add user_id to ingress objects
 \[x\] admin controls re registration
 \[x\] chat functionality
+\[x\] chat history
+\[x\] chat styling overhaul
+\[x\] fix patch_text_content
 \[x\] gdpr
 \[x\] html ingression
 \[x\] hx-redirect
 \[x\] ios shortcut generation
 \[x\] job queue
+\[x\] link to ingressed urls or archives
 \[x\] macro for pagedata?
 \[x\] on updates of knowledgeentity create new embeddings
 \[x\] redirects

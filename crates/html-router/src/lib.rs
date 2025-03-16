@@ -1,4 +1,3 @@
-pub mod error;
 pub mod html_state;
 mod middleware_analytics;
 mod middleware_auth;

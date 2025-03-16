@@ -5,6 +5,7 @@ use async_openai::{
         CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
         ResponseFormat, ResponseFormatJsonSchema,
     },
+    MessageFiles,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -12,7 +13,13 @@ use tracing::debug;
 
 use common::{
     error::AppError,
-    storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity},
+    storage::{
+        db::SurrealDbClient,
+        types::{
+            knowledge_entity::KnowledgeEntity,
+            message::{format_history, Message},
+        },
+    },
 };
 
 use crate::retrieve_entities;
@@ -106,6 +113,31 @@ pub fn create_user_message(entities_json: &Value, query: &str) -> String {
         {}
         "#,
         entities_json, query
+    )
+}
+
+pub fn create_user_message_with_history(
+    entities_json: &Value,
+    history: &[Message],
+    query: &str,
+) -> String {
+    format!(
+        r#"
+        Chat history:
+        ==================
+        {}
+        
+        Context Information:
+        ==================
+        {}
+
+        User Question:
+        ==================
+        {}
+        "#,
+        format_history(history),
+        entities_json,
+        query
     )
 }
 
