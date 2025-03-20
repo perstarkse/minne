@@ -84,7 +84,7 @@ impl User {
              CREATE type::thing('user', $id) SET
                 email = $email,
                 password = crypto::argon2::generate($password),
-                admin = $count < 1,  // Changed from == 0 to < 1
+                admin = $count < 1,
                 anonymous = false,
                 created_at = $created_at,
                 updated_at = $updated_at,
@@ -101,6 +101,24 @@ impl User {
             .take(1)?;
 
         user.ok_or(AppError::Auth("User failed to create".into()))
+    }
+
+    pub async fn patch_password(
+        email: &str,
+        password: &str,
+        db: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        db.client
+            .query(
+                "UPDATE user
+            SET password = crypto::argon2::generate($password)
+            WHERE email = $email",
+            )
+            .bind(("email", email.to_owned()))
+            .bind(("password", password.to_owned()))
+            .await?;
+
+        Ok(())
     }
 
     pub async fn authenticate(

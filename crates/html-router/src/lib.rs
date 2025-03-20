@@ -18,7 +18,10 @@ use html_state::HtmlState;
 use middleware_analytics::analytics_middleware;
 use middleware_auth::require_auth;
 use routes::{
-    account::{delete_account, set_api_key, show_account_page, update_timezone},
+    account::{
+        change_password, delete_account, set_api_key, show_account_page, show_change_password,
+        update_timezone,
+    },
     admin_panel::{show_admin_panel, toggle_registration_status},
     chat::{
         message_response_stream::get_response_stream, new_chat_user_message, new_user_message,
@@ -109,6 +112,10 @@ where
         .route("/toggle-registrations", patch(toggle_registration_status))
         .route("/set-api-key", post(set_api_key))
         .route("/update-timezone", patch(update_timezone))
+        .route(
+            "/change-password",
+            get(show_change_password).patch(change_password),
+        )
         .route("/delete-account", delete(delete_account))
         .route_layer(from_fn_with_state(app_state.clone(), require_auth));
 

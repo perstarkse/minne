@@ -95,15 +95,17 @@
     {% endblock %}
   </div>
 
-  <div class="form-control mt-4">
+  <div class="form-control mt-4 hidden">
     <button hx-post="/verify-email" class="btn btn-secondary w-full">
       Verify Email
     </button>
   </div>
   <div class="form-control mt-4">
-    <button hx-get="/change-password" class="btn btn-primary w-full">
+    {% block change_password_section %}
+    <button hx-get="/change-password" hx-swap="outerHTML" class="btn btn-primary w-full">
       Change Password
     </button>
+    {% endblock %}
   </div>
   <div class="form-control mt-4">
     <button hx-delete="/delete-account"
