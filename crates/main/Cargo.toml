@@ -29,3 +29,7 @@ path = "src/server.rs"
 [[bin]]
 name = "worker"
 path = "src/worker.rs"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"

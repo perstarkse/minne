@@ -2443,6 +2443,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "surrealdb",
  "text-splitter",
  "tiktoken-rs",
  "tokio",
