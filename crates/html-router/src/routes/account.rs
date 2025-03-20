@@ -104,3 +104,38 @@ pub async fn update_timezone(
         },
     ))
 }
+
+pub async fn show_change_password(
+    RequireUser(_user): RequireUser,
+) -> Result<impl IntoResponse, HtmlError> {
+    Ok(TemplateResponse::new_template(
+        "auth/change_password_form.html",
+        {},
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct NewPasswordForm {
+    old_password: String,
+    new_password: String,
+}
+
+pub async fn change_password(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    auth: AuthSessionType,
+    Form(form): Form<NewPasswordForm>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Authenticate to make sure the password matches
+    let authenticated_user = User::authenticate(user.email, form.old_password, &state.db).await?;
+
+    User::patch_password(&authenticated_user.email, &form.new_password, &state.db).await?;
+
+    auth.cache_clear_user(user.id);
+
+    Ok(TemplateResponse::new_partial(
+        "auth/account_settings.html",
+        "change_password_section",
+        {},
+    ))
+}
