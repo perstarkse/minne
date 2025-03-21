@@ -127,7 +127,7 @@ pub async fn change_password(
     Form(form): Form<NewPasswordForm>,
 ) -> Result<impl IntoResponse, HtmlError> {
     // Authenticate to make sure the password matches
-    let authenticated_user = User::authenticate(user.email, form.old_password, &state.db).await?;
+    let authenticated_user = User::authenticate(&user.email, &form.old_password, &state.db).await?;
 
     User::patch_password(&authenticated_user.email, &form.new_password, &state.db).await?;
 

@@ -42,7 +42,7 @@ pub async fn authenticate_user(
     auth: AuthSessionType,
     Form(form): Form<SignupParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user = match User::authenticate(form.email, form.password, &state.db).await {
+    let user = match User::authenticate(&form.email, &form.password, &state.db).await {
         Ok(user) => user,
         Err(_) => {
             return Ok(Html("<p>Incorrect email or password </p>").into_response());

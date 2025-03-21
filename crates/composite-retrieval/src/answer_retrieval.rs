@@ -5,12 +5,7 @@ use async_openai::{
         CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
         ResponseFormat, ResponseFormatJsonSchema,
     },
-    MessageFiles,
 };
-use serde::Deserialize;
-use serde_json::{json, Value};
-use tracing::debug;
-
 use common::{
     error::AppError,
     storage::{
@@ -21,6 +16,8 @@ use common::{
         },
     },
 };
+use serde::Deserialize;
+use serde_json::{json, Value};
 
 use crate::retrieve_entities;
 
