@@ -2,7 +2,7 @@ use async_openai::error::OpenAIError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::{storage::types::file_info::FileError, utils::mailer::EmailError};
+use crate::storage::types::file_info::FileError;
 
 // Core internal errors
 #[derive(Error, Debug)]
@@ -13,8 +13,6 @@ pub enum AppError {
     OpenAI(#[from] OpenAIError),
     #[error("File error: {0}")]
     File(#[from] FileError),
-    #[error("Email error: {0}")]
-    Email(#[from] EmailError),
     #[error("Not found: {0}")]
     NotFound(String),
     #[error("Validation error: {0}")]
@@ -29,8 +27,6 @@ pub enum AppError {
     GraphMapper(String),
     #[error("IoError: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Minijina error: {0}")]
-    MiniJinja(#[from] minijinja::Error),
     #[error("Reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("Tiktoken error: {0}")]
