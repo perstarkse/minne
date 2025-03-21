@@ -122,8 +122,8 @@ impl User {
     }
 
     pub async fn authenticate(
-        email: String,
-        password: String,
+        email: &str,
+        password: &str,
         db: &SurrealDbClient,
     ) -> Result<Self, AppError> {
         let user: Option<User> = db
@@ -133,8 +133,8 @@ impl User {
                 WHERE email = $email 
                 AND crypto::argon2::compare(password, $password)",
             )
-            .bind(("email", email))
-            .bind(("password", password))
+            .bind(("email", email.to_owned()))
+            .bind(("password", password.to_owned()))
             .await?
             .take(0)?;
         user.ok_or(AppError::Auth("User failed to authenticate".into()))
