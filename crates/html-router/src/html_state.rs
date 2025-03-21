@@ -2,7 +2,6 @@ use axum_session::SessionStore;
 use axum_session_surreal::SessionSurrealPool;
 use common::storage::db::SurrealDbClient;
 use common::utils::config::AppConfig;
-use common::utils::mailer::Mailer;
 use minijinja::{path_loader, Environment};
 use minijinja_autoreload::AutoReloader;
 use std::path::PathBuf;
@@ -14,7 +13,6 @@ pub struct HtmlState {
     pub db: Arc<SurrealDbClient>,
     pub openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     pub templates: Arc<AutoReloader>,
-    pub mailer: Arc<Mailer>,
     pub session_store: Arc<SessionStore<SessionSurrealPool<Any>>>,
 }
 
@@ -52,11 +50,6 @@ impl HtmlState {
             db: surreal_db_client.clone(),
             templates: Arc::new(reloader),
             openai_client: openai_client.clone(),
-            mailer: Arc::new(Mailer::new(
-                &config.smtp_username,
-                &config.smtp_relayer,
-                &config.smtp_password,
-            )?),
             session_store,
         };
 

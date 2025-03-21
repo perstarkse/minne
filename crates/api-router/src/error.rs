@@ -25,7 +25,7 @@ pub enum ApiError {
 impl From<AppError> for ApiError {
     fn from(err: AppError) -> Self {
         match err {
-            AppError::Database(_) | AppError::OpenAI(_) | AppError::Email(_) => {
+            AppError::Database(_) | AppError::OpenAI(_) => {
                 tracing::error!("Internal error: {:?}", err);
                 ApiError::InternalError("Internal server error".to_string())
             }
