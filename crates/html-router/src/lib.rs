@@ -22,7 +22,10 @@ use routes::{
         change_password, delete_account, set_api_key, show_account_page, show_change_password,
         update_timezone,
     },
-    admin_panel::{show_admin_panel, toggle_registration_status},
+    admin_panel::{
+        patch_ingestion_prompt, patch_query_prompt, show_admin_panel, show_edit_ingestion_prompt,
+        show_edit_system_prompt, toggle_registration_status, update_model_settings,
+    },
     chat::{
         message_response_stream::get_response_stream, new_chat_user_message, new_user_message,
         references::show_reference_tooltip, show_chat_base, show_existing_chat,
@@ -107,9 +110,16 @@ where
             "/knowledge-relationship/:id",
             delete(delete_knowledge_relationship),
         )
-        .route("/account", get(show_account_page))
+        // Admin page
         .route("/admin", get(show_admin_panel))
         .route("/toggle-registrations", patch(toggle_registration_status))
+        .route("/update-model-settings", patch(update_model_settings))
+        .route("/edit-query-prompt", get(show_edit_system_prompt))
+        .route("/update-query-prompt", patch(patch_query_prompt))
+        .route("/edit-ingestion-prompt", get(show_edit_ingestion_prompt))
+        .route("/update-ingestion-prompt", patch(patch_ingestion_prompt))
+        // User account page
+        .route("/account", get(show_account_page))
         .route("/set-api-key", post(set_api_key))
         .route("/update-timezone", patch(update_timezone))
         .route(

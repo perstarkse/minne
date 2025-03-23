@@ -23,7 +23,6 @@
     </div>
   </div>
 
-
   <!-- Settings in Fieldset -->
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
     <fieldset class="fieldset p-4 shadow rounded-box">
@@ -39,6 +38,61 @@
       </label>
       <div id="registration-status" class="text-sm mt-2"></div>
     </fieldset>
+
+    <fieldset class="fieldset p-4 shadow rounded-box">
+      <legend class="fieldset-legend">AI Models</legend>
+      {% block model_settings_form %}
+      <form hx-patch="/update-model-settings" hx-swap="outerHTML">
+        <div class="form-control mb-4">
+          <label class="label">
+            <span class="label-text">Query Model</span>
+          </label>
+          <select name="query_model" class="select select-bordered w-full">
+            <option value="gpt-4o-mini" {% if settings.query_model=="gpt-4o-mini" %}selected{% endif %}>GPT-4o Mini
+            </option>
+            <option value="gpt-4o" {% if settings.query_model=="gpt-4o" %}selected{% endif %}>GPT-4o</option>
+            <option value="gpt-3.5-turbo" {% if settings.query_model=="gpt-3.5-turbo" %}selected{% endif %}>GPT-3.5
+              Turbo</option>
+          </select>
+          <p class="text-xs text-gray-500 mt-1">Model used for answering user queries</p>
+        </div>
+
+        <div class="form-control my-4">
+          <label class="label">
+            <span class="label-text">Processing Model</span>
+          </label>
+          <select name="processing_model" class="select select-bordered w-full">
+            <option value="gpt-4o-mini" {% if settings.processing_model=="gpt-4o-mini" %}selected{% endif %}>GPT-4o Mini
+            </option>
+            <option value="gpt-4o" {% if settings.processing_model=="gpt-4o" %}selected{% endif %}>GPT-4o</option>
+            <option value="gpt-3.5-turbo" {% if settings.processing_model=="gpt-3.5-turbo" %}selected{% endif %}>GPT-3.5
+              Turbo</option>
+          </select>
+          <p class="text-xs text-gray-500 mt-1">Model used for content processing and ingestion</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-sm">Save Model Settings</button>
+      </form>
+      {% endblock %}
+    </fieldset>
+
+    {% block system_prompt_section %}
+    <div id="system_prompt_section">
+      <fieldset class="fieldset p-4 shadow rounded-box">
+        <legend class="fieldset-legend">System Prompts</legend>
+        <div class="flex gap-2 flex-col sm:flex-row">
+          <button type="button" class="btn btn-primary btn-sm" hx-get="/edit-query-prompt" hx-target="#modal"
+            hx-swap="innerHTML">
+            Edit Query Prompt
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" hx-get="/edit-ingestion-prompt" hx-target="#modal"
+            hx-swap="innerHTML">
+            Edit Ingestion Prompt
+          </button>
+        </div>
+      </fieldset>
+    </div>
+    {% endblock %}
   </div>
 </main>
 {% endblock %}

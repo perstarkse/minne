@@ -1,0 +1,38 @@
+{% extends "modal_base.html" %}
+
+{% block form_attributes %}
+hx-patch="/update-ingestion-prompt"
+hx-target="#system_prompt_section"
+hx-swap="outerHTML"
+{% endblock %}
+
+{% block modal_content %}
+<h3 class="text-lg font-bold mb-4">Edit Ingestion Prompt</h3>
+
+<div class="form-control">
+    <textarea name="ingestion_system_prompt" class="textarea textarea-bordered h-96 w-full font-mono text-sm">{{
+    settings.ingestion_system_prompt }}</textarea>
+    <p class="text-xs text-gray-500 mt-1">System prompt used for content processing and ingestion</p>
+</div>
+{% endblock %}
+
+{% block primary_actions %}
+<button type="button" class="btn btn-outline mr-2" id="reset_prompt_button">
+    Reset to Default
+</button>
+
+<textarea id="default_prompt_content" style="display:none;">{{ default_ingestion_prompt }}</textarea>
+<script>
+    document.getElementById('reset_prompt_button').addEventListener('click', function () {
+        const defaultContent = document.getElementById('default_prompt_content').value;
+        document.querySelector('textarea[name=ingestion_system_prompt]').value = defaultContent;
+    });
+</script>
+
+<button type="submit" class="btn btn-primary">
+    <span class="htmx-indicator hidden">
+        <span class="loading loading-spinner loading-xs mr-2"></span>
+    </span>
+    Save Changes
+</button>
+{% endblock %}
