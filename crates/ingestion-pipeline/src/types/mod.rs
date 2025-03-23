@@ -10,16 +10,19 @@ use common::{
     error::AppError,
     storage::types::{
         file_info::FileInfo, ingestion_payload::IngestionPayload, text_content::TextContent,
+        system_settings::SystemSettings,
     },
 };
 use reqwest;
 use scraper::{Html, Selector};
 use std::fmt::Write;
 use tiktoken_rs::{o200k_base, CoreBPE};
+use common::storage::db::SurrealDbClient;
 
 pub async fn to_text_content(
     ingestion_payload: IngestionPayload,
     openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    db_client: &Arc<SurrealDbClient>,
 ) -> Result<TextContent, AppError> {
     match ingestion_payload {
         IngestionPayload::Url {
@@ -28,7 +31,7 @@ pub async fn to_text_content(
             category,
             user_id,
         } => {
-            let text = fetch_text_from_url(&url, openai_client).await?;
+            let text = fetch_text_from_url(&url, openai_client, db_client).await?;
             Ok(TextContent::new(
                 text,
                 instructions.into(),
@@ -74,6 +77,7 @@ pub async fn to_text_content(
 async fn fetch_text_from_url(
     url: &str,
     openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    db_client: &Arc<SurrealDbClient>,
 ) -> Result<String, AppError> {
     // Use a client with timeouts and reuse
     let client = reqwest::ClientBuilder::new()
@@ -119,12 +123,14 @@ async fn fetch_text_from_url(
     let content = structured_content
         .replace(|c: char| c.is_control(), " ")
         .replace("  ", " ");
-    process_web_content(content, openai_client).await
+
+    process_web_content(content, openai_client, &db_client).await
 }
 
 pub async fn process_web_content(
     content: String,
     openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    db_client: &Arc<SurrealDbClient>,
 ) -> Result<String, AppError> {
     const MAX_TOKENS: usize = 122000;
     const SYSTEM_PROMPT: &str = r#"
@@ -155,6 +161,7 @@ pub async fn process_web_content(
     "#;
 
     let bpe = o200k_base()?;
+    let settings = SystemSettings::get_current(db_client).await?;
 
     // Process content in chunks if needed
     let truncated_content = if bpe.encode_with_special_tokens(&content).len() > MAX_TOKENS {
@@ -164,7 +171,7 @@ pub async fn process_web_content(
     };
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model("gpt-4o-mini")
+        .model(&settings.processing_model)
         .temperature(0.0)
         .max_tokens(16200u32)
         .messages([
@@ -174,13 +181,13 @@ pub async fn process_web_content(
         .build()?;
 
     let response = openai_client.chat().create(request).await?;
-
+    
+    // Extract and return the content
     response
         .choices
         .first()
-        .and_then(|choice| choice.message.content.as_ref())
-        .map(|content| content.to_owned())
-        .ok_or(AppError::LLMParsing("No content in response".into()))
+        .and_then(|choice| choice.message.content.clone())
+        .ok_or(AppError::LLMParsing("No content found in LLM response".into()))
 }
 
 fn truncate_content(

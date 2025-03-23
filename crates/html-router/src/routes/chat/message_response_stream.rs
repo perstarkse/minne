@@ -34,6 +34,7 @@ use common::storage::{
         conversation::Conversation,
         message::{Message, MessageRole},
         user::User,
+        system_settings::SystemSettings,
     },
 };
 
@@ -139,7 +140,13 @@ pub async fn get_response_stream(
     let entities_json = format_entities_json(&entities);
     let formatted_user_message =
         create_user_message_with_history(&entities_json, &history, &user_message.content);
-    let request = match create_chat_request(formatted_user_message) {
+    let settings = match SystemSettings::get_current(&state.db).await {
+        Ok(s) => s,
+        Err(_) => {
+            return Sse::new(create_error_stream("Failed to retrieve system settings"));
+        }
+    };
+    let request = match create_chat_request(formatted_user_message, &settings) {
         Ok(req) => req,
         Err(..) => {
             return Sse::new(create_error_stream("Failed to create chat request"));

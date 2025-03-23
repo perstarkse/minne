@@ -1,8 +1,13 @@
 \[\] archive ingressed webpage
+\[\] openai api key in config
+\[\] option to set models, query and processing
+\[\] template customization?
 \[\] configs primarily get envs
 \[\] filtering on categories
 \[\] three js graph explorer
 \[\] three js vector explorer
+\[\] integrate templates in release build
+\[\] integrate assets folder in release build
 \[x\] add user_id to ingress objects
 \[x\] admin controls re registration
 \[x\] chat functionality

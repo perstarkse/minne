@@ -13,6 +13,7 @@ use common::{
         types::{
             knowledge_entity::KnowledgeEntity,
             message::{format_history, Message},
+            system_settings::SystemSettings,
         },
     },
 };
@@ -63,11 +64,12 @@ pub async fn get_answer_with_references(
     user_id: &str,
 ) -> Result<Answer, AppError> {
     let entities = retrieve_entities(surreal_db_client, openai_client, query, user_id).await?;
+    let settings = SystemSettings::get_current(surreal_db_client).await?;
 
     let entities_json = format_entities_json(&entities);
     let user_message = create_user_message(&entities_json, query);
 
-    let request = create_chat_request(user_message)?;
+    let request = create_chat_request(user_message, &settings)?;
     let response = openai_client.chat().create(request).await?;
 
     let llm_response = process_llm_response(response).await?;
@@ -139,6 +141,7 @@ pub fn create_user_message_with_history(
 
 pub fn create_chat_request(
     user_message: String,
+    settings: &SystemSettings,
 ) -> Result<CreateChatCompletionRequest, OpenAIError> {
     let response_format = ResponseFormat::JsonSchema {
         json_schema: ResponseFormatJsonSchema {
@@ -150,11 +153,11 @@ pub fn create_chat_request(
     };
 
     CreateChatCompletionRequestArgs::default()
-        .model("gpt-4o-mini")
+        .model(&settings.query_model)
         .temperature(0.2)
         .max_tokens(3048u32)
         .messages([
-            ChatCompletionRequestSystemMessage::from(QUERY_SYSTEM_PROMPT).into(),
+            ChatCompletionRequestSystemMessage::from(settings.query_system_prompt.clone()).into(),
             ChatCompletionRequestUserMessage::from(user_message).into(),
         ])
         .response_format(response_format)

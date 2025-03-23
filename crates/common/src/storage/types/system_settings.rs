@@ -1,5 +1,6 @@
 use crate::storage::types::file_info::deserialize_flexible_id;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{error::AppError, storage::db::SurrealDbClient};
 
@@ -9,6 +10,10 @@ pub struct SystemSettings {
     pub id: String,
     pub registrations_enabled: bool,
     pub require_email_verification: bool,
+    pub query_model: String,
+    pub processing_model: String,
+    pub query_system_prompt: String,
+    pub ingestion_system_prompt: String,
 }
 
 impl SystemSettings {
@@ -22,6 +27,10 @@ impl SystemSettings {
                     id: "current".to_string(),
                     registrations_enabled: true,
                     require_email_verification: false,
+                    query_model: "gpt-4o-mini".to_string(),
+                    processing_model: "gpt-4o-mini".to_string(),
+                    query_system_prompt: crate::storage::types::system_prompts::DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
+                    ingestion_system_prompt: crate::storage::types::system_prompts::DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT.to_string(),
                 })
                 .await?;
 
@@ -52,5 +61,17 @@ impl SystemSettings {
         updated.ok_or(AppError::Validation(
             "Something went wrong updating the settings".into(),
         ))
+    }
+
+    pub fn new() -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            query_system_prompt: crate::storage::types::system_prompts::DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
+            ingestion_system_prompt: crate::storage::types::system_prompts::DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT.to_string(),
+            query_model: "gpt-4o-mini".to_string(),
+            processing_model: "gpt-4o-mini".to_string(),
+            registrations_enabled: true,
+            require_email_verification: false,
+        }
     }
 }

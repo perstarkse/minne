@@ -13,6 +13,7 @@ use common::{
 use futures::future::{try_join, try_join_all};
 use graph::{find_entities_by_relationship_by_id, find_entities_by_source_ids};
 use std::collections::HashMap;
+use tracing::info;
 use vector::find_items_by_vector_similarity;
 
 /// Performs a comprehensive knowledge entity retrieval using multiple search strategies
@@ -42,8 +43,6 @@ pub async fn retrieve_entities(
     query: &str,
     user_id: &str,
 ) -> Result<Vec<KnowledgeEntity>, AppError> {
-    // info!("Received input: {:?}", query);
-
     let (items_from_knowledge_entity_similarity, closest_chunks) = try_join(
         find_items_by_vector_similarity(
             10,
