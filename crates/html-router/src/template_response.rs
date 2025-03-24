@@ -1,9 +1,10 @@
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{StatusCode, Uri},
     response::{Html, IntoResponse, Response},
     Extension,
 };
+use axum_htmx::HxRedirect;
 use common::error::AppError;
 use minijinja::{context, Value};
 use minijinja_autoreload::AutoReloader;
@@ -15,10 +16,10 @@ use crate::html_state::HtmlState;
 // Enum for template types
 #[derive(Clone)]
 pub enum TemplateKind {
-    Full(String),                       // Full page template
-    Partial(String, String),            // Template name, block name
-    Error(StatusCode),                  // Error template with status code
-    Redirect(axum::response::Redirect), // Redirect
+    Full(String),            // Full page template
+    Partial(String, String), // Template name, block name
+    Error(StatusCode),       // Error template with status code
+    Redirect(String),        // Redirect
 }
 
 #[derive(Clone)]
@@ -97,11 +98,9 @@ impl TemplateResponse {
         )
     }
 
-    pub fn redirect(path: impl AsRef<str>) -> Self {
-        let redirect_response = axum::response::Redirect::to(path.as_ref());
-
+    pub fn redirect(path: impl Into<String>) -> Self {
         Self {
-            template_kind: TemplateKind::Redirect(redirect_response),
+            template_kind: TemplateKind::Redirect(path.into()),
             context: Value::from_serialize(&()),
         }
     }
@@ -140,7 +139,9 @@ impl IntoResponse for TemplateStateWrapper {
                 };
                 (*status, html).into_response()
             }
-            TemplateKind::Redirect(redirect) => redirect.clone().into_response(),
+            TemplateKind::Redirect(path) => {
+                (StatusCode::OK, [(axum_htmx::HX_REDIRECT, path.clone())], "").into_response()
+            }
         }
     }
 }
