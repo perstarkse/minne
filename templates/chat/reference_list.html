@@ -69,7 +69,7 @@
 
       // Load content if needed
       if (!tooltipContent) {
-        fetch(`/knowledge/${encodeURIComponent(reference)}`)
+        fetch(`/chat/reference/${encodeURIComponent(reference)}`)
           .then(response => response.text())
           .then(html => {
             tooltipContent = html;

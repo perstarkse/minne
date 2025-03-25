@@ -3,8 +3,10 @@ use chrono_tz::TZ_VARIANTS;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    middleware_auth::RequireUser,
-    template_response::{HtmlError, TemplateResponse},
+    middlewares::{
+        auth_middleware::RequireUser,
+        response_middleware::{HtmlError, TemplateResponse},
+    },
     AuthSessionType,
 };
 use common::storage::types::user::User;

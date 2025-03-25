@@ -1,5 +1,4 @@
 use axum::{
-    debug_handler,
     extract::{Path, State},
     response::IntoResponse,
 };
@@ -7,8 +6,10 @@ use serde::Serialize;
 use tokio::join;
 
 use crate::{
-    middleware_auth::RequireUser,
-    template_response::{HtmlError, TemplateResponse},
+    middlewares::{
+        auth_middleware::RequireUser,
+        response_middleware::{HtmlError, TemplateResponse},
+    },
     AuthSessionType, SessionType,
 };
 use common::{
@@ -73,7 +74,6 @@ pub struct LatestTextContentData {
     user: User,
 }
 
-#[debug_handler]
 pub async fn delete_text_content(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,

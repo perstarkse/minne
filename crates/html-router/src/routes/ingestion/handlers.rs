@@ -18,9 +18,11 @@ use common::{
 
 use crate::{
     html_state::HtmlState,
-    middleware_auth::RequireUser,
-    routes::index::ActiveJobsData,
-    template_response::{HtmlError, TemplateResponse},
+    middlewares::{
+        auth_middleware::RequireUser,
+        response_middleware::{HtmlError, TemplateResponse},
+    },
+    routes::index::handlers::ActiveJobsData,
 };
 
 pub async fn show_ingress_form(

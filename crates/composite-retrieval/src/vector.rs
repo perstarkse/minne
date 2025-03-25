@@ -1,7 +1,6 @@
 use surrealdb::{engine::any::Any, Surreal};
 
 use common::{error::AppError, utils::embedding::generate_embedding};
-use tracing::info;
 
 /// Compares vectors and retrieves a number of items from the specified table.
 ///

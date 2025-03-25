@@ -1,7 +1,7 @@
 \[\] archive ingressed webpage
 \[\] openai api key in config
-\[\] option to set models, query and processing
-\[\] template customization?
+\[x\] option to set models, query and processing
+\[x\] template customization?
 \[\] configs primarily get envs
 \[\] filtering on categories
 \[\] three js graph explorer

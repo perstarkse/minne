@@ -993,16 +993,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chumsky"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8eebd66744a15ded14960ab4ccdbfb51ad3b81f51f3f04a80adac98c985396c9"
-dependencies = [
- "hashbrown 0.14.5",
- "stacker",
-]
-
-[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1054,11 +1044,8 @@ dependencies = [
  "chrono-tz",
  "config",
  "futures",
- "lettre",
  "mime",
  "mime_guess",
- "minijinja",
- "minijinja-autoreload",
  "reqwest",
  "serde",
  "serde_json",
@@ -1495,22 +1482,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 
 [[package]]
-name = "email-encoding"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea3d894bbbab314476b265f9b2d46bf24b123a36dd0e96b06a1b49545b9d9dcc"
-dependencies = [
- "base64 0.22.1",
- "memchr",
-]
-
-[[package]]
-name = "email_address"
-version = "0.2.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e079f19b08ca6239f47f8ba8509c11cf3ea30095831f7fed61441475edd8c449"
-
-[[package]]
 name = "ena"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1573,7 +1544,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74fef4569247a5f429d9156b9d0a2599914385dd189c539334c625d8099d90ab"
 dependencies = [
  "futures-core",
- "nom 7.1.3",
+ "nom",
  "pin-project-lite",
 ]
 
@@ -2025,17 +1996,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
-]
-
-[[package]]
-name = "hostname"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9c7c7c8ac16c798734b8a24560c1362120597c40d5e1459f09498f8f6c8f2ba"
-dependencies = [
- "cfg-if",
- "libc",
- "windows",
 ]
 
 [[package]]
@@ -2630,31 +2590,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
-name = "lettre"
-version = "0.11.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d476fe7a4a798f392ce34947aa7d53d981127e37523c5251da3c927f7fa901f"
-dependencies = [
- "base64 0.22.1",
- "chumsky",
- "email-encoding",
- "email_address",
- "fastrand",
- "futures-util",
- "hostname",
- "httpdate",
- "idna",
- "mime",
- "native-tls",
- "nom 8.0.0",
- "percent-encoding",
- "quoted_printable",
- "socket2",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "lexicmp"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3038,15 +2973,6 @@ checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
 dependencies = [
  "memchr",
  "minimal-lexical",
-]
-
-[[package]]
-name = "nom"
-version = "8.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -3716,12 +3642,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quoted_printable"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
-
-[[package]]
 name = "radium"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3936,7 +3856,7 @@ dependencies = [
  "futures-core",
  "futures-timer",
  "mime",
- "nom 7.1.3",
+ "nom",
  "pin-project-lite",
  "reqwest",
  "thiserror",
@@ -4022,7 +3942,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93f9a866e2e00a7a1fb27e46e9e324a6f7c0e7edc4543cae1d38f4e4a100c610"
 dependencies = [
  "memchr",
- "nom 7.1.3",
+ "nom",
  "serde",
 ]
 
@@ -5821,16 +5741,6 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "windows"
-version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e48a53791691ab099e5e2ad123536d0fff50652600abaf43bbf952894110d0be"
-dependencies = [
- "windows-core",
- "windows-targets",
-]
 
 [[package]]
 name = "windows-core"

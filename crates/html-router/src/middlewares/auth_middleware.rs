@@ -7,7 +7,9 @@ use axum::{
 };
 use common::storage::types::user::User;
 
-use crate::{template_response::TemplateResponse, AuthSessionType};
+use crate::AuthSessionType;
+
+use super::response_middleware::TemplateResponse;
 
 #[derive(Debug, Clone)]
 pub struct RequireUser(pub User);

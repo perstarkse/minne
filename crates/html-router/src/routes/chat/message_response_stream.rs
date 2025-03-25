@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 use surrealdb::{engine::any::Any, Surreal};
 use tokio::sync::{mpsc::channel, Mutex};
-use tracing::{error, info};
+use tracing::{error, debug};
 
 use common::storage::{
     db::SurrealDbClient,
@@ -195,7 +195,7 @@ pub async fn get_response_stream(
             let _ = tx_final.send(ai_message.clone()).await;
 
             match db_client.store_item(ai_message).await {
-                Ok(_) => info!("Successfully stored AI message with references"),
+                Ok(_) => debug!("Successfully stored AI message with references"),
                 Err(e) => error!("Failed to store AI message: {:?}", e),
             }
         } else {
@@ -304,7 +304,6 @@ pub async fn get_response_stream(
                 .data("Stream complete"))
         }));
 
-    info!("OpenAI streaming started");
     Sse::new(event_stream.boxed()).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
@@ -312,7 +311,6 @@ pub async fn get_response_stream(
     )
 }
 
-// Replace JsonParseState with StreamParserState
 struct StreamParserState {
     parser: JsonStreamParser,
     last_answer_content: String,

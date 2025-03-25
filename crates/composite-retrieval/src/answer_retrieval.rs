@@ -22,7 +22,7 @@ use serde_json::{json, Value};
 
 use crate::retrieve_entities;
 
-use super::answer_retrieval_helper::{get_query_response_schema, QUERY_SYSTEM_PROMPT};
+use super::answer_retrieval_helper::get_query_response_schema;
 
 #[derive(Debug, Deserialize)]
 pub struct Reference {

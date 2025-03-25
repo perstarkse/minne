@@ -1,10 +1,6 @@
 use axum::{extract::State, response::IntoResponse, Form};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    middleware_auth::RequireUser,
-    template_response::{HtmlError, TemplateResponse},
-};
 use common::storage::types::{
     analytics::Analytics,
     system_prompts::{DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT, DEFAULT_QUERY_SYSTEM_PROMPT},
@@ -12,7 +8,13 @@ use common::storage::types::{
     user::User,
 };
 
-use crate::html_state::HtmlState;
+use crate::{
+    html_state::HtmlState,
+    middlewares::{
+        auth_middleware::RequireUser,
+        response_middleware::{HtmlError, TemplateResponse},
+    },
+};
 
 #[derive(Serialize)]
 pub struct AdminPanelData {
