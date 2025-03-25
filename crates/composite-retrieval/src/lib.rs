@@ -13,7 +13,6 @@ use common::{
 use futures::future::{try_join, try_join_all};
 use graph::{find_entities_by_relationship_by_id, find_entities_by_source_ids};
 use std::collections::HashMap;
-use tracing::info;
 use vector::find_items_by_vector_similarity;
 
 /// Performs a comprehensive knowledge entity retrieval using multiple search strategies

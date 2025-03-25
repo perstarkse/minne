@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     html_state::HtmlState,
-    middleware_auth::RequireUser,
-    template_response::{HtmlError, TemplateResponse},
+    middlewares::{
+        auth_middleware::RequireUser,
+        response_middleware::{HtmlError, TemplateResponse},
+    },
 };
 
 #[derive(Deserialize)]

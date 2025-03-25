@@ -1,0 +1,27 @@
+mod handlers;
+use axum::{
+    extract::FromRef,
+    routing::{get, patch},
+    Router,
+};
+use handlers::{
+    patch_ingestion_prompt, patch_query_prompt, show_admin_panel, show_edit_ingestion_prompt,
+    show_edit_system_prompt, toggle_registration_status, update_model_settings,
+};
+
+use crate::html_state::HtmlState;
+
+pub fn router<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+    HtmlState: FromRef<S>,
+{
+    Router::new()
+        .route("/admin", get(show_admin_panel))
+        .route("/toggle-registrations", patch(toggle_registration_status))
+        .route("/update-model-settings", patch(update_model_settings))
+        .route("/edit-query-prompt", get(show_edit_system_prompt))
+        .route("/update-query-prompt", patch(patch_query_prompt))
+        .route("/edit-ingestion-prompt", get(show_edit_ingestion_prompt))
+        .route("/update-ingestion-prompt", patch(patch_ingestion_prompt))
+}

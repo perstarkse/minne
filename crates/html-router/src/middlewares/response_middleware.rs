@@ -1,10 +1,9 @@
 use axum::{
     extract::State,
-    http::{StatusCode, Uri},
+    http::StatusCode,
     response::{Html, IntoResponse, Response},
     Extension,
 };
-use axum_htmx::HxRedirect;
 use common::error::AppError;
 use minijinja::{context, Value};
 use minijinja_autoreload::AutoReloader;

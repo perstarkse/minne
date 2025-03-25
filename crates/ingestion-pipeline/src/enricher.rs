@@ -1,21 +1,15 @@
 use std::sync::Arc;
 
-use async_openai::{
-    error::OpenAIError,
-    types::{
-        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-        CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
-        ResponseFormatJsonSchema,
-    },
+use async_openai::types::{
+    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
+    CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
+    ResponseFormatJsonSchema,
 };
 use common::{
     error::AppError,
     storage::{
-        db::SurrealDbClient, 
-        types::{
-            knowledge_entity::KnowledgeEntity,
-            system_settings::SystemSettings,
-        },
+        db::SurrealDbClient,
+        types::{knowledge_entity::KnowledgeEntity, system_settings::SystemSettings},
     },
 };
 use composite_retrieval::retrieve_entities;
@@ -55,8 +49,9 @@ impl IngestionEnricher {
             .find_similar_entities(category, instructions, text, user_id)
             .await?;
         info!("got similar entitities");
-        let llm_request =
-            self.prepare_llm_request(category, instructions, text, &similar_entities).await?;
+        let llm_request = self
+            .prepare_llm_request(category, instructions, text, &similar_entities)
+            .await?;
         self.perform_analysis(llm_request).await
     }
 
@@ -83,7 +78,7 @@ impl IngestionEnricher {
         similar_entities: &[KnowledgeEntity],
     ) -> Result<CreateChatCompletionRequest, AppError> {
         let settings = SystemSettings::get_current(&self.db_client).await?;
-        
+
         let entities_json = json!(similar_entities
             .iter()
             .map(|entity| {
@@ -123,16 +118,16 @@ impl IngestionEnricher {
             ])
             .response_format(response_format)
             .build()?;
-            
+
         Ok(request)
     }
-    
+
     async fn perform_analysis(
         &self,
         request: CreateChatCompletionRequest,
     ) -> Result<LLMEnrichmentResult, AppError> {
         let response = self.openai_client.chat().create(request).await?;
-        
+
         let content = response
             .choices
             .first()
@@ -140,7 +135,7 @@ impl IngestionEnricher {
             .ok_or(AppError::LLMParsing(
                 "No content found in LLM response".into(),
             ))?;
-            
+
         serde_json::from_str::<LLMEnrichmentResult>(content).map_err(|e| {
             AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {}", e))
         })

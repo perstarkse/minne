@@ -3,21 +3,17 @@ use std::sync::Arc;
 use axum::response::Html;
 use minijinja_autoreload::AutoReloader;
 
-use crate::template_response::HtmlError;
+use crate::middlewares::response_middleware::HtmlError;
 
 pub mod account;
-pub mod admin_panel;
+pub mod admin;
+pub mod auth;
 pub mod chat;
 pub mod content;
-pub mod documentation;
-pub mod gdpr;
 pub mod index;
-pub mod ingress_form;
+pub mod ingestion;
 pub mod knowledge;
-pub mod search_result;
-pub mod signin;
-pub mod signout;
-pub mod signup;
+pub mod search;
 
 // Helper function for render_template
 pub fn render_template<T>(

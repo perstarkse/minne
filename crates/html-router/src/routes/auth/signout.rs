@@ -1,7 +1,7 @@
 use axum::response::IntoResponse;
 
 use crate::{
-    template_response::{HtmlError, TemplateResponse},
+    middlewares::response_middleware::{HtmlError, TemplateResponse},
     AuthSessionType,
 };
 
