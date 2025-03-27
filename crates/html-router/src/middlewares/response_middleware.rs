@@ -1,3 +1,4 @@
+use crate::html_state::HtmlState;
 use axum::{
     extract::State,
     http::StatusCode,
@@ -6,19 +7,15 @@ use axum::{
 };
 use common::error::AppError;
 use minijinja::{context, Value};
-use minijinja_autoreload::AutoReloader;
 use serde::Serialize;
-use std::sync::Arc;
+use tracing::error;
 
-use crate::html_state::HtmlState;
-
-// Enum for template types
 #[derive(Clone)]
 pub enum TemplateKind {
-    Full(String),            // Full page template
-    Partial(String, String), // Template name, block name
-    Error(StatusCode),       // Error template with status code
-    Redirect(String),        // Redirect
+    Full(String),
+    Partial(String, String),
+    Error(StatusCode),
+    Redirect(String),
 }
 
 #[derive(Clone)]
@@ -53,14 +50,12 @@ impl TemplateResponse {
             error => error,
             description => description
         };
-
         Self {
             template_kind: TemplateKind::Error(status),
             context: ctx,
         }
     }
 
-    // Convenience methods for common errors
     pub fn not_found() -> Self {
         Self::error(
             StatusCode::NOT_FOUND,
@@ -118,25 +113,33 @@ struct TemplateStateWrapper {
 
 impl IntoResponse for TemplateStateWrapper {
     fn into_response(self) -> Response {
-        let templates = self.state.templates;
+        let template_engine = &self.state.templates;
 
         match &self.template_response.template_kind {
             TemplateKind::Full(name) => {
-                render_template(name, self.template_response.context, templates)
+                match template_engine.render(name, &self.template_response.context) {
+                    Ok(html) => Html(html).into_response(),
+                    Err(e) => {
+                        error!("Failed to render template: {:?}", e);
+                        (StatusCode::INTERNAL_SERVER_ERROR, fallback_error()).into_response()
+                    }
+                }
             }
-            TemplateKind::Partial(name, block) => {
-                render_block(name, block, self.template_response.context, templates)
+            TemplateKind::Partial(template, block) => {
+                match template_engine.render_block(template, block, &self.template_response.context)
+                {
+                    Ok(html) => Html(html).into_response(),
+                    Err(e) => {
+                        error!("Failed to render block: {:?}", e);
+                        (StatusCode::INTERNAL_SERVER_ERROR, fallback_error()).into_response()
+                    }
+                }
             }
             TemplateKind::Error(status) => {
-                let html = match try_render_template(
-                    "errors/error.html",
-                    self.template_response.context,
-                    templates,
-                ) {
-                    Ok(html_string) => Html(html_string),
-                    Err(_) => fallback_error(),
-                };
-                (*status, html).into_response()
+                match template_engine.render("errors/error.html", &self.template_response.context) {
+                    Ok(html) => (*status, Html(html)).into_response(),
+                    Err(_) => (*status, fallback_error()).into_response(),
+                }
             }
             TemplateKind::Redirect(path) => {
                 (StatusCode::OK, [(axum_htmx::HX_REDIRECT, path.clone())], "").into_response()
@@ -145,93 +148,11 @@ impl IntoResponse for TemplateStateWrapper {
     }
 }
 
-// Helper functions for rendering with error handling
-fn render_template(name: &str, context: Value, templates: Arc<AutoReloader>) -> Response {
-    match try_render_template(name, context, templates.clone()) {
-        Ok(html) => Html(html).into_response(),
-        Err(_) => fallback_error().into_response(),
-    }
-}
-
-fn render_block(name: &str, block: &str, context: Value, templates: Arc<AutoReloader>) -> Response {
-    match try_render_block(name, block, context, templates.clone()) {
-        Ok(html) => Html(html).into_response(),
-        Err(_) => fallback_error().into_response(),
-    }
-}
-
-fn try_render_template(
-    template_name: &str,
-    context: Value,
-    templates: Arc<AutoReloader>,
-) -> Result<String, ()> {
-    let env = templates.acquire_env().map_err(|e| {
-        tracing::error!("Environment error: {:?}", e);
-        ()
-    })?;
-
-    let tmpl = env.get_template(template_name).map_err(|e| {
-        tracing::error!("Template error: {:?}", e);
-        ()
-    })?;
-
-    tmpl.render(context).map_err(|e| {
-        tracing::error!("Render error: {:?}", e);
-        ()
-    })
-}
-
-fn try_render_block(
-    template_name: &str,
-    block: &str,
-    context: Value,
-    templates: Arc<AutoReloader>,
-) -> Result<String, ()> {
-    let env = templates.acquire_env().map_err(|e| {
-        tracing::error!("Environment error: {:?}", e);
-        ()
-    })?;
-
-    let tmpl = env.get_template(template_name).map_err(|e| {
-        tracing::error!("Template error: {:?}", e);
-        ()
-    })?;
-
-    let mut state = tmpl.eval_to_state(context).map_err(|e| {
-        tracing::error!("Eval error: {:?}", e);
-        ()
-    })?;
-
-    state.render_block(block).map_err(|e| {
-        tracing::error!("Block render error: {:?}", e);
-        ()
-    })
-}
-
-fn fallback_error() -> Html<String> {
-    Html(
-        r#"
-    <html>
-        <body>
-            <div class="container mx-auto p-4">
-                <h1 class="text-4xl text-error">Error</h1>
-                <p class="mt-4">Sorry, something went wrong displaying this page.</p>
-            </div>
-        </body>
-    </html>
-    "#
-        .to_string(),
-    )
-}
-
 pub async fn with_template_response(
     State(state): State<HtmlState>,
     response: Response,
 ) -> Response {
-    // Clone the TemplateResponse from extensions
-    let template_response = response.extensions().get::<TemplateResponse>().cloned();
-
-    if let Some(template_response) = template_response {
+    if let Some(template_response) = response.extensions().get::<TemplateResponse>().cloned() {
         TemplateStateWrapper {
             state,
             template_response,
@@ -242,40 +163,60 @@ pub async fn with_template_response(
     }
 }
 
-// Define HtmlError
+#[derive(Debug)]
 pub enum HtmlError {
     AppError(AppError),
+    TemplateError(String),
 }
 
-// Conversion from AppError to HtmlError
 impl From<AppError> for HtmlError {
     fn from(err: AppError) -> Self {
         HtmlError::AppError(err)
     }
 }
 
-// Conversion for database error to HtmlError
 impl From<surrealdb::Error> for HtmlError {
     fn from(err: surrealdb::Error) -> Self {
         HtmlError::AppError(AppError::from(err))
     }
 }
 
+impl From<minijinja::Error> for HtmlError {
+    fn from(err: minijinja::Error) -> Self {
+        HtmlError::TemplateError(err.to_string())
+    }
+}
+
 impl IntoResponse for HtmlError {
     fn into_response(self) -> Response {
         match self {
-            HtmlError::AppError(err) => {
-                let template_response = match err {
-                    AppError::NotFound(_) => TemplateResponse::not_found(),
-                    AppError::Auth(_) => TemplateResponse::unauthorized(),
-                    AppError::Validation(msg) => TemplateResponse::bad_request(&msg),
-                    _ => {
-                        tracing::error!("Internal error: {:?}", err);
-                        TemplateResponse::server_error()
-                    }
-                };
-                template_response.into_response()
+            HtmlError::AppError(err) => match err {
+                AppError::NotFound(_) => TemplateResponse::not_found().into_response(),
+                AppError::Auth(_) => TemplateResponse::unauthorized().into_response(),
+                AppError::Validation(msg) => TemplateResponse::bad_request(&msg).into_response(),
+                _ => {
+                    error!("Internal error: {:?}", err);
+                    TemplateResponse::server_error().into_response()
+                }
+            },
+            HtmlError::TemplateError(err) => {
+                error!("Template error: {}", err);
+                TemplateResponse::server_error().into_response()
             }
         }
     }
+}
+
+fn fallback_error() -> String {
+    r#"
+    <html>
+        <body>
+            <div class="container mx-auto p-4">
+                <h1 class="text-4xl text-error">Error</h1>
+                <p class="mt-4">Sorry, something went wrong displaying this page.</p>
+            </div>
+        </body>
+    </html>
+    "#
+    .to_string()
 }

@@ -1,3 +1,3 @@
 pub mod config;
 pub mod embedding;
-pub mod mailer;
+pub mod template_engine;
