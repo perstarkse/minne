@@ -22,23 +22,24 @@ use futures::{
     Stream, StreamExt, TryStreamExt,
 };
 use json_stream_parser::JsonStreamParser;
+use minijinja::Value;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 use surrealdb::{engine::any::Any, Surreal};
 use tokio::sync::{mpsc::channel, Mutex};
-use tracing::{error, debug};
+use tracing::{debug, error};
 
 use common::storage::{
     db::SurrealDbClient,
     types::{
         conversation::Conversation,
         message::{Message, MessageRole},
-        user::User,
         system_settings::SystemSettings,
+        user::User,
     },
 };
 
-use crate::{html_state::HtmlState, routes::render_template};
+use crate::html_state::HtmlState;
 
 // Error handling function
 fn create_error_stream(
@@ -272,17 +273,13 @@ pub async fn get_response_stream(
                 }
 
                 // Render template with references
-                match render_template(
+                match state.templates.render(
                     "chat/reference_list.html",
-                    ReferenceData { message },
-                    state.templates.clone(),
+                    &Value::from_serialize(ReferenceData { message }),
                 ) {
                     Ok(html) => {
-                        // Extract the String from Html<String>
-                        let html_string = html.0;
-
                         // Return the rendered HTML
-                        Ok(Event::default().event("references").data(html_string))
+                        Ok(Event::default().event("references").data(html))
                     }
                     Err(_) => {
                         // Handle template rendering error

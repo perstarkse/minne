@@ -1,13 +1,12 @@
 \[\] archive ingressed webpage
-\[\] openai api key in config
-\[x\] option to set models, query and processing
-\[x\] template customization?
 \[\] configs primarily get envs
 \[\] filtering on categories
+\[\] integrate assets folder in release build
+\[\] integrate templates in release build
+\[\] markdown rendering in client
+\[\] openai api key in config
 \[\] three js graph explorer
 \[\] three js vector explorer
-\[\] integrate templates in release build
-\[\] integrate assets folder in release build
 \[x\] add user_id to ingress objects
 \[x\] admin controls re registration
 \[x\] chat functionality
@@ -22,9 +21,11 @@
 \[x\] link to ingressed urls or archives
 \[x\] macro for pagedata?
 \[x\] on updates of knowledgeentity create new embeddings
+\[x\] option to set models, query and processing
 \[x\] redirects
 \[x\] restrict retrieval to users own objects
 \[x\] smoothie_dom test
+\[x\] template customization?
 \[x\] templating
 \[x\] user id to fileinfo and data path?
 \[x\] view content

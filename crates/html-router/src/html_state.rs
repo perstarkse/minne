@@ -1,10 +1,9 @@
 use axum_session::SessionStore;
 use axum_session_surreal::SessionSurrealPool;
+use common::create_template_engine;
 use common::storage::db::SurrealDbClient;
 use common::utils::config::AppConfig;
-use minijinja::{path_loader, Environment};
-use minijinja_autoreload::AutoReloader;
-use std::path::PathBuf;
+use common::utils::template_engine::TemplateEngine;
 use std::sync::Arc;
 use surrealdb::engine::any::Any;
 
@@ -12,22 +11,13 @@ use surrealdb::engine::any::Any;
 pub struct HtmlState {
     pub db: Arc<SurrealDbClient>,
     pub openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
-    pub templates: Arc<AutoReloader>,
+    pub templates: Arc<TemplateEngine>,
     pub session_store: Arc<SessionStore<SessionSurrealPool<Any>>>,
 }
 
 impl HtmlState {
     pub async fn new(config: &AppConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        let reloader = AutoReloader::new(move |notifier| {
-            let template_path = get_templates_dir();
-            let mut env = Environment::new();
-            env.set_loader(path_loader(&template_path));
-
-            notifier.set_fast_reload(true);
-            notifier.watch_path(&template_path, true);
-            minijinja_contrib::add_to_environment(&mut env);
-            Ok(env)
-        });
+        let template_engine = create_template_engine!("templates");
 
         let surreal_db_client = Arc::new(
             SurrealDbClient::new(
@@ -48,31 +38,11 @@ impl HtmlState {
 
         let app_state = HtmlState {
             db: surreal_db_client.clone(),
-            templates: Arc::new(reloader),
+            templates: Arc::new(template_engine),
             openai_client: openai_client.clone(),
             session_store,
         };
 
         Ok(app_state)
     }
-}
-
-pub fn get_workspace_root() -> PathBuf {
-    // Starts from CARGO_MANIFEST_DIR (e.g., /project/crates/html-router/)
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-    // Navigate up to /path/to/project/crates
-    let crates_dir = manifest_dir
-        .parent()
-        .expect("Failed to find parent of manifest directory");
-
-    // Navigate up to workspace root
-    crates_dir
-        .parent()
-        .expect("Failed to find workspace root")
-        .to_path_buf()
-}
-
-pub fn get_templates_dir() -> PathBuf {
-    get_workspace_root().join("templates")
 }
