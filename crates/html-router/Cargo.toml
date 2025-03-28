@@ -30,6 +30,8 @@ plotly = "0.12.1"
 surrealdb = "2.0.4"
 tower-http = { version = "0.6.2", features = ["fs"] }
 chrono-tz = "0.10.1"
+tower-serve-static = "0.1.1"
+include_dir = "0.7.4"
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }

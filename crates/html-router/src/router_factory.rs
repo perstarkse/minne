@@ -8,7 +8,6 @@ use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_surreal::SessionSurrealPool;
 use common::storage::types::user::User;
 use surrealdb::{engine::any::Any, Surreal};
-use tower_http::services::ServeDir;
 
 use crate::{
     html_state::HtmlState,
@@ -17,6 +16,27 @@ use crate::{
         response_middleware::with_template_response,
     },
 };
+
+#[macro_export]
+macro_rules! create_asset_service {
+    // Takes the relative path to the asset directory
+    ($relative_path:expr) => {{
+        #[cfg(debug_assertions)]
+        {
+            let crate_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let assets_path = crate_dir.join($relative_path);
+            tracing::debug!("Assets: Serving from filesystem: {:?}", assets_path);
+            tower_http::services::ServeDir::new(assets_path)
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            tracing::debug!("Assets: Serving embedded directory");
+            static ASSETS_DIR: include_dir::Dir<'static> =
+                include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets");
+            tower_serve_static::ServeDir::new(&ASSETS_DIR)
+        }
+    }};
+}
 
 pub struct RouterFactory<S> {
     app_state: HtmlState,
@@ -108,27 +128,35 @@ where
         }
 
         // Add public assets to public router
-        if let Some(assets) = self.public_assets_config {
-            public_router =
-                public_router.nest_service(&assets.path, ServeDir::new(assets.directory));
+        if let Some(assets_config) = self.public_assets_config {
+            // Call the macro using the stored relative directory path
+            let asset_service = create_asset_service!(&assets_config.directory);
+            // Nest the resulting service under the stored URL path
+            public_router = public_router.nest_service(&assets_config.path, asset_service);
         }
 
         // Start with an empty protected router
         let mut protected_router = Router::new();
 
-        // Merge all protected routers
+        // Check if there are any protected routers
+        let has_protected_routes =
+            !self.protected_routers.is_empty() || !self.nested_protected_routes.is_empty();
+
+        // Merge root-level protected routers
         for router in self.protected_routers {
             protected_router = protected_router.merge(router);
         }
 
-        // Add nested protected routes
+        // Nest protected routers
         for (path, router) in self.nested_protected_routes {
             protected_router = protected_router.nest(&path, router);
         }
 
-        // Apply auth middleware to all protected routes
-        let protected_router =
-            protected_router.route_layer(from_fn_with_state(self.app_state.clone(), require_auth));
+        // Apply auth middleware
+        if has_protected_routes {
+            protected_router = protected_router
+                .route_layer(from_fn_with_state(self.app_state.clone(), require_auth));
+        }
 
         // Combine public and protected routes
         let mut router = Router::new().merge(public_router).merge(protected_router);
@@ -142,11 +170,11 @@ where
         router
             .layer(from_fn_with_state(
                 self.app_state.clone(),
-                analytics_middleware,
+                analytics_middleware::<HtmlState>,
             ))
             .layer(map_response_with_state(
                 self.app_state.clone(),
-                with_template_response,
+                with_template_response::<HtmlState>,
             ))
             .layer(
                 AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(

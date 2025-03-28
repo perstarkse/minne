@@ -2,7 +2,7 @@
 \[\] configs primarily get envs
 \[\] filtering on categories
 \[\] integrate assets folder in release build
-\[\] integrate templates in release build
+\[x] integrate templates in release build
 \[\] markdown rendering in client
 \[\] openai api key in config
 \[\] three js graph explorer

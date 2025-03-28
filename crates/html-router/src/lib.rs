@@ -4,7 +4,7 @@ pub mod router_factory;
 pub mod routes;
 
 use axum::{extract::FromRef, Router};
-use axum_session::Session;
+use axum_session::{Session, SessionStore};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use common::storage::types::user::User;
@@ -14,6 +14,8 @@ use surrealdb::{engine::any::Any, Surreal};
 
 pub type AuthSessionType = AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>;
 pub type SessionType = Session<SessionSurrealPool<Any>>;
+pub type SessionStoreType = SessionStore<SessionSurrealPool<Any>>;
+pub type OpenAIClientType = async_openai::Client<async_openai::config::OpenAIConfig>;
 
 /// Html routes
 pub fn html_routes<S>(app_state: &HtmlState) -> Router<S>

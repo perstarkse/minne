@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
-use common::utils::config::get_config;
+use common::{storage::db::SurrealDbClient, utils::config::get_config};
 use html_router::{html_routes, html_state::HtmlState};
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -18,7 +20,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = get_config()?;
 
     // Set up router states
-    let html_state = HtmlState::new(&config).await?;
+    let db = Arc::new(
+        SurrealDbClient::new(
+            &config.surrealdb_address,
+            &config.surrealdb_username,
+            &config.surrealdb_password,
+            &config.surrealdb_namespace,
+            &config.surrealdb_database,
+        )
+        .await?,
+    );
+
+    // Ensure db is initialized
+    db.ensure_initialized().await?;
+
+    let session_store = Arc::new(db.create_session_store().await?);
+    let openai_client = Arc::new(async_openai::Client::new());
+
+    let html_state = HtmlState::new_with_resources(db, openai_client, session_store)?;
+
     let api_state = ApiState {
         db: html_state.db.clone(),
     };

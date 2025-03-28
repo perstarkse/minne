@@ -21,8 +21,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get config
     let config = get_config()?;
 
-    // Set up server components
-    let html_state = HtmlState::new(&config).await?;
+    // Set up router states
+    let db = Arc::new(
+        SurrealDbClient::new(
+            &config.surrealdb_address,
+            &config.surrealdb_username,
+            &config.surrealdb_password,
+            &config.surrealdb_namespace,
+            &config.surrealdb_database,
+        )
+        .await?,
+    );
+
+    // Ensure db is initialized
+    db.ensure_initialized().await?;
+
+    let session_store = Arc::new(db.create_session_store().await?);
+    let openai_client = Arc::new(async_openai::Client::new());
+
+    let html_state = HtmlState::new_with_resources(db, openai_client, session_store)?;
+
     let api_state = ApiState {
         db: html_state.db.clone(),
     };

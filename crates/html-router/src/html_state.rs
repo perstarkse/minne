@@ -1,48 +1,43 @@
-use axum_session::SessionStore;
-use axum_session_surreal::SessionSurrealPool;
-use common::create_template_engine;
 use common::storage::db::SurrealDbClient;
-use common::utils::config::AppConfig;
-use common::utils::template_engine::TemplateEngine;
+use common::utils::template_engine::{ProvidesTemplateEngine, TemplateEngine};
+use common::{create_template_engine, storage::db::ProvidesDb};
 use std::sync::Arc;
-use surrealdb::engine::any::Any;
+use tracing::debug;
+
+use crate::{OpenAIClientType, SessionStoreType};
 
 #[derive(Clone)]
 pub struct HtmlState {
     pub db: Arc<SurrealDbClient>,
-    pub openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    pub openai_client: Arc<OpenAIClientType>,
     pub templates: Arc<TemplateEngine>,
-    pub session_store: Arc<SessionStore<SessionSurrealPool<Any>>>,
+    pub session_store: Arc<SessionStoreType>,
 }
 
 impl HtmlState {
-    pub async fn new(config: &AppConfig) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new_with_resources(
+        db: Arc<SurrealDbClient>,
+        openai_client: Arc<OpenAIClientType>,
+        session_store: Arc<SessionStoreType>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let template_engine = create_template_engine!("templates");
+        debug!("Template engine created for html_router.");
 
-        let surreal_db_client = Arc::new(
-            SurrealDbClient::new(
-                &config.surrealdb_address,
-                &config.surrealdb_username,
-                &config.surrealdb_password,
-                &config.surrealdb_namespace,
-                &config.surrealdb_database,
-            )
-            .await?,
-        );
-
-        surreal_db_client.ensure_initialized().await?;
-
-        let openai_client = Arc::new(async_openai::Client::new());
-
-        let session_store = Arc::new(surreal_db_client.create_session_store().await?);
-
-        let app_state = HtmlState {
-            db: surreal_db_client.clone(),
-            templates: Arc::new(template_engine),
-            openai_client: openai_client.clone(),
+        Ok(Self {
+            db,
+            openai_client,
             session_store,
-        };
-
-        Ok(app_state)
+            templates: Arc::new(template_engine),
+        })
+    }
+}
+impl ProvidesDb for HtmlState {
+    fn db(&self) -> &Arc<SurrealDbClient> {
+        &self.db
+    }
+}
+impl ProvidesTemplateEngine for HtmlState {
+    fn template_engine(&self) -> &Arc<TemplateEngine> {
+        &self.templates
     }
 }
