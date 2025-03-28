@@ -4,7 +4,7 @@ use super::types::{analytics::Analytics, system_settings::SystemSettings, Stored
 use axum_session::{SessionConfig, SessionError, SessionStore};
 use axum_session_surreal::SessionSurrealPool;
 use futures::Stream;
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 use surrealdb::{
     engine::any::{connect, Any},
     opt::auth::Root,
@@ -14,6 +14,9 @@ use surrealdb::{
 #[derive(Clone)]
 pub struct SurrealDbClient {
     pub client: Surreal<Any>,
+}
+pub trait ProvidesDb {
+    fn db(&self) -> &Arc<SurrealDbClient>;
 }
 
 impl SurrealDbClient {

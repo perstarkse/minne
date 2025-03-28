@@ -4,6 +4,10 @@ pub use minijinja_contrib;
 pub use minijinja_embed;
 use std::sync::Arc;
 
+pub trait ProvidesTemplateEngine {
+    fn template_engine(&self) -> &Arc<TemplateEngine>;
+}
+
 #[derive(Clone)]
 pub enum TemplateEngine {
     // Use AutoReload for debug builds (debug_assertions is true)

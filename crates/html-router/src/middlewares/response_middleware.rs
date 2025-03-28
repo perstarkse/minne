@@ -1,11 +1,10 @@
-use crate::html_state::HtmlState;
 use axum::{
     extract::State,
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     Extension,
 };
-use common::error::AppError;
+use common::{error::AppError, utils::template_engine::ProvidesTemplateEngine};
 use minijinja::{context, Value};
 use serde::Serialize;
 use tracing::error;
@@ -106,58 +105,45 @@ impl IntoResponse for TemplateResponse {
     }
 }
 
-struct TemplateStateWrapper {
-    state: HtmlState,
-    template_response: TemplateResponse,
-}
+pub async fn with_template_response<S>(State(state): State<S>, response: Response) -> Response
+where
+    S: ProvidesTemplateEngine + Clone + Send + Sync + 'static,
+{
+    if let Some(template_response) = response.extensions().get::<TemplateResponse>().cloned() {
+        let template_engine = state.template_engine();
 
-impl IntoResponse for TemplateStateWrapper {
-    fn into_response(self) -> Response {
-        let template_engine = &self.state.templates;
-
-        match &self.template_response.template_kind {
+        match &template_response.template_kind {
             TemplateKind::Full(name) => {
-                match template_engine.render(name, &self.template_response.context) {
+                match template_engine.render(name, &template_response.context) {
                     Ok(html) => Html(html).into_response(),
                     Err(e) => {
-                        error!("Failed to render template: {:?}", e);
+                        error!("Failed to render template '{}': {:?}", name, e);
                         (StatusCode::INTERNAL_SERVER_ERROR, fallback_error()).into_response()
                     }
                 }
             }
             TemplateKind::Partial(template, block) => {
-                match template_engine.render_block(template, block, &self.template_response.context)
-                {
+                match template_engine.render_block(template, block, &template_response.context) {
                     Ok(html) => Html(html).into_response(),
                     Err(e) => {
-                        error!("Failed to render block: {:?}", e);
+                        error!("Failed to render block '{}/{}': {:?}", template, block, e);
                         (StatusCode::INTERNAL_SERVER_ERROR, fallback_error()).into_response()
                     }
                 }
             }
             TemplateKind::Error(status) => {
-                match template_engine.render("errors/error.html", &self.template_response.context) {
+                match template_engine.render("errors/error.html", &template_response.context) {
                     Ok(html) => (*status, Html(html)).into_response(),
-                    Err(_) => (*status, fallback_error()).into_response(),
+                    Err(e) => {
+                        error!("Failed to render error template: {:?}", e);
+                        (*status, fallback_error()).into_response()
+                    }
                 }
             }
             TemplateKind::Redirect(path) => {
                 (StatusCode::OK, [(axum_htmx::HX_REDIRECT, path.clone())], "").into_response()
             }
         }
-    }
-}
-
-pub async fn with_template_response(
-    State(state): State<HtmlState>,
-    response: Response,
-) -> Response {
-    if let Some(template_response) = response.extensions().get::<TemplateResponse>().cloned() {
-        TemplateStateWrapper {
-            state,
-            template_response,
-        }
-        .into_response()
     } else {
         response
     }
