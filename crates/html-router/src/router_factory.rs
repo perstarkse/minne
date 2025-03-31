@@ -38,13 +38,15 @@ macro_rules! create_asset_service {
     }};
 }
 
+pub type MiddleWareVecType<S> = Vec<Box<dyn FnOnce(Router<S>) -> Router<S> + Send>>;
+
 pub struct RouterFactory<S> {
     app_state: HtmlState,
     public_routers: Vec<Router<S>>,
     protected_routers: Vec<Router<S>>,
     nested_routes: Vec<(String, Router<S>)>,
     nested_protected_routes: Vec<(String, Router<S>)>,
-    custom_middleware: Vec<Box<dyn FnOnce(Router<S>) -> Router<S> + Send>>,
+    custom_middleware: MiddleWareVecType<S>,
     public_assets_config: Option<AssetsConfig>,
 }
 

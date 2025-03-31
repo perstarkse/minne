@@ -94,7 +94,7 @@ impl TemplateResponse {
     pub fn redirect(path: impl Into<String>) -> Self {
         Self {
             template_kind: TemplateKind::Redirect(path.into()),
-            context: Value::from_serialize(&()),
+            context: Value::from_serialize(()),
         }
     }
 }

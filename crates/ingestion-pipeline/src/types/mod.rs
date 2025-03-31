@@ -6,18 +6,18 @@ use async_openai::types::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
     CreateChatCompletionRequestArgs,
 };
+use common::storage::db::SurrealDbClient;
 use common::{
     error::AppError,
     storage::types::{
-        file_info::FileInfo, ingestion_payload::IngestionPayload, text_content::TextContent,
-        system_settings::SystemSettings,
+        file_info::FileInfo, ingestion_payload::IngestionPayload, system_settings::SystemSettings,
+        text_content::TextContent,
     },
 };
 use reqwest;
 use scraper::{Html, Selector};
 use std::fmt::Write;
 use tiktoken_rs::{o200k_base, CoreBPE};
-use common::storage::db::SurrealDbClient;
 
 pub async fn to_text_content(
     ingestion_payload: IngestionPayload,
@@ -34,11 +34,11 @@ pub async fn to_text_content(
             let text = fetch_text_from_url(&url, openai_client, db_client).await?;
             Ok(TextContent::new(
                 text,
-                instructions.into(),
-                category.into(),
+                instructions,
+                category,
                 None,
-                Some(url.into()),
-                user_id.into(),
+                Some(url),
+                user_id,
             ))
         }
         IngestionPayload::Text {
@@ -47,12 +47,12 @@ pub async fn to_text_content(
             category,
             user_id,
         } => Ok(TextContent::new(
-            text.into(),
-            instructions.into(),
-            category.into(),
+            text,
+            instructions,
+            category,
             None,
             None,
-            user_id.into(),
+            user_id,
         )),
         IngestionPayload::File {
             file_info,
@@ -63,11 +63,11 @@ pub async fn to_text_content(
             let text = extract_text_from_file(&file_info).await?;
             Ok(TextContent::new(
                 text,
-                instructions.into(),
-                category.into(),
-                Some(file_info.to_owned()),
+                instructions,
+                category,
+                Some(file_info),
                 None,
-                user_id.into(),
+                user_id,
             ))
         }
     }
@@ -124,7 +124,7 @@ async fn fetch_text_from_url(
         .replace(|c: char| c.is_control(), " ")
         .replace("  ", " ");
 
-    process_web_content(content, openai_client, &db_client).await
+    process_web_content(content, openai_client, db_client).await
 }
 
 pub async fn process_web_content(
@@ -181,13 +181,15 @@ pub async fn process_web_content(
         .build()?;
 
     let response = openai_client.chat().create(request).await?;
-    
+
     // Extract and return the content
     response
         .choices
         .first()
         .and_then(|choice| choice.message.content.clone())
-        .ok_or(AppError::LLMParsing("No content found in LLM response".into()))
+        .ok_or(AppError::LLMParsing(
+            "No content found in LLM response".into(),
+        ))
 }
 
 fn truncate_content(

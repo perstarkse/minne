@@ -33,9 +33,9 @@ pub async fn show_signup_form(
         true => Ok(TemplateResponse::new_partial(
             "auth/signup_form.html",
             "body",
-            {},
+            (),
         )),
-        false => Ok(TemplateResponse::new_template("auth/signup_form.html", {})),
+        false => Ok(TemplateResponse::new_template("auth/signup_form.html", ())),
     }
 }
 
