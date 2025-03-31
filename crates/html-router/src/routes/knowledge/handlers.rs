@@ -85,7 +85,7 @@ pub async fn show_knowledge_page(
         let edge_trace = Scatter3D::new(edge_x, edge_y, edge_z)
             .mode(Mode::Lines)
             .line(Line::new().color("#888").width(2.0))
-            .hover_template(&format!(
+            .hover_template(format!(
                 "Relationship: {}<br>",
                 rel.metadata.relationship_type
             ))

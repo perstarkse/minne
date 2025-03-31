@@ -112,7 +112,7 @@ pub async fn show_change_password(
 ) -> Result<impl IntoResponse, HtmlError> {
     Ok(TemplateResponse::new_template(
         "auth/change_password_form.html",
-        {},
+        (),
     ))
 }
 
@@ -138,6 +138,6 @@ pub async fn change_password(
     Ok(TemplateResponse::new_partial(
         "auth/account_settings.html",
         "change_password_section",
-        {},
+        (),
     ))
 }

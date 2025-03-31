@@ -92,7 +92,7 @@ pub async fn process_ingress_form(
         input
             .files
             .into_iter()
-            .map(|file| FileInfo::new(file, &state.db, &user.id).map_err(|e| AppError::from(e))),
+            .map(|file| FileInfo::new(file, &state.db, &user.id).map_err(AppError::from)),
     )
     .await?;
 
