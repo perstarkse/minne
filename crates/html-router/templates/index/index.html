@@ -3,9 +3,6 @@
 {% if user %}
 {% include 'index/signed_in/base.html' %}
 {% else %}
-{% include 'index/hero.html' %}
-{% if not gdpr_accepted %}
-{% include "gdpr.html" %}
-{% endif %}
+{% include 'auth/signin_form.html' %}
 {% endif %}
 {% endblock %}

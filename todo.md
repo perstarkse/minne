@@ -2,9 +2,10 @@
 \[\] configs primarily get envs
 \[\] filtering on categories
 \[\] integrate assets folder in release build
-\[x] integrate templates in release build
+\[\] make sure error messages render correctly
 \[\] markdown rendering in client
 \[\] openai api key in config
+\[\] testing core functions
 \[\] three js graph explorer
 \[\] three js vector explorer
 \[x\] add user_id to ingress objects
@@ -16,6 +17,7 @@
 \[x\] gdpr
 \[x\] html ingression
 \[x\] hx-redirect
+\[x\] integrate templates in release build
 \[x\] ios shortcut generation
 \[x\] job queue
 \[x\] link to ingressed urls or archives

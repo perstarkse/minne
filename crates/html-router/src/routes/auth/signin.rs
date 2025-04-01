@@ -29,11 +29,11 @@ pub async fn show_signin_form(
     }
     match boosted {
         true => Ok(TemplateResponse::new_partial(
-            "auth/signin_form.html",
+            "auth/signin_base.html",
             "body",
             (),
         )),
-        false => Ok(TemplateResponse::new_template("auth/signin_form.html", ())),
+        false => Ok(TemplateResponse::new_template("auth/signin_base.html", ())),
     }
 }
 
