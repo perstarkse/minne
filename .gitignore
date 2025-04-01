@@ -20,4 +20,4 @@ devenv.local.nix
 
 # pre-commit
 .pre-commit-config.yaml
-assets/style.css
+crates/html-router/assets/style.css
