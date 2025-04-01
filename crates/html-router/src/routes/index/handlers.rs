@@ -10,7 +10,7 @@ use crate::{
         auth_middleware::RequireUser,
         response_middleware::{HtmlError, TemplateResponse},
     },
-    AuthSessionType, SessionType,
+    AuthSessionType,
 };
 use common::{
     error::AppError,
@@ -25,7 +25,6 @@ use crate::html_state::HtmlState;
 
 #[derive(Serialize)]
 pub struct IndexPageData {
-    gdpr_accepted: bool,
     user: Option<User>,
     latest_text_contents: Vec<TextContent>,
     active_jobs: Vec<IngestionTask>,
@@ -34,34 +33,26 @@ pub struct IndexPageData {
 pub async fn index_handler(
     State(state): State<HtmlState>,
     auth: AuthSessionType,
-    session: SessionType,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let gdpr_accepted = auth.current_user.is_some() | session.get("gdpr_accepted").unwrap_or(false);
-
-    let active_jobs = match auth.current_user.is_some() {
-        true => {
-            User::get_unfinished_ingestion_tasks(&auth.current_user.clone().unwrap().id, &state.db)
-                .await?
-        }
-        false => vec![],
+    let Some(user) = auth.current_user else {
+        return Ok(TemplateResponse::new_template(
+            "index/index.html",
+            IndexPageData {
+                user: None,
+                latest_text_contents: vec![],
+                active_jobs: vec![],
+            },
+        ));
     };
 
-    let latest_text_contents = match auth.current_user.clone().is_some() {
-        true => {
-            User::get_latest_text_contents(
-                auth.current_user.clone().unwrap().id.as_str(),
-                &state.db,
-            )
-            .await?
-        }
-        false => vec![],
-    };
+    let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
+
+    let latest_text_contents = User::get_latest_text_contents(user.id.as_str(), &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "index/index.html",
         IndexPageData {
-            gdpr_accepted,
-            user: auth.current_user,
+            user: Some(user),
             latest_text_contents,
             active_jobs,
         },

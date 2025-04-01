@@ -1,12 +1,10 @@
-{% extends "head_base.html" %}
-{% block body %}
 <style>
   form.htmx-request {
     opacity: 0.5;
   }
 </style>
 
-<div class="min-h-[100dvh] container mx-auto px-4 sm:px-0 sm:max-w-md flex justify-center flex-col">
+<div class="flex justify-center grow container mx-auto px-4 sm:px-0 sm:max-w-md flex justify-center flex-col">
   <h1
     class="text-5xl sm:text-6xl py-4 pt-10 font-bold bg-linear-to-r from-primary to-secondary text-center text-transparent bg-clip-text">
     Minne
@@ -52,4 +50,3 @@
     <a href="/signup" hx-boost="true" class="link link-primary">Sign up</a>
   </div>
 </div>
-{% endblock %}
