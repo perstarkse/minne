@@ -1,11 +1,11 @@
 [workspace]
 members = [
-  "crates/main",
-  "crates/common",
-  "crates/api-router",
-  "crates/html-router",
-  "crates/ingestion-pipeline",
-  "crates/composite-retrieval"
+  "main",
+  "common",
+  "api-router",
+  "html-router",
+  "ingestion-pipeline",
+  "composite-retrieval"
 ]
 resolver = "2"
 

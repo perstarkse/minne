@@ -1,0 +1,17 @@
+{
+  "name": "html-router",
+  "version": "1.0.0",
+  "main": "tailwind.config.js",
+  "scripts": {
+    "tailwind": "npx @tailwindcss/cli -i app.css -o assets/style.css -w -m"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@tailwindcss/cli": "^4.1.2",
+    "@tailwindcss/typography": "^0.5.16",
+    "daisyui": "^5.0.12",
+    "tailwindcss": "^4.1.2"
+  }
+}
