@@ -2,7 +2,6 @@
 module.exports = {
   content: [
     './templates/**/*',
-    '!./templates/email/**/*'          
   ],
    theme: {
     container: {
