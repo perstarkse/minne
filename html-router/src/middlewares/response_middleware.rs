@@ -4,6 +4,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
     Extension,
 };
+use axum_htmx::{HxRequest, HX_TRIGGER};
 use common::{error::AppError, utils::template_engine::ProvidesTemplateEngine};
 use minijinja::{context, Value};
 use serde::Serialize;
@@ -97,7 +98,11 @@ impl IntoResponse for TemplateResponse {
     }
 }
 
-pub async fn with_template_response<S>(State(state): State<S>, response: Response) -> Response
+pub async fn with_template_response<S>(
+    State(state): State<S>,
+    HxRequest(is_htmx): HxRequest,
+    response: Response,
+) -> Response
 where
     S: ProvidesTemplateEngine + Clone + Send + Sync + 'static,
 {
@@ -123,44 +128,37 @@ where
                     }
                 }
             }
-            TemplateKind::Error(_status) => {
-                // Extract title and description from context
-                let title = template_response
-                    .context
-                    .get_attr("title")
-                    .ok()
-                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "Error".to_string()); // Fallback title
-                let description = template_response
-                    .context
-                    .get_attr("description")
-                    .ok()
-                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "An error occurred.".to_string()); // Fallback desc
+            TemplateKind::Error(status) => {
+                if is_htmx {
+                    // HTMX request: Send 204 + HX-Trigger for toast
+                    let title = template_response
+                        .context
+                        .get_attr("title")
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_else(|| "Error".to_string());
+                    let description = template_response
+                        .context
+                        .get_attr("description")
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_else(|| "An error occurred.".to_string());
 
-                let trigger_payload = json!({
-                    "toast": {
-                        "title": title,
-                        "description": description,
-                        "type": "error"
+                    let trigger_payload = json!({"toast": {"title": title, "description": description, "type": "error"}});
+                    let trigger_value = serde_json::to_string(&trigger_payload).unwrap_or_else(|e| {error!("Failed to serialize HX-Trigger payload: {}", e);
+r#"{"toast":{"title":"Error","description":"An unexpected error occurred.", "type":"error"}}"#.to_string()});
+                    (StatusCode::NO_CONTENT, [(HX_TRIGGER, trigger_value)], "").into_response()
+                } else {
+                    // Non-HTMX request: Render the full errors/error.html page
+                    match template_engine.render("errors/error.html", &template_response.context) {
+                        Ok(html) => (*status, Html(html)).into_response(),
+                        Err(e) => {
+                            error!("Critical: Failed to render 'errors/error.html': {:?}", e);
+                            // Fallback HTML, but use the intended status code
+                            (*status, Html(fallback_error())).into_response()
+                        }
                     }
-                });
-
-                // Convert payload to string
-                let trigger_value = serde_json::to_string(&trigger_payload)
-                    .unwrap_or_else(|e| {
-                        error!("Failed to serialize HX-Trigger payload: {}", e);
-                        // Fallback trigger if serialization fails
-                        r#"{"toast":{"title":"Error","description":"An unexpected error occurred.", "type":"error"}}"#.to_string()
-                    });
-
-                // Return 204 No Content with HX-Trigger header
-                (
-                    StatusCode::NO_CONTENT,
-                    [(axum_htmx::HX_TRIGGER, trigger_value)],
-                    "", // Empty body for 204
-                )
-                    .into_response()
+                }
             }
             TemplateKind::Redirect(path) => {
                 (StatusCode::OK, [(axum_htmx::HX_REDIRECT, path.clone())], "").into_response()
