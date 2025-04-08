@@ -40,44 +40,15 @@
   </div>
 
   <script>
-    // Using a single toast element avoids creating many timeouts when clicking repeatedly.
-    let current_toast = null;
-    let toast_timeout = null;
-
-    function show_toast(message) {
-      if (current_toast) {
-        // Update message and reset timeout if a toast is already displayed.
-        current_toast.querySelector('span').textContent = message;
-        clearTimeout(toast_timeout);
-      } else {
-        current_toast = document.createElement('div');
-        current_toast.className = 'toast';
-        current_toast.innerHTML = `<div class="alert alert-success">
-        <div>
-        <span>${message}</span>
-        </div>
-        </div>`;
-        document.body.appendChild(current_toast);
-      }
-      toast_timeout = setTimeout(() => {
-        if (current_toast) {
-          current_toast.remove();
-          current_toast = null;
-        }
-      }, 3000);
-    }
-
     function copy_api_key() {
       const input = document.getElementById('api_key_input');
       if (!input) return;
       if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(input.value).then(() => {
-          show_toast('API key copied!');
-        }).catch(() => {
-          show_toast('Copy failed');
-        });
+        navigator.clipboard.writeText(input.value)
+          .then(() => show_toast('API key copied!', 'success'))
+          .catch(() => show_toast('Copy failed', 'error'));
       } else {
-        show_toast('Copy not supported');
+        show_toast('Copy not supported', 'info');
       }
     }
   </script>
