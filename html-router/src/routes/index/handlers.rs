@@ -151,6 +151,7 @@ pub async fn show_active_jobs(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
+    return Ok(TemplateResponse::server_error());
     let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_partial(
