@@ -7,6 +7,7 @@ use axum::{
 use common::{error::AppError, utils::template_engine::ProvidesTemplateEngine};
 use minijinja::{context, Value};
 use serde::Serialize;
+use serde_json::json;
 use tracing::error;
 
 #[derive(Clone)]
@@ -42,11 +43,10 @@ impl TemplateResponse {
         }
     }
 
-    pub fn error(status: StatusCode, title: &str, error: &str, description: &str) -> Self {
+    pub fn error(status: StatusCode, title: &str, description: &str) -> Self {
         let ctx = context! {
             status_code => status.as_u16(),
             title => title,
-            error => error,
             description => description
         };
         Self {
@@ -59,7 +59,6 @@ impl TemplateResponse {
         Self::error(
             StatusCode::NOT_FOUND,
             "Page Not Found",
-            "Not Found",
             "The page you're looking for doesn't exist or was removed.",
         )
     }
@@ -67,7 +66,6 @@ impl TemplateResponse {
     pub fn server_error() -> Self {
         Self::error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal Server Error",
             "Internal Server Error",
             "Something went wrong on our end.",
         )
@@ -77,18 +75,12 @@ impl TemplateResponse {
         Self::error(
             StatusCode::UNAUTHORIZED,
             "Unauthorized",
-            "Access Denied",
             "You need to be logged in to access this page.",
         )
     }
 
     pub fn bad_request(message: &str) -> Self {
-        Self::error(
-            StatusCode::BAD_REQUEST,
-            "Bad Request",
-            "Bad Request",
-            message,
-        )
+        Self::error(StatusCode::BAD_REQUEST, "Bad Request", message)
     }
 
     pub fn redirect(path: impl Into<String>) -> Self {
@@ -118,7 +110,7 @@ where
                     Ok(html) => Html(html).into_response(),
                     Err(e) => {
                         error!("Failed to render template '{}': {:?}", name, e);
-                        (StatusCode::INTERNAL_SERVER_ERROR, fallback_error()).into_response()
+                        (StatusCode::INTERNAL_SERVER_ERROR, Html(fallback_error())).into_response()
                     }
                 }
             }
@@ -127,18 +119,48 @@ where
                     Ok(html) => Html(html).into_response(),
                     Err(e) => {
                         error!("Failed to render block '{}/{}': {:?}", template, block, e);
-                        (StatusCode::INTERNAL_SERVER_ERROR, fallback_error()).into_response()
+                        (StatusCode::INTERNAL_SERVER_ERROR, Html(fallback_error())).into_response()
                     }
                 }
             }
-            TemplateKind::Error(status) => {
-                match template_engine.render("errors/error.html", &template_response.context) {
-                    Ok(html) => (*status, Html(html)).into_response(),
-                    Err(e) => {
-                        error!("Failed to render error template: {:?}", e);
-                        (*status, fallback_error()).into_response()
+            TemplateKind::Error(_status) => {
+                // Extract title and description from context
+                let title = template_response
+                    .context
+                    .get_attr("title")
+                    .ok()
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "Error".to_string()); // Fallback title
+                let description = template_response
+                    .context
+                    .get_attr("description")
+                    .ok()
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "An error occurred.".to_string()); // Fallback desc
+
+                let trigger_payload = json!({
+                    "toast": {
+                        "title": title,
+                        "description": description,
+                        "type": "error"
                     }
-                }
+                });
+
+                // Convert payload to string
+                let trigger_value = serde_json::to_string(&trigger_payload)
+                    .unwrap_or_else(|e| {
+                        error!("Failed to serialize HX-Trigger payload: {}", e);
+                        // Fallback trigger if serialization fails
+                        r#"{"toast":{"title":"Error","description":"An unexpected error occurred.", "type":"error"}}"#.to_string()
+                    });
+
+                // Return 204 No Content with HX-Trigger header
+                (
+                    StatusCode::NO_CONTENT,
+                    [(axum_htmx::HX_TRIGGER, trigger_value)],
+                    "", // Empty body for 204
+                )
+                    .into_response()
             }
             TemplateKind::Redirect(path) => {
                 (StatusCode::OK, [(axum_htmx::HX_REDIRECT, path.clone())], "").into_response()
