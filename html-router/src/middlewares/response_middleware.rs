@@ -145,8 +145,10 @@ where
                         .unwrap_or_else(|| "An error occurred.".to_string());
 
                     let trigger_payload = json!({"toast": {"title": title, "description": description, "type": "error"}});
-                    let trigger_value = serde_json::to_string(&trigger_payload).unwrap_or_else(|e| {error!("Failed to serialize HX-Trigger payload: {}", e);
-r#"{"toast":{"title":"Error","description":"An unexpected error occurred.", "type":"error"}}"#.to_string()});
+                    let trigger_value = serde_json::to_string(&trigger_payload).unwrap_or_else(|e| {
+                        error!("Failed to serialize HX-Trigger payload: {}", e);
+                        r#"{"toast":{"title":"Error","description":"An unexpected error occurred.", "type":"error"}}"#.to_string()
+                    });
                     (StatusCode::NO_CONTENT, [(HX_TRIGGER, trigger_value)], "").into_response()
                 } else {
                     // Non-HTMX request: Render the full errors/error.html page
