@@ -1,7 +1,9 @@
-use config::{Config, ConfigError, File};
+use config::{Config, ConfigError, Environment, File};
+use serde::Deserialize;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct AppConfig {
+    pub openai_api_key: String,
     pub surrealdb_address: String,
     pub surrealdb_username: String,
     pub surrealdb_password: String,
@@ -11,14 +13,9 @@ pub struct AppConfig {
 
 pub fn get_config() -> Result<AppConfig, ConfigError> {
     let config = Config::builder()
-        .add_source(File::with_name("config"))
+        .add_source(File::with_name("config").required(false))
+        .add_source(Environment::default())
         .build()?;
 
-    Ok(AppConfig {
-        surrealdb_address: config.get_string("SURREALDB_ADDRESS")?,
-        surrealdb_username: config.get_string("SURREALDB_USERNAME")?,
-        surrealdb_password: config.get_string("SURREALDB_PASSWORD")?,
-        surrealdb_namespace: config.get_string("SURREALDB_NAMESPACE")?,
-        surrealdb_database: config.get_string("SURREALDB_DATABASE")?,
-    })
+    Ok(config.try_deserialize()?)
 }
