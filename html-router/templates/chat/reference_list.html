@@ -1,11 +1,12 @@
 <div class="relative my-2">
   <button id="references-toggle-{{message.id}}"
-    class="text-xs text-blue-500 hover:text-blue-700 hover:underline focus:outline-none flex items-center">
+    class="text-xs text-blue-500 hover:text-blue-700 hover:underline focus:outline-none flex items-center"
+    onclick="toggleReferences('{{message.id}}')">
     References
     {% include "icons/chevron_icon.html" %}
   </button>
   <div id="references-content-{{message.id}}" class="hidden max-w-full mt-1">
-    <div class="flex flex-wrap gap-1">
+    <div id="references-list-{{message.id}}" class="flex flex-wrap gap-1">
       {% for reference in message.references %}
       <div class="reference-badge-container" data-reference="{{reference}}" data-message-id="{{message.id}}"
         data-index="{{loop.index}}">
@@ -19,72 +20,130 @@
 </div>
 
 <script>
-  document.getElementById('references-toggle-{{message.id}}').addEventListener('click', function () {
-    const content = document.getElementById('references-content-{{message.id}}');
-    const icon = document.getElementById('toggle-icon');
-    content.classList.toggle('hidden');
-    icon.classList.toggle('rotate-180');
-  });
+  function toggleReferences(messageId) {
+    const refsContent = document.getElementById('references-content-' + messageId);
+    const refsList = document.getElementById('references-list-' + messageId);
+    const toggleBtn = document.getElementById('references-toggle-' + messageId);
 
-  // Initialize portal tooltips
-  document.querySelectorAll('.reference-badge-container').forEach(container => {
-    const reference = container.dataset.reference;
-    const messageId = container.dataset.messageId;
-    const index = container.dataset.index;
-    let tooltipId = `tooltip-${messageId}-${index}`;
-    let tooltipContent = null;
-    let tooltipTimeout;
+    // Toggle visibility
+    if (refsContent.classList.contains('hidden')) {
+      refsContent.classList.remove('hidden');
 
-    // Create tooltip element (initially hidden)
-    function createTooltip() {
-      const tooltip = document.createElement('div');
-      tooltip.id = tooltipId;
-      tooltip.className = 'fixed z-[9999] bg-neutral-800 text-white p-3 rounded-md shadow-lg text-sm w-72 max-w-xs border border-neutral-700 hidden';
-      tooltip.innerHTML = '<div class="animate-pulse">Loading...</div>';
-      document.body.appendChild(tooltip);
-      return tooltip;
+      // Wait for DOM update then scroll to make visible
+      setTimeout(() => {
+        refsList.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+
+        // Also ensure chat container updates its scroll position
+        const chatContainer = document.getElementById('chat_container');
+        if (chatContainer) {
+          const refPosition = refsList.getBoundingClientRect().bottom;
+          const containerBottom = chatContainer.getBoundingClientRect().bottom;
+
+          if (refPosition > containerBottom) {
+            chatContainer.scrollTop += (refPosition - containerBottom + 20);
+          }
+        }
+      }, 50);
+    } else {
+      refsContent.classList.add('hidden');
     }
 
-    container.addEventListener('mouseenter', function () {
-      // Clear any existing timeout
-      if (tooltipTimeout) clearTimeout(tooltipTimeout);
+    // Rotate chevron icon (assuming it's the first SVG in the button)
+    const chevron = toggleBtn.querySelector('svg');
+    if (chevron) {
+      chevron.style.transform = refsContent.classList.contains('hidden') ?
+        'rotate(0deg)' : 'rotate(180deg)';
+    }
+  }
 
-      // Get or create tooltip
-      let tooltip = document.getElementById(tooltipId);
-      if (!tooltip) tooltip = createTooltip();
-
-      // Position tooltip
-      const rect = container.getBoundingClientRect();
-      tooltip.style.top = `${rect.bottom + window.scrollY + 5}px`;
-      tooltip.style.left = `${rect.left + window.scrollX}px`;
-
-      // Adjust position if it would overflow viewport
-      const tooltipRect = tooltip.getBoundingClientRect();
-      if (rect.left + tooltipRect.width > window.innerWidth - 20) {
-        tooltip.style.left = `${window.innerWidth - tooltipRect.width - 20 + window.scrollX}px`;
-      }
-
-      // Show tooltip
-      tooltip.classList.remove('hidden');
-
-      // Load content if needed
-      if (!tooltipContent) {
-        fetch(`/chat/reference/${encodeURIComponent(reference)}`)
-          .then(response => response.text())
-          .then(html => {
-            tooltipContent = html;
-            if (document.getElementById(tooltipId)) {
-              document.getElementById(tooltipId).innerHTML = html;
-            }
-          });
-      }
-    });
-
-    container.addEventListener('mouseleave', function () {
-      tooltipTimeout = setTimeout(() => {
-        const tooltip = document.getElementById(tooltipId);
-        if (tooltip) tooltip.classList.add('hidden');
-      }, 200);
-    });
+  // Initialize portal tooltips
+  document.addEventListener('DOMContentLoaded', function () {
+    initializeReferenceTooltips();
   });
+
+  document.body.addEventListener('htmx:afterSwap', function () {
+    initializeReferenceTooltips();
+  });
+
+  function initializeReferenceTooltips() {
+    document.querySelectorAll('.reference-badge-container').forEach(container => {
+      if (container.dataset.initialized === 'true') return;
+
+      const reference = container.dataset.reference;
+      const messageId = container.dataset.messageId;
+      const index = container.dataset.index;
+      let tooltipId = `tooltip-${messageId}-${index}`;
+      let tooltipContent = null;
+      let tooltipTimeout;
+
+      // Create tooltip element (initially hidden)
+      function createTooltip() {
+        const tooltip = document.createElement('div');
+        tooltip.id = tooltipId;
+        tooltip.className = 'fixed z-[9999] bg-neutral-800 text-white p-3 rounded-md shadow-lg text-sm w-72 max-w-xs border border-neutral-700 hidden';
+        tooltip.innerHTML = '<div class="animate-pulse">Loading...</div>';
+        document.body.appendChild(tooltip);
+        return tooltip;
+      }
+
+      container.addEventListener('mouseenter', function () {
+        // Clear any existing timeout
+        if (tooltipTimeout) clearTimeout(tooltipTimeout);
+
+        // Get or create tooltip
+        let tooltip = document.getElementById(tooltipId);
+        if (!tooltip) tooltip = createTooltip();
+
+        // Position tooltip
+        const rect = container.getBoundingClientRect();
+        tooltip.style.top = `${rect.bottom + window.scrollY + 5}px`;
+        tooltip.style.left = `${rect.left + window.scrollX}px`;
+
+        // Adjust position if it would overflow viewport
+        const tooltipRect = tooltip.getBoundingClientRect();
+        if (rect.left + tooltipRect.width > window.innerWidth - 20) {
+          tooltip.style.left = `${window.innerWidth - tooltipRect.width - 20 + window.scrollX}px`;
+        }
+
+        // Show tooltip
+        tooltip.classList.remove('hidden');
+
+        // Load content if needed
+        if (!tooltipContent) {
+          fetch(`/chat/reference/${encodeURIComponent(reference)}`)
+            .then(response => response.text())
+            .then(html => {
+              tooltipContent = html;
+              if (document.getElementById(tooltipId)) {
+                document.getElementById(tooltipId).innerHTML = html;
+              }
+            });
+        } else if (tooltip) {
+          // Set content if already loaded
+          tooltip.innerHTML = tooltipContent;
+        }
+      });
+
+      container.addEventListener('mouseleave', function () {
+        tooltipTimeout = setTimeout(() => {
+          const tooltip = document.getElementById(tooltipId);
+          if (tooltip) tooltip.classList.add('hidden');
+        }, 200);
+      });
+
+      container.dataset.initialized = 'true';
+    });
+  }
 </script>
+
+<style>
+  #references-toggle- {
+      {
+      message.id
+    }
+  }
+
+  svg {
+    transition: transform 0.2s ease;
+  }
+</style>
