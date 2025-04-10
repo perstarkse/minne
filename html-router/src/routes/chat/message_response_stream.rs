@@ -21,7 +21,6 @@ use futures::{
     stream::{self, once},
     Stream, StreamExt, TryStreamExt,
 };
-use json_stream_parser::JsonStreamParser;
 use minijinja::Value;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
@@ -29,14 +28,17 @@ use surrealdb::{engine::any::Any, Surreal};
 use tokio::sync::{mpsc::channel, Mutex};
 use tracing::{debug, error};
 
-use common::storage::{
-    db::SurrealDbClient,
-    types::{
-        conversation::Conversation,
-        message::{Message, MessageRole},
-        system_settings::SystemSettings,
-        user::User,
+use common::{
+    storage::{
+        db::SurrealDbClient,
+        types::{
+            conversation::Conversation,
+            message::{Message, MessageRole},
+            system_settings::SystemSettings,
+            user::User,
+        },
     },
+    utils::stream_parser::JsonStreamParser,
 };
 
 use crate::html_state::HtmlState;
