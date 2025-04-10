@@ -1,506 +1,451 @@
+// This code is based on the json-stream-rust library (https://github.com/json-stream/json-stream-rust)
+// Original code is MIT licensed
+// Modified to fix escape character handling in strings
 use serde_json::{json, Value};
 
-// Modified ObjectStatus enum to track escape character state
 #[derive(Clone, Debug)]
 enum ObjectStatus {
-    // We are ready to start a new object.
     Ready,
-    // We are in the beginning of a string, likely because we just received an opening quote.
-    StringQuoteOpen {
-        is_escaped: bool, // New field to track if the next character is escaped
-    },
-    // We just finished a string, likely because we just received a closing quote.
+    StringQuoteOpen(bool),
     StringQuoteClose,
-    // We are in the middle of a scalar value, likely because we just received a digit.
     Scalar {
         value_so_far: Vec<char>,
     },
     ScalarNumber {
         value_so_far: Vec<char>,
     },
-    // We just started a property, likely because we just received an opening brace or a comma in case of an existing object.
     StartProperty,
-    // We are in the beginning of a key, likely because we just received a quote. We need to store the key_so_far because
-    // unlike the value, we cannot add the key to the object until it is complete.
     KeyQuoteOpen {
         key_so_far: Vec<char>,
-        is_escaped: bool, // New field to track if the next character is escaped
+        escaped: bool,
     },
-    // We just finished a key, likely because we just received a closing quote.
     KeyQuoteClose {
         key: Vec<char>,
     },
-    // We just finished a key, likely because we just received a colon.
     Colon {
         key: Vec<char>,
     },
-    // We are in the beginning of a value, likely because we just received a quote.
     ValueQuoteOpen {
         key: Vec<char>,
-        is_escaped: bool, // New field to track if the next character is escaped
-                          // We don't need to store the valueSoFar because we can add the value to the object immediately.
+        escaped: bool,
     },
     ValueQuoteClose,
-    // We are taking any value that is not a string. For these case we just store
-    // each character until we reach a comma or a closing brace and then we pare
-    // and add the value to the object.
     ValueScalar {
         key: Vec<char>,
         value_so_far: Vec<char>,
     },
-    // We just finished the object, likely because we just received a closing brace.
     Closed,
 }
 
-// Modified add_char_into_object function to handle escaped quotes
 fn add_char_into_object(
     object: &mut Value,
     current_status: &mut ObjectStatus,
     current_char: char,
 ) -> Result<(), String> {
-    // First, match on the current status and character to determine what to do
-    match (current_status.clone(), current_char) {
-        // ------ String handling with escaping ------
-        (ObjectStatus::StringQuoteOpen { is_escaped: true }, '"') => {
-            // Handle escaped quote in string
+    match (&*object, &*current_status, current_char) {
+        // String escape handling
+        (&Value::String(_), &ObjectStatus::StringQuoteOpen(true), '"') => {
             if let Value::String(str) = object {
                 str.push('"');
             }
-            *current_status = ObjectStatus::StringQuoteOpen { is_escaped: false };
-            return Ok(());
+            *current_status = ObjectStatus::StringQuoteOpen(false);
         }
-        (ObjectStatus::StringQuoteOpen { is_escaped: false }, '"') => {
-            // End of string
+        (&Value::String(_), &ObjectStatus::StringQuoteOpen(false), '"') => {
             *current_status = ObjectStatus::StringQuoteClose;
-            return Ok(());
         }
-        (ObjectStatus::StringQuoteOpen { is_escaped: true }, char) => {
-            // Handle other escaped characters
+        (&Value::String(_), &ObjectStatus::StringQuoteOpen(true), c) => {
+            // Handle other escaped chars
             if let Value::String(str) = object {
                 str.push('\\');
-                str.push(char);
+                str.push(c);
             }
-            *current_status = ObjectStatus::StringQuoteOpen { is_escaped: false };
-            return Ok(());
+            *current_status = ObjectStatus::StringQuoteOpen(false);
         }
-        (ObjectStatus::StringQuoteOpen { is_escaped: false }, '\\') => {
-            // Set escape flag for next character
-            *current_status = ObjectStatus::StringQuoteOpen { is_escaped: true };
-            return Ok(());
+        (&Value::String(_), &ObjectStatus::StringQuoteOpen(false), '\\') => {
+            *current_status = ObjectStatus::StringQuoteOpen(true);
         }
-        (ObjectStatus::StringQuoteOpen { is_escaped: false }, char) => {
-            // Regular character in string
+        (&Value::String(_), &ObjectStatus::StringQuoteOpen(false), c) => {
             if let Value::String(str) = object {
-                str.push(char);
+                str.push(c);
             }
-            return Ok(());
         }
 
-        // ------ Key handling with escaping ------
-        (
-            ObjectStatus::KeyQuoteOpen {
-                key_so_far,
-                is_escaped: true,
-            },
-            '"',
-        ) => {
-            // Handle escaped quote in key
-            let mut new_key = key_so_far;
-            new_key.push('"');
-            *current_status = ObjectStatus::KeyQuoteOpen {
-                key_so_far: new_key,
-                is_escaped: false,
-            };
-            return Ok(());
-        }
-        (
-            ObjectStatus::KeyQuoteOpen {
-                key_so_far,
-                is_escaped: false,
-            },
-            '"',
-        ) => {
-            // End of key
-            if let Value::Object(obj) = object {
-                obj.insert(key_so_far.iter().collect::<String>(), Value::Null);
+        // Key escape handling
+        (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: true, .. }, '"') => {
+            if let ObjectStatus::KeyQuoteOpen {
+                ref mut key_so_far, ..
+            } = current_status
+            {
+                key_so_far.push('"');
+                *current_status = ObjectStatus::KeyQuoteOpen {
+                    key_so_far: key_so_far.clone(),
+                    escaped: false,
+                };
             }
-            *current_status = ObjectStatus::KeyQuoteClose { key: key_so_far };
-            return Ok(());
         }
-        (
-            ObjectStatus::KeyQuoteOpen {
-                key_so_far,
-                is_escaped: true,
-            },
-            char,
-        ) => {
-            // Handle other escaped characters in key
-            let mut new_key = key_so_far;
-            new_key.push('\\');
-            new_key.push(char);
-            *current_status = ObjectStatus::KeyQuoteOpen {
-                key_so_far: new_key,
-                is_escaped: false,
-            };
-            return Ok(());
-        }
-        (
-            ObjectStatus::KeyQuoteOpen {
-                key_so_far,
-                is_escaped: false,
-            },
-            '\\',
-        ) => {
-            // Set escape flag for next character in key
-            *current_status = ObjectStatus::KeyQuoteOpen {
-                key_so_far,
-                is_escaped: true,
-            };
-            return Ok(());
-        }
-        (
-            ObjectStatus::KeyQuoteOpen {
-                mut key_so_far,
-                is_escaped: false,
-            },
-            char,
-        ) => {
-            // Regular character in key
-            key_so_far.push(char);
-            *current_status = ObjectStatus::KeyQuoteOpen {
-                key_so_far,
-                is_escaped: false,
-            };
-            return Ok(());
-        }
-
-        // ------ Value quote handling with escaping ------
-        (
-            ObjectStatus::ValueQuoteOpen {
-                key,
-                is_escaped: true,
-            },
-            '"',
-        ) => {
-            // Handle escaped quote in value
-            if let Value::Object(obj) = object {
-                let key_string = key.iter().collect::<String>();
-                if let Some(Value::String(value)) = obj.get_mut(&key_string) {
-                    value.push('"');
+        (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: false, .. }, '"') => {
+            if let ObjectStatus::KeyQuoteOpen { ref key_so_far, .. } = current_status {
+                let key = key_so_far.iter().collect::<String>();
+                if let Value::Object(obj) = object {
+                    obj.insert(key.clone(), Value::Null);
                 }
+                *current_status = ObjectStatus::KeyQuoteClose {
+                    key: key_so_far.clone(),
+                };
             }
-            *current_status = ObjectStatus::ValueQuoteOpen {
-                key,
-                is_escaped: false,
-            };
-            return Ok(());
         }
-        (
-            ObjectStatus::ValueQuoteOpen {
-                is_escaped: false, ..
-            },
-            '"',
-        ) => {
-            // End of value
+        (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: true, .. }, c) => {
+            if let ObjectStatus::KeyQuoteOpen {
+                ref mut key_so_far, ..
+            } = current_status
+            {
+                key_so_far.push('\\');
+                key_so_far.push(c);
+                *current_status = ObjectStatus::KeyQuoteOpen {
+                    key_so_far: key_so_far.clone(),
+                    escaped: false,
+                };
+            }
+        }
+        (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: false, .. }, '\\') => {
+            if let ObjectStatus::KeyQuoteOpen { ref key_so_far, .. } = current_status {
+                *current_status = ObjectStatus::KeyQuoteOpen {
+                    key_so_far: key_so_far.clone(),
+                    escaped: true,
+                };
+            }
+        }
+        (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: false, .. }, c) => {
+            if let ObjectStatus::KeyQuoteOpen {
+                ref mut key_so_far, ..
+            } = current_status
+            {
+                key_so_far.push(c);
+            }
+        }
+
+        // Value string escape handling
+        (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: true, .. }, '"') => {
+            if let ObjectStatus::ValueQuoteOpen { ref key, .. } = current_status {
+                let key_str = key.iter().collect::<String>();
+                if let Value::Object(obj) = object {
+                    if let Some(Value::String(value)) = obj.get_mut(&key_str) {
+                        value.push('"');
+                    }
+                }
+                *current_status = ObjectStatus::ValueQuoteOpen {
+                    key: key.clone(),
+                    escaped: false,
+                };
+            }
+        }
+        (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: false, .. }, '"') => {
             *current_status = ObjectStatus::ValueQuoteClose;
-            return Ok(());
         }
-        (
-            ObjectStatus::ValueQuoteOpen {
-                key,
-                is_escaped: true,
-            },
-            char,
-        ) => {
-            // Handle other escaped characters in value
-            if let Value::Object(obj) = object {
-                let key_string = key.iter().collect::<String>();
-                if let Some(Value::String(value)) = obj.get_mut(&key_string) {
-                    value.push('\\');
-                    value.push(char);
+        (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: true, .. }, c) => {
+            if let ObjectStatus::ValueQuoteOpen { ref key, .. } = current_status {
+                let key_str = key.iter().collect::<String>();
+                if let Value::Object(obj) = object {
+                    if let Some(Value::String(value)) = obj.get_mut(&key_str) {
+                        value.push('\\');
+                        value.push(c);
+                    }
+                }
+                *current_status = ObjectStatus::ValueQuoteOpen {
+                    key: key.clone(),
+                    escaped: false,
+                };
+            }
+        }
+        (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: false, .. }, '\\') => {
+            if let ObjectStatus::ValueQuoteOpen { ref key, .. } = current_status {
+                *current_status = ObjectStatus::ValueQuoteOpen {
+                    key: key.clone(),
+                    escaped: true,
+                };
+            }
+        }
+        (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: false, .. }, c) => {
+            if let ObjectStatus::ValueQuoteOpen { ref key, .. } = current_status {
+                let key_str = key.iter().collect::<String>();
+                if let Value::Object(obj) = object {
+                    if let Some(Value::String(value)) = obj.get_mut(&key_str) {
+                        value.push(c);
+                    } else {
+                        return Err(format!("Invalid value type for key {}", key_str));
+                    }
                 }
             }
-            *current_status = ObjectStatus::ValueQuoteOpen {
-                key,
-                is_escaped: false,
-            };
-            return Ok(());
-        }
-        (
-            ObjectStatus::ValueQuoteOpen {
-                key,
-                is_escaped: false,
-            },
-            '\\',
-        ) => {
-            // Set escape flag for next character in value
-            *current_status = ObjectStatus::ValueQuoteOpen {
-                key,
-                is_escaped: true,
-            };
-            return Ok(());
-        }
-        (
-            ObjectStatus::ValueQuoteOpen {
-                key,
-                is_escaped: false,
-            },
-            char,
-        ) => {
-            // Regular character in value
-            if let Value::Object(obj) = object {
-                let key_string = key.iter().collect::<String>();
-                if let Some(Value::String(value)) = obj.get_mut(&key_string) {
-                    value.push(char);
-                } else {
-                    return Err(format!("Invalid value type for key {}", key_string));
-                }
-            }
-            return Ok(());
         }
 
-        // Now let's handle the rest of the cases using the original pattern
-        _ => {}
-    }
+        // All other cases from the original implementation
+        (&Value::Null, &ObjectStatus::Ready, '"') => {
+            *object = json!("");
+            *current_status = ObjectStatus::StringQuoteOpen(false);
+        }
+        (&Value::Null, &ObjectStatus::Ready, '{') => {
+            *object = json!({});
+            *current_status = ObjectStatus::StartProperty;
+        }
 
-    // If we reach here, it means we didn't handle the character in the specific escape handling above,
-    // so we fall back to the original logic
-    match (object, current_status, current_char) {
-        (val @ Value::Null, sts @ ObjectStatus::Ready, '"') => {
-            *val = json!("");
-            *sts = ObjectStatus::StringQuoteOpen { is_escaped: false };
-        }
-        (val @ Value::Null, sts @ ObjectStatus::Ready, '{') => {
-            *val = json!({});
-            *sts = ObjectStatus::StartProperty;
-        }
         // ------ true ------
-        (val @ Value::Null, sts @ ObjectStatus::Ready, 't') => {
-            *val = json!(true);
-            *sts = ObjectStatus::Scalar {
+        (&Value::Null, &ObjectStatus::Ready, 't') => {
+            *object = json!(true);
+            *current_status = ObjectStatus::Scalar {
                 value_so_far: vec!['t'],
             };
         }
-        (
-            Value::Bool(true),
-            ObjectStatus::Scalar {
+        (&Value::Bool(true), &ObjectStatus::Scalar { .. }, 'r') => {
+            if let ObjectStatus::Scalar {
                 ref mut value_so_far,
-            },
-            'r',
-        ) if *value_so_far == vec!['t'] => {
-            value_so_far.push('r');
+            } = current_status
+            {
+                if *value_so_far == vec!['t'] {
+                    value_so_far.push('r');
+                }
+            }
         }
-        (
-            Value::Bool(true),
-            ObjectStatus::Scalar {
+        (&Value::Bool(true), &ObjectStatus::Scalar { .. }, 'u') => {
+            if let ObjectStatus::Scalar {
                 ref mut value_so_far,
-            },
-            'u',
-        ) if *value_so_far == vec!['t', 'r'] => {
-            value_so_far.push('u');
+            } = current_status
+            {
+                if *value_so_far == vec!['t', 'r'] {
+                    value_so_far.push('u');
+                }
+            }
         }
-        (Value::Bool(true), sts @ ObjectStatus::Scalar { .. }, 'e') => {
-            *sts = ObjectStatus::Closed;
+        (&Value::Bool(true), &ObjectStatus::Scalar { .. }, 'e') => {
+            *current_status = ObjectStatus::Closed;
         }
+
         // ------ false ------
-        (val @ Value::Null, sts @ ObjectStatus::Ready, 'f') => {
-            *val = json!(false);
-            *sts = ObjectStatus::Scalar {
+        (&Value::Null, &ObjectStatus::Ready, 'f') => {
+            *object = json!(false);
+            *current_status = ObjectStatus::Scalar {
                 value_so_far: vec!['f'],
             };
         }
-        (
-            Value::Bool(false),
-            ObjectStatus::Scalar {
+        (&Value::Bool(false), &ObjectStatus::Scalar { .. }, 'a') => {
+            if let ObjectStatus::Scalar {
                 ref mut value_so_far,
-            },
-            'a',
-        ) if *value_so_far == vec!['f'] => {
-            value_so_far.push('a');
+            } = current_status
+            {
+                if *value_so_far == vec!['f'] {
+                    value_so_far.push('a');
+                }
+            }
         }
-        (
-            Value::Bool(false),
-            ObjectStatus::Scalar {
+        (&Value::Bool(false), &ObjectStatus::Scalar { .. }, 'l') => {
+            if let ObjectStatus::Scalar {
                 ref mut value_so_far,
-            },
-            'l',
-        ) if *value_so_far == vec!['f', 'a'] => {
-            value_so_far.push('l');
+            } = current_status
+            {
+                if *value_so_far == vec!['f', 'a'] {
+                    value_so_far.push('l');
+                }
+            }
         }
-        (
-            Value::Bool(false),
-            ObjectStatus::Scalar {
+        (&Value::Bool(false), &ObjectStatus::Scalar { .. }, 's') => {
+            if let ObjectStatus::Scalar {
                 ref mut value_so_far,
-            },
-            's',
-        ) if *value_so_far == vec!['f', 'a', 'l'] => {
-            value_so_far.push('s');
+            } = current_status
+            {
+                if *value_so_far == vec!['f', 'a', 'l'] {
+                    value_so_far.push('s');
+                }
+            }
         }
-        (Value::Bool(false), sts @ ObjectStatus::Scalar { .. }, 'e') => {
-            *sts = ObjectStatus::Closed;
+        (&Value::Bool(false), &ObjectStatus::Scalar { .. }, 'e') => {
+            *current_status = ObjectStatus::Closed;
         }
+
         // ------ null ------
-        (val @ Value::Null, sts @ ObjectStatus::Ready, 'n') => {
-            *val = json!(null);
-            *sts = ObjectStatus::Scalar {
+        (&Value::Null, &ObjectStatus::Ready, 'n') => {
+            *object = json!(null);
+            *current_status = ObjectStatus::Scalar {
                 value_so_far: vec!['n'],
             };
         }
-        (
-            Value::Null,
-            ObjectStatus::Scalar {
+        (&Value::Null, &ObjectStatus::Scalar { .. }, 'u') => {
+            if let ObjectStatus::Scalar {
                 ref mut value_so_far,
-            },
-            'u',
-        ) if *value_so_far == vec!['n'] => {
-            value_so_far.push('u');
+            } = current_status
+            {
+                if *value_so_far == vec!['n'] {
+                    value_so_far.push('u');
+                }
+            }
         }
-        (
-            Value::Null,
-            ObjectStatus::Scalar {
+        (&Value::Null, &ObjectStatus::Scalar { .. }, 'l') => {
+            if let ObjectStatus::Scalar {
                 ref mut value_so_far,
-            },
-            'l',
-        ) if *value_so_far == vec!['n', 'u'] => {
-            value_so_far.push('l');
+            } = current_status
+            {
+                if *value_so_far == vec!['n', 'u'] {
+                    value_so_far.push('l');
+                } else if *value_so_far == vec!['n', 'u', 'l'] {
+                    // This is for the second 'l' in "null"
+                    *current_status = ObjectStatus::Closed;
+                }
+            }
         }
-        (Value::Null, sts @ ObjectStatus::Scalar { .. }, 'l') => {
-            *sts = ObjectStatus::Closed;
-        }
+
         // ------ number ------
-        (val @ Value::Null, sts @ ObjectStatus::Ready, c @ '0'..='9') => {
-            *val = Value::Number(c.to_digit(10).unwrap().into());
-            *sts = ObjectStatus::ScalarNumber {
+        (&Value::Null, &ObjectStatus::Ready, c @ '0'..='9') => {
+            *object = Value::Number(c.to_digit(10).unwrap().into());
+            *current_status = ObjectStatus::ScalarNumber {
                 value_so_far: vec![c],
             };
         }
-        (val @ Value::Null, sts @ ObjectStatus::Ready, '-') => {
-            *val = Value::Number(0.into());
-            *sts = ObjectStatus::ScalarNumber {
+        (&Value::Null, &ObjectStatus::Ready, '-') => {
+            *object = Value::Number(0.into());
+            *current_status = ObjectStatus::ScalarNumber {
                 value_so_far: vec!['-'],
             };
         }
-        (
-            Value::Number(ref mut num),
-            ObjectStatus::ScalarNumber {
+        (&Value::Number(_), &ObjectStatus::ScalarNumber { .. }, c @ '0'..='9') => {
+            if let ObjectStatus::ScalarNumber {
                 ref mut value_so_far,
-            },
-            c @ '0'..='9',
-        ) => {
-            value_so_far.push(c);
-            // if there are any . in the value so far, then we need to parse the number as a float
-            if value_so_far.contains(&'.') {
-                let parsed_number = value_so_far
-                    .iter()
-                    .collect::<String>()
-                    .parse::<f64>()
-                    .unwrap();
-                if let Some(json_number) = serde_json::Number::from_f64(parsed_number) {
-                    *num = json_number;
+            } = current_status
+            {
+                value_so_far.push(c);
+                // Parse based on whether it's a float or int
+                if let Value::Number(ref mut num) = object {
+                    if value_so_far.contains(&'.') {
+                        let parsed_number = value_so_far
+                            .iter()
+                            .collect::<String>()
+                            .parse::<f64>()
+                            .unwrap();
+                        if let Some(json_number) = serde_json::Number::from_f64(parsed_number) {
+                            *num = json_number;
+                        }
+                    } else {
+                        let parsed_number = value_so_far
+                            .iter()
+                            .collect::<String>()
+                            .parse::<i64>()
+                            .unwrap();
+                        *num = parsed_number.into();
+                    }
                 }
-            } else {
-                let parsed_number = value_so_far
-                    .iter()
-                    .collect::<String>()
-                    .parse::<i64>()
-                    .unwrap();
-                *num = parsed_number.into();
             }
         }
-        (
-            Value::Number(_),
-            ObjectStatus::ScalarNumber {
+        (&Value::Number(_), &ObjectStatus::ScalarNumber { .. }, '.') => {
+            if let ObjectStatus::ScalarNumber {
                 ref mut value_so_far,
-            },
-            '.',
-        ) => {
-            value_so_far.push('.');
+            } = current_status
+            {
+                value_so_far.push('.');
+            }
         }
-        (Value::Object(_obj), sts @ ObjectStatus::StartProperty, '"') => {
-            *sts = ObjectStatus::KeyQuoteOpen {
+
+        // Object handling
+        (&Value::Object(_), &ObjectStatus::StartProperty, '"') => {
+            *current_status = ObjectStatus::KeyQuoteOpen {
                 key_so_far: vec![],
-                is_escaped: false,
+                escaped: false,
             };
         }
-        (Value::Object(_obj), sts @ ObjectStatus::KeyQuoteClose { .. }, ':') => {
-            if let ObjectStatus::KeyQuoteClose { key } = sts.clone() {
-                *sts = ObjectStatus::Colon { key: key.clone() };
+        (&Value::Object(_), &ObjectStatus::KeyQuoteClose { .. }, ':') => {
+            if let ObjectStatus::KeyQuoteClose { ref key } = current_status {
+                *current_status = ObjectStatus::Colon { key: key.clone() };
             }
         }
-        (Value::Object(_obj), ObjectStatus::Colon { .. }, ' ' | '\n') => {}
-        (Value::Object(ref mut obj), sts @ ObjectStatus::Colon { .. }, '"') => {
-            if let ObjectStatus::Colon { key } = sts.clone() {
-                *sts = ObjectStatus::ValueQuoteOpen {
+        (&Value::Object(_), &ObjectStatus::Colon { .. }, ' ' | '\n') => {}
+        (&Value::Object(_), &ObjectStatus::Colon { .. }, '"') => {
+            if let ObjectStatus::Colon { ref key } = current_status {
+                let key_str = key.iter().collect::<String>();
+                if let Value::Object(obj) = object {
+                    obj.insert(key_str, json!(""));
+                }
+                *current_status = ObjectStatus::ValueQuoteOpen {
                     key: key.clone(),
-                    is_escaped: false,
+                    escaped: false,
                 };
-                // create an empty string for the value
-                obj.insert(key.iter().collect::<String>().clone(), json!(""));
             }
         }
+
         // ------ Add Scalar Value ------
-        (Value::Object(_obj), sts @ ObjectStatus::Colon { .. }, char) => {
-            if let ObjectStatus::Colon { key } = sts.clone() {
-                *sts = ObjectStatus::ValueScalar {
+        (&Value::Object(_), &ObjectStatus::Colon { .. }, char) => {
+            if let ObjectStatus::Colon { ref key } = current_status {
+                *current_status = ObjectStatus::ValueScalar {
                     key: key.clone(),
                     value_so_far: vec![char],
                 };
             }
         }
-        (Value::Object(ref mut obj), sts @ ObjectStatus::ValueScalar { .. }, ',') => {
-            if let ObjectStatus::ValueScalar { key, value_so_far } = sts.clone() {
-                let key_string = key.iter().collect::<String>();
-                let value_string = value_so_far.iter().collect::<String>();
-                let value = match value_string.parse::<Value>() {
-                    Ok(value) => value,
-                    Err(e) => {
-                        return Err(format!("Invalid value for key {}: {}", key_string, e));
+        (&Value::Object(_), &ObjectStatus::ValueScalar { .. }, ',') => {
+            if let ObjectStatus::ValueScalar {
+                ref key,
+                ref value_so_far,
+            } = current_status
+            {
+                let key_str = key.iter().collect::<String>();
+                let value_str = value_so_far.iter().collect::<String>();
+                if let Value::Object(obj) = object {
+                    match value_str.parse::<Value>() {
+                        Ok(value) => {
+                            obj.insert(key_str, value);
+                        }
+                        Err(e) => return Err(format!("Invalid value for key {}: {}", key_str, e)),
                     }
-                };
-                obj.insert(key_string, value);
-                *sts = ObjectStatus::StartProperty;
+                }
+                *current_status = ObjectStatus::StartProperty;
             }
         }
-        (Value::Object(ref mut obj), sts @ ObjectStatus::ValueScalar { .. }, '}') => {
-            if let ObjectStatus::ValueScalar { key, value_so_far } = sts.clone() {
-                let key_string = key.iter().collect::<String>();
-                let value_string = value_so_far.iter().collect::<String>();
-                let value = match value_string.parse::<Value>() {
-                    Ok(value) => value,
-                    Err(e) => {
-                        return Err(format!("Invalid value for key {}: {}", key_string, e));
+        (&Value::Object(_), &ObjectStatus::ValueScalar { .. }, '}') => {
+            if let ObjectStatus::ValueScalar {
+                ref key,
+                ref value_so_far,
+            } = current_status
+            {
+                let key_str = key.iter().collect::<String>();
+                let value_str = value_so_far.iter().collect::<String>();
+                if let Value::Object(obj) = object {
+                    match value_str.parse::<Value>() {
+                        Ok(value) => {
+                            obj.insert(key_str, value);
+                        }
+                        Err(e) => return Err(format!("Invalid value for key {}: {}", key_str, e)),
                     }
-                };
-                obj.insert(key_string, value);
-                *sts = ObjectStatus::Closed;
+                }
+                *current_status = ObjectStatus::Closed;
             }
         }
-        (
-            Value::Object(_obj),
-            ObjectStatus::ValueScalar {
-                key: _key,
+        (&Value::Object(_), &ObjectStatus::ValueScalar { .. }, char) => {
+            if let ObjectStatus::ValueScalar {
                 ref mut value_so_far,
-            },
-            char,
-        ) => {
-            // push the character into the value so far
-            value_so_far.push(char);
+                ..
+            } = current_status
+            {
+                value_so_far.push(char);
+            }
         }
+
         // ------ Finished taking value ------
-        (Value::Object(_obj), sts @ ObjectStatus::ValueQuoteClose, ',') => {
-            *sts = ObjectStatus::StartProperty;
+        (&Value::Object(_), &ObjectStatus::ValueQuoteClose, ',') => {
+            *current_status = ObjectStatus::StartProperty;
         }
-        (Value::Object(_obj), sts @ ObjectStatus::ValueQuoteClose, '}') => {
-            *sts = ObjectStatus::Closed;
+        (&Value::Object(_), &ObjectStatus::ValueQuoteClose, '}') => {
+            *current_status = ObjectStatus::Closed;
         }
+
         // ------ white spaces ------
         (_, _, ' ' | '\n') => {}
-        (_val, st, c) => {
-            return Err(format!("Invalid character {} status: {:?}", c, st));
+
+        (val, st, c) => {
+            return Err(format!(
+                "Invalid character {} status: {:?} value: {:?}",
+                c, st, val
+            ));
         }
     }
     Ok(())
 }
+
+// The rest of the code remains the same
 #[cfg(debug_assertions)]
 pub fn parse_stream(json_string: &str) -> Result<Value, String> {
     let mut out: Value = Value::Null;
@@ -543,11 +488,9 @@ impl JsonStreamParser {
             current_status: ObjectStatus::Ready,
         }
     }
-
     pub fn add_char(&mut self, current_char: char) -> Result<(), String> {
         add_char_into_object(&mut self.object, &mut self.current_status, current_char)
     }
-
     pub fn get_result(&self) -> &Value {
         &self.object
     }
@@ -557,7 +500,9 @@ macro_rules! param_test {
     ($($name:ident: $string:expr, $value:expr)*) => {
     $(
         mod $name {
+            #[allow(unused_imports)]
             use super::{parse_stream, JsonStreamParser};
+            #[allow(unused_imports)]
             use serde_json::{Value, json};
 
             #[test]

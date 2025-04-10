@@ -24,4 +24,37 @@
     }
   }
   )
+  // Add listener for after content is settled
+  document.body.addEventListener('htmx:afterSettle', function (evt) {
+    // Check if the settled element has our specific class
+    // evt.detail.target might be the container, elt is often the element *making* the request
+    // We need the element *receiving* the swap. Let's target specifically.
+    const messageId = "{{user_message.id}}"; // Get the ID from the template context
+    const targetBubble = document.querySelector(`.ai-message-content-${messageId}`);
+
+    // Ensure we have the marked library and the target exists
+    if (targetBubble && typeof marked !== 'undefined') {
+      // Get the raw text content (which includes previously streamed parts)
+      // Exclude the spinner if it's still somehow there, though it should be hidden.
+      let rawContent = '';
+      targetBubble.childNodes.forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          rawContent += node.textContent;
+        } else if (node.nodeType === Node.ELEMENT_NODE && !node.classList.contains('loading')) {
+          // In case HTMX wraps text in spans or something unexpected later
+          rawContent += node.textContent;
+        }
+      });
+      console.log(rawContent);
+      // Sanitize BEFORE inserting potentially harmful HTML from Markdown
+      // It's better to sanitize *after* rendering if using DOMPurify
+      targetBubble.innerHTML = marked.parse(rawContent);
+      // Optional: Sanitize with DOMPurify *after* parsing for security
+      // if (typeof DOMPurify !== 'undefined') {
+      //    targetBubble.innerHTML = DOMPurify.sanitize(marked.parse(rawContent));
+      // } else {
+      //    targetBubble.innerHTML = marked.parse(rawContent); // Use with caution if markdown source isn't trusted
+      // }
+    }
+  });
 </script>
