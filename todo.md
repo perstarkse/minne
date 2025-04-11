@@ -1,8 +1,5 @@
 \[\] archive ingressed webpage
-\[x\] configs primarily get envs
 \[\] filtering on categories
-\[\] markdown rendering in client
-\[x\] openai api key in config
 \[\] testing core functions
 \[\] three js graph explorer
 \[\] three js vector explorer
@@ -11,6 +8,7 @@
 \[x\] chat functionality
 \[x\] chat history
 \[x\] chat styling overhaul
+\[x\] configs primarily get envs
 \[x\] fix patch_text_content
 \[x\] gdpr
 \[x\] html ingression
@@ -22,7 +20,9 @@
 \[x\] link to ingressed urls or archives
 \[x\] macro for pagedata?
 \[x\] make sure error messages render correctly
+\[x\] markdown rendering in client
 \[x\] on updates of knowledgeentity create new embeddings
+\[x\] openai api key in config
 \[x\] option to set models, query and processing
 \[x\] redirects
 \[x\] restrict retrieval to users own objects

@@ -57,10 +57,8 @@
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
   }
-
   document.body.addEventListener('htmx:afterSwap', function (evt) {
-    renderMarkdown();
-    setTimeout(scrollChatToBottom, 0);
+    scrollChatToBottom();
   });
 </script>
 <style>

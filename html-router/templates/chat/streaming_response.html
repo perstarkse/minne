@@ -1,60 +1,47 @@
 <div class="chat chat-end">
-  <div class="chat-bubble">
-    {{user_message.content}}
+  <div class="chat-bubble markdown-content">
+    {{ user_message.content }}
   </div>
 </div>
 <div class="chat chat-start">
   <div hx-ext="sse" sse-connect="/chat/response-stream?message_id={{user_message.id}}" sse-close="close_stream"
     hx-swap="beforeend">
-    <div class="chat-bubble" sse-swap="chat_message">
+    <div class="chat-bubble">
       <span class="loading loading-dots loading-sm loading-id-{{user_message.id}}"></span>
-    </div>
-    <div class="chat-footer opacity-50 max-w-[90%] flex-wrap" sse-swap="references">
+      <div class="markdown-content" id="ai-message-content-{{user_message.id}}" sse-swap="chat_message"></div>
     </div>
   </div>
 </div>
 <script>
-  document.body.addEventListener('htmx:sseBeforeMessage', (e) => {
-    const targetElement = e.detail.elt;
-    const loadingSpinner = targetElement.querySelector('.loading-id-{{user_message.id}}');
+  marked.setOptions({
+    breaks: true, gfm: true, headerIds: false, mangle: false
+  });
+  // Buffer store for markdown, keyed by message id
+  window.markdownBuffer = window.markdownBuffer || {};
+  document.body.addEventListener('htmx:sseBeforeMessage', function (e) {
+    const spinner = document.querySelector('.loading-id-{{user_message.id}}');
+    if (spinner) spinner.style.display = 'none';
 
-    // Hiding the loading spinner before data is swapped in
-    if (loadingSpinner) {
-      loadingSpinner.style.display = 'none';
-    }
-  }
-  )
-  // Add listener for after content is settled
-  document.body.addEventListener('htmx:afterSettle', function (evt) {
-    // Check if the settled element has our specific class
-    // evt.detail.target might be the container, elt is often the element *making* the request
-    // We need the element *receiving* the swap. Let's target specifically.
-    const messageId = "{{user_message.id}}"; // Get the ID from the template context
-    const targetBubble = document.querySelector(`.ai-message-content-${messageId}`);
-
-    // Ensure we have the marked library and the target exists
-    if (targetBubble && typeof marked !== 'undefined') {
-      // Get the raw text content (which includes previously streamed parts)
-      // Exclude the spinner if it's still somehow there, though it should be hidden.
-      let rawContent = '';
-      targetBubble.childNodes.forEach(node => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          rawContent += node.textContent;
-        } else if (node.nodeType === Node.ELEMENT_NODE && !node.classList.contains('loading')) {
-          // In case HTMX wraps text in spans or something unexpected later
-          rawContent += node.textContent;
-        }
-      });
-      console.log(rawContent);
-      // Sanitize BEFORE inserting potentially harmful HTML from Markdown
-      // It's better to sanitize *after* rendering if using DOMPurify
-      targetBubble.innerHTML = marked.parse(rawContent);
-      // Optional: Sanitize with DOMPurify *after* parsing for security
-      // if (typeof DOMPurify !== 'undefined') {
-      //    targetBubble.innerHTML = DOMPurify.sanitize(marked.parse(rawContent));
-      // } else {
-      //    targetBubble.innerHTML = marked.parse(rawContent); // Use with caution if markdown source isn't trusted
-      // }
+    const el = document.getElementById('ai-message-content-{{user_message.id}}');
+    if (e.detail.elt !== el) return;
+    e.preventDefault(); // Prevent htmx from swapping
+    // Use message id as buffer key
+    const msgId = '{{user_message.id}}';
+    window.markdownBuffer[msgId] = (window.markdownBuffer[msgId] || '') + (e.detail.data || '');
+    // Render buffer (with newline fix) on *every* chunk
+    el.innerHTML = marked.parse(
+      window.markdownBuffer[msgId].replace(/\\n/g, '\n')
+    );
+    scrollChatToBottom();
+  });
+  document.body.addEventListener('htmx:sseClose', function () {
+    const el = document.getElementById('ai-message-content-{{user_message.id}}');
+    const msgId = '{{user_message.id}}';
+    if (el && window.markdownBuffer[msgId]) {
+      el.innerHTML = marked.parse(
+        window.markdownBuffer[msgId].replace(/\\n/g, '\n')
+      );
+      delete window.markdownBuffer[msgId]; // Clean up in multichat
     }
   });
 </script>
