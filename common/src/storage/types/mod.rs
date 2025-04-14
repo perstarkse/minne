@@ -87,7 +87,7 @@ macro_rules! stored_object {
         }
 
 
-        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
         pub struct $name {
             #[serde(deserialize_with = "deserialize_flexible_id")]
             pub id: String,

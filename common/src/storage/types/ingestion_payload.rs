@@ -1,9 +1,10 @@
 use crate::{error::AppError, storage::types::file_info::FileInfo};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use url::Url;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum IngestionPayload {
     Url {
         url: String,
@@ -91,5 +92,239 @@ impl IngestionPayload {
         }
 
         Ok(object_list)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Create a mock FileInfo for testing
+    #[derive(Debug, Clone, PartialEq)]
+    struct MockFileInfo {
+        id: String,
+    }
+
+    impl From<MockFileInfo> for FileInfo {
+        fn from(mock: MockFileInfo) -> Self {
+            // This is just a test implementation, the actual fields don't matter
+            // as we're just testing the IngestionPayload functionality
+            FileInfo {
+                id: mock.id,
+                sha256: "mock-sha256".to_string(),
+                path: "/mock/path".to_string(),
+                file_name: "mock.txt".to_string(),
+                mime_type: "text/plain".to_string(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            }
+        }
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_with_url() {
+        let url = "https://example.com";
+        let instructions = "Process this URL";
+        let category = "websites";
+        let user_id = "user123";
+        let files = vec![];
+
+        let result = IngestionPayload::create_ingestion_payload(
+            Some(url.to_string()),
+            instructions.to_string(),
+            category.to_string(),
+            files,
+            user_id,
+        )
+        .unwrap();
+
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            IngestionPayload::Url {
+                url: payload_url,
+                instructions: payload_instructions,
+                category: payload_category,
+                user_id: payload_user_id,
+            } => {
+                // URL parser may normalize the URL by adding a trailing slash
+                assert!(payload_url == &url.to_string() || payload_url == &format!("{}/", url));
+                assert_eq!(payload_instructions, &instructions);
+                assert_eq!(payload_category, &category);
+                assert_eq!(payload_user_id, &user_id);
+            }
+            _ => panic!("Expected Url variant"),
+        }
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_with_text() {
+        let text = "This is some text content";
+        let instructions = "Process this text";
+        let category = "notes";
+        let user_id = "user123";
+        let files = vec![];
+
+        let result = IngestionPayload::create_ingestion_payload(
+            Some(text.to_string()),
+            instructions.to_string(),
+            category.to_string(),
+            files,
+            user_id,
+        )
+        .unwrap();
+
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            IngestionPayload::Text {
+                text: payload_text,
+                instructions: payload_instructions,
+                category: payload_category,
+                user_id: payload_user_id,
+            } => {
+                assert_eq!(payload_text, text);
+                assert_eq!(payload_instructions, instructions);
+                assert_eq!(payload_category, category);
+                assert_eq!(payload_user_id, user_id);
+            }
+            _ => panic!("Expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_with_file() {
+        let instructions = "Process this file";
+        let category = "documents";
+        let user_id = "user123";
+
+        // Create a mock FileInfo
+        let mock_file = MockFileInfo {
+            id: "file123".to_string(),
+        };
+
+        let file_info: FileInfo = mock_file.into();
+        let files = vec![file_info.clone()];
+
+        let result = IngestionPayload::create_ingestion_payload(
+            None,
+            instructions.to_string(),
+            category.to_string(),
+            files,
+            user_id,
+        )
+        .unwrap();
+
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            IngestionPayload::File {
+                file_info: payload_file_info,
+                instructions: payload_instructions,
+                category: payload_category,
+                user_id: payload_user_id,
+            } => {
+                assert_eq!(payload_file_info.id, file_info.id);
+                assert_eq!(payload_instructions, instructions);
+                assert_eq!(payload_category, category);
+                assert_eq!(payload_user_id, user_id);
+            }
+            _ => panic!("Expected File variant"),
+        }
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_with_url_and_file() {
+        let url = "https://example.com";
+        let instructions = "Process this data";
+        let category = "mixed";
+        let user_id = "user123";
+
+        // Create a mock FileInfo
+        let mock_file = MockFileInfo {
+            id: "file123".to_string(),
+        };
+
+        let file_info: FileInfo = mock_file.into();
+        let files = vec![file_info.clone()];
+
+        let result = IngestionPayload::create_ingestion_payload(
+            Some(url.to_string()),
+            instructions.to_string(),
+            category.to_string(),
+            files,
+            user_id,
+        )
+        .unwrap();
+
+        assert_eq!(result.len(), 2);
+
+        // Check first item is URL
+        match &result[0] {
+            IngestionPayload::Url {
+                url: payload_url, ..
+            } => {
+                // URL parser may normalize the URL by adding a trailing slash
+                assert!(payload_url == &url.to_string() || payload_url == &format!("{}/", url));
+            }
+            _ => panic!("Expected first item to be Url variant"),
+        }
+
+        // Check second item is File
+        match &result[1] {
+            IngestionPayload::File {
+                file_info: payload_file_info,
+                ..
+            } => {
+                assert_eq!(payload_file_info.id, file_info.id);
+            }
+            _ => panic!("Expected second item to be File variant"),
+        }
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_empty_input() {
+        let instructions = "Process something";
+        let category = "empty";
+        let user_id = "user123";
+        let files = vec![];
+
+        let result = IngestionPayload::create_ingestion_payload(
+            None,
+            instructions.to_string(),
+            category.to_string(),
+            files,
+            user_id,
+        );
+
+        assert!(result.is_err());
+        match result {
+            Err(AppError::NotFound(msg)) => {
+                assert_eq!(msg, "No valid content or files provided");
+            }
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_with_empty_text() {
+        let text = ""; // Empty text
+        let instructions = "Process this";
+        let category = "notes";
+        let user_id = "user123";
+        let files = vec![];
+
+        let result = IngestionPayload::create_ingestion_payload(
+            Some(text.to_string()),
+            instructions.to_string(),
+            category.to_string(),
+            files,
+            user_id,
+        );
+
+        assert!(result.is_err());
+        match result {
+            Err(AppError::NotFound(msg)) => {
+                assert_eq!(msg, "No valid content or files provided");
+            }
+            _ => panic!("Expected NotFound error"),
+        }
     }
 }
