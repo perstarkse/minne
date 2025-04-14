@@ -5,7 +5,7 @@ use crate::{
 use async_openai::{config::OpenAIConfig, Client};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum KnowledgeEntityType {
     Idea,
     Project,
@@ -118,4 +118,199 @@ impl KnowledgeEntity {
 
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_knowledge_entity_creation() {
+        // Create basic test entity
+        let source_id = "source123".to_string();
+        let name = "Test Entity".to_string();
+        let description = "Test Description".to_string();
+        let entity_type = KnowledgeEntityType::Document;
+        let metadata = Some(json!({"key": "value"}));
+        let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
+        let user_id = "user123".to_string();
+
+        let entity = KnowledgeEntity::new(
+            source_id.clone(),
+            name.clone(),
+            description.clone(),
+            entity_type.clone(),
+            metadata.clone(),
+            embedding.clone(),
+            user_id.clone(),
+        );
+
+        // Verify all fields are set correctly
+        assert_eq!(entity.source_id, source_id);
+        assert_eq!(entity.name, name);
+        assert_eq!(entity.description, description);
+        assert_eq!(entity.entity_type, entity_type);
+        assert_eq!(entity.metadata, metadata);
+        assert_eq!(entity.embedding, embedding);
+        assert_eq!(entity.user_id, user_id);
+        assert!(!entity.id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_knowledge_entity_type_from_string() {
+        // Test conversion from String to KnowledgeEntityType
+        assert_eq!(
+            KnowledgeEntityType::from("idea".to_string()),
+            KnowledgeEntityType::Idea
+        );
+        assert_eq!(
+            KnowledgeEntityType::from("Idea".to_string()),
+            KnowledgeEntityType::Idea
+        );
+        assert_eq!(
+            KnowledgeEntityType::from("IDEA".to_string()),
+            KnowledgeEntityType::Idea
+        );
+
+        assert_eq!(
+            KnowledgeEntityType::from("project".to_string()),
+            KnowledgeEntityType::Project
+        );
+        assert_eq!(
+            KnowledgeEntityType::from("document".to_string()),
+            KnowledgeEntityType::Document
+        );
+        assert_eq!(
+            KnowledgeEntityType::from("page".to_string()),
+            KnowledgeEntityType::Page
+        );
+        assert_eq!(
+            KnowledgeEntityType::from("textsnippet".to_string()),
+            KnowledgeEntityType::TextSnippet
+        );
+
+        // Test default case
+        assert_eq!(
+            KnowledgeEntityType::from("unknown".to_string()),
+            KnowledgeEntityType::Document
+        );
+    }
+
+    #[tokio::test]
+    async fn test_knowledge_entity_variants() {
+        let variants = KnowledgeEntityType::variants();
+        assert_eq!(variants.len(), 5);
+        assert!(variants.contains(&"Idea"));
+        assert!(variants.contains(&"Project"));
+        assert!(variants.contains(&"Document"));
+        assert!(variants.contains(&"Page"));
+        assert!(variants.contains(&"TextSnippet"));
+    }
+
+    #[tokio::test]
+    async fn test_delete_by_source_id() {
+        // Setup in-memory database for testing
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Create two entities with the same source_id
+        let source_id = "source123".to_string();
+        let entity_type = KnowledgeEntityType::Document;
+        let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
+        let user_id = "user123".to_string();
+
+        let entity1 = KnowledgeEntity::new(
+            source_id.clone(),
+            "Entity 1".to_string(),
+            "Description 1".to_string(),
+            entity_type.clone(),
+            None,
+            embedding.clone(),
+            user_id.clone(),
+        );
+
+        let entity2 = KnowledgeEntity::new(
+            source_id.clone(),
+            "Entity 2".to_string(),
+            "Description 2".to_string(),
+            entity_type.clone(),
+            None,
+            embedding.clone(),
+            user_id.clone(),
+        );
+
+        // Create an entity with a different source_id
+        let different_source_id = "different_source".to_string();
+        let different_entity = KnowledgeEntity::new(
+            different_source_id.clone(),
+            "Different Entity".to_string(),
+            "Different Description".to_string(),
+            entity_type.clone(),
+            None,
+            embedding.clone(),
+            user_id.clone(),
+        );
+
+        // Store the entities
+        db.store_item(entity1)
+            .await
+            .expect("Failed to store entity 1");
+        db.store_item(entity2)
+            .await
+            .expect("Failed to store entity 2");
+        db.store_item(different_entity.clone())
+            .await
+            .expect("Failed to store different entity");
+
+        // Delete by source_id
+        KnowledgeEntity::delete_by_source_id(&source_id, &db)
+            .await
+            .expect("Failed to delete entities by source_id");
+
+        // Verify all entities with the specified source_id are deleted
+        let query = format!(
+            "SELECT * FROM {} WHERE source_id = '{}'",
+            KnowledgeEntity::table_name(),
+            source_id
+        );
+        let remaining: Vec<KnowledgeEntity> = db
+            .client
+            .query(query)
+            .await
+            .expect("Query failed")
+            .take(0)
+            .expect("Failed to get query results");
+        assert_eq!(
+            remaining.len(),
+            0,
+            "All entities with the source_id should be deleted"
+        );
+
+        // Verify the entity with a different source_id still exists
+        let different_query = format!(
+            "SELECT * FROM {} WHERE source_id = '{}'",
+            KnowledgeEntity::table_name(),
+            different_source_id
+        );
+        let different_remaining: Vec<KnowledgeEntity> = db
+            .client
+            .query(different_query)
+            .await
+            .expect("Query failed")
+            .take(0)
+            .expect("Failed to get query results");
+        assert_eq!(
+            different_remaining.len(),
+            1,
+            "Entity with different source_id should still exist"
+        );
+        assert_eq!(different_remaining[0].id, different_entity.id);
+    }
+
+    // Note: We can't easily test the patch method without mocking the OpenAI client
+    // and the generate_embedding function. This would require more complex setup.
 }

@@ -414,3 +414,276 @@ impl User {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper function to set up a test database with SystemSettings
+    async fn setup_test_db() -> SurrealDbClient {
+        let namespace = "test_ns";
+        let database = Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, &database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        db.ensure_initialized()
+            .await
+            .expect("Failed to setup the systemsettings");
+
+        db
+    }
+
+    #[tokio::test]
+    async fn test_user_creation() {
+        // Setup test database
+        let db = setup_test_db().await;
+
+        // Create a user
+        let email = "test@example.com";
+        let password = "test_password";
+        let timezone = "America/New_York";
+
+        let user = User::create_new(
+            email.to_string(),
+            password.to_string(),
+            &db,
+            timezone.to_string(),
+        )
+        .await
+        .expect("Failed to create user");
+
+        // Verify user properties
+        assert!(!user.id.is_empty());
+        assert_eq!(user.email, email);
+        assert_ne!(user.password, password); // Password should be hashed
+        assert!(!user.anonymous);
+        assert_eq!(user.timezone, timezone);
+
+        // Verify it can be retrieved
+        let retrieved: Option<User> = db
+            .get_item(&user.id)
+            .await
+            .expect("Failed to retrieve user");
+        assert!(retrieved.is_some());
+
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.id, user.id);
+        assert_eq!(retrieved.email, email);
+    }
+
+    #[tokio::test]
+    async fn test_user_authentication() {
+        // Setup test database
+        let db = setup_test_db().await;
+
+        // Create a user
+        let email = "auth_test@example.com";
+        let password = "auth_password";
+
+        User::create_new(
+            email.to_string(),
+            password.to_string(),
+            &db,
+            "UTC".to_string(),
+        )
+        .await
+        .expect("Failed to create user");
+
+        // Test successful authentication
+        let auth_result = User::authenticate(email, password, &db).await;
+        assert!(auth_result.is_ok());
+
+        // Test failed authentication with wrong password
+        let wrong_auth = User::authenticate(email, "wrong_password", &db).await;
+        assert!(wrong_auth.is_err());
+
+        // Test failed authentication with non-existent user
+        let nonexistent = User::authenticate("nonexistent@example.com", password, &db).await;
+        assert!(nonexistent.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_find_by_email() {
+        // Setup test database
+        let db = setup_test_db().await;
+
+        // Create a user
+        let email = "find_test@example.com";
+        let password = "find_password";
+
+        let created_user = User::create_new(
+            email.to_string(),
+            password.to_string(),
+            &db,
+            "UTC".to_string(),
+        )
+        .await
+        .expect("Failed to create user");
+
+        // Test finding user by email
+        let found_user = User::find_by_email(email, &db)
+            .await
+            .expect("Error searching for user");
+        assert!(found_user.is_some());
+        let found_user = found_user.unwrap();
+        assert_eq!(found_user.id, created_user.id);
+        assert_eq!(found_user.email, email);
+
+        // Test finding non-existent user
+        let not_found = User::find_by_email("nonexistent@example.com", &db)
+            .await
+            .expect("Error searching for user");
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_api_key_management() {
+        // Setup test database
+        let db = setup_test_db().await;
+
+        // Create a user
+        let email = "apikey_test@example.com";
+        let password = "apikey_password";
+
+        let user = User::create_new(
+            email.to_string(),
+            password.to_string(),
+            &db,
+            "UTC".to_string(),
+        )
+        .await
+        .expect("Failed to create user");
+
+        // Initially, user should have no API key
+        assert!(user.api_key.is_none());
+
+        // Generate API key
+        let api_key = User::set_api_key(&user.id, &db)
+            .await
+            .expect("Failed to set API key");
+        assert!(!api_key.is_empty());
+        assert!(api_key.starts_with("sk_"));
+
+        // Verify the API key was saved
+        let updated_user: Option<User> = db
+            .get_item(&user.id)
+            .await
+            .expect("Failed to retrieve user");
+        assert!(updated_user.is_some());
+        let updated_user = updated_user.unwrap();
+        assert_eq!(updated_user.api_key, Some(api_key.clone()));
+
+        // Test finding user by API key
+        let found_user = User::find_by_api_key(&api_key, &db)
+            .await
+            .expect("Error searching by API key");
+        assert!(found_user.is_some());
+        let found_user = found_user.unwrap();
+        assert_eq!(found_user.id, user.id);
+
+        // Revoke API key
+        User::revoke_api_key(&user.id, &db)
+            .await
+            .expect("Failed to revoke API key");
+
+        // Verify API key was revoked
+        let revoked_user: Option<User> = db
+            .get_item(&user.id)
+            .await
+            .expect("Failed to retrieve user");
+        assert!(revoked_user.is_some());
+        let revoked_user = revoked_user.unwrap();
+        assert!(revoked_user.api_key.is_none());
+
+        // Test searching by revoked API key
+        let not_found = User::find_by_api_key(&api_key, &db)
+            .await
+            .expect("Error searching by API key");
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_password_update() {
+        // Setup test database
+        let db = setup_test_db().await;
+
+        // Create a user
+        let email = "pwd_test@example.com";
+        let old_password = "old_password";
+        let new_password = "new_password";
+
+        User::create_new(
+            email.to_string(),
+            old_password.to_string(),
+            &db,
+            "UTC".to_string(),
+        )
+        .await
+        .expect("Failed to create user");
+
+        // Authenticate with old password
+        let auth_result = User::authenticate(email, old_password, &db).await;
+        assert!(auth_result.is_ok());
+
+        // Update password
+        User::patch_password(email, new_password, &db)
+            .await
+            .expect("Failed to update password");
+
+        // Old password should no longer work
+        let old_auth = User::authenticate(email, old_password, &db).await;
+        assert!(old_auth.is_err());
+
+        // New password should work
+        let new_auth = User::authenticate(email, new_password, &db).await;
+        assert!(new_auth.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_validate_timezone() {
+        // Valid timezones should be accepted as-is
+        assert_eq!(validate_timezone("America/New_York"), "America/New_York");
+        assert_eq!(validate_timezone("Europe/London"), "Europe/London");
+        assert_eq!(validate_timezone("Asia/Tokyo"), "Asia/Tokyo");
+        assert_eq!(validate_timezone("UTC"), "UTC");
+
+        // Invalid timezones should be replaced with UTC
+        assert_eq!(validate_timezone("Invalid/Timezone"), "UTC");
+        assert_eq!(validate_timezone("Not_Real"), "UTC");
+    }
+
+    #[tokio::test]
+    async fn test_timezone_update() {
+        // Setup test database
+        let db = setup_test_db().await;
+
+        // Create user with default timezone
+        let email = "timezone_test@example.com";
+        let user = User::create_new(
+            email.to_string(),
+            "password".to_string(),
+            &db,
+            "UTC".to_string(),
+        )
+        .await
+        .expect("Failed to create user");
+
+        assert_eq!(user.timezone, "UTC");
+
+        // Update timezone
+        let new_timezone = "Europe/Paris";
+        User::update_timezone(&user.id, new_timezone, &db)
+            .await
+            .expect("Failed to update timezone");
+
+        // Verify timezone was updated
+        let updated_user: Option<User> = db
+            .get_item(&user.id)
+            .await
+            .expect("Failed to retrieve user");
+        assert!(updated_user.is_some());
+        let updated_user = updated_user.unwrap();
+        assert_eq!(updated_user.timezone, new_timezone);
+    }
+}

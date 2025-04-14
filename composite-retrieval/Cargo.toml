@@ -15,5 +15,7 @@ serde_json = { workspace = true }
 surrealdb = { workspace = true }
 futures = { workspace = true }
 async-openai = { workspace = true }
+
+uuid = { version = "1.10.0", features = ["v4", "serde"] }
  
-common = { path = "../common" }
+common = { path = "../common", features = ["test-utils"] }

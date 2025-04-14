@@ -189,3 +189,104 @@ impl Deref for SurrealDbClient {
         &self.client
     }
 }
+
+#[cfg(any(test, feature = "test-utils"))]
+impl SurrealDbClient {
+    /// Create an in-memory SurrealDB client for testing.
+    pub async fn memory(namespace: &str, database: &str) -> Result<Self, Error> {
+        let db = connect("mem://").await?;
+
+        db.use_ns(namespace).use_db(database).await?;
+
+        Ok(SurrealDbClient { client: db })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::stored_object;
+
+    use super::*;
+    use uuid::Uuid;
+
+    stored_object!(Dummy, "dummy", {
+        name: String
+    });
+
+    #[tokio::test]
+    async fn test_initialization_and_crud() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string(); // ensures isolation per test run
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Call your initialization
+        db.ensure_initialized()
+            .await
+            .expect("Failed to initialize schema");
+
+        // Test basic CRUD
+        let dummy = Dummy {
+            id: "abc".to_string(),
+            name: "first".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Store
+        let stored = db.store_item(dummy.clone()).await.expect("Failed to store");
+        assert!(stored.is_some());
+
+        // Read
+        let fetched = db
+            .get_item::<Dummy>(&dummy.id)
+            .await
+            .expect("Failed to fetch");
+        assert_eq!(fetched, Some(dummy.clone()));
+
+        // Read all
+        let all = db
+            .get_all_stored_items::<Dummy>()
+            .await
+            .expect("Failed to fetch all");
+        assert!(all.contains(&dummy));
+
+        // Delete
+        let deleted = db
+            .delete_item::<Dummy>(&dummy.id)
+            .await
+            .expect("Failed to delete");
+        assert_eq!(deleted, Some(dummy));
+
+        // After delete, should not be present
+        let fetch_post = db
+            .get_item::<Dummy>("abc")
+            .await
+            .expect("Failed fetch post delete");
+        assert!(fetch_post.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_setup_auth() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string(); // ensures isolation per test run
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Should not panic or fail
+        db.setup_auth().await.expect("Failed to setup auth");
+    }
+
+    #[tokio::test]
+    async fn test_build_indexes() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        db.build_indexes().await.expect("Failed to build indexes");
+    }
+}
