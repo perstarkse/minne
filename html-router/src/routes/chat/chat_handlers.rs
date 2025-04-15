@@ -224,3 +224,110 @@ pub async fn new_chat_user_message(
 
     Ok(response.into_response())
 }
+
+#[derive(Deserialize)]
+pub struct PatchConversationTitle {
+    title: String,
+}
+
+#[derive(Serialize)]
+pub struct DrawerContext {
+    user: User,
+    conversation_archive: Vec<Conversation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    edit_conversation_id: Option<String>,
+}
+pub async fn show_conversation_editing_title(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    Path(conversation_id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
+
+    let owns = conversation_archive
+        .iter()
+        .any(|c| c.id == conversation_id && c.user_id == user.id);
+    if !owns {
+        return Ok(TemplateResponse::unauthorized().into_response());
+    }
+
+    Ok(TemplateResponse::new_template(
+        "chat/drawer.html",
+        DrawerContext {
+            user,
+            conversation_archive,
+            edit_conversation_id: Some(conversation_id),
+        },
+    )
+    .into_response())
+}
+
+pub async fn patch_conversation_title(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    Path(conversation_id): Path<String>,
+    Form(form): Form<PatchConversationTitle>,
+) -> Result<impl IntoResponse, HtmlError> {
+    Conversation::patch_title(&conversation_id, &user.id, &form.title, &state.db).await?;
+
+    let updated_conversations = User::get_user_conversations(&user.id, &state.db).await?;
+
+    Ok(TemplateResponse::new_template(
+        "chat/drawer.html",
+        DrawerContext {
+            user,
+            conversation_archive: updated_conversations,
+            edit_conversation_id: None,
+        },
+    )
+    .into_response())
+}
+
+pub async fn delete_conversation(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    Path(conversation_id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let conversation: Conversation = state
+        .db
+        .get_item(&conversation_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+
+    if conversation.user_id != user.id {
+        return Ok(TemplateResponse::unauthorized().into_response());
+    }
+
+    state
+        .db
+        .delete_item::<Conversation>(&conversation_id)
+        .await?;
+
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
+
+    Ok(TemplateResponse::new_template(
+        "chat/drawer.html",
+        DrawerContext {
+            user,
+            conversation_archive,
+            edit_conversation_id: None,
+        },
+    )
+    .into_response())
+}
+pub async fn reload_sidebar(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+) -> Result<impl IntoResponse, HtmlError> {
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
+
+    Ok(TemplateResponse::new_template(
+        "chat/drawer.html",
+        DrawerContext {
+            user,
+            conversation_archive,
+            edit_conversation_id: None,
+        },
+    )
+    .into_response())
+}

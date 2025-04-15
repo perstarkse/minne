@@ -580,7 +580,7 @@ mod tests {
         // Should fail with FileNotFound error
         assert!(result.is_err());
         match result {
-            Err(FileError::FileNotFound(_)) => {
+            Err(AppError::File(_)) => {
                 // Expected error
             }
             _ => panic!("Expected FileNotFound error"),

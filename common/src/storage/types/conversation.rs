@@ -1,3 +1,4 @@
+use surrealdb::opt::PatchOp;
 use uuid::Uuid;
 
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
@@ -45,6 +46,31 @@ impl Conversation {
             .take(0)?;
 
         Ok((conversation, messages))
+    }
+    pub async fn patch_title(
+        id: &str,
+        user_id: &str,
+        new_title: &str,
+        db: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        // First verify ownership by getting conversation user_id
+        let conversation: Option<Conversation> = db.get_item(id).await?;
+        let conversation =
+            conversation.ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+
+        if conversation.user_id != user_id {
+            return Err(AppError::Auth(
+                "Unauthorized to update this conversation".to_string(),
+            ));
+        }
+
+        let _updated: Option<Self> = db
+            .update((Self::table_name(), id))
+            .patch(PatchOp::replace("/title", new_title.to_string()))
+            .patch(PatchOp::replace("/updated_at", Utc::now()))
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -137,6 +163,85 @@ mod tests {
 
         match result {
             Err(AppError::Auth(_)) => { /* expected error */ }
+            _ => panic!("Expected Auth error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_patch_title_success() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        let user_id = "user_1";
+        let original_title = "Original Title";
+        let conversation = Conversation::new(user_id.to_string(), original_title.to_string());
+        let conversation_id = conversation.id.clone();
+
+        db.store_item(conversation)
+            .await
+            .expect("Failed to store conversation");
+
+        let new_title = "Updated Title";
+
+        // Patch title successfully
+        let result = Conversation::patch_title(&conversation_id, user_id, new_title, &db).await;
+        assert!(result.is_ok());
+
+        // Retrieve from DB to verify
+        let updated_conversation = db
+            .get_item::<Conversation>(&conversation_id)
+            .await
+            .expect("Failed to get conversation")
+            .expect("Conversation missing");
+        assert_eq!(updated_conversation.title, new_title);
+        assert_eq!(updated_conversation.user_id, user_id);
+    }
+
+    #[tokio::test]
+    async fn test_patch_title_not_found() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Try to patch non-existing conversation
+        let result = Conversation::patch_title("nonexistent", "user_x", "New Title", &db).await;
+
+        assert!(result.is_err());
+        match result {
+            Err(AppError::NotFound(_)) => {}
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_patch_title_unauthorized() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        let owner_id = "owner";
+        let other_user_id = "intruder";
+        let conversation = Conversation::new(owner_id.to_string(), "Private".to_string());
+        let conversation_id = conversation.id.clone();
+
+        db.store_item(conversation)
+            .await
+            .expect("Failed to store conversation");
+
+        // Attempt patch with unauthorized user
+        let result =
+            Conversation::patch_title(&conversation_id, other_user_id, "Hacked Title", &db).await;
+
+        assert!(result.is_err());
+        match result {
+            Err(AppError::Auth(_)) => {}
             _ => panic!("Expected Auth error"),
         }
     }

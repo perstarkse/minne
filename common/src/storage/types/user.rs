@@ -421,7 +421,10 @@ impl User {
     ) -> Result<Vec<Conversation>, AppError> {
         let conversations: Vec<Conversation> = db
             .client
-            .query("SELECT * FROM type::table($table_name) WHERE user_id = $user_id")
+            .query(
+                "SELECT * FROM type::table($table_name) WHERE user_id = $user_id 
+            ORDER BY updated_at DESC",
+            )
             .bind(("table_name", Conversation::table_name()))
             .bind(("user_id", user_id.to_string()))
             .await?
@@ -774,5 +777,42 @@ mod tests {
         assert!(updated_user.is_some());
         let updated_user = updated_user.unwrap();
         assert_eq!(updated_user.timezone, new_timezone);
+    }
+
+    #[tokio::test]
+    async fn test_conversations_order() {
+        let db = setup_test_db().await;
+        let user_id = "user_order_test";
+
+        // Create conversations with varying updated_at timestamps
+        let mut conversations = Vec::new();
+        for i in 0..5 {
+            let mut conv = Conversation::new(user_id.to_string(), format!("Conv {}", i));
+            // Fake updated_at i minutes apart
+            conv.updated_at = chrono::Utc::now() - chrono::Duration::minutes(i);
+            db.store_item(conv.clone())
+                .await
+                .expect("Failed to store conversation");
+            conversations.push(conv);
+        }
+
+        // Retrieve via get_user_conversations - should be ordered by updated_at DESC
+        let retrieved = User::get_user_conversations(user_id, &db)
+            .await
+            .expect("Failed to get conversations");
+
+        assert_eq!(retrieved.len(), conversations.len());
+
+        for window in retrieved.windows(2) {
+            // Assert each earlier conversation has updated_at >= later conversation
+            assert!(
+                window[0].updated_at >= window[1].updated_at,
+                "Conversations not ordered descending by updated_at"
+            );
+        }
+
+        // (Optional) Check first conversation title matches the most recently updated
+        let most_recent = conversations.iter().max_by_key(|c| c.updated_at).unwrap();
+        assert_eq!(retrieved[0].id, most_recent.id);
     }
 }
