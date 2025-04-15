@@ -10,6 +10,7 @@
       <span class="loading loading-dots loading-sm loading-id-{{user_message.id}}"></span>
       <div class="markdown-content" id="ai-message-content-{{user_message.id}}" sse-swap="chat_message"></div>
     </div>
+    <div sse-swap="references"></div>
   </div>
 </div>
 <script>
@@ -22,17 +23,19 @@
     const spinner = document.querySelector('.loading-id-{{user_message.id}}');
     if (spinner) spinner.style.display = 'none';
 
-    const el = document.getElementById('ai-message-content-{{user_message.id}}');
-    if (e.detail.elt !== el) return;
-    e.preventDefault(); // Prevent htmx from swapping
-    // Use message id as buffer key
-    const msgId = '{{user_message.id}}';
-    window.markdownBuffer[msgId] = (window.markdownBuffer[msgId] || '') + (e.detail.data || '');
-    // Render buffer (with newline fix) on *every* chunk
-    el.innerHTML = marked.parse(
-      window.markdownBuffer[msgId].replace(/\\n/g, '\n')
-    );
-    scrollChatToBottom();
+    if (e.detail.event === 'chat_message') {
+      const el = document.getElementById('ai-message-content-{{user_message.id}}');
+      if (e.detail.elt !== el) return;
+      e.preventDefault(); // Prevent htmx from swapping
+      // Use message id as buffer key
+      const msgId = '{{user_message.id}}';
+      window.markdownBuffer[msgId] = (window.markdownBuffer[msgId] || '') + (e.detail.data || '');
+      // Render buffer (with newline fix) on *every* chunk
+      el.innerHTML = marked.parse(
+        window.markdownBuffer[msgId].replace(/\\n/g, '\n')
+      );
+      scrollChatToBottom();
+    }
   });
   document.body.addEventListener('htmx:sseClose', function () {
     const el = document.getElementById('ai-message-content-{{user_message.id}}');
