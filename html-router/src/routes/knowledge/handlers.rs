@@ -1,12 +1,15 @@
+use std::collections::{HashMap, VecDeque};
+
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::IntoResponse,
     Form,
 };
+use axum_htmx::{HxBoosted, HxRequest};
 use plotly::{
     common::{Line, Marker, Mode},
-    layout::{Axis, Camera, LayoutScene, ProjectionType},
-    Layout, Plot, Scatter3D,
+    layout::{Axis, LayoutScene},
+    Layout, Plot, Scatter, Scatter3D,
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,45 +27,178 @@ use crate::{
     },
 };
 
+#[derive(Deserialize, Default)]
+pub struct FilterParams {
+    entity_type: Option<String>,
+    content_category: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct KnowledgeBaseData {
+    entities: Vec<KnowledgeEntity>,
+    relationships: Vec<KnowledgeRelationship>,
+    user: User,
+    plot_html: String,
+    entity_types: Vec<String>,
+    content_categories: Vec<String>,
+    selected_entity_type: Option<String>,
+    selected_content_category: Option<String>,
+}
+
 pub async fn show_knowledge_page(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
+    Query(mut params): Query<FilterParams>,
+    HxRequest(is_htmx): HxRequest,
+    HxBoosted(is_boosted): HxBoosted,
 ) -> Result<impl IntoResponse, HtmlError> {
-    #[derive(Serialize)]
-    pub struct KnowledgeBaseData {
-        entities: Vec<KnowledgeEntity>,
-        relationships: Vec<KnowledgeRelationship>,
-        user: User,
-        plot_html: String,
-    }
+    // Normalize filters
+    params.entity_type = params.entity_type.take().filter(|s| !s.trim().is_empty());
+    params.content_category = params
+        .content_category
+        .take()
+        .filter(|s| !s.trim().is_empty());
 
-    let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
+    // Load relevant data
+    let entity_types = User::get_entity_types(&user.id, &state.db).await?;
+    let content_categories = User::get_user_categories(&user.id, &state.db).await?;
+
+    // Load entities based on filters
+    let entities = match &params.content_category {
+        Some(cat) => {
+            User::get_knowledge_entities_by_content_category(&user.id, cat, &state.db).await?
+        }
+        None => match &params.entity_type {
+            Some(etype) => User::get_knowledge_entities_by_type(&user.id, etype, &state.db).await?,
+            None => User::get_knowledge_entities(&user.id, &state.db).await?,
+        },
+    };
 
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
+    let plot_html = get_plot_html(&entities, &relationships)?;
 
-    let mut plot = Plot::new();
+    let kb_data = KnowledgeBaseData {
+        entities,
+        relationships,
+        user,
+        plot_html,
+        entity_types,
+        content_categories,
+        selected_entity_type: params.entity_type.clone(),
+        selected_content_category: params.content_category.clone(),
+    };
 
-    // Fibonacci sphere distribution
-    let node_count = entities.len();
-    let golden_ratio = (1.0 + 5.0_f64.sqrt()) / 2.0;
-    let node_positions: Vec<(f64, f64, f64)> = (0..node_count)
-        .map(|i| {
-            let i = i as f64;
-            let theta = 2.0 * std::f64::consts::PI * i / golden_ratio;
-            let phi = (1.0 - 2.0 * (i + 0.5) / node_count as f64).acos();
-            let x = phi.sin() * theta.cos();
-            let y = phi.sin() * theta.sin();
-            let z = phi.cos();
-            (x, y, z)
-        })
+    // Determine response type:
+    // If it is an HTMX request but NOT a boosted navigation, send partial update (main block only)
+    // Otherwise send full page including navbar/base for direct and boosted reloads
+    if is_htmx && !is_boosted {
+        // Partial update (just main block)
+        Ok(TemplateResponse::new_partial(
+            "knowledge/base.html",
+            "main",
+            &kb_data,
+        ))
+    } else {
+        // Full page (includes navbar etc.)
+        Ok(TemplateResponse::new_template(
+            "knowledge/base.html",
+            kb_data,
+        ))
+    }
+}
+
+fn get_plot_html(
+    entities: &[KnowledgeEntity],
+    relationships: &[KnowledgeRelationship],
+) -> Result<String, HtmlError> {
+    if entities.is_empty() {
+        return Ok(String::new());
+    }
+
+    let id_to_idx: HashMap<_, _> = entities
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.id.clone(), i))
         .collect();
 
-    let node_x: Vec<f64> = node_positions.iter().map(|(x, _, _)| *x).collect();
-    let node_y: Vec<f64> = node_positions.iter().map(|(_, y, _)| *y).collect();
-    let node_z: Vec<f64> = node_positions.iter().map(|(_, _, z)| *z).collect();
+    // Build adjacency list
+    let mut graph: Vec<Vec<usize>> = vec![Vec::new(); entities.len()];
+    for rel in relationships {
+        if let (Some(&from_idx), Some(&to_idx)) = (id_to_idx.get(&rel.out), id_to_idx.get(&rel.in_))
+        {
+            graph[from_idx].push(to_idx);
+            graph[to_idx].push(from_idx);
+        }
+    }
+
+    // Find clusters (connected components)
+    let mut visited = vec![false; entities.len()];
+    let mut clusters: Vec<Vec<usize>> = Vec::new();
+
+    for i in 0..entities.len() {
+        if !visited[i] {
+            let mut queue = VecDeque::new();
+            let mut cluster = Vec::new();
+            queue.push_back(i);
+            visited[i] = true;
+            while let Some(node) = queue.pop_front() {
+                cluster.push(node);
+                for &nbr in &graph[node] {
+                    if !visited[nbr] {
+                        visited[nbr] = true;
+                        queue.push_back(nbr);
+                    }
+                }
+            }
+            clusters.push(cluster);
+        }
+    }
+
+    // Layout params
+    let cluster_spacing = 20.0; // Distance between clusters
+    let node_spacing = 3.0; // Distance between nodes within cluster
+
+    // Arrange clusters on a Fibonacci sphere (uniform 3D positioning on unit sphere)
+    let cluster_count = clusters.len();
+    let golden_angle = std::f64::consts::PI * (3.0 - (5.0f64).sqrt());
+
+    // Will hold final positions of nodes: (x,y,z)
+    let mut nodes_pos = vec![(0.0f64, 0.0f64, 0.0f64); entities.len()];
+
+    for (i, cluster) in clusters.iter().enumerate() {
+        // Position cluster center on unit sphere scaled by cluster_spacing
+        let theta = golden_angle * i as f64;
+        let z = 1.0 - (2.0 * i as f64 + 1.0) / cluster_count as f64;
+        let radius = (1.0 - z * z).sqrt();
+
+        let cluster_center = (
+            radius * theta.cos() * cluster_spacing,
+            radius * theta.sin() * cluster_spacing,
+            z * cluster_spacing,
+        );
+
+        // Layout nodes within cluster as small 3D grid (cube)
+        // Calculate cube root to determine grid side length
+        let cluster_size = cluster.len();
+        let side_len = (cluster_size as f64).cbrt().ceil() as usize;
+
+        for (pos_in_cluster, &node_idx) in cluster.iter().enumerate() {
+            let x_in_cluster = (pos_in_cluster % side_len) as f64;
+            let y_in_cluster = ((pos_in_cluster / side_len) % side_len) as f64;
+            let z_in_cluster = (pos_in_cluster / (side_len * side_len)) as f64;
+
+            nodes_pos[node_idx] = (
+                cluster_center.0 + x_in_cluster * node_spacing,
+                cluster_center.1 + y_in_cluster * node_spacing,
+                cluster_center.2 + z_in_cluster * node_spacing,
+            );
+        }
+    }
+
+    let (node_x, node_y, node_z): (Vec<_>, Vec<_>, Vec<_>) = nodes_pos.iter().cloned().unzip3();
 
     // Nodes trace
-    let nodes = Scatter3D::new(node_x.clone(), node_y.clone(), node_z.clone())
+    let nodes_trace = Scatter3D::new(node_x, node_y, node_z)
         .mode(Mode::Markers)
         .marker(Marker::new().size(8).color("#1f77b4"))
         .text_array(
@@ -71,31 +207,32 @@ pub async fn show_knowledge_page(
                 .map(|e| e.description.clone())
                 .collect::<Vec<_>>(),
         )
-        .hover_template("Entity: %{text}<br>");
+        .hover_template("Entity: %{text}<extra></extra>");
 
     // Edges traces
-    for rel in &relationships {
-        let from_idx = entities.iter().position(|e| e.id == rel.out).unwrap_or(0);
-        let to_idx = entities.iter().position(|e| e.id == rel.in_).unwrap_or(0);
+    let mut plot = Plot::new();
+    for rel in relationships {
+        if let (Some(&from_idx), Some(&to_idx)) = (id_to_idx.get(&rel.out), id_to_idx.get(&rel.in_))
+        {
+            let edge_x = vec![nodes_pos[from_idx].0, nodes_pos[to_idx].0];
+            let edge_y = vec![nodes_pos[from_idx].1, nodes_pos[to_idx].1];
+            let edge_z = vec![nodes_pos[from_idx].2, nodes_pos[to_idx].2];
 
-        let edge_x = vec![node_x[from_idx], node_x[to_idx]];
-        let edge_y = vec![node_y[from_idx], node_y[to_idx]];
-        let edge_z = vec![node_z[from_idx], node_z[to_idx]];
-
-        let edge_trace = Scatter3D::new(edge_x, edge_y, edge_z)
-            .mode(Mode::Lines)
-            .line(Line::new().color("#888").width(2.0))
-            .hover_template(format!(
-                "Relationship: {}<br>",
-                rel.metadata.relationship_type
-            ))
-            .show_legend(false);
-
-        plot.add_trace(edge_trace);
+            let edge_trace = Scatter3D::new(edge_x, edge_y, edge_z)
+                .mode(Mode::Lines)
+                .line(Line::new().color("#888").width(2.0))
+                .hover_template(format!(
+                    "Relationship: {}<extra></extra>",
+                    rel.metadata.relationship_type
+                ))
+                .show_legend(false);
+            plot.add_trace(edge_trace);
+        }
     }
-    plot.add_trace(nodes);
 
-    // Layout
+    plot.add_trace(nodes_trace);
+
+    // Layout scene configuration
     let layout = Layout::new()
         .scene(
             LayoutScene::new()
@@ -103,29 +240,37 @@ pub async fn show_knowledge_page(
                 .y_axis(Axis::new().visible(false))
                 .z_axis(Axis::new().visible(false))
                 .camera(
-                    Camera::new()
-                        .projection(ProjectionType::Perspective.into())
-                        .eye((1.5, 1.5, 1.5).into()),
+                    plotly::layout::Camera::new()
+                        .projection(plotly::layout::ProjectionType::Perspective.into())
+                        .eye((2.0, 2.0, 2.0).into()),
                 ),
         )
         .show_legend(false)
-        .paper_background_color("rbga(250,100,0,0)")
-        .plot_background_color("rbga(0,0,0,0)");
+        .paper_background_color("rgba(255,255,255,0)")
+        .plot_background_color("rgba(255,255,255,0)");
 
     plot.set_layout(layout);
 
-    // Convert to HTML
-    let html = plot.to_html();
+    Ok(plot.to_html())
+}
 
-    Ok(TemplateResponse::new_template(
-        "knowledge/base.html",
-        KnowledgeBaseData {
-            entities,
-            relationships,
-            user,
-            plot_html: html,
-        },
-    ))
+// Small utility to unzip tuple3 vectors from iterators (add this helper)
+trait Unzip3<A, B, C> {
+    fn unzip3(self) -> (Vec<A>, Vec<B>, Vec<C>);
+}
+impl<I, A, B, C> Unzip3<A, B, C> for I
+where
+    I: Iterator<Item = (A, B, C)>,
+{
+    fn unzip3(self) -> (Vec<A>, Vec<B>, Vec<C>) {
+        let (mut va, mut vb, mut vc) = (Vec::new(), Vec::new(), Vec::new());
+        for (a, b, c) in self {
+            va.push(a);
+            vb.push(b);
+            vc.push(c);
+        }
+        (va, vb, vc)
+    }
 }
 
 pub async fn show_edit_knowledge_entity_form(
@@ -171,6 +316,10 @@ pub struct PatchKnowledgeEntityParams {
 pub struct EntityListData {
     entities: Vec<KnowledgeEntity>,
     user: User,
+    entity_types: Vec<String>,
+    content_categories: Vec<String>,
+    selected_entity_type: Option<String>,
+    selected_content_category: Option<String>,
 }
 
 pub async fn patch_knowledge_entity(
@@ -197,10 +346,23 @@ pub async fn patch_knowledge_entity(
     // Get updated list of entities
     let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
+    // Get entity types
+    let entity_types = User::get_entity_types(&user.id, &state.db).await?;
+
+    // Get content categories
+    let content_categories = User::get_user_categories(&user.id, &state.db).await?;
+
     // Render updated list
     Ok(TemplateResponse::new_template(
         "knowledge/entity_list.html",
-        EntityListData { entities, user },
+        EntityListData {
+            entities,
+            user,
+            entity_types,
+            content_categories,
+            selected_entity_type: None,
+            selected_content_category: None,
+        },
     ))
 }
 
@@ -218,9 +380,22 @@ pub async fn delete_knowledge_entity(
     // Get updated list of entities
     let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
+    // Get entity types
+    let entity_types = User::get_entity_types(&user.id, &state.db).await?;
+
+    // Get content categories
+    let content_categories = User::get_user_categories(&user.id, &state.db).await?;
+
     Ok(TemplateResponse::new_template(
         "knowledge/entity_list.html",
-        EntityListData { entities, user },
+        EntityListData {
+            entities,
+            user,
+            entity_types,
+            content_categories,
+            selected_entity_type: None,
+            selected_content_category: None,
+        },
     ))
 }
 

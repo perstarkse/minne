@@ -6,10 +6,10 @@
         <span class="badge badge-xs badge-primary">{{entity.entity_type}}</span>
       </h2>
       <div class="flex justify-between items-center">
-        <p>{{entity.updated_at | datetimeformat(format="short", tz=user.timezeone)}}</p>
+        <p class="text-xs opacity-60">{{entity.updated_at | datetimeformat(format="short", tz=user.timezone)}}</p>
         <div>
           <button hx-get="/knowledge-entity/{{entity.id}}" hx-target="#modal" hx-swap="innerHTML"
-            class="btn  btn-square btn-ghost btn-sm">
+            class="btn btn-square btn-ghost btn-sm">
             {% include "icons/edit_icon.html" %}
           </button>
           <button hx-delete="/knowledge-entity/{{entity.id}}" hx-target="#entity-list" hx-swap="outerHTML"

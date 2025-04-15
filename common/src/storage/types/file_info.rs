@@ -11,7 +11,7 @@ use tokio::fs::remove_dir_all;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::{storage::db::SurrealDbClient, stored_object};
+use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 
 #[derive(Error, Debug)]
 pub enum FileError {
@@ -221,15 +221,15 @@ impl FileInfo {
     ///
     /// # Returns
     ///  `Result<(), FileError>`
-    pub async fn delete_by_id(id: &str, db_client: &SurrealDbClient) -> Result<(), FileError> {
+    pub async fn delete_by_id(id: &str, db_client: &SurrealDbClient) -> Result<(), AppError> {
         // Get the FileInfo from the database
         let file_info = match db_client.get_item::<FileInfo>(id).await? {
             Some(info) => info,
             None => {
-                return Err(FileError::FileNotFound(format!(
+                return Err(AppError::from(FileError::FileNotFound(format!(
                     "File with id {} was not found",
                     id
-                )))
+                ))))
             }
         };
 
@@ -242,15 +242,15 @@ impl FileInfo {
                 remove_dir_all(parent_dir).await?;
                 info!("Removed directory {:?} and its contents", parent_dir);
             } else {
-                return Err(FileError::FileNotFound(
+                return Err(AppError::from(FileError::FileNotFound(
                     "File has no parent directory".to_string(),
-                ));
+                )));
             }
         } else {
-            return Err(FileError::FileNotFound(format!(
+            return Err(AppError::from(FileError::FileNotFound(format!(
                 "File at path {:?} was not found",
                 file_path
-            )));
+            ))));
         }
 
         // Delete the FileInfo from the database

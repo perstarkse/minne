@@ -23,7 +23,9 @@
         {% endif %}
       </div>
       <div class="text-xs font-semibold opacity-60">
-        {{item.created_at|datetimeformat(format="short", tz=user.timezone)}} </div>
+        {{item.created_at|datetimeformat(format="short", tz=user.timezone)}}
+        <span class="badge badge-xs badge-accent ml-1">{{item.category}}</span>
+      </div>
     </div>
     <p class="list-col-wrap text-xs [&:before]:content-['Instructions:_']  [&:before]:opacity-60">
       {{item.instructions}}
