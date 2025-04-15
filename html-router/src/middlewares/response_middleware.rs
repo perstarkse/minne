@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{HeaderName, StatusCode},
     response::{Html, IntoResponse, Response},
     Extension,
 };
@@ -106,13 +106,31 @@ pub async fn with_template_response<S>(
 where
     S: ProvidesTemplateEngine + Clone + Send + Sync + 'static,
 {
+    // Headers to forward from the original response
+    const HTMX_HEADERS_TO_FORWARD: &[&str] = &["HX-Push", "HX-Trigger", "HX-Redirect"];
+
     if let Some(template_response) = response.extensions().get::<TemplateResponse>().cloned() {
         let template_engine = state.template_engine();
+
+        // Helper to forward relevant headers
+        fn forward_headers(from: &axum::http::HeaderMap, to: &mut axum::http::HeaderMap) {
+            for &header_name in HTMX_HEADERS_TO_FORWARD {
+                if let Ok(name) = HeaderName::from_bytes(header_name.as_bytes()) {
+                    if let Some(value) = from.get(&name) {
+                        to.insert(name.clone(), value.clone());
+                    }
+                }
+            }
+        }
 
         match &template_response.template_kind {
             TemplateKind::Full(name) => {
                 match template_engine.render(name, &template_response.context) {
-                    Ok(html) => Html(html).into_response(),
+                    Ok(html) => {
+                        let mut final_response = Html(html).into_response();
+                        forward_headers(response.headers(), final_response.headers_mut());
+                        final_response
+                    }
                     Err(e) => {
                         error!("Failed to render template '{}': {:?}", name, e);
                         (StatusCode::INTERNAL_SERVER_ERROR, Html(fallback_error())).into_response()
@@ -121,7 +139,11 @@ where
             }
             TemplateKind::Partial(template, block) => {
                 match template_engine.render_block(template, block, &template_response.context) {
-                    Ok(html) => Html(html).into_response(),
+                    Ok(html) => {
+                        let mut final_response = Html(html).into_response();
+                        forward_headers(response.headers(), final_response.headers_mut());
+                        final_response
+                    }
                     Err(e) => {
                         error!("Failed to render block '{}/{}': {:?}", template, block, e);
                         (StatusCode::INTERNAL_SERVER_ERROR, Html(fallback_error())).into_response()

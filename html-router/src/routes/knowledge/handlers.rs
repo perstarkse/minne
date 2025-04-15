@@ -9,7 +9,7 @@ use axum_htmx::{HxBoosted, HxRequest};
 use plotly::{
     common::{Line, Marker, Mode},
     layout::{Axis, LayoutScene},
-    Layout, Plot, Scatter, Scatter3D,
+    Layout, Plot, Scatter3D,
 };
 use serde::{Deserialize, Serialize};
 

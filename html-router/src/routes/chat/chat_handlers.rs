@@ -222,5 +222,5 @@ pub async fn new_chat_user_message(
         HeaderValue::from_str(&format!("/chat/{}", conversation.id)).unwrap(),
     );
 
-    Ok(response)
+    Ok(response.into_response())
 }
