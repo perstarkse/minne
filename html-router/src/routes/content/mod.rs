@@ -1,7 +1,9 @@
 mod handlers;
 
 use axum::{extract::FromRef, routing::get, Router};
-use handlers::{patch_text_content, show_content_page, show_text_content_edit_form};
+use handlers::{
+    delete_text_content, patch_text_content, show_content_page, show_text_content_edit_form,
+};
 
 use crate::html_state::HtmlState;
 
@@ -14,6 +16,8 @@ where
         .route("/content", get(show_content_page))
         .route(
             "/content/:id",
-            get(show_text_content_edit_form).patch(patch_text_content),
+            get(show_text_content_edit_form)
+                .patch(patch_text_content)
+                .delete(delete_text_content),
         )
 }

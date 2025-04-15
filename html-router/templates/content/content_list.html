@@ -2,16 +2,7 @@
   {% for text_content in text_contents %}
   <div class="card min-w-72 bg-base-100 shadow">
     <div class="card-body">
-      <div class="flex items-center space-x-2">
-        <div class="flex-shrink-0">
-          {% if text_content.url %}
-          {% include "icons/globe_icon.html" %}
-          {% elif text_content.file_info %}
-          {% include "icons/document_icon.html" %}
-          {% else %}
-          {% include "icons/chat_icon.html" %}
-          {% endif %}
-        </div>
+      <div class="flex justify-between space-x-2">
         <h2 class="card-title truncate">
           {% if text_content.url %}
           <a href="{{ text_content.url}}">{{text_content.url}}</a>
@@ -21,11 +12,21 @@
           {{text_content.text}}
           {% endif %}
         </h2>
+        <div class="flex-shrink-0">
+          {% if text_content.url %}
+          {% include "icons/globe_icon.html" %}
+          {% elif text_content.file_info %}
+          {% include "icons/document_icon.html" %}
+          {% else %}
+          {% include "icons/chat_icon.html" %}
+          {% endif %}
+        </div>
       </div>
-      <div class="flex items-center">
+      <div class="flex items-center justify-between">
         <p class="text-xs opacity-60">
           {{ text_content.created_at | datetimeformat(format="short", tz=user.timezone) }}
         </p>
+        <div class="badge badge-soft badge-secondary mr-2">{{ text_content.category }}</div>
         <div class="flex gap-2">
           <button hx-get="/content/{{ text_content.id }}" hx-target="#modal" hx-swap="innerHTML"
             class="btn btn-square btn-ghost btn-sm">

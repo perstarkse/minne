@@ -1,6 +1,4 @@
 \[\] archive ingressed webpage
-\[\] filtering on categories
-\[\] testing core functions
 \[\] three js graph explorer
 \[\] three js vector explorer
 \[x\] add user_id to ingress objects
@@ -9,6 +7,7 @@
 \[x\] chat history
 \[x\] chat styling overhaul
 \[x\] configs primarily get envs
+\[x\] filtering on categories
 \[x\] fix patch_text_content
 \[x\] gdpr
 \[x\] html ingression
@@ -29,6 +28,7 @@
 \[x\] smoothie_dom test
 \[x\] template customization?
 \[x\] templating
+\[x\] testing core functions
 \[x\] user id to fileinfo and data path?
 \[x\] view content
 \[x\] view graph map

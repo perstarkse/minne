@@ -227,6 +227,50 @@ impl User {
         Ok(entities)
     }
 
+    pub async fn get_knowledge_entities_by_type(
+        user_id: &str,
+        entity_type: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<KnowledgeEntity>, AppError> {
+        let entities: Vec<KnowledgeEntity> = db
+            .client
+            .query("SELECT * FROM type::table($table) WHERE user_id = $user_id AND entity_type = $entity_type")
+            .bind(("table", KnowledgeEntity::table_name()))
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("entity_type", entity_type.to_owned()))
+            .await?
+            .take(0)?;
+
+        Ok(entities)
+    }
+
+    pub async fn get_entity_types(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<String>, AppError> {
+        #[derive(Deserialize)]
+        struct EntityTypeResponse {
+            entity_type: String,
+        }
+
+        // Query to select distinct entity types for the user
+        let response: Vec<EntityTypeResponse> = db
+            .client
+            .query("SELECT entity_type FROM type::table($table_name) WHERE user_id = $user_id GROUP BY entity_type")
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("table_name", KnowledgeEntity::table_name()))
+            .await?
+            .take(0)?;
+
+        // Extract the entity types from the response
+        let entity_types: Vec<String> = response
+            .into_iter()
+            .map(|item| format!("{:?}", item.entity_type))
+            .collect();
+
+        Ok(entity_types)
+    }
+
     pub async fn get_knowledge_relationships(
         user_id: &str,
         db: &SurrealDbClient,
@@ -265,6 +309,23 @@ impl User {
             .client
             .query("SELECT * FROM type::table($table_name) WHERE user_id = $user_id ORDER BY created_at DESC")
             .bind(("user_id", user_id.to_owned()))
+            .bind(("table_name", TextContent::table_name()))
+            .await?
+            .take(0)?;
+
+        Ok(items)
+    }
+
+    pub async fn get_text_contents_by_category(
+        user_id: &str,
+        category: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<TextContent>, AppError> {
+        let items: Vec<TextContent> = db
+            .client
+            .query("SELECT * FROM type::table($table_name) WHERE user_id = $user_id AND category = $category ORDER BY created_at DESC")
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("category", category.to_owned()))
             .bind(("table_name", TextContent::table_name()))
             .await?
             .take(0)?;
@@ -412,6 +473,34 @@ impl User {
             .map_err(AppError::Database)?;
 
         Ok(())
+    }
+
+    pub async fn get_knowledge_entities_by_content_category(
+        user_id: &str,
+        category: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<KnowledgeEntity>, AppError> {
+        // First, find all text content items with the specified category
+        let text_contents = Self::get_text_contents_by_category(user_id, category, db).await?;
+
+        if text_contents.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Extract source_ids
+        let source_ids: Vec<String> = text_contents.iter().map(|tc| tc.id.clone()).collect();
+
+        // Find all knowledge entities with matching source_ids
+        let entities: Vec<KnowledgeEntity> = db
+            .client
+            .query("SELECT * FROM type::table($table) WHERE user_id = $user_id AND source_id IN $source_ids")
+            .bind(("table", KnowledgeEntity::table_name()))
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("source_ids", source_ids))
+            .await?
+            .take(0)?;
+
+        Ok(entities)
     }
 }
 
