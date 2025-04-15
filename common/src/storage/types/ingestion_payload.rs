@@ -96,6 +96,8 @@ impl IngestionPayload {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use super::*;
 
     // Create a mock FileInfo for testing
