@@ -1,6 +1,6 @@
 <div class="chat chat-end">
-  <div class="chat-bubble markdown-content">
-    {{ user_message.content }}
+  <div class="chat-bubble markdown-content" data-content="{{ user_message.content|escape }}">
+    {{ user_message.content|escape }}
   </div>
 </div>
 <div class="chat chat-start">
@@ -13,38 +13,27 @@
     <div sse-swap="references"></div>
   </div>
 </div>
+
 <script>
-  marked.setOptions({
-    breaks: true, gfm: true, headerIds: false, mangle: false
-  });
-  // Buffer store for markdown, keyed by message id
   window.markdownBuffer = window.markdownBuffer || {};
   document.body.addEventListener('htmx:sseBeforeMessage', function (e) {
-    const spinner = document.querySelector('.loading-id-{{user_message.id}}');
+    const msgId = '{{ user_message.id }}';
+    const spinner = document.querySelector('.loading-id-' + msgId);
     if (spinner) spinner.style.display = 'none';
-
-    if (e.detail.event === 'chat_message') {
-      const el = document.getElementById('ai-message-content-{{user_message.id}}');
-      if (e.detail.elt !== el) return;
-      e.preventDefault(); // Prevent htmx from swapping
-      // Use message id as buffer key
-      const msgId = '{{user_message.id}}';
-      window.markdownBuffer[msgId] = (window.markdownBuffer[msgId] || '') + (e.detail.data || '');
-      // Render buffer (with newline fix) on *every* chunk
-      el.innerHTML = marked.parse(
-        window.markdownBuffer[msgId].replace(/\\n/g, '\n')
-      );
-      scrollChatToBottom();
-    }
+    const el = document.getElementById('ai-message-content-' + msgId);
+    if (e.detail.elt !== el) return;
+    e.preventDefault();
+    window.markdownBuffer[msgId] = (window.markdownBuffer[msgId] || '') + (e.detail.data || '');
+    el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
+    if (typeof scrollChatToBottom === "function") scrollChatToBottom();
   });
   document.body.addEventListener('htmx:sseClose', function () {
-    const el = document.getElementById('ai-message-content-{{user_message.id}}');
-    const msgId = '{{user_message.id}}';
+    const msgId = '{{ user_message.id }}';
+    const el = document.getElementById('ai-message-content-' + msgId);
     if (el && window.markdownBuffer[msgId]) {
-      el.innerHTML = marked.parse(
-        window.markdownBuffer[msgId].replace(/\\n/g, '\n')
-      );
-      delete window.markdownBuffer[msgId]; // Clean up in multichat
+      el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
+      delete window.markdownBuffer[msgId];
+      if (typeof scrollChatToBottom === "function") scrollChatToBottom();
     }
   });
 </script>
