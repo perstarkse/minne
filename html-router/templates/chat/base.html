@@ -1,23 +1,24 @@
 {% extends 'body_base.html' %}
+{% block title %} Minne Chat {% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/assets/htmx-ext-sse.js" defer></script>
+{% endblock %}
 {% block main %}
 <div class="drawer xl:drawer-open h-[calc(100vh-65px)] overflow-auto">
   <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
-
   <!-- Drawer Content -->
   <div class="drawer-content flex justify-center ">
     <main class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10 max-w-3xl w-full absolute left-0 right-0 mx-auto">
       <div class="relative w-full">
         {% include "chat/history.html" %}
-
         {% include "chat/new_message_form.html" %}
       </div>
     </main>
   </div>
-
   <!-- Drawer Sidebar -->
   {% include "chat/drawer.html" %}
 </div>
-
 <style>
   /* Custom styles to override DaisyUI defaults */
   .drawer-content {
@@ -31,12 +32,109 @@
   }
 
   @media (min-width: 1280px) {
-
-    /* xl breakpoint */
     .drawer-open .drawer-content {
       margin-left: 0;
-      /* Prevent content shift */
     }
   }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .markdown-content p {
+    margin-bottom: 0.75em;
+  }
+
+  .markdown-content p:last-child {
+    margin-bottom: 0;
+  }
+
+  .markdown-content ul,
+  .markdown-content ol {
+    margin-top: 0.5em;
+    margin-bottom: 0.75em;
+    padding-left: 2em;
+  }
+
+  .markdown-content li {
+    margin-bottom: 0.25em;
+  }
+
+  .markdown-content pre {
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 0.5em;
+    border-radius: 4px;
+    overflow-x: auto;
+  }
+
+  .markdown-content code {
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+
+  .markdown-content {
+    line-height: 1.5;
+    word-wrap: break-word;
+  }
+
+  .markdown-content table {
+    border-collapse: collapse;
+    margin: 0.75em 0;
+    width: 100%;
+  }
+
+  .markdown-content th,
+  .markdown-content td {
+    border: 1px solid #ddd;
+    padding: 6px 12px;
+    text-align: left;
+  }
+
+  .markdown-content blockquote {
+    border-left: 4px solid #ddd;
+    padding-left: 10px;
+    margin: 0.5em 0 0.5em 0.5em;
+    color: #666;
+  }
+
+  .markdown-content hr {
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: 0.75em 0;
+  }
 </style>
+<script>
+  marked.setOptions({
+    breaks: true, gfm: true, headerIds: false, mangle: false,
+    smartLists: true, smartypants: true, xhtml: false
+  });
+
+  // Render static markdown (any .markdown-content[data-content])
+  function renderStaticMarkdown() {
+    document.querySelectorAll('.markdown-content[data-content]').forEach(el => {
+      const raw = el.getAttribute('data-content') || '';
+      el.innerHTML = marked.parse(raw);
+    });
+  }
+
+  function scrollChatToBottom() {
+    const chatContainer = document.getElementById('chat_container');
+    if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function processChatUi() {
+    renderStaticMarkdown();
+    scrollChatToBottom();
+  }
+
+  document.addEventListener('DOMContentLoaded', processChatUi);
+  document.body.addEventListener('htmx:afterSettle', processChatUi);
+</script>
 {% endblock %}

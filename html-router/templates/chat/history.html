@@ -3,8 +3,8 @@
   {% if message.role == "AI" %}
   <div class="chat chat-start">
     <div>
-      <div id="{{message.id}}" class="chat-bubble markdown-content">
-        {{ message.content|safe }}
+      <div id="{{message.id}}" class="chat-bubble markdown-content" data-content="{{message.content | escape}}">
+        {{ message.content | escape }}
       </div>
       {% if message.references %}
       {% include "chat/reference_list.html" %}
@@ -13,128 +13,10 @@
   </div>
   {% else %}
   <div class="chat chat-end">
-    <div id="{{message.id}}" class="chat-bubble markdown-content">
-      {{ message.content|safe }}
+    <div id="{{message.id}}" class="chat-bubble markdown-content" data-content="{{message.content | escape}}">
+      {{ message.content | escape }}
     </div>
   </div>
   {% endif %}
   {% endfor %}
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script>
-  // Configure marked options
-  marked.setOptions({
-    breaks: true,        // Critical for chat - preserves line breaks
-    gfm: true,           // Enables GitHub Flavored Markdown features
-    headerIds: false,    // Prevents ID collisions in dynamic chat content
-    mangle: false,       // Safer for dynamic content
-    smartLists: true,    // Better list rendering
-    smartypants: true,   // Makes quotes and dashes look nicer
-    xhtml: false         // No need for self-closing tags in most chat UIs
-  });
-
-  // Process all markdown content elements
-  function renderMarkdown() {
-    document.querySelectorAll('.markdown-content').forEach(el => {
-      const rawContent = el.getAttribute('data-content') || el.textContent;
-      el.innerHTML = marked.parse(rawContent);
-    });
-  }
-
-  // Add data attributes for raw content on server side
-  document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.markdown-content').forEach(el => {
-      el.setAttribute('data-content', el.textContent.trim());
-    });
-    renderMarkdown();
-    scrollChatToBottom();
-  });
-
-  function scrollChatToBottom() {
-    const chatContainer = document.getElementById('chat_container');
-    if (chatContainer) {
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-  }
-  document.body.addEventListener('htmx:afterSwap', function (evt) {
-    scrollChatToBottom();
-  });
-</script>
-<style>
-  .hide-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .hide-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-
-  .markdown-content p {
-    margin-bottom: 0.75em;
-  }
-
-  .markdown-content p:last-child {
-    margin-bottom: 0;
-  }
-
-  .markdown-content ul,
-  .markdown-content ol {
-    margin-top: 0.5em;
-    margin-bottom: 0.75em;
-    padding-left: 2em;
-  }
-
-  .markdown-content li {
-    margin-bottom: 0.25em;
-  }
-
-  .markdown-content pre {
-    background-color: rgba(0, 0, 0, 0.05);
-    padding: 0.5em;
-    border-radius: 4px;
-    overflow-x: auto;
-  }
-
-  .markdown-content code {
-    background-color: rgba(0, 0, 0, 0.05);
-    padding: 0.2em 0.4em;
-    border-radius: 3px;
-    font-size: 0.9em;
-  }
-
-  .markdown-content {
-    line-height: 1.5;
-    word-wrap: break-word;
-  }
-
-  /* Better table support */
-  .markdown-content table {
-    border-collapse: collapse;
-    margin: 0.75em 0;
-    width: 100%;
-  }
-
-  .markdown-content th,
-  .markdown-content td {
-    border: 1px solid #ddd;
-    padding: 6px 12px;
-    text-align: left;
-  }
-
-  /* Better blockquote for chat */
-  .markdown-content blockquote {
-    border-left: 4px solid #ddd;
-    padding-left: 10px;
-    margin: 0.5em 0 0.5em 0.5em;
-    color: #666;
-  }
-
-  /* Horizontal rule */
-  .markdown-content hr {
-    border: none;
-    border-top: 1px solid #ddd;
-    margin: 0.75em 0;
-  }
-</style>
