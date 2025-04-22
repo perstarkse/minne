@@ -1,16 +1,45 @@
 {% extends "head_base.html" %}
+
 {% block body %}
 
-<body>
-  <div class="min-h-screen flex flex-col">
-    <!-- Navbar -->
-    {% include "navigation_bar.html" %}
+<body class="bg-base-100" hx-ext="head-support">
+  <div class="drawer lg:drawer-open">
+    <input id="my-drawer" type="checkbox" class="drawer-toggle" />
+    <!-- Page Content -->
+    <div class="drawer-content flex flex-col h-screen">
+      <!-- Navbar -->
+      {% include "navigation_bar.html" %}
+      <!-- Main Content Area -->
+      <main class="flex-1 overflow-y-auto">
+        {% block main %}{% endblock %}
+      </main>
+    </div>
+    <!-- Sidebar -->
+    {% if user %}
+    {% include "sidebar.html" %}
+    {% endif %}
+  </div> <!-- End Drawer -->
+  <div id="modal"></div>
+  <div id="toast-container"></div>
+  <!-- Optional: Add CSS for custom scrollbar -->
+  <style>
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
 
-    <!-- Main Content -->
-    {% block main %}{% endblock %}
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
 
-    <div id="modal"></div>
-    <div id="toast-container" class="toast toast-bottom toast-end"></div>
-  </div>
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: rgba(0, 0, 0, 0.2);
+      border-radius: 3px;
+    }
+
+    .custom-scrollbar {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+    }
+  </style>
 </body>
 {% endblock %}

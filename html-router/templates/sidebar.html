@@ -1,0 +1,100 @@
+{% macro icon(name) %}
+{% if name == "home" %}
+{% include "icons/home_icon.html" %}
+{% elif name == "book" %}
+{% include "icons/book_icon.html" %}
+{% elif name == "document" %}
+{% include "icons/document_icon.html" %}
+{% elif name == "chat" %}
+{% include "icons/chat_icon.html" %}
+{% endif %}
+{% endmacro %}
+
+<div class="drawer-side z-20">
+  <label for="my-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+
+  <ul class="menu p-0 w-64 h-full bg-base-200 text-base-content flex flex-col">
+
+    <!-- === TOP FIXED SECTION === -->
+    <div class="divider mt-14"></div>
+    <div class="px-2">
+      {% for url, name, label in [
+      ("/", "home", "Dashboard"),
+      ("/knowledge", "book", "Knowledge"),
+      ("/content", "document", "Content"),
+      ("/chat", "chat", "Chat")
+      ] %}
+      <li>
+        <a hx-boost="true" href="{{ url }}" class="flex items-center gap-3">
+          {{ icon(name) }}
+          <span>{{ label }}</span>
+        </a>
+      </li>
+      {% endfor %}
+      <div class="divider "></div>
+    </div>
+
+    <!-- === MIDDLE SCROLLABLE SECTION === -->
+    <span class="menu-title pb-4 ">Recent Chats</span>
+    <div class="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+      {% if conversation_archive is defined and conversation_archive %}
+      {% for conversation in conversation_archive %}
+      <li id="conversation-{{ conversation.id }}">
+        {% if edit_conversation_id == conversation.id %}
+        <!-- Edit mode -->
+        <form hx-patch="/chat/{{ conversation.id }}/title" hx-target=".drawer-side" hx-swap="outerHTML"
+          class="flex items-center gap-1 px-2 py-2">
+          <input type="text" name="title" value="{{ conversation.title }}" class="input input-sm flex-grow" />
+          <div class="flex gap-0.5">
+            <button type="submit" class="btn btn-ghost btn-xs">{% include "icons/check_icon.html" %}</button>
+            <button type="button" hx-get="/chat/sidebar" hx-target=".drawer-side" hx-swap="outerHTML"
+              class="btn btn-ghost btn-xs">
+              {% include "icons/x_icon.html" %}
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <!-- View mode -->
+        <div class="flex w-full px-2 py-2">
+          <a hx-boost="true" href="/chat/{{ conversation.id }}" class="flex-grow text-sm truncate">
+            <span>{{ conversation.title }}</span>
+          </a>
+          <div class="flex items-center gap-0.5 ml-2">
+            <button hx-get="/chat/{{ conversation.id }}/title" hx-target=".drawer-side" hx-swap="outerHTML"
+              class="btn btn-ghost btn-xs">
+              {% include "icons/edit_icon.html" %}
+            </button>
+            <button hx-delete="/chat/{{ conversation.id }}" hx-target=".drawer-side" hx-swap="outerHTML"
+              hx-confirm="Are you sure you want to delete this chat?" class="btn btn-ghost btn-xs">
+              {% include "icons/delete_icon.html" %}
+            </button>
+          </div>
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+      {% else %}
+      <li><span class="text-xs italic text-base-content/60 px-4">No recent chats</span></li>
+      {% endif %}
+    </div>
+
+    <!-- === BOTTOM FIXED SECTION === -->
+    <div class="px-2 pb-4">
+      <div class="divider "></div>
+      <li>
+        <a hx-boost="true" href="/account" class="flex items-center gap-3">
+          {% include "icons/user_icon.html" %}
+          <span>Account</span>
+        </a>
+      </li>
+      <form action="/signout" method="get" class="w-full block">
+        <li>
+          <button type="submit" class="btn btn-error btn-outline w-full flex items-center gap-3 justify-start !mt-1">
+            {% include "icons/logout_icon.html" %}
+            <span>Logout</span>
+          </button>
+        </li>
+      </form>
+    </div>
+  </ul>
+</div>

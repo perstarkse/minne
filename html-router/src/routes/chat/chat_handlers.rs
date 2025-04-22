@@ -252,7 +252,7 @@ pub async fn show_conversation_editing_title(
     }
 
     Ok(TemplateResponse::new_template(
-        "chat/drawer.html",
+        "sidebar.html",
         DrawerContext {
             user,
             conversation_archive,
@@ -273,7 +273,7 @@ pub async fn patch_conversation_title(
     let updated_conversations = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
-        "chat/drawer.html",
+        "sidebar.html",
         DrawerContext {
             user,
             conversation_archive: updated_conversations,
@@ -306,7 +306,7 @@ pub async fn delete_conversation(
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
-        "chat/drawer.html",
+        "sidebar.html",
         DrawerContext {
             user,
             conversation_archive,
@@ -322,7 +322,7 @@ pub async fn reload_sidebar(
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
-        "chat/drawer.html",
+        "sidebar.html",
         DrawerContext {
             user,
             conversation_archive,
