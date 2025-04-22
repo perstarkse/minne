@@ -14,6 +14,7 @@ use plotly::{
 use serde::{Deserialize, Serialize};
 
 use common::storage::types::{
+    conversation::Conversation,
     knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
     knowledge_relationship::KnowledgeRelationship,
     user::User,
@@ -43,6 +44,7 @@ pub struct KnowledgeBaseData {
     content_categories: Vec<String>,
     selected_entity_type: Option<String>,
     selected_content_category: Option<String>,
+    conversation_archive: Vec<Conversation>,
 }
 
 pub async fn show_knowledge_page(
@@ -76,6 +78,7 @@ pub async fn show_knowledge_page(
 
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
     let plot_html = get_plot_html(&entities, &relationships)?;
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     let kb_data = KnowledgeBaseData {
         entities,
@@ -86,6 +89,7 @@ pub async fn show_knowledge_page(
         content_categories,
         selected_entity_type: params.entity_type.clone(),
         selected_content_category: params.content_category.clone(),
+        conversation_archive,
     };
 
     // Determine response type:

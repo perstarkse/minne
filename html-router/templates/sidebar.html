@@ -82,19 +82,18 @@
     <div class="px-2 pb-4">
       <div class="divider "></div>
       <li>
-        <a hx-boost="true" href="/account" class="flex items-center gap-3">
+        <a hx-boost="true" href="/account" class="flex btn btn-ghost justify-start items-center gap-3">
           {% include "icons/user_icon.html" %}
           <span>Account</span>
         </a>
       </li>
-      <form action="/signout" method="get" class="w-full block">
-        <li>
-          <button type="submit" class="btn btn-error btn-outline w-full flex items-center gap-3 justify-start !mt-1">
-            {% include "icons/logout_icon.html" %}
-            <span>Logout</span>
-          </button>
-        </li>
-      </form>
+      <li>
+        <a hx-boost="true" href="/signout"
+          class="btn btn-error btn-outline w-full flex items-center gap-3 justify-start !mt-1">
+          {% include "icons/logout_icon.html" %}
+          <span>Logout</span>
+        </a>
+      </li>
     </div>
   </ul>
 </div>

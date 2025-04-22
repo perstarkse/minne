@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use common::storage::types::{
     analytics::Analytics,
+    conversation::Conversation,
     system_prompts::{DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT, DEFAULT_QUERY_SYSTEM_PROMPT},
     system_settings::SystemSettings,
     user::User,
@@ -23,6 +24,7 @@ pub struct AdminPanelData {
     analytics: Analytics,
     users: i64,
     default_query_prompt: String,
+    conversation_archive: Vec<Conversation>,
 }
 
 pub async fn show_admin_panel(
@@ -32,6 +34,7 @@ pub async fn show_admin_panel(
     let settings = SystemSettings::get_current(&state.db).await?;
     let analytics = Analytics::get_current(&state.db).await?;
     let users_count = Analytics::get_users_amount(&state.db).await?;
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "auth/admin_panel.html",
@@ -41,6 +44,7 @@ pub async fn show_admin_panel(
             analytics,
             users: users_count,
             default_query_prompt: DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
+            conversation_archive,
         },
     ))
 }
