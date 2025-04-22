@@ -9,7 +9,7 @@ use crate::{
     },
     AuthSessionType,
 };
-use common::storage::types::user::User;
+use common::storage::types::{conversation::Conversation, user::User};
 
 use crate::html_state::HtmlState;
 
@@ -17,16 +17,23 @@ use crate::html_state::HtmlState;
 pub struct AccountPageData {
     user: User,
     timezones: Vec<String>,
+    conversation_archive: Vec<Conversation>,
 }
 
 pub async fn show_account_page(
     RequireUser(user): RequireUser,
+    State(state): State<HtmlState>,
 ) -> Result<impl IntoResponse, HtmlError> {
     let timezones = TZ_VARIANTS.iter().map(|tz| tz.to_string()).collect();
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "auth/account_settings.html",
-        AccountPageData { user, timezones },
+        AccountPageData {
+            user,
+            timezones,
+            conversation_archive,
+        },
     ))
 }
 
@@ -54,6 +61,7 @@ pub async fn set_api_key(
         AccountPageData {
             user: updated_user,
             timezones: vec![],
+            conversation_archive: vec![],
         },
     ))
 }
@@ -103,6 +111,7 @@ pub async fn update_timezone(
         AccountPageData {
             user: updated_user,
             timezones,
+            conversation_archive: vec![],
         },
     ))
 }

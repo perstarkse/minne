@@ -6,7 +6,9 @@ use axum::{
 use axum_htmx::{HxBoosted, HxRequest};
 use serde::{Deserialize, Serialize};
 
-use common::storage::types::{file_info::FileInfo, text_content::TextContent, user::User};
+use common::storage::types::{
+    conversation::Conversation, file_info::FileInfo, text_content::TextContent, user::User,
+};
 
 use crate::{
     html_state::HtmlState,
@@ -22,6 +24,7 @@ pub struct ContentPageData {
     text_contents: Vec<TextContent>,
     categories: Vec<String>,
     selected_category: Option<String>,
+    conversation_archive: Vec<Conversation>,
 }
 
 #[derive(Deserialize)]
@@ -48,11 +51,13 @@ pub async fn show_content_page(
         User::get_text_contents(&user.id, &state.db).await?
     };
 
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
     let data = ContentPageData {
         user,
         text_contents,
         categories,
         selected_category: params.category.clone(),
+        conversation_archive,
     };
 
     if is_htmx && !is_boosted && has_category_param {
@@ -112,6 +117,7 @@ pub async fn patch_text_content(
 
     let text_contents = User::get_text_contents(&user.id, &state.db).await?;
     let categories = User::get_user_categories(&user.id, &state.db).await?;
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_partial(
         "content/base.html",
@@ -121,6 +127,7 @@ pub async fn patch_text_content(
             text_contents,
             categories,
             selected_category: None,
+            conversation_archive,
         },
     ))
 }
@@ -144,6 +151,7 @@ pub async fn delete_text_content(
     // Get updated content, categories and return the refreshed list
     let text_contents = User::get_text_contents(&user.id, &state.db).await?;
     let categories = User::get_user_categories(&user.id, &state.db).await?;
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "content/content_list.html",
@@ -152,6 +160,7 @@ pub async fn delete_text_content(
             text_contents,
             categories,
             selected_category: None,
+            conversation_archive,
         },
     ))
 }

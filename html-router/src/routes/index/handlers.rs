@@ -15,9 +15,9 @@ use crate::{
 use common::{
     error::AppError,
     storage::types::{
-        file_info::FileInfo, ingestion_task::IngestionTask, knowledge_entity::KnowledgeEntity,
-        knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
-        text_content::TextContent, user::User,
+        conversation::Conversation, file_info::FileInfo, ingestion_task::IngestionTask,
+        knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
+        text_chunk::TextChunk, text_content::TextContent, user::User,
     },
 };
 
@@ -28,6 +28,7 @@ pub struct IndexPageData {
     user: Option<User>,
     latest_text_contents: Vec<TextContent>,
     active_jobs: Vec<IngestionTask>,
+    conversation_archive: Vec<Conversation>,
 }
 
 pub async fn index_handler(
@@ -41,13 +42,16 @@ pub async fn index_handler(
                 user: None,
                 latest_text_contents: vec![],
                 active_jobs: vec![],
+                conversation_archive: vec![],
             },
         ));
     };
 
     let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
 
-    let latest_text_contents = User::get_latest_text_contents(user.id.as_str(), &state.db).await?;
+    let latest_text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
+
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "index/index.html",
@@ -55,6 +59,7 @@ pub async fn index_handler(
             user: Some(user),
             latest_text_contents,
             active_jobs,
+            conversation_archive,
         },
     ))
 }
