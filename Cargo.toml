@@ -6,7 +6,7 @@ members = [
   "html-router",
   "ingestion-pipeline",
   "composite-retrieval"
-]
+, "json-stream-parser"]
 resolver = "2"
 
 [workspace.dependencies]
