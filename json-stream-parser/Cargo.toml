@@ -1,0 +1,7 @@
+[package]
+name = "json-stream-parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = { workspace = true }

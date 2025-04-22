@@ -258,7 +258,7 @@ fn get_plot_html(
     Ok(plot.to_html())
 }
 
-// Small utility to unzip tuple3 vectors from iterators (add this helper)
+// Small utility to unzip tuple3 vectors from iterators
 trait Unzip3<A, B, C> {
     fn unzip3(self) -> (Vec<A>, Vec<B>, Vec<C>);
 }
