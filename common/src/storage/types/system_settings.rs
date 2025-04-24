@@ -1,5 +1,4 @@
 use crate::storage::types::file_info::deserialize_flexible_id;
-use axum::async_trait;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -17,7 +16,6 @@ pub struct SystemSettings {
     pub ingestion_system_prompt: String,
 }
 
-#[async_trait]
 impl StoredObject for SystemSettings {
     fn table_name() -> &'static str {
         "system_settings"

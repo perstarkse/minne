@@ -5,18 +5,24 @@ members = [
   "api-router",
   "html-router",
   "ingestion-pipeline",
-  "composite-retrieval"
-, "json-stream-parser"]
+  "composite-retrieval",
+  "json-stream-parser"
+]
 resolver = "2"
 
 [workspace.dependencies]
-tokio = { version = "1.40.0", features = ["full"] }
-serde = { version = "1.0.210", features = ["derive"] }
-axum = { version = "0.7.5", features = ["multipart", "macros"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+axum = { version = "0.8", features = ["multipart", "macros"] }
 serde_json = "1.0.128"
 thiserror = "1.0.63"
 anyhow = "1.0.94"
 tracing = "0.1.40"
-surrealdb = { version = "2.0.4", features = ["kv-mem"] }
+surrealdb = { version = "2", features = ["kv-mem"] }
 futures = "0.3.31"
 async-openai = "0.24.1"
+axum_session = "0.16"
+axum_session_auth = "0.16"
+axum_session_surreal = "0.4"
+axum_typed_multipart = "0.16"
+tempfile = "3.12.0"

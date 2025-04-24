@@ -14,6 +14,7 @@ use common::{
         text_content::TextContent,
     },
 };
+use dom_smoothie::TextMode;
 use reqwest;
 use scraper::{Html, Selector};
 use std::fmt::Write;
@@ -125,6 +126,12 @@ async fn fetch_text_from_url(
         .replace("  ", " ");
 
     process_web_content(content, openai_client, db_client).await
+
+    // let config = dom_smoothie::Config {
+    //     text_mode: TextMode::Markdown,
+    //     ..Default::default()
+    // };
+    // panic!("YOU SHALL NOT PASS");
 }
 
 pub async fn process_web_content(

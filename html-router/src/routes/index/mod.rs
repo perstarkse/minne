@@ -23,7 +23,7 @@ where
     HtmlState: FromRef<S>,
 {
     Router::new()
-        .route("/jobs/:job_id", delete(delete_job))
+        .route("/jobs/{job_id}", delete(delete_job))
         .route("/active-jobs", get(show_active_jobs))
-        .route("/text-content/:id", delete(delete_text_content))
+        .route("/text-content/{id}", delete(delete_text_content))
 }

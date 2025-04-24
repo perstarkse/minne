@@ -101,8 +101,8 @@ impl IntoResponse for TemplateResponse {
 pub async fn with_template_response<S>(
     State(state): State<S>,
     HxRequest(is_htmx): HxRequest,
-    response: Response,
-) -> Response
+    response: Response<axum::body::Body>,
+) -> Response<axum::body::Body>
 where
     S: ProvidesTemplateEngine + Clone + Send + Sync + 'static,
 {

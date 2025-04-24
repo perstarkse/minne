@@ -1,3 +1,8 @@
+\[\] change to smoothie dom
+\[\] store page title
+\[\] rename ingestion instructions to context
+\[\] page screenshot?
+\[\] full text search
 \[\] archive ingressed webpage
 \[\] three js graph explorer
 \[\] three js vector explorer

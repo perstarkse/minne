@@ -20,6 +20,7 @@ scraper = "0.22.0"
 chrono = { version = "0.4.39", features = ["serde"] }
 text-splitter = "0.18.1"
 uuid = { version = "1.10.0", features = ["v4", "serde"] }
+dom_smoothie = "0.10.0"
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }

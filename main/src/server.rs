@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create Axum router
     let app = Router::new()
         .nest("/api/v1", api_routes_v1(&api_state))
-        .nest("/", html_routes(&html_state))
+        .merge(html_routes(&html_state))
         .with_state(AppState {
             api_state,
             html_state,
