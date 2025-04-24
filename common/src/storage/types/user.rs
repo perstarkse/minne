@@ -1,4 +1,5 @@
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
+use async_trait::async_trait;
 use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;

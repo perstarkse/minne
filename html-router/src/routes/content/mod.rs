@@ -15,7 +15,7 @@ where
     Router::new()
         .route("/content", get(show_content_page))
         .route(
-            "/content/:id",
+            "/content/{id}",
             get(show_text_content_edit_form)
                 .patch(patch_text_content)
                 .delete(delete_text_content),

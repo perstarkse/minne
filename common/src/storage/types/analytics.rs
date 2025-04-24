@@ -1,5 +1,4 @@
 use crate::storage::types::{file_info::deserialize_flexible_id, user::User, StoredObject};
-use axum::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::{error::AppError, storage::db::SurrealDbClient};
@@ -12,7 +11,6 @@ pub struct Analytics {
     pub visitors: i64,
 }
 
-#[async_trait]
 impl StoredObject for Analytics {
     fn table_name() -> &'static str {
         "analytics"

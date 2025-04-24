@@ -25,17 +25,17 @@ where
     Router::new()
         .route("/chat", get(show_chat_base).post(new_chat_user_message))
         .route(
-            "/chat/:id",
+            "/chat/{id}",
             get(show_existing_chat)
                 .post(new_user_message)
                 .delete(delete_conversation),
         )
         .route(
-            "/chat/:id/title",
+            "/chat/{id}/title",
             get(show_conversation_editing_title).patch(patch_conversation_title),
         )
         .route("/chat/sidebar", get(reload_sidebar))
         .route("/initialized-chat", post(show_initialized_chat))
         .route("/chat/response-stream", get(get_response_stream))
-        .route("/chat/reference/:id", get(show_reference_tooltip))
+        .route("/chat/reference/{id}", get(show_reference_tooltip))
 }

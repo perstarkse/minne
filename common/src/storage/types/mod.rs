@@ -1,4 +1,3 @@
-use axum::async_trait;
 use serde::{Deserialize, Serialize};
 pub mod analytics;
 pub mod conversation;
@@ -14,7 +13,6 @@ pub mod text_chunk;
 pub mod text_content;
 pub mod user;
 
-#[async_trait]
 pub trait StoredObject: Serialize + for<'de> Deserialize<'de> {
     fn table_name() -> &'static str;
     fn get_id(&self) -> &str;
@@ -23,7 +21,6 @@ pub trait StoredObject: Serialize + for<'de> Deserialize<'de> {
 #[macro_export]
 macro_rules! stored_object {
     ($name:ident, $table:expr, {$($(#[$attr:meta])* $field:ident: $ty:ty),*}) => {
-        use axum::async_trait;
         use serde::{Deserialize, Deserializer, Serialize};
         use surrealdb::sql::Thing;
         use $crate::storage::types::StoredObject;
@@ -98,7 +95,6 @@ macro_rules! stored_object {
             $(pub $field: $ty),*
         }
 
-        #[async_trait]
         impl StoredObject for $name {
             fn table_name() -> &'static str {
                 $table

@@ -17,7 +17,11 @@
   ];
 
   # https://devenv.sh/languages/
-  languages.rust.enable = true;
+  languages.rust = {
+    enable = true;
+    components = ["rustc" "clippy" "rustfmt" "cargo" "rust-analyzer"];
+    mold.enable = true;
+  };
 
   # https://devenv.sh/services/
   # services.postgres.enable = true;

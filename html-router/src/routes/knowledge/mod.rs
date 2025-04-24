@@ -20,14 +20,14 @@ where
     Router::new()
         .route("/knowledge", get(show_knowledge_page))
         .route(
-            "/knowledge-entity/:id",
+            "/knowledge-entity/{id}",
             get(show_edit_knowledge_entity_form)
                 .delete(delete_knowledge_entity)
                 .patch(patch_knowledge_entity),
         )
         .route("/knowledge-relationship", post(save_knowledge_relationship))
         .route(
-            "/knowledge-relationship/:id",
+            "/knowledge-relationship/{id}",
             delete(delete_knowledge_relationship),
         )
 }

@@ -1,5 +1,4 @@
 use axum::{
-    async_trait,
     extract::{FromRequestParts, Request},
     http::request::Parts,
     middleware::Next,
@@ -15,7 +14,6 @@ use super::response_middleware::TemplateResponse;
 pub struct RequireUser(pub User);
 
 // Implement FromRequestParts for RequireUser
-#[async_trait]
 impl<S> FromRequestParts<S> for RequireUser
 where
     S: Send + Sync,

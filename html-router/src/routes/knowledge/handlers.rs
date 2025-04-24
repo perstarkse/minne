@@ -50,9 +50,9 @@ pub struct KnowledgeBaseData {
 pub async fn show_knowledge_page(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-    Query(mut params): Query<FilterParams>,
     HxRequest(is_htmx): HxRequest,
     HxBoosted(is_boosted): HxBoosted,
+    Query(mut params): Query<FilterParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
     // Normalize filters
     params.entity_type = params.entity_type.take().filter(|s| !s.trim().is_empty());
