@@ -1,7 +1,9 @@
 <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" id="text_content_cards">
   {% for text_content in text_contents %}
   <div class="card min-w-72 bg-base-100 shadow">
+    {% if text_content.url_info %}
     <img class="rounded-t-md overflow-clip" src="/file/{{text_content.url_info.image_id}}" />
+    {% endif %}
     <div class="card-body">
       <div class="flex justify-between space-x-2">
         <h2 class="card-title truncate">
@@ -14,7 +16,7 @@
           {% endif %}
         </h2>
         <div class="flex-shrink-0">
-          {% if text_content.url %}
+          {% if text_content.url_info %}
           {% include "icons/globe_icon.html" %}
           {% elif text_content.file_info %}
           {% include "icons/document_icon.html" %}

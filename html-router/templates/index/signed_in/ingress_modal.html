@@ -1,15 +1,10 @@
 {% extends "modal_base.html" %}
-
 {% block form_attributes %}
 hx-post="/ingress-form"
 enctype="multipart/form-data"
-hx-target="#active_jobs_section"
-hx-swap="outerHTML"
 {% endblock %}
-
 {% block modal_content %}
 <h3 class="text-lg font-bold">Add new content</h3>
-
 <div class="form-control">
   <label class="floating-label">
     <span>Instructions</span>
@@ -19,7 +14,6 @@ hx-swap="outerHTML"
     <div class="validator-hint hidden">Instructions are required</div>
   </label>
 </div>
-
 <div class="form-control">
   <label class="floating-label">
     <span>Content</span>
@@ -27,7 +21,6 @@ hx-swap="outerHTML"
       placeholder="Enter the content you want to ingress, it can be an URL or a text snippet">{{ content }}</textarea>
   </label>
 </div>
-
 <div class="form-control">
   <label class="floating-label">
     <span>Category</span>
@@ -41,15 +34,26 @@ hx-swap="outerHTML"
     <div class="validator-hint hidden">Category is required</div>
   </label>
 </div>
-
 <div class="form-control">
   <label class="label label-text">Files</label>
   <input type="file" name="files" multiple class="file-input file-input-bordered w-full" />
 </div>
-
 <div id="error-message" class="text-error text-center {% if not error %}hidden{% endif %}">{{ error }}</div>
+<script>
+  (function () {
+    const form = document.getElementById('modal_form');
+    if (!form) return;
+    const targetElement = document.getElementById('active_jobs_section');
+    if (targetElement) {
+      form.setAttribute('hx-target', '#active_jobs_section');
+      form.setAttribute('hx-swap', 'outerHTML');
+    } else {
+      form.setAttribute('hx-swap', 'none');
+      form.removeAttribute('hx-target');
+    }
+  })();
+</script>
 {% endblock %}
-
 {% block primary_actions %}
 <button type="submit" class="btn btn-primary">
   Save Changes
