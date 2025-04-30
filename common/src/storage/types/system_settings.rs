@@ -31,19 +31,7 @@ impl SystemSettings {
         let settings: Option<Self> = db.get_item("current").await?;
 
         if settings.is_none() {
-            let created_settings = SystemSettings {
-                id: "current".to_string(),
-                registrations_enabled: true,
-                require_email_verification: false,
-                query_model: "gpt-4o-mini".to_string(),
-                processing_model: "gpt-4o-mini".to_string(),
-                query_system_prompt:
-                    crate::storage::types::system_prompts::DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
-                ingestion_system_prompt:
-                    crate::storage::types::system_prompts::DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT
-                        .to_string(),
-            };
-
+            let created_settings = Self::new();
             let stored: Option<Self> = db.store_item(created_settings).await?;
             return stored.ok_or(AppError::Validation("Failed to initialize settings".into()));
         }

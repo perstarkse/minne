@@ -1,6 +1,7 @@
 <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" id="text_content_cards">
   {% for text_content in text_contents %}
   <div class="card min-w-72 bg-base-100 shadow">
+    <img class="rounded-t-md overflow-clip" src="/file/{{text_content.url_info.image_id}}" />
     <div class="card-body">
       <div class="flex justify-between space-x-2">
         <h2 class="card-title truncate">

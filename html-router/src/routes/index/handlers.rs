@@ -1,9 +1,12 @@
 use axum::{
+    body::Body,
     extract::{Path, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
 };
 use serde::Serialize;
-use tokio::join;
+use tokio::{fs::File, join};
+use tokio_util::io::ReaderStream;
 
 use crate::{
     middlewares::{
@@ -15,9 +18,15 @@ use crate::{
 use common::{
     error::AppError,
     storage::types::{
-        conversation::Conversation, file_info::FileInfo, ingestion_task::IngestionTask,
-        knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
-        text_chunk::TextChunk, text_content::TextContent, user::User,
+        conversation::Conversation,
+        file_info::{FileError, FileInfo},
+        ingestion_task::IngestionTask,
+        knowledge_entity::KnowledgeEntity,
+        knowledge_relationship::KnowledgeRelationship,
+        text_chunk::TextChunk,
+        text_content::TextContent,
+        user::User,
+        StoredObject,
     },
 };
 
@@ -166,4 +175,50 @@ pub async fn show_active_jobs(
             active_jobs,
         },
     ))
+}
+
+pub async fn serve_file(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    Path(file_id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let file_info = match FileInfo::get_by_id(&file_id, &state.db).await {
+        Ok(info) => info,
+        _ => return Ok(TemplateResponse::not_found().into_response()),
+    };
+
+    if file_info.user_id != user.id {
+        return Ok(TemplateResponse::unauthorized().into_response());
+    }
+
+    // 3. Open the file asynchronously from the stored path
+    let path = std::path::Path::new(&file_info.path);
+
+    let file = match File::open(path).await {
+        Ok(f) => f,
+        Err(e) => return Ok(TemplateResponse::server_error().into_response()),
+    };
+
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_str(&file_info.mime_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+    );
+    let Ok(disposition_value) =
+        HeaderValue::from_str(&format!("attachment; filename=\"{}\"", file_info.file_name))
+    else {
+        headers.insert(
+            header::CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment"),
+        );
+        return Ok((StatusCode::OK, headers, body).into_response());
+    };
+    headers.insert(header::CONTENT_DISPOSITION, disposition_value);
+
+    // 5. Return the response
+    Ok((StatusCode::OK, headers, body).into_response())
 }

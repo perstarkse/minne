@@ -114,6 +114,7 @@ mod tests {
                 id: mock.id,
                 sha256: "mock-sha256".to_string(),
                 path: "/mock/path".to_string(),
+                user_id: "user123".to_string(),
                 file_name: "mock.txt".to_string(),
                 mime_type: "text/plain".to_string(),
                 created_at: Utc::now(),

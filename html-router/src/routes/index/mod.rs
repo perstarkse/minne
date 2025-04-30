@@ -5,7 +5,7 @@ use axum::{
     routing::{delete, get},
     Router,
 };
-use handlers::{delete_job, delete_text_content, index_handler, show_active_jobs};
+use handlers::{delete_job, delete_text_content, index_handler, serve_file, show_active_jobs};
 
 use crate::html_state::HtmlState;
 
@@ -26,4 +26,5 @@ where
         .route("/jobs/{job_id}", delete(delete_job))
         .route("/active-jobs", get(show_active_jobs))
         .route("/text-content/{id}", delete(delete_text_content))
+        .route("/file/{id}", get(serve_file))
 }

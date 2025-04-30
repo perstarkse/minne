@@ -54,9 +54,9 @@
           <select name="query_model" class="select select-bordered w-full">
             <option value="gpt-4o-mini" {% if settings.query_model=="gpt-4o-mini" %}selected{% endif %}>GPT-4o Mini
             </option>
-            <option value="gpt-4o" {% if settings.query_model=="gpt-4o" %}selected{% endif %}>GPT-4o</option>
-            <option value="gpt-3.5-turbo" {% if settings.query_model=="gpt-3.5-turbo" %}selected{% endif %}>GPT-3.5
-              Turbo</option>
+            <option value="gpt-4.1" {% if settings.query_model=="gpt-4.1" %}selected{% endif %}>GPT-4.1</option>
+            <option value="gpt-4.1-mini" {% if settings.query_model=="gpt-4.1-mini" %}selected{% endif %}>GPT-4.1-mini
+            </option>
           </select>
           <p class="text-xs text-gray-500 mt-1">Model used for answering user queries</p>
         </div>
@@ -66,11 +66,11 @@
             <span class="label-text">Processing Model</span>
           </label>
           <select name="processing_model" class="select select-bordered w-full">
-            <option value="gpt-4o-mini" {% if settings.processing_model=="gpt-4o-mini" %}selected{% endif %}>GPT-4o Mini
+            <option value="gpt-4o-mini" {% if settings.query_model=="gpt-4o-mini" %}selected{% endif %}>GPT-4o Mini
             </option>
-            <option value="gpt-4o" {% if settings.processing_model=="gpt-4o" %}selected{% endif %}>GPT-4o</option>
-            <option value="gpt-3.5-turbo" {% if settings.processing_model=="gpt-3.5-turbo" %}selected{% endif %}>GPT-3.5
-              Turbo</option>
+            <option value="gpt-4.1" {% if settings.query_model=="gpt-4.1" %}selected{% endif %}>GPT-4.1</option>
+            <option value="gpt-4.1-mini" {% if settings.query_model=="gpt-4.1-mini" %}selected{% endif %}>GPT-4.1-mini
+            </option>
           </select>
           <p class="text-xs text-gray-500 mt-1">Model used for content processing and ingestion</p>
         </div>
