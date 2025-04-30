@@ -1,7 +1,7 @@
 <dialog id="body_modal" class="modal">
   <div class="modal-box {% block modal_class %}{% endblock %} ">
     <form id="modal_form" {% block form_attributes %}{% endblock %}>
-      <div class="flex flex-col space-y-4">
+      <div class="flex flex-col flex-1 space-y-4">
         {% block modal_content %} <!-- Form fields go here in child templates -->
         {% endblock %}
       </div>

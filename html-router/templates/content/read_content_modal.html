@@ -18,12 +18,10 @@
       breaks: true, gfm: true, headerIds: false, mangle: false,
       smartLists: true, smartypants: true, xhtml: false
     });
-    console.log('initialized');
   }
 
   function renderStaticMarkdown() {
     document.querySelectorAll('.markdown-content').forEach(el => {
-      console.log('hello');
       const raw = el.getAttribute('data-content') || '';
       el.innerHTML = marked.parse(raw);
     });
