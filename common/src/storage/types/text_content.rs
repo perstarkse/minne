@@ -5,10 +5,17 @@ use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 
 use super::file_info::FileInfo;
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct UrlInfo {
+    pub url: String,
+    pub title: String,
+    pub image_id: String,
+}
+
 stored_object!(TextContent, "text_content", {
     text: String,
     file_info: Option<FileInfo>,
-    url: Option<String>,
+    url_info: Option<UrlInfo>,
     instructions: String,
     category: String,
     user_id: String
@@ -20,7 +27,7 @@ impl TextContent {
         instructions: String,
         category: String,
         file_info: Option<FileInfo>,
-        url: Option<String>,
+        url_info: Option<UrlInfo>,
         user_id: String,
     ) -> Self {
         let now = Utc::now();
@@ -30,7 +37,7 @@ impl TextContent {
             updated_at: now,
             text,
             file_info,
-            url,
+            url_info,
             instructions,
             category,
             user_id,
@@ -85,7 +92,7 @@ mod tests {
         assert_eq!(text_content.category, category);
         assert_eq!(text_content.user_id, user_id);
         assert!(text_content.file_info.is_none());
-        assert!(text_content.url.is_none());
+        assert!(text_content.url_info.is_none());
         assert!(!text_content.id.is_empty());
     }
 
@@ -96,19 +103,27 @@ mod tests {
         let instructions = "URL instructions".to_string();
         let category = "URL category".to_string();
         let user_id = "user123".to_string();
-        let url = Some("https://example.com/document.pdf".to_string());
+        let title = "page_title".to_string();
+        let image_id = "image12312".to_string();
+        let url = "https://example.com/document.pdf".to_string();
+
+        let url_info = Some(UrlInfo {
+            url,
+            title,
+            image_id,
+        });
 
         let text_content = TextContent::new(
             text.clone(),
             instructions.clone(),
             category.clone(),
             None,
-            url.clone(),
+            url_info.clone(),
             user_id.clone(),
         );
 
         // Check URL field is set
-        assert_eq!(text_content.url, url);
+        assert_eq!(text_content.url_info, url_info);
     }
 
     #[tokio::test]

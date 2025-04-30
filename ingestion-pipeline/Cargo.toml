@@ -13,14 +13,17 @@ serde_json = { workspace = true }
 futures = { workspace = true }
 async-openai = { workspace = true }
 surrealdb = { workspace = true }
+dom_smoothie = { workspace = true }
+tempfile = { workspace = true }
+axum_typed_multipart = { workspace = true} 
 
-tiktoken-rs = "0.6.0"
 reqwest = {version = "0.12.12", features = ["charset", "json"]}
-scraper = "0.22.0"
 chrono = { version = "0.4.39", features = ["serde"] }
 text-splitter = "0.18.1"
+url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4", "serde"] }
-dom_smoothie = "0.10.0"
+
+headless_chrome = { git = "https://github.com/rust-headless-chrome/rust-headless-chrome", features = ["fetch"] }
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }

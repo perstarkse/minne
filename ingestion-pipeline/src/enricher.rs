@@ -111,7 +111,7 @@ impl IngestionEnricher {
         let request = CreateChatCompletionRequestArgs::default()
             .model(&settings.processing_model)
             .temperature(0.2)
-            .max_tokens(3048u32)
+            .max_tokens(6048u32)
             .messages([
                 ChatCompletionRequestSystemMessage::from(INGRESS_ANALYSIS_SYSTEM_MESSAGE).into(),
                 ChatCompletionRequestUserMessage::from(user_message).into(),

@@ -4,7 +4,7 @@
   {% for item in latest_text_contents %}
   <li class="list-row">
     <div class="bg-accent rounded-box size-10 flex justify-center items-center text-accent-content">
-      {% if item.url %}
+      {% if item.url_info %}
       {% include "icons/globe_icon.html" %}
       {% elif item.file_info %}
       {% include "icons/document_icon.html" %}
@@ -14,8 +14,8 @@
     </div>
     <div>
       <div class="truncate max-w-[160px]">
-        {% if item.url %}
-        {{item.url}}
+        {% if item.url_info %}
+        {{item.url_info.title}}
         {% elif item.file_info%}
         {{item.file_info.file_name}}
         {% else %}

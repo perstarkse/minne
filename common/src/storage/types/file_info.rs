@@ -38,7 +38,8 @@ stored_object!(FileInfo, "file", {
     sha256: String,
     path: String,
     file_name: String,
-    mime_type: String
+    mime_type: String,
+    user_id: String
 });
 
 impl FileInfo {
@@ -83,6 +84,7 @@ impl FileInfo {
                 .to_string_lossy()
                 .into(),
             mime_type: Self::guess_mime_type(Path::new(&sanitized_file_name)),
+            user_id: user_id.to_string(),
         };
 
         // Store in database
@@ -257,6 +259,22 @@ impl FileInfo {
         db_client.delete_item::<FileInfo>(id).await?;
 
         Ok(())
+    }
+
+    /// Retrieves a `FileInfo` by its ID.
+    ///
+    /// # Arguments
+    /// * `id` - The ID string of the file.
+    /// * `db_client` - Reference to the SurrealDbClient.
+    ///
+    /// # Returns
+    /// * `Result<FileInfo, FileError>` - The `FileInfo` or an error if not found or on DB issues.
+    pub async fn get_by_id(id: &str, db_client: &SurrealDbClient) -> Result<FileInfo, FileError> {
+        match db_client.get_item::<FileInfo>(id).await {
+            Ok(Some(file_info)) => Ok(file_info),
+            Ok(None) => Err(FileError::FileNotFound(id.to_string())),
+            Err(e) => Err(FileError::SurrealError(e)),
+        }
     }
 }
 
@@ -460,6 +478,7 @@ mod tests {
             id: Uuid::new_v4().to_string(),
             created_at: now,
             updated_at: now,
+            user_id: "user123".to_string(),
             sha256: "test_sha256_hash".to_string(),
             path: "/path/to/file.txt".to_string(),
             file_name: "manual_file.txt".to_string(),
@@ -517,6 +536,7 @@ mod tests {
         // The file path should point to our test file
         let file_info = FileInfo {
             id: file_id.clone(),
+            user_id: "user123".to_string(),
             created_at: now,
             updated_at: now,
             sha256: "test_sha256_hash".to_string(),
@@ -584,6 +604,74 @@ mod tests {
                 // Expected error
             }
             _ => panic!("Expected FileNotFound error"),
+        }
+    }
+    #[tokio::test]
+    async fn test_get_by_id() {
+        // Setup in-memory database for testing
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Create a FileInfo instance directly
+        let now = Utc::now();
+        let file_id = Uuid::new_v4().to_string();
+        let original_file_info = FileInfo {
+            id: file_id.clone(),
+            user_id: "user123".to_string(),
+            created_at: now,
+            updated_at: now,
+            sha256: "test_sha256_for_get_by_id".to_string(),
+            path: "/path/to/get_by_id_test.txt".to_string(),
+            file_name: "get_by_id_test.txt".to_string(),
+            mime_type: "text/plain".to_string(),
+        };
+
+        // Store it in the database
+        db.store_item(original_file_info.clone())
+            .await
+            .expect("Failed to store item for get_by_id test");
+
+        // Retrieve it using get_by_id
+        let result = FileInfo::get_by_id(&file_id, &db).await;
+
+        // Assert success and content match
+        assert!(result.is_ok());
+        let retrieved_info = result.unwrap();
+        assert_eq!(retrieved_info.id, original_file_info.id);
+        assert_eq!(retrieved_info.sha256, original_file_info.sha256);
+        assert_eq!(retrieved_info.file_name, original_file_info.file_name);
+        assert_eq!(retrieved_info.path, original_file_info.path);
+        assert_eq!(retrieved_info.mime_type, original_file_info.mime_type);
+        // Optionally compare timestamps if precision isn't an issue
+        // assert_eq!(retrieved_info.created_at, original_file_info.created_at);
+    }
+
+    #[tokio::test]
+    async fn test_get_by_id_not_found() {
+        // Setup in-memory database for testing
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Try to retrieve a non-existent ID
+        let non_existent_id = "non-existent-file-id";
+        let result = FileInfo::get_by_id(non_existent_id, &db).await;
+
+        // Assert failure
+        assert!(result.is_err());
+
+        // Assert the specific error type is FileNotFound
+        match result {
+            Err(FileError::FileNotFound(id)) => {
+                assert_eq!(id, non_existent_id);
+            }
+            Err(e) => panic!("Expected FileNotFound error, but got {:?}", e),
+            Ok(_) => panic!("Expected an error, but got Ok"),
         }
     }
 }

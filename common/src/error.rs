@@ -33,4 +33,6 @@ pub enum AppError {
     Tiktoken(#[from] anyhow::Error),
     #[error("Ingress Processing error: {0}")]
     Processing(String),
+    #[error("DOM smoothie error: {0}")]
+    DomSmoothie(#[from] dom_smoothie::ReadabilityError),
 }

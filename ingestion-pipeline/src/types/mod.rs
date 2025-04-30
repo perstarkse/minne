@@ -1,29 +1,28 @@
 pub mod llm_enrichment_result;
 
-use std::{sync::Arc, time::Duration};
+use std::io::Write;
+use std::time::Instant;
 
-use async_openai::types::{
-    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-    CreateChatCompletionRequestArgs,
-};
+use axum::http::HeaderMap;
+use axum_typed_multipart::{FieldData, FieldMetadata};
+use chrono::Utc;
 use common::storage::db::SurrealDbClient;
 use common::{
     error::AppError,
     storage::types::{
-        file_info::FileInfo, ingestion_payload::IngestionPayload, system_settings::SystemSettings,
-        text_content::TextContent,
+        file_info::FileInfo,
+        ingestion_payload::IngestionPayload,
+        text_content::{TextContent, UrlInfo},
     },
 };
-use dom_smoothie::TextMode;
-use reqwest;
-use scraper::{Html, Selector};
-use std::fmt::Write;
-use tiktoken_rs::{o200k_base, CoreBPE};
+use dom_smoothie::{Article, Readability, TextMode};
+use headless_chrome::Browser;
+use tempfile::NamedTempFile;
+use tracing::{error, info};
 
 pub async fn to_text_content(
     ingestion_payload: IngestionPayload,
-    openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
-    db_client: &Arc<SurrealDbClient>,
+    db: &SurrealDbClient,
 ) -> Result<TextContent, AppError> {
     match ingestion_payload {
         IngestionPayload::Url {
@@ -32,13 +31,17 @@ pub async fn to_text_content(
             category,
             user_id,
         } => {
-            let text = fetch_text_from_url(&url, openai_client, db_client).await?;
+            let (article, file_info) = fetch_article_from_url(&url, db, &user_id).await?;
             Ok(TextContent::new(
-                text,
+                article.text_content.into(),
                 instructions,
                 category,
                 None,
-                Some(url),
+                Some(UrlInfo {
+                    url,
+                    title: article.title,
+                    image_id: file_info.id,
+                }),
                 user_id,
             ))
         }
@@ -73,161 +76,104 @@ pub async fn to_text_content(
         }
     }
 }
+use std::io::{Seek, SeekFrom}; // <-- Add Seek and SeekFrom
 
-/// Get text from url, will return it as a markdown formatted string
-async fn fetch_text_from_url(
+/// Fetches web content from a URL, extracts the main article text as Markdown,
+/// captures a screenshot, and stores the screenshot returning [`FileInfo`].
+///
+/// This function handles browser automation, content extraction via Readability,
+/// screenshot capture, temporary file handling, and persisting the screenshot
+/// details (including deduplication based on content hash via [`FileInfo::new`]).
+///
+/// # Arguments
+///
+/// * `url` - The URL of the web page to fetch.
+/// * `db` - A reference to the database client (`SurrealDbClient`).
+/// * `user_id` - The ID of the user performing the action, used for associating the file.
+///
+/// # Returns
+///
+/// A `Result` containing:
+/// * Ok: A tuple `(Article, FileInfo)` where `Article` contains the parsed markdown
+///   content and metadata, and `FileInfo` contains the details of the stored screenshot.
+/// * Err: An `AppError` if any step fails (navigation, screenshot, file handling, DB operation).
+async fn fetch_article_from_url(
     url: &str,
-    openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
-    db_client: &Arc<SurrealDbClient>,
-) -> Result<String, AppError> {
-    // Use a client with timeouts and reuse
-    let client = reqwest::ClientBuilder::new()
-        .timeout(Duration::from_secs(30))
-        .build()?;
-    let response = client.get(url).send().await?.text().await?;
+    db: &SurrealDbClient,
+    user_id: &str,
+) -> Result<(Article, FileInfo), AppError> {
+    info!("Fetching URL: {}", url);
+    // Instantiate timer
+    let now = Instant::now();
+    // Setup browser, navigate and wait
+    let browser = Browser::default()?;
+    let tab = browser.new_tab()?;
+    let page = tab.navigate_to(url)?;
+    let loaded_page = page.wait_until_navigated()?;
+    // Get content
+    let raw_content = loaded_page.get_content()?;
+    // Get screenshot
+    let screenshot = loaded_page.capture_screenshot(
+        headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Jpeg,
+        None,
+        None,
+        true,
+    )?;
 
-    // Preallocate string with capacity
-    let mut structured_content = String::with_capacity(response.len() / 2);
+    // Create temp file
+    let mut tmp_file = NamedTempFile::new()?;
+    let temp_path_str = format!("{:?}", tmp_file.path());
 
-    let document = Html::parse_document(&response);
-    let main_selectors = Selector::parse(
-        "article, main, .article-content, .post-content, .entry-content, [role='main']",
-    )
-    .unwrap();
+    // Write screenshot TO the temp file
+    tmp_file.write_all(&screenshot)?;
 
-    let content_element = document
-        .select(&main_selectors)
-        .next()
-        .or_else(|| document.select(&Selector::parse("body").unwrap()).next())
-        .ok_or(AppError::NotFound("No content found".into()))?;
+    // Ensure the OS buffer is written to the file system _before_ we proceed.
+    tmp_file.as_file().sync_all()?;
 
-    // Compile selectors once
-    let heading_selector = Selector::parse("h1, h2, h3").unwrap();
-    let paragraph_selector = Selector::parse("p").unwrap();
-
-    // Process content in one pass
-    for element in content_element.select(&heading_selector) {
-        let _ = writeln!(
-            structured_content,
-            "<heading>{}</heading>",
-            element.text().collect::<String>().trim()
-        );
-    }
-    for element in content_element.select(&paragraph_selector) {
-        let _ = writeln!(
-            structured_content,
-            "<paragraph>{}</paragraph>",
-            element.text().collect::<String>().trim()
-        );
+    // Ensure the file handle's read cursor is at the beginning before hashing occurs.
+    if let Err(e) = tmp_file.seek(SeekFrom::Start(0)) {
+        error!("URL: {}. Failed to seek temp file {} to start: {:?}. Proceeding, but hashing might fail.", url, temp_path_str, e);
     }
 
-    let content = structured_content
-        .replace(|c: char| c.is_control(), " ")
-        .replace("  ", " ");
+    // Prepare file metadata
+    let parsed_url =
+        url::Url::parse(url).map_err(|_| AppError::Processing("Invalid URL".to_string()))?;
+    let domain = parsed_url
+        .host_str()
+        .unwrap_or("unknown")
+        .replace(|c: char| !c.is_alphanumeric(), "_");
+    let timestamp = Utc::now().format("%Y%m%d%H%M%S");
+    let file_name = format!("{}_{}_{}.jpg", domain, "screenshot", timestamp);
 
-    process_web_content(content, openai_client, db_client).await
-
-    // let config = dom_smoothie::Config {
-    //     text_mode: TextMode::Markdown,
-    //     ..Default::default()
-    // };
-    // panic!("YOU SHALL NOT PASS");
-}
-
-pub async fn process_web_content(
-    content: String,
-    openai_client: &Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
-    db_client: &Arc<SurrealDbClient>,
-) -> Result<String, AppError> {
-    const MAX_TOKENS: usize = 122000;
-    const SYSTEM_PROMPT: &str = r#"
-        You are a precise content extractor for web pages. Your task:
-
-        1. Extract ONLY the main article/content from the provided text
-        2. Maintain the original content - do not summarize or modify the core information
-        3. Ignore peripheral content such as:
-            - Navigation elements
-            - Error messages (e.g., "JavaScript required")
-            - Related articles sections
-            - Comments
-            - Social media links
-            - Advertisement text
-
-        FORMAT:
-        - Convert <heading> tags to markdown headings (#, ##, ###)
-        - Convert <paragraph> tags to markdown paragraphs
-        - Preserve quotes and important formatting
-        - Remove duplicate content
-        - Remove any metadata or technical artifacts
-
-        OUTPUT RULES:
-        - Output ONLY the cleaned content in markdown
-        - Do not add any explanations or meta-commentary
-        - Do not add summaries or conclusions
-        - Do not use any XML/HTML tags in the output
-    "#;
-
-    let bpe = o200k_base()?;
-    let settings = SystemSettings::get_current(db_client).await?;
-
-    // Process content in chunks if needed
-    let truncated_content = if bpe.encode_with_special_tokens(&content).len() > MAX_TOKENS {
-        truncate_content(&content, MAX_TOKENS, &bpe)?
-    } else {
-        content
+    // Construct FieldData and FieldMetadata
+    let metadata = FieldMetadata {
+        file_name: Some(file_name),
+        content_type: Some("image/jpeg".to_string()),
+        name: None,
+        headers: HeaderMap::new(),
+    };
+    let field_data = FieldData {
+        contents: tmp_file,
+        metadata,
     };
 
-    let request = CreateChatCompletionRequestArgs::default()
-        .model(&settings.processing_model)
-        .temperature(0.0)
-        .max_tokens(16200u32)
-        .messages([
-            ChatCompletionRequestSystemMessage::from(SYSTEM_PROMPT).into(),
-            ChatCompletionRequestUserMessage::from(truncated_content).into(),
-        ])
-        .build()?;
+    // Store screenshot
+    let file_info = FileInfo::new(field_data, db, user_id).await?;
 
-    let response = openai_client.chat().create(request).await?;
+    // Parse content...
+    let config = dom_smoothie::Config {
+        text_mode: TextMode::Markdown,
+        ..Default::default()
+    };
+    let mut readability = Readability::new(raw_content, None, Some(config))?;
+    let article: Article = readability.parse()?;
+    let end = now.elapsed();
+    info!(
+        "URL: {}. Total time: {:?}. Final File ID: {}",
+        url, end, file_info.id
+    );
 
-    // Extract and return the content
-    response
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.clone())
-        .ok_or(AppError::LLMParsing(
-            "No content found in LLM response".into(),
-        ))
-}
-
-fn truncate_content(
-    content: &str,
-    max_tokens: usize,
-    tokenizer: &CoreBPE,
-) -> Result<String, AppError> {
-    // Pre-allocate with estimated size
-    let mut result = String::with_capacity(content.len() / 2);
-    let mut current_tokens = 0;
-
-    // Process content by paragraph to maintain context
-    for paragraph in content.split("\n\n") {
-        let tokens = tokenizer.encode_with_special_tokens(paragraph).len();
-
-        // Check if adding paragraph exceeds limit
-        if current_tokens + tokens > max_tokens {
-            break;
-        }
-
-        result.push_str(paragraph);
-        result.push_str("\n\n");
-        current_tokens += tokens;
-    }
-
-    // Ensure we return valid content
-    if result.is_empty() {
-        return Err(AppError::Processing("Content exceeds token limit".into()));
-    }
-
-    Ok(result.trim_end().to_string())
+    Ok((article, file_info))
 }
 
 /// Extracts text from a file based on its MIME type.

@@ -31,6 +31,7 @@ tower-http = { version = "0.6.2", features = ["fs"] }
 chrono-tz = "0.10.1"
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
+tokio-util = { version = "0.7.15", features = ["io"] }
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }

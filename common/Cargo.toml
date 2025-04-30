@@ -16,6 +16,7 @@ surrealdb = { workspace = true, features = ["kv-mem"] }
 async-openai = { workspace = true }
 futures = { workspace = true }
 tempfile = { workspace = true }
+dom_smoothie = { workspace = true }
 
 async-trait = "0.1.88"
 axum_session = { workspace = true }
