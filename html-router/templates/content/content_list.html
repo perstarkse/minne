@@ -29,6 +29,10 @@
         </p>
         <div class="badge badge-soft badge-secondary mr-2">{{ text_content.category }}</div>
         <div class="flex gap-2">
+          <button hx-get="/content/{{ text_content.id }}/read" hx-target="#modal" hx-swap="innerHTML"
+            class="btn btn-square btn-ghost btn-sm">
+            {% include "icons/read_icon.html" %}
+          </button>
           <button hx-get="/content/{{ text_content.id }}" hx-target="#modal" hx-swap="innerHTML"
             class="btn btn-square btn-ghost btn-sm">
             {% include "icons/edit_icon.html" %}

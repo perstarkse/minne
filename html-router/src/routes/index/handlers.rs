@@ -18,15 +18,9 @@ use crate::{
 use common::{
     error::AppError,
     storage::types::{
-        conversation::Conversation,
-        file_info::{FileError, FileInfo},
-        ingestion_task::IngestionTask,
-        knowledge_entity::KnowledgeEntity,
-        knowledge_relationship::KnowledgeRelationship,
-        text_chunk::TextChunk,
-        text_content::TextContent,
-        user::User,
-        StoredObject,
+        conversation::Conversation, file_info::FileInfo, ingestion_task::IngestionTask,
+        knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
+        text_chunk::TextChunk, text_content::TextContent, user::User,
     },
 };
 
