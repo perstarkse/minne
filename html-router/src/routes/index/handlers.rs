@@ -191,12 +191,11 @@ pub async fn serve_file(
         return Ok(TemplateResponse::unauthorized().into_response());
     }
 
-    // 3. Open the file asynchronously from the stored path
     let path = std::path::Path::new(&file_info.path);
 
     let file = match File::open(path).await {
         Ok(f) => f,
-        Err(e) => return Ok(TemplateResponse::server_error().into_response()),
+        Err(_e) => return Ok(TemplateResponse::server_error().into_response()),
     };
 
     let stream = ReaderStream::new(file);
@@ -219,6 +218,10 @@ pub async fn serve_file(
     };
     headers.insert(header::CONTENT_DISPOSITION, disposition_value);
 
-    // 5. Return the response
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=31536000, immutable"),
+    );
+
     Ok((StatusCode::OK, headers, body).into_response())
 }
