@@ -164,3 +164,22 @@ pub async fn delete_text_content(
         },
     ))
 }
+
+pub async fn show_content_read_modal(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Get and validate the text content
+    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
+    #[derive(Serialize)]
+    pub struct TextContentReadModalData {
+        pub user: User,
+        pub text_content: TextContent,
+    }
+
+    Ok(TemplateResponse::new_template(
+        "content/read_content_modal.html",
+        TextContentReadModalData { user, text_content },
+    ))
+}
