@@ -1,31 +1,35 @@
 {% extends "modal_base.html" %}
 
+{% block modal_class %}
+flex flex-col min-h-[95%] w-11/12 max-w-[90ch] max-h-[95%]
+{% endblock %}
+
 {% block form_attributes %}
 hx-patch="/content/{{text_content.id}}"
 hx-target="#main_section"
 hx-swap="outerHTML"
+class="flex flex-col flex-1 h-full"
 {% endblock %}
 
 {% block modal_content %}
-<h3 class="text-lg font-bold ">Edit Content</h3>
+<h3 class="text-lg font-bold">Edit Content</h3>
 <div class="form-control">
   <label class="floating-label">
     <span class="label-text">Instructions</span>
-    <input type="text" name="instructions" value="{{ text_content.instructions}}" class="w-full input input-bordered">
+    <input type="text" name="instructions" value="{{ text_content.instructions }}" class="w-full input input-bordered">
   </label>
 </div>
-
-<div class="form-control ">
-  <label class="floating-label">
-    <span class="label-text">Category</span>
-    <input type="text" name="category" value="{{ text_content.category}}" class="w-full input input-bordered">
-  </label>
-</div>
-
 <div class="form-control">
   <label class="floating-label">
+    <span class="label-text">Category</span>
+    <input type="text" name="category" value="{{ text_content.category }}" class="w-full input input-bordered">
+  </label>
+</div>
+<div class="form-control flex-1 flex flex-col min-h-0">
+  <label class="floating-label flex-1 flex flex-col min-h-0">
     <span class="label-text">Text</span>
-    <textarea name="text" class="textarea textarea-bordered h-32 w-full">{{ text_content.text}}</textarea>
+    <textarea name="text" class="textarea textarea-bordered w-full flex-1 min-h-[200px] h-full resize-none">{{
+      text_content.text }}</textarea>
   </label>
 </div>
 {% endblock %}

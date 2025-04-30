@@ -5,8 +5,8 @@
     <div class="card-body">
       <div class="flex justify-between space-x-2">
         <h2 class="card-title truncate">
-          {% if text_content.url %}
-          <a href="{{ text_content.url}}">{{text_content.url}}</a>
+          {% if text_content.url_info %}
+          <a href="{{ text_content.url_info.url}}">{{text_content.url_info.title}}</a>
           {% elif text_content.file_info %}
           {{text_content.file_info.file_name}}
           {% else %}
