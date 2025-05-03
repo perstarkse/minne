@@ -1,6 +1,5 @@
 use crate::storage::types::file_info::deserialize_flexible_id;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{error::AppError, storage::db::SurrealDbClient, storage::types::StoredObject};
 
@@ -60,7 +59,7 @@ impl SystemSettings {
 
     pub fn new() -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: "current".to_string(),
             query_system_prompt: crate::storage::types::system_prompts::DEFAULT_QUERY_SYSTEM_PROMPT
                 .to_string(),
             ingestion_system_prompt:
@@ -77,6 +76,7 @@ impl SystemSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_settings_initialization() {
