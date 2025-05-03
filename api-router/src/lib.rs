@@ -2,11 +2,11 @@ use api_state::ApiState;
 use axum::{
     extract::{DefaultBodyLimit, FromRef},
     middleware::from_fn_with_state,
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use middleware_api_auth::api_auth;
-use routes::ingress::ingest_data;
+use routes::{categories::get_categories, ingress::ingest_data};
 
 pub mod api_state;
 pub mod error;
@@ -21,6 +21,7 @@ where
 {
     Router::new()
         .route("/ingress", post(ingest_data))
+        .route("/categories", get(get_categories))
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         .route_layer(from_fn_with_state(app_state.clone(), api_auth))
 }
