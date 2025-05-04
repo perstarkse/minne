@@ -18,7 +18,7 @@ pub enum IngestionTaskStatus {
     Cancelled,
 }
 
-stored_object!(IngestionTask, "job", {
+stored_object!(IngestionTask, "ingestion_task", {
     content: IngestionPayload,
     status: IngestionTaskStatus,
     user_id: String
