@@ -1,0 +1,1 @@
+{"schemas":"--- original\n+++ modified\n@@ -147,6 +147,7 @@\n\n DEFINE FIELD OVERWRITE script_name ON script_migration TYPE string;\n DEFINE FIELD OVERWRITE executed_at ON script_migration TYPE datetime VALUE time::now() READONLY;\n+\n # Defines the schema for the 'system_settings' table.\n\n DEFINE TABLE IF NOT EXISTS system_settings SCHEMALESS;\n","events":null}

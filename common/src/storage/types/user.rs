@@ -199,7 +199,7 @@ impl User {
             .client
             .query(
                 "UPDATE type::thing('user', $id) 
-                SET api_key = NULL 
+                SET api_key = test_string_nullish
                 RETURN AFTER",
             )
             .bind(("id", id.to_owned()))
@@ -520,9 +520,9 @@ mod tests {
             .await
             .expect("Failed to start in-memory surrealdb");
 
-        db.ensure_initialized()
+        db.apply_migrations()
             .await
-            .expect("Failed to setup the systemsettings");
+            .expect("Failed to setup the migrations");
 
         db
     }

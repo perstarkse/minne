@@ -4,7 +4,6 @@
 database
 node_modules
 config.yaml
-flake.nix
 
 
 target
@@ -20,5 +19,5 @@ devenv.local.nix
 
 # pre-commit
 .pre-commit-config.yaml
-html-router/assets/style.css
+# html-router/assets/style.css
 html-router/node_modules

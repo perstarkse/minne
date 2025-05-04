@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Ensure db is initialized
-    db.ensure_initialized().await?;
+    db.apply_migrations().await?;
 
     let session_store = Arc::new(db.create_session_store().await?);
     let openai_client = Arc::new(async_openai::Client::with_config(
