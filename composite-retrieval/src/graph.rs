@@ -292,7 +292,7 @@ mod tests {
             .await
             .expect("Failed to store related entity 2")
             .unwrap();
-        let unrelated_entity = db
+        let _unrelated_entity = db
             .store_item(unrelated_entity.clone())
             .await
             .expect("Failed to store unrelated entity")

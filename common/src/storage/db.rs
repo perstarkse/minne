@@ -1,4 +1,4 @@
-use super::types::{analytics::Analytics, system_settings::SystemSettings, StoredObject};
+use super::types::StoredObject;
 use crate::error::AppError;
 use axum_session::{SessionConfig, SessionError, SessionStore};
 use axum_session_surreal::SessionSurrealPool;
@@ -65,70 +65,22 @@ impl SurrealDbClient {
     /// the database and selecting the appropriate namespace and database, but before
     /// the application starts performing operations that rely on the schema.
     pub async fn apply_migrations(&self) -> Result<(), AppError> {
-        // Instantiate the runner, load embedded files, and run 'up'
         MigrationRunner::new(&self.client)
             .load_files(&MIGRATIONS_DIR)
             .up()
             .await
-            .map_err(|e| AppError::Processing(e.to_string()))?;
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
 
         Ok(())
     }
 
-    // pub async fn ensure_initialized(&self) -> Result<(), AppError> {
-    //     Self::build_indexes(self).await?;
-    //     Self::setup_auth(self).await?;
-
-    //     Analytics::ensure_initialized(self).await?;
-    //     SystemSettings::ensure_initialized(self).await?;
-
-    //     Ok(())
-    // }
-
-    // pub async fn setup_auth(&self) -> Result<(), Error> {
-    //     self.client.query(
-    //     "DEFINE TABLE user SCHEMALESS;
-    //     DEFINE INDEX unique_name ON TABLE user FIELDS email UNIQUE;
-    //     DEFINE ACCESS account ON DATABASE TYPE RECORD
-    //     SIGNUP ( CREATE user SET email = $email, password = crypto::argon2::generate($password), anonymous = false, user_id = $user_id)
-    //     SIGNIN ( SELECT * FROM user WHERE email = $email AND crypto::argon2::compare(password, $password) );",
-    // )
-    // .await?;
-    //     Ok(())
-    // }
-
-    // pub async fn build_indexes(&self) -> Result<(), Error> {
-    //     self.client.query("DEFINE INDEX idx_embedding_chunks ON text_chunk FIELDS embedding HNSW DIMENSION 1536").await?;
-    //     self.client.query("DEFINE INDEX idx_embedding_entities ON knowledge_entity FIELDS embedding HNSW DIMENSION 1536").await?;
-
-    //     self.client
-    //         .query("DEFINE INDEX idx_job_status ON job FIELDS status")
-    //         .await?;
-    //     self.client
-    //         .query("DEFINE INDEX idx_job_user ON job FIELDS user_id")
-    //         .await?;
-    //     self.client
-    //         .query("DEFINE INDEX idx_job_created ON job FIELDS created_at")
-    //         .await?;
-
-    //     Ok(())
-    // }
-
+    /// Operation to rebuild indexes
     pub async fn rebuild_indexes(&self) -> Result<(), Error> {
         self.client
             .query("REBUILD INDEX IF EXISTS idx_embedding_chunks ON text_chunk")
-            .await?;
-        self.client
             .query("REBUILD INDEX IF EXISTS idx_embeddings_entities ON knowledge_entity")
             .await?;
         Ok(())
-    }
-
-    pub async fn drop_table<T>(&self) -> Result<Vec<T>, Error>
-    where
-        T: StoredObject + Send + Sync + 'static,
-    {
-        self.client.delete(T::table_name()).await
     }
 
     /// Operation to store a object in SurrealDB, requires the struct to implement StoredObject
