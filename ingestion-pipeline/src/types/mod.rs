@@ -16,7 +16,8 @@ use common::{
     },
 };
 use dom_smoothie::{Article, Readability, TextMode};
-use headless_chrome::Browser;
+use headless_chrome::{Browser, LaunchOptionsBuilder};
+use std::io::{Seek, SeekFrom};
 use tempfile::NamedTempFile;
 use tracing::{error, info};
 
@@ -76,7 +77,6 @@ pub async fn to_text_content(
         }
     }
 }
-use std::io::{Seek, SeekFrom}; // <-- Add Seek and SeekFrom
 
 /// Fetches web content from a URL, extracts the main article text as Markdown,
 /// captures a screenshot, and stores the screenshot returning [`FileInfo`].
@@ -106,7 +106,22 @@ async fn fetch_article_from_url(
     // Instantiate timer
     let now = Instant::now();
     // Setup browser, navigate and wait
-    let browser = Browser::default()?;
+    let browser = {
+        #[cfg(feature = "docker")]
+        {
+            // Use this when compiling for docker
+            let options = LaunchOptionsBuilder::default()
+                .sandbox(false)
+                .build()
+                .map_err(|e| AppError::InternalError(e.to_string()))?;
+            Browser::new(options)?
+        }
+        #[cfg(not(feature = "docker"))]
+        {
+            // Use this otherwise
+            Browser::default()?
+        }
+    };
     let tab = browser.new_tab()?;
     let page = tab.navigate_to(url)?;
     let loaded_page = page.wait_until_navigated()?;

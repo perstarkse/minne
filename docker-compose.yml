@@ -1,0 +1,44 @@
+version: '3.8' 
+
+services:
+  minne:
+    build: . 
+    container_name: minne_app
+    ports:
+      - "3000:3000" 
+    environment:
+      SURREALDB_ADDRESS: "ws://surrealdb:8000"
+      SURREALDB_USERNAME: "root_user"
+      SURREALDB_PASSWORD: "root_password"
+      SURREALDB_DATABASE: "test"
+      SURREALDB_NAMESPACE: "test"
+      OPENAI_API_KEY: "sk-key"
+      # RUST_LOG: "info"
+    depends_on:
+      - surrealdb 
+    networks:
+      - minne-net 
+    command: ["sh", "-c", "echo 'Waiting for SurrealDB to start...' && sleep 10 && echo 'Starting application...' && /usr/local/bin/main"]
+
+  surrealdb:
+    image: surrealdb/surrealdb:latest 
+    container_name: minne_surrealdb
+    ports:
+      - "8000:8000" 
+    volumes:
+      - ./database:/database # Mounts a 'database' folder from your project directory
+    command: >
+      start
+      --log debug
+      --user root_user
+      --pass root_password
+      rocksdb:./database/database.db
+    networks:
+      - minne-net
+
+volumes:
+  surrealdb_data:
+
+networks:
+  minne-net:
+    driver: bridge
