@@ -1,4 +1,3 @@
-# flake.nix
 {
   description = "Minne application flake";
 
@@ -32,13 +31,12 @@
           # Assuming you switched to crates.io headless_chrome
           cargoLock = {
             lockFile = ./Cargo.lock;
-            # outputHashes = { ... }; # Only if other git dependencies still exist
           };
 
           nativeBuildInputs = [
             pkgs.pkg-config
             pkgs.rustfmt
-            pkgs.makeWrapper # For the postInstall hook
+            # pkgs.makeWrapper # For the postInstall hook
           ];
           buildInputs = [
             pkgs.openssl
@@ -67,27 +65,38 @@
 
         # --- Docker Image Definition (using dockerTools) ---
         minne-docker-image = pkgs.dockerTools.buildImage {
-          name = "minne"; # Docker image repository name
-          tag = minne-pkg.version; # Use the package version as the image tag
+          name = "minne";
+          tag = minne-pkg.version;
 
-          # Include the runtime closure of our minne package in the image layers
-          # Also add bash for easier debugging inside the container
-          contents = [minne-pkg pkgs.bashInteractive];
+          # Create an environment containing our packages
+          # and copy its contents to the image's root filesystem.
+          copyToRoot = pkgs.buildEnv {
+            name = "minne-env"; # Name for the build environment derivation
+            paths = [
+              minne-pkg # Include our compiled Rust application
+              pkgs.bashInteractive # Include bash for debugging/interaction
+              pkgs.coreutils # Often useful to have basic utils like ls, cat etc.
+              pkgs.cacert # Include CA certificates for TLS/SSL
+            ];
+            # Optional: Add postBuild hook for the buildEnv if needed
+            # postBuild = '' ... '';
+          };
 
           # Configure the runtime behavior of the Docker image
           config = {
-            # Set the default command to run when the container starts
-            # Assumes 'main' is your primary entrypoint
-            Cmd = ["${minne-pkg}/bin/main"];
+            # Cmd can now likely refer to the binary directly in /bin
+            # (buildEnv symlinks the 'main' binary into the profile's bin)
+            Cmd = ["/bin/main"];
 
-            # Add other Docker config as needed:
-            # ExposedPorts = { "8080/tcp" = {}; }; # Example port exposure
-            WorkingDir = "/data"; # Example working directory
-            # Volumes = { "/data" = {}; };     # Example volume mount point
+            # ExposedPorts = { "8080/tcp" = {}; };
+            WorkingDir = "/data";
+            # Volumes = { "/data" = {}; };
+
+            # PATH might not need explicit setting if things are in /bin,
+            # but setting explicitly can be safer. buildEnv adds its bin path automatically.
             Env = [
-              # The wrapper should set CHROME_BIN, but you can add other env vars
-              "PATH=${pkgs.lib.makeBinPath [minne-pkg pkgs.coreutils]}" # Ensure coreutils are in PATH
-              "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" # Common requirement
+              # SSL_CERT_FILE is often essential for HTTPS requests
+              "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
             ];
           };
         };
@@ -112,28 +121,13 @@
             drv = minne-pkg;
             name = "worker";
           };
+          server = flake-utils.lib.mkApp {
+            drv = minne-pkg;
+            name = "server";
+          };
           # Default app for 'nix run .'
           default = self.apps.${system}.main;
         };
-
-        # # Development Shell: Accessible via 'nix develop'
-        # devShells.default = pkgs.mkShell {
-        #   # Use inputs from the main package derivation
-        #   inputsFrom = [minne-pkg];
-        #   # Add development tools
-        #   nativeBuildInputs = minne-pkg.nativeBuildInputs;
-        #   buildInputs =
-        #     minne-pkg.buildInputs
-        #     ++ [
-        #       pkgs.cargo
-        #       pkgs.rustc
-        #       pkgs.clippy # Add other dev tools as needed
-        #     ];
-        #   # Add shell hooks or env vars if needed
-        #   # shellHook = ''
-        #   #   export MY_DEV_VAR="hello"
-        #   # '';
-        # };
       }
     );
 }
