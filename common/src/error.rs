@@ -31,8 +31,10 @@ pub enum AppError {
     Reqwest(#[from] reqwest::Error),
     #[error("Tiktoken error: {0}")]
     Tiktoken(#[from] anyhow::Error),
-    #[error("Ingress Processing error: {0}")]
+    #[error("Ingestion Processing error: {0}")]
     Processing(String),
     #[error("DOM smoothie error: {0}")]
     DomSmoothie(#[from] dom_smoothie::ReadabilityError),
+    #[error("Internal service error: {0}")]
+    InternalError(String),
 }
