@@ -1,0 +1,40 @@
+# Git stuff
+.git/
+.gitignore
+.github
+
+# Node build artifacts
+**/node_modules/
+
+# Nix/Devenv environment files
+.direnv/
+.devenv/
+devenv.lock
+devenv.nix
+devenv.yaml
+docker-compose.yml
+.envrc
+.devenv.flake.nix
+flake.lock
+flake.nix
+
+# Rust build artifacts (crucial for multi-stage builds)
+**/target/
+
+# Runtime data directories
+data/
+database/
+
+# Local environment config (sensitive)
+.env
+
+# IDE specific
+.vscode/
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Logs / Temporary files
+*.log
