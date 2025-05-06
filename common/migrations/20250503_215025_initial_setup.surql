@@ -1,5 +1,5 @@
 -- Ensure 'analytics:current' record exists
-IF NOT EXISTS (SELECT * FROM analytics:current) THEN
+IF NOT (SELECT * FROM analytics:current) THEN
     CREATE analytics:current CONTENT {
         page_loads: 0,
         visitors: 0
@@ -7,7 +7,7 @@ IF NOT EXISTS (SELECT * FROM analytics:current) THEN
 END;
 
 -- Ensure 'system_settings:current' record exists
-IF NOT EXISTS (SELECT * FROM system_settings:current) THEN
+IF NOT (SELECT * FROM system_settings:current) THEN
 CREATE system_settings:current CONTENT {
     registrations_enabled: true,
     require_email_verification: false,
