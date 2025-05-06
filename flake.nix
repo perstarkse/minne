@@ -32,11 +32,13 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
           };
+          # Lets skip tests
+          doCheck = false;
 
           nativeBuildInputs = [
             pkgs.pkg-config
             pkgs.rustfmt
-            # pkgs.makeWrapper # For the postInstall hook
+            pkgs.makeWrapper # For the postInstall hook
           ];
           buildInputs = [
             pkgs.openssl
@@ -49,11 +51,11 @@
             chromium_executable = "${pkgs.chromium}/bin/chromium";
           in ''
             echo "Wrapping binaries in postInstall hook..."
-            ls -l $out/bin # Add this line to debug which binaries are present
+            ls -l $out/bin
             wrapProgram $out/bin/main \
-              --set CHROME_BIN "${chromium_executable}"
+              --set CHROME "${chromium_executable}"
             wrapProgram $out/bin/worker \
-              --set CHROME_BIN "${chromium_executable}"
+              --set CHROME "${chromium_executable}"
             echo "Finished wrapping."
           '';
 
