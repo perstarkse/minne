@@ -16,7 +16,7 @@ use common::{
     },
 };
 use dom_smoothie::{Article, Readability, TextMode};
-use headless_chrome::{Browser, LaunchOptionsBuilder};
+use headless_chrome::Browser;
 use std::io::{Seek, SeekFrom};
 use tempfile::NamedTempFile;
 use tracing::{error, info};
@@ -28,14 +28,14 @@ pub async fn to_text_content(
     match ingestion_payload {
         IngestionPayload::Url {
             url,
-            instructions,
+            context,
             category,
             user_id,
         } => {
             let (article, file_info) = fetch_article_from_url(&url, db, &user_id).await?;
             Ok(TextContent::new(
                 article.text_content.into(),
-                instructions,
+                Some(context),
                 category,
                 None,
                 Some(UrlInfo {
@@ -48,12 +48,12 @@ pub async fn to_text_content(
         }
         IngestionPayload::Text {
             text,
-            instructions,
+            context,
             category,
             user_id,
         } => Ok(TextContent::new(
             text,
-            instructions,
+            Some(context),
             category,
             None,
             None,
@@ -61,14 +61,14 @@ pub async fn to_text_content(
         )),
         IngestionPayload::File {
             file_info,
-            instructions,
+            context,
             category,
             user_id,
         } => {
             let text = extract_text_from_file(&file_info).await?;
             Ok(TextContent::new(
                 text,
-                instructions,
+                Some(context),
                 category,
                 Some(file_info),
                 None,

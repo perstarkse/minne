@@ -29,7 +29,7 @@ use crate::html_state::HtmlState;
 #[derive(Serialize)]
 pub struct IndexPageData {
     user: Option<User>,
-    latest_text_contents: Vec<TextContent>,
+    text_contents: Vec<TextContent>,
     active_jobs: Vec<IngestionTask>,
     conversation_archive: Vec<Conversation>,
 }
@@ -39,20 +39,12 @@ pub async fn index_handler(
     auth: AuthSessionType,
 ) -> Result<impl IntoResponse, HtmlError> {
     let Some(user) = auth.current_user else {
-        return Ok(TemplateResponse::new_template(
-            "index/index.html",
-            IndexPageData {
-                user: None,
-                latest_text_contents: vec![],
-                active_jobs: vec![],
-                conversation_archive: vec![],
-            },
-        ));
+        return Ok(TemplateResponse::redirect("/"));
     };
 
     let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
 
-    let latest_text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
+    let text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
 
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
@@ -60,7 +52,7 @@ pub async fn index_handler(
         "index/index.html",
         IndexPageData {
             user: Some(user),
-            latest_text_contents,
+            text_contents,
             active_jobs,
             conversation_archive,
         },

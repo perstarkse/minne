@@ -110,7 +110,7 @@ mod tests {
     fn create_test_payload(user_id: &str) -> IngestionPayload {
         IngestionPayload::Text {
             text: "Test content".to_string(),
-            instructions: "Test instructions".to_string(),
+            context: "Test context".to_string(),
             category: "Test category".to_string(),
             user_id: user_id.to_string(),
         }

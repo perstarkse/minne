@@ -1,8 +1,4 @@
 {% extends "body_base.html" %}
 {% block main %}
-{% if user %}
 {% include 'index/signed_in/base.html' %}
-{% else %}
-{% include 'auth/signin_form.html' %}
-{% endif %}
 {% endblock %}

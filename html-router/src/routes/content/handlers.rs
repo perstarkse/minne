@@ -94,7 +94,7 @@ pub async fn show_text_content_edit_form(
 
 #[derive(Deserialize)]
 pub struct PatchTextContentParams {
-    instructions: String,
+    context: String,
     category: String,
     text: String,
 }
@@ -106,14 +106,7 @@ pub async fn patch_text_content(
 ) -> Result<impl IntoResponse, HtmlError> {
     User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
 
-    TextContent::patch(
-        &id,
-        &form.instructions,
-        &form.category,
-        &form.text,
-        &state.db,
-    )
-    .await?;
+    TextContent::patch(&id, &form.context, &form.category, &form.text, &state.db).await?;
 
     let text_contents = User::get_text_contents(&user.id, &state.db).await?;
     let categories = User::get_user_categories(&user.id, &state.db).await?;

@@ -16,7 +16,7 @@ stored_object!(TextContent, "text_content", {
     text: String,
     file_info: Option<FileInfo>,
     url_info: Option<UrlInfo>,
-    instructions: String,
+    context: Option<String>,
     category: String,
     user_id: String
 });
@@ -24,7 +24,7 @@ stored_object!(TextContent, "text_content", {
 impl TextContent {
     pub fn new(
         text: String,
-        instructions: String,
+        context: Option<String>,
         category: String,
         file_info: Option<FileInfo>,
         url_info: Option<UrlInfo>,
@@ -38,7 +38,7 @@ impl TextContent {
             text,
             file_info,
             url_info,
-            instructions,
+            context,
             category,
             user_id,
         }
@@ -46,7 +46,7 @@ impl TextContent {
 
     pub async fn patch(
         id: &str,
-        instructions: &str,
+        context: &str,
         category: &str,
         text: &str,
         db: &SurrealDbClient,
@@ -55,7 +55,7 @@ impl TextContent {
 
         let _res: Option<Self> = db
             .update((Self::table_name(), id))
-            .patch(PatchOp::replace("/instructions", instructions))
+            .patch(PatchOp::replace("/context", context))
             .patch(PatchOp::replace("/category", category))
             .patch(PatchOp::replace("/text", text))
             .patch(PatchOp::replace("/updated_at", now))
@@ -73,13 +73,13 @@ mod tests {
     async fn test_text_content_creation() {
         // Test basic object creation
         let text = "Test content text".to_string();
-        let instructions = "Test instructions".to_string();
+        let context = "Test context".to_string();
         let category = "Test category".to_string();
         let user_id = "user123".to_string();
 
         let text_content = TextContent::new(
             text.clone(),
-            instructions.clone(),
+            Some(context.clone()),
             category.clone(),
             None,
             None,
@@ -88,7 +88,7 @@ mod tests {
 
         // Check that the fields are set correctly
         assert_eq!(text_content.text, text);
-        assert_eq!(text_content.instructions, instructions);
+        assert_eq!(text_content.context, Some(context));
         assert_eq!(text_content.category, category);
         assert_eq!(text_content.user_id, user_id);
         assert!(text_content.file_info.is_none());
@@ -100,7 +100,7 @@ mod tests {
     async fn test_text_content_with_url() {
         // Test creating with URL
         let text = "Content with URL".to_string();
-        let instructions = "URL instructions".to_string();
+        let context = "URL context".to_string();
         let category = "URL category".to_string();
         let user_id = "user123".to_string();
         let title = "page_title".to_string();
@@ -115,7 +115,7 @@ mod tests {
 
         let text_content = TextContent::new(
             text.clone(),
-            instructions.clone(),
+            Some(context.clone()),
             category.clone(),
             None,
             url_info.clone(),
@@ -137,13 +137,13 @@ mod tests {
 
         // Create initial text content
         let initial_text = "Initial text".to_string();
-        let initial_instructions = "Initial instructions".to_string();
+        let initial_context = "Initial context".to_string();
         let initial_category = "Initial category".to_string();
         let user_id = "user123".to_string();
 
         let text_content = TextContent::new(
             initial_text,
-            initial_instructions,
+            Some(initial_context),
             initial_category,
             None,
             None,
@@ -158,20 +158,14 @@ mod tests {
         assert!(stored.is_some());
 
         // New values for patch
-        let new_instructions = "Updated instructions";
+        let new_context = "Updated context";
         let new_category = "Updated category";
         let new_text = "Updated text content";
 
         // Apply the patch
-        TextContent::patch(
-            &text_content.id,
-            new_instructions,
-            new_category,
-            new_text,
-            &db,
-        )
-        .await
-        .expect("Failed to patch text content");
+        TextContent::patch(&text_content.id, new_context, new_category, new_text, &db)
+            .await
+            .expect("Failed to patch text content");
 
         // Retrieve the updated content
         let updated: Option<TextContent> = db
@@ -183,7 +177,7 @@ mod tests {
         let updated_content = updated.unwrap();
 
         // Verify the updates
-        assert_eq!(updated_content.instructions, new_instructions);
+        assert_eq!(updated_content.context, Some(new_context.to_string()));
         assert_eq!(updated_content.category, new_category);
         assert_eq!(updated_content.text, new_text);
         assert!(updated_content.updated_at > text_content.updated_at);
