@@ -5,6 +5,7 @@ use common::{storage::db::SurrealDbClient, utils::config::AppConfig};
 #[derive(Clone)]
 pub struct ApiState {
     pub db: Arc<SurrealDbClient>,
+    pub config: AppConfig,
 }
 
 impl ApiState {
@@ -24,6 +25,7 @@ impl ApiState {
 
         let app_state = ApiState {
             db: surreal_db_client.clone(),
+            config: config.clone(),
         };
 
         Ok(app_state)

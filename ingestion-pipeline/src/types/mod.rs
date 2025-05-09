@@ -14,6 +14,7 @@ use common::{
         ingestion_payload::IngestionPayload,
         text_content::{TextContent, UrlInfo},
     },
+    utils::config::AppConfig,
 };
 use dom_smoothie::{Article, Readability, TextMode};
 use headless_chrome::Browser;
@@ -24,6 +25,7 @@ use tracing::{error, info};
 pub async fn to_text_content(
     ingestion_payload: IngestionPayload,
     db: &SurrealDbClient,
+    config: &AppConfig,
 ) -> Result<TextContent, AppError> {
     match ingestion_payload {
         IngestionPayload::Url {
@@ -32,7 +34,7 @@ pub async fn to_text_content(
             category,
             user_id,
         } => {
-            let (article, file_info) = fetch_article_from_url(&url, db, &user_id).await?;
+            let (article, file_info) = fetch_article_from_url(&url, db, &user_id, &config).await?;
             Ok(TextContent::new(
                 article.text_content.into(),
                 Some(context),
@@ -101,6 +103,7 @@ async fn fetch_article_from_url(
     url: &str,
     db: &SurrealDbClient,
     user_id: &str,
+    config: &AppConfig,
 ) -> Result<(Article, FileInfo), AppError> {
     info!("Fetching URL: {}", url);
     // Instantiate timer
@@ -173,7 +176,7 @@ async fn fetch_article_from_url(
     };
 
     // Store screenshot
-    let file_info = FileInfo::new(field_data, db, user_id).await?;
+    let file_info = FileInfo::new(field_data, db, user_id, &config).await?;
 
     // Parse content...
     let config = dom_smoothie::Config {

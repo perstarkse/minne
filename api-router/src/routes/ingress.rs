@@ -30,12 +30,9 @@ pub async fn ingest_data(
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Received input: {:?}", input);
 
-    let file_infos = try_join_all(
-        input
-            .files
-            .into_iter()
-            .map(|file| FileInfo::new(file, &state.db, &user.id).map_err(AppError::from)),
-    )
+    let file_infos = try_join_all(input.files.into_iter().map(|file| {
+        FileInfo::new(file, &state.db, &user.id, &state.config).map_err(AppError::from)
+    }))
     .await?;
 
     let payloads = IngestionPayload::create_ingestion_payload(

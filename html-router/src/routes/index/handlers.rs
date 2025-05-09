@@ -39,7 +39,7 @@ pub async fn index_handler(
     auth: AuthSessionType,
 ) -> Result<impl IntoResponse, HtmlError> {
     let Some(user) = auth.current_user else {
-        return Ok(TemplateResponse::redirect("/"));
+        return Ok(TemplateResponse::redirect("/signin"));
     };
 
     let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
