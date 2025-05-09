@@ -7,18 +7,17 @@ enctype="multipart/form-data"
 <h3 class="text-lg font-bold">Add new content</h3>
 <div class="form-control">
   <label class="floating-label">
-    <span>Instructions</span>
-    <textarea name="instructions" class="textarea w-full validator"
-      placeholder="Enter instructions for the AI here, help it understand what its seeing or how it should relate to the database"
-      required>{{ instructions }}</textarea>
-    <div class="validator-hint hidden">Instructions are required</div>
+    <span>Content</span>
+    <textarea name="content" class="textarea input-bordered w-full"
+      placeholder="Enter the content you want to ingest, it can be an URL or a text snippet">{{ content }}</textarea>
   </label>
 </div>
 <div class="form-control">
   <label class="floating-label">
-    <span>Content</span>
-    <textarea name="content" class="textarea input-bordered w-full"
-      placeholder="Enter the content you want to ingress, it can be an URL or a text snippet">{{ content }}</textarea>
+    <span>Context</span>
+    <textarea name="context" class="textarea w-full"
+      placeholder="Enter context for the AI here, help it understand what its seeing or how it should relate to the database">{{
+      context }}</textarea>
   </label>
 </div>
 <div class="form-control">

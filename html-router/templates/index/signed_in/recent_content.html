@@ -1,7 +1,7 @@
 {% block latest_content_section %}
 <ul id="latest_content_section" class="list">
   <li class="py-4 text-center font-bold tracking-wide">Recently added content</li>
-  {% for item in latest_text_contents %}
+  {% for item in text_contents %}
   <li class="list-row">
     <div class="bg-accent rounded-box size-10 flex justify-center items-center text-accent-content">
       {% if item.url_info %}
@@ -27,8 +27,8 @@
         <span class="badge badge-xs badge-accent ml-1">{{item.category}}</span>
       </div>
     </div>
-    <p class="list-col-wrap text-xs [&:before]:content-['Instructions:_']  [&:before]:opacity-60">
-      {{item.instructions}}
+    <p class="list-col-wrap text-xs [&:before]:content-['Context:_']  [&:before]:opacity-60">
+      {{item.context}}
     </p>
     <button class="btn btn-disabled btn-square btn-ghost btn-sm">
       {% include "icons/edit_icon.html" %}

@@ -54,7 +54,7 @@ pub async fn hide_ingress_form(
 #[derive(Debug, TryFromMultipart)]
 pub struct IngressParams {
     pub content: Option<String>,
-    pub instructions: String,
+    pub context: String,
     pub category: String,
     #[form_data(limit = "10000000")] // Adjust limit as needed
     #[form_data(default)]
@@ -68,7 +68,7 @@ pub async fn process_ingress_form(
 ) -> Result<impl IntoResponse, HtmlError> {
     #[derive(Serialize)]
     pub struct IngressFormData {
-        instructions: String,
+        context: String,
         content: String,
         category: String,
         error: String,
@@ -78,7 +78,7 @@ pub async fn process_ingress_form(
         return Ok(TemplateResponse::new_template(
             "index/signed_in/ingress_form.html",
             IngressFormData {
-                instructions: input.instructions.clone(),
+                context: input.context.clone(),
                 content: input.content.clone().unwrap_or_default(),
                 category: input.category.clone(),
                 error: "You need to either add files or content".to_string(),
@@ -98,7 +98,7 @@ pub async fn process_ingress_form(
 
     let payloads = IngestionPayload::create_ingestion_payload(
         input.content,
-        input.instructions,
+        input.context,
         input.category,
         file_infos,
         user.id.as_str(),

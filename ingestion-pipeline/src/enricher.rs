@@ -40,17 +40,17 @@ impl IngestionEnricher {
     pub async fn analyze_content(
         &self,
         category: &str,
-        instructions: &str,
+        context: Option<&str>,
         text: &str,
         user_id: &str,
     ) -> Result<LLMEnrichmentResult, AppError> {
         info!("getting similar entitities");
         let similar_entities = self
-            .find_similar_entities(category, instructions, text, user_id)
+            .find_similar_entities(category, context, text, user_id)
             .await?;
         info!("got similar entitities");
         let llm_request = self
-            .prepare_llm_request(category, instructions, text, &similar_entities)
+            .prepare_llm_request(category, context, text, &similar_entities)
             .await?;
         self.perform_analysis(llm_request).await
     }
@@ -58,13 +58,13 @@ impl IngestionEnricher {
     async fn find_similar_entities(
         &self,
         category: &str,
-        instructions: &str,
+        context: Option<&str>,
         text: &str,
         user_id: &str,
     ) -> Result<Vec<KnowledgeEntity>, AppError> {
         let input_text = format!(
-            "content: {}, category: {}, user_instructions: {}",
-            text, category, instructions
+            "content: {}, category: {}, user_context: {:?}",
+            text, category, context
         );
 
         retrieve_entities(&self.db_client, &self.openai_client, &input_text, user_id).await
@@ -73,7 +73,7 @@ impl IngestionEnricher {
     async fn prepare_llm_request(
         &self,
         category: &str,
-        instructions: &str,
+        context: Option<&str>,
         text: &str,
         similar_entities: &[KnowledgeEntity],
     ) -> Result<CreateChatCompletionRequest, AppError> {
@@ -93,8 +93,8 @@ impl IngestionEnricher {
             .collect::<Vec<_>>());
 
         let user_message = format!(
-            "Category:\n{}\nInstructions:\n{}\nContent:\n{}\nExisting KnowledgeEntities in database:\n{}",
-            category, instructions, text, entities_json
+            "Category:\n{}\ncontext:\n{:?}\nContent:\n{}\nExisting KnowledgeEntities in database:\n{}",
+            category, context, text, entities_json
         );
 
         debug!("Prepared LLM request message: {}", user_message);

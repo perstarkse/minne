@@ -16,7 +16,7 @@ use crate::{api_state::ApiState, error::ApiError};
 #[derive(Debug, TryFromMultipart)]
 pub struct IngestParams {
     pub content: Option<String>,
-    pub instructions: String,
+    pub context: String,
     pub category: String,
     #[form_data(limit = "10000000")] // Adjust limit as needed
     #[form_data(default)]
@@ -40,7 +40,7 @@ pub async fn ingest_data(
 
     let payloads = IngestionPayload::create_ingestion_payload(
         input.content,
-        input.instructions,
+        input.context,
         input.category,
         file_infos,
         user.id.as_str(),

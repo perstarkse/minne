@@ -113,7 +113,7 @@ impl IngestionPipeline {
         analyser
             .analyze_content(
                 &content.category,
-                &content.instructions,
+                content.context.as_deref(),
                 &content.text,
                 &content.user_id,
             )

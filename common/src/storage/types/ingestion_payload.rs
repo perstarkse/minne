@@ -7,30 +7,30 @@ use url::Url;
 pub enum IngestionPayload {
     Url {
         url: String,
-        instructions: String,
+        context: String,
         category: String,
         user_id: String,
     },
     Text {
         text: String,
-        instructions: String,
+        context: String,
         category: String,
         user_id: String,
     },
     File {
         file_info: FileInfo,
-        instructions: String,
+        context: String,
         category: String,
         user_id: String,
     },
 }
 
 impl IngestionPayload {
-    /// Creates ingestion payloads from the provided content, instructions, and files.
+    /// Creates ingestion payloads from the provided content, context, and files.
     ///
     /// # Arguments
     /// * `content` - Optional textual content to be ingressed
-    /// * `instructions` - Instructions for processing the ingress content
+    /// * `context` - context for processing the ingress content
     /// * `category` - Category to classify the ingressed content
     /// * `files` - Vector of `FileInfo` objects containing information about uploaded files
     /// * `user_id` - Identifier of the user performing the ingress operation
@@ -40,7 +40,7 @@ impl IngestionPayload {
     ///   (one per file/content type). On failure, returns an `AppError`.
     pub fn create_ingestion_payload(
         content: Option<String>,
-        instructions: String,
+        context: String,
         category: String,
         files: Vec<FileInfo>,
         user_id: &str,
@@ -55,7 +55,7 @@ impl IngestionPayload {
                     info!("Detected URL: {}", url);
                     object_list.push(IngestionPayload::Url {
                         url: url.to_string(),
-                        instructions: instructions.clone(),
+                        context: context.clone(),
                         category: category.clone(),
                         user_id: user_id.into(),
                     });
@@ -65,7 +65,7 @@ impl IngestionPayload {
                         info!("Treating input as plain text");
                         object_list.push(IngestionPayload::Text {
                             text: input_content.to_string(),
-                            instructions: instructions.clone(),
+                            context: context.clone(),
                             category: category.clone(),
                             user_id: user_id.into(),
                         });
@@ -77,7 +77,7 @@ impl IngestionPayload {
         for file in files {
             object_list.push(IngestionPayload::File {
                 file_info: file,
-                instructions: instructions.clone(),
+                context: context.clone(),
                 category: category.clone(),
                 user_id: user_id.into(),
             })
@@ -126,14 +126,14 @@ mod tests {
     #[test]
     fn test_create_ingestion_payload_with_url() {
         let url = "https://example.com";
-        let instructions = "Process this URL";
+        let context = "Process this URL";
         let category = "websites";
         let user_id = "user123";
         let files = vec![];
 
         let result = IngestionPayload::create_ingestion_payload(
             Some(url.to_string()),
-            instructions.to_string(),
+            context.to_string(),
             category.to_string(),
             files,
             user_id,
@@ -144,13 +144,13 @@ mod tests {
         match &result[0] {
             IngestionPayload::Url {
                 url: payload_url,
-                instructions: payload_instructions,
+                context: payload_context,
                 category: payload_category,
                 user_id: payload_user_id,
             } => {
                 // URL parser may normalize the URL by adding a trailing slash
                 assert!(payload_url == &url.to_string() || payload_url == &format!("{}/", url));
-                assert_eq!(payload_instructions, &instructions);
+                assert_eq!(payload_context, &context);
                 assert_eq!(payload_category, &category);
                 assert_eq!(payload_user_id, &user_id);
             }
@@ -161,14 +161,14 @@ mod tests {
     #[test]
     fn test_create_ingestion_payload_with_text() {
         let text = "This is some text content";
-        let instructions = "Process this text";
+        let context = "Process this text";
         let category = "notes";
         let user_id = "user123";
         let files = vec![];
 
         let result = IngestionPayload::create_ingestion_payload(
             Some(text.to_string()),
-            instructions.to_string(),
+            context.to_string(),
             category.to_string(),
             files,
             user_id,
@@ -179,12 +179,12 @@ mod tests {
         match &result[0] {
             IngestionPayload::Text {
                 text: payload_text,
-                instructions: payload_instructions,
+                context: payload_context,
                 category: payload_category,
                 user_id: payload_user_id,
             } => {
                 assert_eq!(payload_text, text);
-                assert_eq!(payload_instructions, instructions);
+                assert_eq!(payload_context, context);
                 assert_eq!(payload_category, category);
                 assert_eq!(payload_user_id, user_id);
             }
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn test_create_ingestion_payload_with_file() {
-        let instructions = "Process this file";
+        let context = "Process this file";
         let category = "documents";
         let user_id = "user123";
 
@@ -208,7 +208,7 @@ mod tests {
 
         let result = IngestionPayload::create_ingestion_payload(
             None,
-            instructions.to_string(),
+            context.to_string(),
             category.to_string(),
             files,
             user_id,
@@ -219,12 +219,12 @@ mod tests {
         match &result[0] {
             IngestionPayload::File {
                 file_info: payload_file_info,
-                instructions: payload_instructions,
+                context: payload_context,
                 category: payload_category,
                 user_id: payload_user_id,
             } => {
                 assert_eq!(payload_file_info.id, file_info.id);
-                assert_eq!(payload_instructions, instructions);
+                assert_eq!(payload_context, context);
                 assert_eq!(payload_category, category);
                 assert_eq!(payload_user_id, user_id);
             }
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn test_create_ingestion_payload_with_url_and_file() {
         let url = "https://example.com";
-        let instructions = "Process this data";
+        let context = "Process this data";
         let category = "mixed";
         let user_id = "user123";
 
@@ -249,7 +249,7 @@ mod tests {
 
         let result = IngestionPayload::create_ingestion_payload(
             Some(url.to_string()),
-            instructions.to_string(),
+            context.to_string(),
             category.to_string(),
             files,
             user_id,
@@ -283,14 +283,14 @@ mod tests {
 
     #[test]
     fn test_create_ingestion_payload_empty_input() {
-        let instructions = "Process something";
+        let context = "Process something";
         let category = "empty";
         let user_id = "user123";
         let files = vec![];
 
         let result = IngestionPayload::create_ingestion_payload(
             None,
-            instructions.to_string(),
+            context.to_string(),
             category.to_string(),
             files,
             user_id,
@@ -308,14 +308,14 @@ mod tests {
     #[test]
     fn test_create_ingestion_payload_with_empty_text() {
         let text = ""; // Empty text
-        let instructions = "Process this";
+        let context = "Process this";
         let category = "notes";
         let user_id = "user123";
         let files = vec![];
 
         let result = IngestionPayload::create_ingestion_payload(
             Some(text.to_string()),
-            instructions.to_string(),
+            context.to_string(),
             category.to_string(),
             files,
             user_id,
