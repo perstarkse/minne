@@ -14,6 +14,7 @@ use common::{
         file_info::FileInfo, ingestion_payload::IngestionPayload, ingestion_task::IngestionTask,
         user::User,
     },
+    utils::config::AppConfig,
 };
 
 use crate::{
@@ -88,12 +89,9 @@ pub async fn process_ingress_form(
 
     info!("{:?}", input);
 
-    let file_infos = try_join_all(
-        input
-            .files
-            .into_iter()
-            .map(|file| FileInfo::new(file, &state.db, &user.id).map_err(AppError::from)),
-    )
+    let file_infos = try_join_all(input.files.into_iter().map(|file| {
+        FileInfo::new(file, &state.db, &user.id, &state.config).map_err(AppError::from)
+    }))
     .await?;
 
     let payloads = IngestionPayload::create_ingestion_payload(

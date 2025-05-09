@@ -16,7 +16,7 @@ use common::{
             text_content::TextContent,
         },
     },
-    utils::embedding::generate_embedding,
+    utils::{config::AppConfig, embedding::generate_embedding},
 };
 
 use crate::{
@@ -27,14 +27,20 @@ use crate::{
 pub struct IngestionPipeline {
     db: Arc<SurrealDbClient>,
     openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+    config: AppConfig,
 }
 
 impl IngestionPipeline {
     pub async fn new(
         db: Arc<SurrealDbClient>,
         openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
+        config: AppConfig,
     ) -> Result<Self, AppError> {
-        Ok(Self { db, openai_client })
+        Ok(Self {
+            db,
+            openai_client,
+            config,
+        })
     }
     pub async fn process_task(&self, task: IngestionTask) -> Result<(), AppError> {
         let current_attempts = match task.status {
@@ -53,7 +59,7 @@ impl IngestionPipeline {
         )
         .await?;
 
-        let text_content = to_text_content(task.content, &self.db).await?;
+        let text_content = to_text_content(task.content, &self.db, &self.config).await?;
 
         match self.process(&text_content).await {
             Ok(_) => {

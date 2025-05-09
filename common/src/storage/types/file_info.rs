@@ -11,7 +11,9 @@ use tokio::fs::remove_dir_all;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
+use crate::{
+    error::AppError, storage::db::SurrealDbClient, stored_object, utils::config::AppConfig,
+};
 
 #[derive(Error, Debug)]
 pub enum FileError {
@@ -47,7 +49,9 @@ impl FileInfo {
         field_data: FieldData<NamedTempFile>,
         db_client: &SurrealDbClient,
         user_id: &str,
+        config: &AppConfig,
     ) -> Result<Self, FileError> {
+        info!("Data_dir: {:?}", config);
         let file = field_data.contents;
         let file_name = field_data
             .metadata
@@ -79,7 +83,7 @@ impl FileInfo {
             updated_at: now,
             file_name,
             sha256,
-            path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id)
+            path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id, config)
                 .await?
                 .to_string_lossy()
                 .into(),
@@ -161,13 +165,14 @@ impl FileInfo {
         }
     }
 
-    /// Persists the file to the filesystem under `./data/{user_id}/{uuid}/{file_name}`.
+    /// Persists the file to the filesystem under `{data_dir}/{user_id}/{uuid}/{file_name}`.
     ///
     /// # Arguments
     /// * `uuid` - The UUID of the file.
     /// * `file` - The temporary file to persist.
     /// * `file_name` - The sanitized file name.
     /// * `user-id` - User id
+    /// * `config` - Application configuration containing data directory path
     ///
     /// # Returns
     /// * `Result<PathBuf, FileError>` - The persisted file path or an error.
@@ -176,8 +181,18 @@ impl FileInfo {
         file: NamedTempFile,
         file_name: &str,
         user_id: &str,
+        config: &AppConfig,
     ) -> Result<PathBuf, FileError> {
-        let base_dir = Path::new("./data");
+        info!("Data dir: {:?}", config.data_dir);
+        // Convert relative path to absolute path
+        let base_dir = if config.data_dir.starts_with('/') {
+            Path::new(&config.data_dir).to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map_err(FileError::Io)?
+                .join(&config.data_dir)
+        };
+
         let user_dir = base_dir.join(user_id); // Create the user directory
         let uuid_dir = user_dir.join(uuid.to_string()); // Create the UUID directory under the user directory
 
@@ -190,9 +205,11 @@ impl FileInfo {
         let final_path = uuid_dir.join(file_name);
         info!("Final path: {:?}", final_path);
 
-        // Persist the temporary file to the final path
-        file.persist(&final_path)?;
-        info!("Persisted file to {:?}", final_path);
+        // Copy the temporary file to the final path
+        tokio::fs::copy(file.path(), &final_path)
+            .await
+            .map_err(FileError::Io)?;
+        info!("Copied file to {:?}", final_path);
 
         Ok(final_path)
     }
@@ -309,6 +326,116 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_cross_filesystem_file_operations() {
+        // Setup in-memory database for testing
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Create a test file
+        let content = b"This is a test file for cross-filesystem operations";
+        let file_name = "cross_fs_test.txt";
+        let field_data = create_test_file(content, file_name);
+
+        // Create a FileInfo instance with data_dir in /tmp
+        let user_id = "test_user";
+        let config = AppConfig {
+            data_dir: "/tmp/minne_test_data".to_string(), // Using /tmp which is typically on a different filesystem
+            openai_api_key: "test_key".to_string(),
+            surrealdb_address: "test_address".to_string(),
+            surrealdb_username: "test_user".to_string(),
+            surrealdb_password: "test_pass".to_string(),
+            surrealdb_namespace: "test_ns".to_string(),
+            surrealdb_database: "test_db".to_string(),
+        };
+
+        // Test file creation
+        let file_info = FileInfo::new(field_data, &db, user_id, &config)
+            .await
+            .expect("Failed to create file across filesystems");
+
+        // Verify the file exists and has correct content
+        let file_path = Path::new(&file_info.path);
+        assert!(file_path.exists(), "File should exist at {:?}", file_path);
+
+        let file_content = tokio::fs::read_to_string(file_path)
+            .await
+            .expect("Failed to read file content");
+        assert_eq!(file_content, String::from_utf8_lossy(content));
+
+        // Test file reading
+        let retrieved = FileInfo::get_by_id(&file_info.id, &db)
+            .await
+            .expect("Failed to retrieve file info");
+        assert_eq!(retrieved.id, file_info.id);
+        assert_eq!(retrieved.sha256, file_info.sha256);
+
+        // Test file deletion
+        FileInfo::delete_by_id(&file_info.id, &db)
+            .await
+            .expect("Failed to delete file");
+        assert!(!file_path.exists(), "File should be deleted");
+
+        // Clean up the test directory
+        let _ = tokio::fs::remove_dir_all(&config.data_dir).await;
+    }
+
+    #[tokio::test]
+    async fn test_cross_filesystem_duplicate_detection() {
+        // Setup in-memory database for testing
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Create a test file
+        let content = b"This is a test file for cross-filesystem duplicate detection";
+        let file_name = "cross_fs_duplicate.txt";
+        let field_data = create_test_file(content, file_name);
+
+        // Create a FileInfo instance with data_dir in /tmp
+        let user_id = "test_user";
+        let config = AppConfig {
+            data_dir: "/tmp/minne_test_data".to_string(),
+            openai_api_key: "test_key".to_string(),
+            surrealdb_address: "test_address".to_string(),
+            surrealdb_username: "test_user".to_string(),
+            surrealdb_password: "test_pass".to_string(),
+            surrealdb_namespace: "test_ns".to_string(),
+            surrealdb_database: "test_db".to_string(),
+        };
+
+        // Store the original file
+        let original_file_info = FileInfo::new(field_data, &db, user_id, &config)
+            .await
+            .expect("Failed to create original file");
+
+        // Create another file with the same content but different name
+        let duplicate_name = "cross_fs_duplicate_2.txt";
+        let field_data2 = create_test_file(content, duplicate_name);
+
+        // The system should detect it's the same file and return the original FileInfo
+        let duplicate_file_info = FileInfo::new(field_data2, &db, user_id, &config)
+            .await
+            .expect("Failed to process duplicate file");
+
+        // Verify duplicate detection worked
+        assert_eq!(duplicate_file_info.id, original_file_info.id);
+        assert_eq!(duplicate_file_info.sha256, original_file_info.sha256);
+        assert_eq!(duplicate_file_info.file_name, file_name);
+        assert_ne!(duplicate_file_info.file_name, duplicate_name);
+
+        // Clean up
+        FileInfo::delete_by_id(&original_file_info.id, &db)
+            .await
+            .expect("Failed to delete file");
+        let _ = tokio::fs::remove_dir_all(&config.data_dir).await;
+    }
+
+    #[tokio::test]
     async fn test_file_creation() {
         // Setup in-memory database for testing
         let namespace = "test_ns";
@@ -324,7 +451,16 @@ mod tests {
 
         // Create a FileInfo instance
         let user_id = "test_user";
-        let file_info = FileInfo::new(field_data, &db, user_id).await;
+        let config = AppConfig {
+            data_dir: "./data".to_string(),
+            openai_api_key: "test_key".to_string(),
+            surrealdb_address: "test_address".to_string(),
+            surrealdb_username: "test_user".to_string(),
+            surrealdb_password: "test_pass".to_string(),
+            surrealdb_namespace: "test_ns".to_string(),
+            surrealdb_database: "test_db".to_string(),
+        };
+        let file_info = FileInfo::new(field_data, &db, user_id, &config).await;
 
         // We can't fully test persistence to disk in unit tests,
         // but we can verify the database record was created
@@ -364,8 +500,18 @@ mod tests {
         let file_name = "original.txt";
         let user_id = "test_user";
 
+        let config = AppConfig {
+            data_dir: "./data".to_string(),
+            openai_api_key: "test_key".to_string(),
+            surrealdb_address: "test_address".to_string(),
+            surrealdb_username: "test_user".to_string(),
+            surrealdb_password: "test_pass".to_string(),
+            surrealdb_namespace: "test_ns".to_string(),
+            surrealdb_database: "test_db".to_string(),
+        };
+
         let field_data1 = create_test_file(content, file_name);
-        let original_file_info = FileInfo::new(field_data1, &db, user_id)
+        let original_file_info = FileInfo::new(field_data1, &db, user_id, &config)
             .await
             .expect("Failed to create original file");
 
@@ -374,7 +520,7 @@ mod tests {
         let field_data2 = create_test_file(content, duplicate_name);
 
         // The system should detect it's the same file and return the original FileInfo
-        let duplicate_file_info = FileInfo::new(field_data2, &db, user_id)
+        let duplicate_file_info = FileInfo::new(field_data2, &db, user_id, &config)
             .await
             .expect("Failed to process duplicate file");
 
@@ -645,8 +791,6 @@ mod tests {
         assert_eq!(retrieved_info.file_name, original_file_info.file_name);
         assert_eq!(retrieved_info.path, original_file_info.path);
         assert_eq!(retrieved_info.mime_type, original_file_info.mime_type);
-        // Optionally compare timestamps if precision isn't an issue
-        // assert_eq!(retrieved_info.created_at, original_file_info.created_at);
     }
 
     #[tokio::test]
@@ -673,5 +817,63 @@ mod tests {
             Err(e) => panic!("Expected FileNotFound error, but got {:?}", e),
             Ok(_) => panic!("Expected an error, but got Ok"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_data_directory_configuration() {
+        // Setup in-memory database for testing
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        // Create a test file
+        let content = b"This is a test file for data directory configuration";
+        let file_name = "data_dir_test.txt";
+        let field_data = create_test_file(content, file_name);
+
+        // Create a FileInfo instance with a custom data directory
+        let user_id = "test_user";
+        let custom_data_dir = "/tmp/minne_custom_data_dir";
+        let config = AppConfig {
+            data_dir: custom_data_dir.to_string(),
+            openai_api_key: "test_key".to_string(),
+            surrealdb_address: "test_address".to_string(),
+            surrealdb_username: "test_user".to_string(),
+            surrealdb_password: "test_pass".to_string(),
+            surrealdb_namespace: "test_ns".to_string(),
+            surrealdb_database: "test_db".to_string(),
+        };
+
+        // Test file creation
+        let file_info = FileInfo::new(field_data, &db, user_id, &config)
+            .await
+            .expect("Failed to create file in custom data directory");
+
+        // Verify the file exists in the correct location
+        let file_path = Path::new(&file_info.path);
+        assert!(file_path.exists(), "File should exist at {:?}", file_path);
+
+        // Verify the file is in the correct data directory
+        assert!(
+            file_path.starts_with(custom_data_dir),
+            "File should be stored in the custom data directory"
+        );
+
+        // Verify the file has the correct content
+        let file_content = tokio::fs::read_to_string(file_path)
+            .await
+            .expect("Failed to read file content");
+        assert_eq!(file_content, String::from_utf8_lossy(content));
+
+        // Test file deletion
+        FileInfo::delete_by_id(&file_info.id, &db)
+            .await
+            .expect("Failed to delete file");
+        assert!(!file_path.exists(), "File should be deleted");
+
+        // Clean up the test directory
+        let _ = tokio::fs::remove_dir_all(custom_data_dir).await;
     }
 }

@@ -39,10 +39,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         async_openai::config::OpenAIConfig::new().with_api_key(&config.openai_api_key),
     ));
 
-    let html_state = HtmlState::new_with_resources(db, openai_client, session_store)?;
+    let html_state =
+        HtmlState::new_with_resources(db, openai_client, session_store, config.clone())?;
 
     let api_state = ApiState {
         db: html_state.db.clone(),
+        config: config.clone(),
     };
 
     // Create Axum router

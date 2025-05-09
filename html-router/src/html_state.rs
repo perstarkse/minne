@@ -1,6 +1,6 @@
 use common::storage::db::SurrealDbClient;
 use common::utils::template_engine::{ProvidesTemplateEngine, TemplateEngine};
-use common::{create_template_engine, storage::db::ProvidesDb};
+use common::{create_template_engine, storage::db::ProvidesDb, utils::config::AppConfig};
 use std::sync::Arc;
 use tracing::debug;
 
@@ -12,6 +12,7 @@ pub struct HtmlState {
     pub openai_client: Arc<OpenAIClientType>,
     pub templates: Arc<TemplateEngine>,
     pub session_store: Arc<SessionStoreType>,
+    pub config: AppConfig,
 }
 
 impl HtmlState {
@@ -19,6 +20,7 @@ impl HtmlState {
         db: Arc<SurrealDbClient>,
         openai_client: Arc<OpenAIClientType>,
         session_store: Arc<SessionStoreType>,
+        config: AppConfig,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let template_engine = create_template_engine!("templates");
         debug!("Template engine created for html_router.");
@@ -28,6 +30,7 @@ impl HtmlState {
             openai_client,
             session_store,
             templates: Arc::new(template_engine),
+            config,
         })
     }
 }
