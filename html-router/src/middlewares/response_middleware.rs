@@ -1,7 +1,7 @@
 use axum::{
     extract::State,
     http::{HeaderName, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Redirect, Response},
     Extension,
 };
 use axum_htmx::{HxRequest, HX_TRIGGER};
@@ -185,7 +185,11 @@ where
                 }
             }
             TemplateKind::Redirect(path) => {
-                (StatusCode::OK, [(axum_htmx::HX_REDIRECT, path.clone())], "").into_response()
+                if is_htmx {
+                    (StatusCode::OK, [(axum_htmx::HX_REDIRECT, path)], "").into_response()
+                } else {
+                    Redirect::to(&path).into_response()
+                }
             }
         }
     } else {
