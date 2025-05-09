@@ -1,29 +1,23 @@
 <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" id="text_content_cards">
   {% for text_content in text_contents %}
-  <div class="card min-w-72 bg-base-100 shadow">
+  <div class="card min-w-72 bg-base-100 shadow" hx-get="/content/{{ text_content.id }}/read" hx-target="#modal"
+    hx-swap="innerHTML">
     {% if text_content.url_info %}
-    <img class="rounded-t-md overflow-clip" src="/file/{{text_content.url_info.image_id}}" />
+    <figure>
+      <img src="/file/{{text_content.url_info.image_id}}" alt="website screenshot" />
+    </figure>
     {% endif %}
     <div class="card-body">
       <div class="flex justify-between space-x-2">
         <h2 class="card-title truncate">
           {% if text_content.url_info %}
-          <a href="{{ text_content.url_info.url}}">{{text_content.url_info.title}}</a>
+          {{text_content.url_info.title}}
           {% elif text_content.file_info %}
           {{text_content.file_info.file_name}}
           {% else %}
           {{text_content.text}}
           {% endif %}
         </h2>
-        <div class="flex-shrink-0">
-          {% if text_content.url_info %}
-          {% include "icons/globe_icon.html" %}
-          {% elif text_content.file_info %}
-          {% include "icons/document_icon.html" %}
-          {% else %}
-          {% include "icons/chat_icon.html" %}
-          {% endif %}
-        </div>
       </div>
       <div class="flex items-center justify-between">
         <p class="text-xs opacity-60">
@@ -31,6 +25,13 @@
         </p>
         <div class="badge badge-soft badge-secondary mr-2">{{ text_content.category }}</div>
         <div class="flex gap-2">
+          {% if text_content.url_info %}
+          <button class="btn-btn-square btn-ghost btn-sm">
+            <a href="{{text_content.url_info.url}}">
+              {% include "icons/globe_icon.html" %}
+            </a>
+          </button>
+          {% endif %}
           <button hx-get="/content/{{ text_content.id }}/read" hx-target="#modal" hx-swap="innerHTML"
             class="btn btn-square btn-ghost btn-sm">
             {% include "icons/read_icon.html" %}
