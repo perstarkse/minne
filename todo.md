@@ -1,15 +1,12 @@
-[x] fix card image in content
-[x] fix redirect for non hx
-[] allow setting of data storage folder, via envs and config
-[] embed surrealdb for the main binary
-[] sse ingestion updates
 [] archive ingressed webpage, pdf would be easy
+[] embed surrealdb for the main binary
 [] full text search
-[] rename ingestion instructions to context
 [] three js graph explorer
 [] three js vector explorer
 [x] add user_id to ingress objects
 [x] admin controls re registration
+[x] allow setting of data storage folder, via envs and config
+[x] build docker container on release plan
 [x] change to smoothie dom
 [x] chat functionality
 [x] chat history
@@ -17,8 +14,9 @@
 [x] configs primarily get envs
 [x] debug why not automatic retrieval of chrome binary works
 [x] filtering on categories
+[x] fix card image in content
 [x] fix patch_text_content
-[x] gdpr
+[x] fix redirect for non hx
 [x] html ingression
 [x] hx-redirect
 [x] implement migrations
@@ -35,8 +33,10 @@
 [x] option to set models, query and processing
 [x] page screenshot?
 [x] redirects
+[x] rename ingestion instructions to context
 [x] restrict retrieval to users own objects
 [x] smoothie_dom test
+[x] sse ingestion updates
 [x] store page title
 [x] template customization?
 [x] templating
