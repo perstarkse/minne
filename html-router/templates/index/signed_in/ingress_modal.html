@@ -45,7 +45,7 @@ enctype="multipart/form-data"
     const targetElement = document.getElementById('active_jobs_section');
     if (targetElement) {
       form.setAttribute('hx-target', '#active_jobs_section');
-      form.setAttribute('hx-swap', 'outerHTML');
+      form.setAttribute('hx-swap', 'beforeend');
     } else {
       form.setAttribute('hx-swap', 'none');
       form.removeAttribute('hx-target');

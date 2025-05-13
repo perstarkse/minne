@@ -176,3 +176,24 @@ pub async fn show_content_read_modal(
         TextContentReadModalData { user, text_content },
     ))
 }
+
+pub async fn show_recent_content(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+) -> Result<impl IntoResponse, HtmlError> {
+    let text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
+
+    #[derive(Serialize)]
+    pub struct RecentTextContentData {
+        pub user: User,
+        pub text_contents: Vec<TextContent>,
+    }
+
+    Ok(TemplateResponse::new_template(
+        "/index/signed_in/recent_content.html",
+        RecentTextContentData {
+            user,
+            text_contents,
+        },
+    ))
+}

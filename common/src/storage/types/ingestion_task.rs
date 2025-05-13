@@ -45,12 +45,12 @@ impl IngestionTask {
         content: IngestionPayload,
         user_id: String,
         db: &SurrealDbClient,
-    ) -> Result<(), AppError> {
-        let job = Self::new(content, user_id).await;
+    ) -> Result<IngestionTask, AppError> {
+        let task = Self::new(content, user_id).await;
 
-        db.store_item(job).await?;
+        db.store_item(task.clone()).await?;
 
-        Ok(())
+        Ok(task)
     }
 
     // Update job status

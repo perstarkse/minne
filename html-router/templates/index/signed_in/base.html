@@ -2,16 +2,9 @@
   <div class="container">
     {% include 'index/signed_in/searchbar.html' %}
 
-    <div>
-      <h2 class="font-extrabold">Recent content</h2>
-      {% include "content/content_list.html" %}
-    </div>
+    {% include "index/signed_in/recent_content.html" %}
 
-    <div class="grid grid-cols-1 md:grid-cols-2 shadow my-10">
-      {% include "index/signed_in/active_jobs.html" %}
-
-      {% include "index/signed_in/recent_content.html" %}
-    </div>
+    {% include "index/signed_in/active_jobs.html" %}
 
   </div>
 </div>

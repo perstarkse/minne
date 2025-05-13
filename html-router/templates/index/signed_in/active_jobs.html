@@ -1,7 +1,7 @@
 {% block active_jobs_section %}
 <ul id="active_jobs_section" class="list">
   <div class="flex justify-center items-center gap-4">
-    <li class="py-4 text-center font-bold tracking-wide">Active Jobs</li>
+    <li class="py-4 text-center font-bold tracking-wide">Active Tasks</li>
     <button class="cursor-pointer scale-75" hx-get="/active-jobs" hx-target="#active_jobs_section" hx-swap="outerHTML">
       {% include "icons/refresh_icon.html" %}
     </button>
@@ -37,9 +37,6 @@
       {{item.content.Text.text}}
       {% endif %}
     </p>
-    <!-- <button class="btn disabled btn-square btn-ghost btn-sm"> -->
-    <!-- {% include "icons/edit_icon.html" %} -->
-    <!-- </button> -->
     <button hx-delete="/jobs/{{item.id}}" hx-target="#active_jobs_section" hx-swap="outerHTML"
       class="btn btn-square btn-ghost btn-sm">
       {% include "icons/delete_icon.html" %}

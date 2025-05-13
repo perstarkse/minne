@@ -1,44 +1,6 @@
 {% block latest_content_section %}
-<ul id="latest_content_section" class="list">
-  <li class="py-4 text-center font-bold tracking-wide">Recently added content</li>
-  {% for item in text_contents %}
-  <li class="list-row">
-    <div class="bg-accent rounded-box size-10 flex justify-center items-center text-accent-content">
-      {% if item.url_info %}
-      {% include "icons/globe_icon.html" %}
-      {% elif item.file_info %}
-      {% include "icons/document_icon.html" %}
-      {% else %}
-      {% include "icons/chat_icon.html" %}
-      {% endif %}
-    </div>
-    <div>
-      <div class="truncate max-w-[160px]">
-        {% if item.url_info %}
-        {{item.url_info.title}}
-        {% elif item.file_info%}
-        {{item.file_info.file_name}}
-        {% else %}
-        {{item.text}}
-        {% endif %}
-      </div>
-      <div class="text-xs font-semibold opacity-60">
-        {{item.created_at|datetimeformat(format="short", tz=user.timezone)}}
-        <span class="badge badge-xs badge-accent ml-1">{{item.category}}</span>
-      </div>
-    </div>
-    <p class="list-col-wrap text-xs [&:before]:content-['Context:_']  [&:before]:opacity-60">
-      {{item.context}}
-    </p>
-    <button class="btn btn-disabled btn-square btn-ghost btn-sm">
-      {% include "icons/edit_icon.html" %}
-    </button>
-    <button hx-delete="/text-content/{{item.id}}" hx-target="#latest_content_section" hx-swap="outerHTML"
-      class="btn btn-square btn-ghost btn-sm">
-      {% include "icons/delete_icon.html" %}
-
-    </button>
-  </li>
-  {% endfor %}
-</ul>
+<div id="latest_content_section" class="list">
+  <h2 class="font-extrabold">Recent content</h2>
+  {% include "content/content_list.html" %}
+</div>
 {% endblock %}
