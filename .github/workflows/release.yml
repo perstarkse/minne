@@ -16,6 +16,7 @@
 name: Release
 permissions:
   "contents": "write"
+  "packages": "write"
 
 # This task will run whenever you push a git tag that looks like a version
 # like "1.0.0", "v0.1.0-prerelease.1", "my-app/0.1.0", "releases/v1.0.0", etc.
@@ -162,6 +163,48 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
+
+  build_and_push_docker_image:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [plan] 
+    if: ${{ needs.plan.outputs.publishing == 'true' }} 
+    permissions:
+      contents: read      # Permission to checkout the repository
+      packages: write    # Permission to push Docker image to GHCR
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # Matches your other checkout steps
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }} # User triggering the workflow
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }} 
+          # This action automatically uses the Git tag as the Docker image tag.
+          # For example, a Git tag 'v1.2.3' will result in Docker tag 'ghcr.io/owner/repo:v1.2.3'.
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: . 
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha # Enable Docker layer caching from GitHub Actions cache
+          cache-to: type=gha,mode=max # Enable Docker layer caching to GitHub Actions cache
 
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
