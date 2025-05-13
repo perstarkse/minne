@@ -113,7 +113,7 @@ async fn fetch_article_from_url(
         #[cfg(feature = "docker")]
         {
             // Use this when compiling for docker
-            let options = LaunchOptionsBuilder::default()
+            let options = headless_chrome::LaunchOptionsBuilder::default()
                 .sandbox(false)
                 .build()
                 .map_err(|e| AppError::InternalError(e.to_string()))?;
