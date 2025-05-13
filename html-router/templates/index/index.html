@@ -1,4 +1,11 @@
 {% extends "body_base.html" %}
+
+{% block title %}Minne Dashboard{% endblock %}
+
+{% block head %}
+<script src="/assets/htmx-ext-sse.js" defer></script>
+{% endblock %}
+
 {% block main %}
 {% include 'index/signed_in/base.html' %}
 {% endblock %}

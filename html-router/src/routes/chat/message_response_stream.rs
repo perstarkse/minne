@@ -8,8 +8,6 @@ use axum::{
         Sse,
     },
 };
-use axum_session_auth::AuthSession;
-use axum_session_surreal::SessionSurrealPool;
 use composite_retrieval::{
     answer_retrieval::{
         create_chat_request, create_user_message_with_history, format_entities_json,
@@ -25,7 +23,6 @@ use json_stream_parser::JsonStreamParser;
 use minijinja::Value;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
-use surrealdb::{engine::any::Any, Surreal};
 use tokio::sync::{mpsc::channel, Mutex};
 use tracing::{debug, error};
 
@@ -39,7 +36,7 @@ use common::storage::{
     },
 };
 
-use crate::html_state::HtmlState;
+use crate::{html_state::HtmlState, AuthSessionType};
 
 // Error handling function
 fn create_error_stream(
@@ -110,7 +107,8 @@ pub struct QueryParams {
 
 pub async fn get_response_stream(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    auth: AuthSessionType,
+    // auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     Query(params): Query<QueryParams>,
 ) -> Sse<Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>> {
     // 1. Authentication and initial data validation
