@@ -6,10 +6,12 @@
 {% endblock %}
 
 {% block main %}
-<div class="flex justify-center mt-2 sm:mt-4 mb-10">
-  <div class="max-w-3xl w-full overflow-auto hide-scrollbar">
-    {% include "chat/history.html" %}
-    {% include "chat/new_message_form.html" %}
+<div class="flex grow relative justify-center mt-2 sm:mt-4">
+  <div class="container">
+    <div class="overflow-auto hide-scrollbar">
+      {% include "chat/history.html" %}
+      {% include "chat/new_message_form.html" %}
+    </div>
   </div>
 </div>
 <style>

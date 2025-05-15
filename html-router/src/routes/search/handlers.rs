@@ -1,9 +1,14 @@
+use std::{fmt, str::FromStr};
+
 use axum::{
     extract::{Query, State},
     response::IntoResponse,
 };
-use composite_retrieval::answer_retrieval::get_answer_with_references;
-use serde::{Deserialize, Serialize};
+use common::storage::types::{
+    text_content::{TextContent, TextContentSearchResult},
+    user::User,
+};
+use serde::{de, Deserialize, Deserializer, Serialize};
 
 use crate::{
     html_state::HtmlState,
@@ -12,33 +17,61 @@ use crate::{
         response_middleware::{HtmlError, TemplateResponse},
     },
 };
+/// Serde deserialization decorator to map empty Strings to None,
+fn empty_string_as_none<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromStr,
+    T::Err: fmt::Display,
+{
+    let opt = Option::<String>::deserialize(de)?;
+    match opt.as_deref() {
+        None | Some("") => Ok(None),
+        Some(s) => FromStr::from_str(s).map_err(de::Error::custom).map(Some),
+    }
+}
 
 #[derive(Deserialize)]
 pub struct SearchParams {
-    query: String,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    query: Option<String>,
 }
 
 pub async fn search_result_handler(
     State(state): State<HtmlState>,
-    Query(query): Query<SearchParams>,
+    Query(params): Query<SearchParams>,
     RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
     #[derive(Serialize)]
     pub struct AnswerData {
-        user_query: String,
-        answer_content: String,
-        answer_references: Vec<String>,
+        search_result: Vec<TextContentSearchResult>,
+        query_param: String,
+        user: User,
     }
 
-    let answer =
-        get_answer_with_references(&state.db, &state.openai_client, &query.query, &user.id).await?;
+    let (search_results_for_template, final_query_param_for_template) =
+        if let Some(actual_query) = params.query {
+            let trimmed_query = actual_query.trim();
+            if trimmed_query.is_empty() {
+                (Vec::new(), String::new())
+            } else {
+                match TextContent::search(&state.db, trimmed_query, &user.id, 5).await {
+                    Ok(results) => (results, trimmed_query.to_string()),
+                    Err(e) => {
+                        return Err(HtmlError::from(e));
+                    }
+                }
+            }
+        } else {
+            (Vec::new(), String::new())
+        };
 
     Ok(TemplateResponse::new_template(
-        "index/signed_in/search_response.html",
+        "search/base.html",
         AnswerData {
-            user_query: query.query,
-            answer_content: answer.content,
-            answer_references: answer.references,
+            search_result: search_results_for_template,
+            query_param: final_query_param_for_template,
+            user,
         },
     ))
 }

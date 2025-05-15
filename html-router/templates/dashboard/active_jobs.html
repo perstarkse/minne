@@ -1,7 +1,7 @@
 {% block active_jobs_section %}
 <ul id="active_jobs_section" class="list">
-  <div class="flex justify-center items-center gap-4">
-    <li class="py-4 text-center font-bold tracking-wide">Active Tasks</li>
+  <div class="flex items-center gap-4">
+    <li class="py-4 text-2xl font-bold tracking-wide">Active Tasks</li>
     <button class="cursor-pointer scale-75" hx-get="/active-jobs" hx-target="#active_jobs_section" hx-swap="outerHTML">
       {% include "icons/refresh_icon.html" %}
     </button>
@@ -10,11 +10,11 @@
   <li class="list-row">
     <div class="bg-secondary rounded-box size-10 flex justify-center items-center text-secondary-content">
       {% if item.content.Url %}
-      {% include "icons/globe_icon.html" %}
+      {% include "icons/link_icon.html" %}
       {% elif item.content.File %}
       {% include "icons/document_icon.html" %}
       {% else %}
-      {% include "icons/chat_icon.html" %}
+      {% include "icons/bars_icon.html" %}
       {% endif %}
     </div>
     <div>

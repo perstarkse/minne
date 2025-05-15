@@ -1,0 +1,81 @@
+{% if search_result is defined and search_result %}
+<ul class="list shadow">
+  {% for result in search_result %}
+  <li class="list-row hover:bg-base-200/50 p-4">
+    <div class="w-10 h-10 flex-shrink-0 mr-4 self-start mt-1">
+      {% if result.url_info and result.url_info.url %}
+      <div class="tooltip tooltip-right" data-tip="Web Link">
+        {% include "icons/link_icon.html" %}
+      </div>
+      {% elif result.file_info and result.file_info.file_name %}
+      <div class="tooltip tooltip-right" data-tip="File Document">
+        {% include "icons/document_icon.html" %}
+      </div>
+      {% else %}
+      <div class="tooltip tooltip-right" data-tip="Text Content">
+        {% include "icons/bars_icon.html" %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="flex-grow min-w-0">
+      <h3 class="text-lg font-semibold mb-1">
+        <a href="/view-content/{{ result.id }}" class="link link-hover link-primary">
+          {% set title_text = result.highlighted_url_title
+          | default(result.url_info.title if result.url_info else none, true)
+          | default(result.highlighted_file_name, true)
+          | default(result.file_info.file_name if result.file_info else none, true)
+          | default("Text snippet: " ~ (result.id | string)[-8:], true) %}
+          {{ title_text | safe }}
+        </a>
+      </h3>
+
+      <div class="prose prose-sm text-sm truncate text-base-content/80 mb-3">
+        {% if result.highlighted_text %}
+        {{ result.highlighted_text | escape }}
+        {% elif result.text %}
+        {{ result.text | escape }}
+        {% else %}
+        <span class="italic opacity-60">No text preview available.</span>
+        {% endif %}
+      </div>
+
+      <div class="text-xs text-base-content/70 flex flex-wrap gap-x-4 gap-y-1 items-center">
+        <span class="inline-flex items-center"><strong class="font-medium mr-1">Category:</strong>
+          <span class="badge badge-soft badge-secondary badge-sm">{{ result.highlighted_category |
+            default(result.category, true) |
+            safe }}</span>
+        </span>
+
+        {% if result.highlighted_context or result.context %}
+        <span class="inline-flex items-center"><strong class="font-medium mr-1">Context:</strong>
+          <span class="badge badge-sm badge-outline">{{ result.highlighted_context | default(result.context, true) |
+            safe }}</span>
+        </span>
+        {% endif %}
+
+        {% if result.url_info and result.url_info.url %}
+        <span class="inline-flex items-center min-w-0"><strong class="font-medium mr-1">Source:</strong>
+          <a href="{{ result.url_info.url }}" target="_blank" class="link link-hover link-xs truncate"
+            title="{{ result.url_info.url }}">
+            {{ result.highlighted_url | default(result.url_info.url ) | safe }}
+          </a>
+        </span>
+        {% endif %}
+        <span class="badge badge-ghost badge-sm">Score: {{ result.score }}</span>
+      </div>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+
+{% elif query_param is defined and query_param | trim != "" %}
+<div class="p-4 text-center text-base-content/70">
+  <p class="text-xl font-semibold mb-2">No results found for "<strong>{{ query_param | escape }}</strong>".</p>
+  <p class="text-sm">Try using different keywords or checking for typos.</p>
+</div>
+{% else %}
+<div class="p-4 text-center text-base-content/70">
+  <p class="text-lg font-medium">Enter a term above to search your knowledge base.</p>
+  <p class="text-sm">Results will appear here.</p>
+</div>
+{% endif %}

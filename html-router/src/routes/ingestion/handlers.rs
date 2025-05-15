@@ -9,7 +9,7 @@ use axum::{
 };
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use futures::{future::try_join_all, stream, Stream, StreamExt, TryFutureExt};
-use minijinja::{context, Value};
+use minijinja::context;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::time::sleep;
@@ -21,7 +21,6 @@ use common::{
         file_info::FileInfo,
         ingestion_payload::IngestionPayload,
         ingestion_task::{IngestionTask, IngestionTaskStatus},
-        text_content::TextContent,
         user::User,
     },
 };

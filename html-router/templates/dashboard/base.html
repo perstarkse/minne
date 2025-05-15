@@ -1,0 +1,18 @@
+{% extends "body_base.html" %}
+
+{% block title %}Minne - Dashboard{% endblock %}
+
+{% block head %}
+<script src="/assets/htmx-ext-sse.js" defer></script>
+{% endblock %}
+
+{% block main %}
+<div class="flex justify-center grow mt-2 sm:mt-4 pb-4">
+  <div class="container">
+    {% include "dashboard/recent_content.html" %}
+
+    {% include "dashboard/active_jobs.html" %}
+
+  </div>
+</div>
+{% endblock %}

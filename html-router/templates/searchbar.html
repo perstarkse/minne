@@ -1,0 +1,8 @@
+<div class="flex items-center gap-2 min-w-[90px]">
+  <form class="w-full" hx-boost="true" method="get" action="/search"
+    hx-trigger="keyup changed delay:500ms from:#search-input, search from:#search-input" hx-push-url="true">
+    <input id="search-input" type="search" placeholder="Search for anything..."
+      class="input input-sm input-bordered input-primary w-full" name="query" autocomplete="off"
+      value="{{ query_param | default('', true) }}" />
+  </form>
+</div>

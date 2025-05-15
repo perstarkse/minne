@@ -1,4 +1,4 @@
-<div class="fixed w-full mx-auto max-w-3xl p-0 pb-0 sm:pb-4 left-0 right-0 bottom-0 z-10">
+<div class="absolute w-full mx-auto max-w-3xl p-0 pb-0 sm:pb-4 left-0 right-0 bottom-0 z-10">
   <form hx-post="{% if conversation %} /chat/{{conversation.id}} {% else %} /chat {% endif %}"
     hx-target="#chat_container" hx-swap="beforeend" class="relative flex gap-2" id="chat-form">
     <textarea autofocus required name="content" placeholder="Type your message..." rows="2"

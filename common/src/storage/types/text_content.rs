@@ -5,6 +5,49 @@ use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 
 use super::file_info::FileInfo;
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TextContentSearchResult {
+    #[serde(deserialize_with = "deserialize_flexible_id")]
+    pub id: String,
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime",
+        default
+    )]
+    pub created_at: DateTime<Utc>,
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime",
+        default
+    )]
+    pub updated_at: DateTime<Utc>,
+
+    pub text: String,
+    #[serde(default)]
+    pub file_info: Option<FileInfo>,
+    #[serde(default)]
+    pub url_info: Option<UrlInfo>,
+    #[serde(default)]
+    pub context: Option<String>,
+    pub category: String,
+    pub user_id: String,
+
+    pub score: f32,
+    // Highlighted fields from the query aliases
+    #[serde(default)]
+    pub highlighted_text: Option<String>,
+    #[serde(default)]
+    pub highlighted_category: Option<String>,
+    #[serde(default)]
+    pub highlighted_context: Option<String>,
+    #[serde(default)]
+    pub highlighted_file_name: Option<String>,
+    #[serde(default)]
+    pub highlighted_url: Option<String>,
+    #[serde(default)]
+    pub highlighted_url_title: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct UrlInfo {
     pub url: String,
@@ -62,6 +105,54 @@ impl TextContent {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn search(
+        db: &SurrealDbClient,
+        search_terms: &str,
+        user_id: &str,
+        limit: usize,
+    ) -> Result<Vec<TextContentSearchResult>, AppError> {
+        let sql = r#"
+            SELECT
+                *, 
+                search::highlight('<b>', '</b>', 0) AS highlighted_text,
+                search::highlight('<b>', '</b>', 1) AS highlighted_category,
+                search::highlight('<b>', '</b>', 2) AS highlighted_context,
+                search::highlight('<b>', '</b>', 3) AS highlighted_file_name, 
+                search::highlight('<b>', '</b>', 4) AS highlighted_url,       
+                search::highlight('<b>', '</b>', 5) AS highlighted_url_title, 
+                (
+                    search::score(0) +  
+                    search::score(1) +  
+                    search::score(2) +  
+                    search::score(3) +  
+                    search::score(4) +  
+                    search::score(5)    
+                ) AS score  
+            FROM text_content
+            WHERE
+                (
+                    text @0@ $terms OR
+                    category @1@ $terms OR
+                    context @2@ $terms OR
+                    file_info.file_name @3@ $terms OR
+                    url_info.url @4@ $terms OR
+                    url_info.title @5@ $terms
+                )
+                AND user_id = $user_id
+            ORDER BY score DESC
+            LIMIT $limit;
+        "#;
+
+        Ok(db
+            .client
+            .query(sql)
+            .bind(("terms", search_terms.to_owned()))
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("limit", limit))
+            .await?
+            .take(0)?)
     }
 }
 

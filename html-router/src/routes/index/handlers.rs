@@ -49,7 +49,7 @@ pub async fn index_handler(
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
-        "index/index.html",
+        "dashboard/base.html",
         IndexPageData {
             user: Some(user),
             text_contents,

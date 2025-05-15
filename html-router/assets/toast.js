@@ -32,6 +32,7 @@
     };
 
     document.body.addEventListener('toast', function (event) {
+      console.log(event);
       // Extract data from the event detail, matching the Rust payload
       const detail = event.detail;
       if (detail && detail.description) {

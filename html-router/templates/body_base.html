@@ -2,7 +2,7 @@
 
 {% block body %}
 
-<body class="bg-base-100" hx-ext="head-support">
+<body class="bg-base-100 relative" hx-ext="head-support">
   <div class="drawer lg:drawer-open">
     <input id="my-drawer" type="checkbox" class="drawer-toggle" />
     <!-- Page Content -->
@@ -20,8 +20,8 @@
     {% endif %}
   </div> <!-- End Drawer -->
   <div id="modal"></div>
-  <div id="toast-container"></div>
-  <!-- Optional: Add CSS for custom scrollbar -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+  <!-- Add CSS for custom scrollbar -->
   <style>
     .custom-scrollbar::-webkit-scrollbar {
       width: 4px;

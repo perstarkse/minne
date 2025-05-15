@@ -190,7 +190,7 @@ pub async fn show_recent_content(
     }
 
     Ok(TemplateResponse::new_template(
-        "/index/signed_in/recent_content.html",
+        "/dashboard/recent_content.html",
         RecentTextContentData {
             user,
             text_contents,

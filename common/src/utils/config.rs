@@ -9,7 +9,7 @@ pub struct AppConfig {
     pub surrealdb_password: String,
     pub surrealdb_namespace: String,
     pub surrealdb_database: String,
-    // #[serde(default = "default_data_dir")]
+    #[serde(default = "default_data_dir")]
     pub data_dir: String,
 }
 

@@ -1,6 +1,7 @@
+[] debug vector search
 [] archive ingressed webpage, pdf would be easy
 [] embed surrealdb for the main binary
-[] full text search
+[x] full text search
 [] three js graph explorer
 [] three js vector explorer
 [x] add user_id to ingress objects
