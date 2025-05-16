@@ -78,7 +78,11 @@ impl SurrealDbClient {
     pub async fn rebuild_indexes(&self) -> Result<(), Error> {
         self.client
             .query("REBUILD INDEX IF EXISTS idx_embedding_chunks ON text_chunk")
-            .query("REBUILD INDEX IF EXISTS idx_embeddings_entities ON knowledge_entity")
+            .await?;
+        self.client
+            .query("REBUILD INDEX IF EXISTS idx_embedding_entities ON knowledge_entity")
+            .await?;
+        self.client
             .query("REBUILD INDEX IF EXISTS text_content_fts_idx ON text_content")
             .await?;
         Ok(())

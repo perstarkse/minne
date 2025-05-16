@@ -38,7 +38,7 @@ where
     let input_embedding = generate_embedding(openai_client, input_text).await?;
 
     // Construct the query
-    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM {} WHERE embedding <|{},40|> {:?} AND user_id = '{}' ORDER BY distance", table, take, input_embedding, user_id);
+    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM {} WHERE user_id = '{}' AND embedding <|{},40|> {:?} ORDER BY distance", table, user_id, take, input_embedding);
 
     // Perform query and deserialize to struct
     let closest_entities: Vec<T> = db_client.query(closest_query).await?.take(0)?;

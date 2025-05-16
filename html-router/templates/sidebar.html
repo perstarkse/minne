@@ -63,7 +63,7 @@
         </form>
         {% else %}
         <!-- View mode -->
-        <div class="flex w-full px-2 py-2">
+        <div class="flex w-full pl-4 pr-2 py-2">
           <a hx-boost="true" href="/chat/{{ conversation.id }}" class="flex-grow text-sm truncate">
             <span>{{ conversation.title }}</span>
           </a>
@@ -94,9 +94,17 @@
           <span>Account</span>
         </a>
       </li>
+      {% if user.admin %}
+      <li>
+        <a hx-boost="true" href="/admin" class="flex btn btn-ghost justify-start items-center gap-3">
+          {% include "icons/wrench_screwdriver_icon.html" %}
+          <span>Admin</span>
+        </a>
+      </li>
+      {% endif %}
       <li>
         <a hx-boost="true" href="/signout"
-          class="btn btn-error btn-outline w-full flex items-center gap-3 justify-start !mt-1">
+          class="btn btn-error btn-outline w-full flex items-center gap-3 justify-start !mt-2">
           {% include "icons/logout_icon.html" %}
           <span>Logout</span>
         </a>
