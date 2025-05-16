@@ -19,7 +19,8 @@
     </div>
     <div class="flex-grow min-w-0">
       <h3 class="text-lg font-semibold mb-1">
-        <a href="/view-content/{{ result.id }}" class="link link-hover link-primary">
+        <a hx-get="/content/{{ result.id }}/read" hx-target="#modal" hx-swap="innerHTML"
+          class="link link-hover link-primary">
           {% set title_text = result.highlighted_url_title
           | default(result.url_info.title if result.url_info else none, true)
           | default(result.highlighted_file_name, true)
