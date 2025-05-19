@@ -1,7 +1,6 @@
 {% extends 'body_base.html' %}
 {% block title %}Minne Chat{% endblock %}
 {% block head %}
-<script src="/assets/marked.min.js"></script>
 <script src="/assets/htmx-ext-sse.js" defer></script>
 {% endblock %}
 
@@ -88,34 +87,14 @@
     margin: 0.75em 0;
   }
 </style>
+
 <script>
-  function initialize() {
-    marked.setOptions({
-      breaks: true, gfm: true, headerIds: false, mangle: false,
-      smartLists: true, smartypants: true, xhtml: false
-    });
-  }
-
-  // Render static markdown (any .markdown-content[data-content])
-  function renderStaticMarkdown() {
-    document.querySelectorAll('.markdown-content[data-content]').forEach(el => {
-      const raw = el.getAttribute('data-content') || '';
-      el.innerHTML = marked.parse(raw);
-    });
-  }
-
   function scrollChatToBottom() {
     const chatContainer = document.getElementById('chat_container');
     if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
   }
 
-  function processChatUi() {
-    initialize();
-    renderStaticMarkdown();
-    scrollChatToBottom();
-  }
-
-  document.addEventListener('DOMContentLoaded', processChatUi);
-  document.body.addEventListener('htmx:afterSettle', processChatUi);
+  document.addEventListener('DOMContentLoaded', scrollChatToBottom);
+  document.body.addEventListener('htmx:afterSettle', scrollChatToBottom);
 </script>
 {% endblock %}

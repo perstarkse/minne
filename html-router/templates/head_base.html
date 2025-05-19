@@ -18,6 +18,7 @@
   <script src="/assets/theme-toggle.js" defer></script>
   <script src="/assets/toast.js" defer></script>
   <script src="/assets/htmx-head-ext.js" defer></script>
+  <script src="/assets/marked.min.js" defer></script>
 
   <!-- Icons -->
   <link rel="icon" href="/assets/icon/favicon.ico">
@@ -39,8 +40,40 @@
       setTimeout(wait_for_htmx, 50);
     }
   })();
+
 </script>
 
 {% block body %}{% endblock %}
+
+<script defer>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.marked && !window.markedGlobalOptionsSet) {
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+        headerIds: false,
+        mangle: false,
+        smartLists: true,
+        smartypants: true,
+        xhtml: false
+      });
+      window.markedGlobalOptionsSet = true;
+    }
+    renderAllMarkdown();
+  });
+  document.body.addEventListener('htmx:afterSettle', renderAllMarkdown);
+
+  function renderAllMarkdown() {
+    if (!window.marked) return;
+    document.querySelectorAll('.markdown-content[data-content]').forEach(el => {
+      const raw = el.getAttribute('data-content') || '';
+      if (el.dataset.renderedContent !== raw) {
+        el.innerHTML = marked.parse(raw);
+        el.dataset.renderedContent = raw;
+      }
+    });
+  }
+  window.renderAllMarkdown = renderAllMarkdown;
+</script>
 
 </html>

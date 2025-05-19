@@ -1,38 +1,35 @@
 {% extends "modal_base.html" %}
 
-
-{% block modal_class %}w-11/12 max-w-[90ch] max-h-[95%]{% endblock %}
+{% block modal_class %}w-11/12 max-w-[90ch] max-h-[95%] overflow-y-auto{% endblock %}
 
 {% block modal_content %}
 {% if text_content.url_info.image_id %}
-<img class="rounded-t-md overflow-clip" src="/file/{{text_content.url_info.image_id}}" />
+<img class="rounded-t-md overflow-clip" src="/file/{{text_content.url_info.image_id}}" alt="Screenshot of the site" />
 {% endif %}
-
-<div class="markdown-content prose" data-content="{{text_content.text | escape }}">
+<div id="reader-{{text_content.id}}" class="markdown-content prose" data-content="{{text_content.text | escape }}">
   {{text_content.text | escape }}
 </div>
-<script src="/assets/marked.min.js"></script>
+
 <script>
-  function initialize() {
-    marked.setOptions({
-      breaks: true, gfm: true, headerIds: false, mangle: false,
-      smartLists: true, smartypants: true, xhtml: false
-    });
-  }
+  (function () {
+    const readerElementId = "reader-{{text_content.id}}";
+    const contentDiv = document.getElementById(readerElementId);
 
-  function renderStaticMarkdown() {
-    document.querySelectorAll('.markdown-content').forEach(el => {
-      const raw = el.getAttribute('data-content') || '';
-      el.innerHTML = marked.parse(raw);
-    });
-  }
+    if (!contentDiv) {
+      console.error("Markdown content div #" + readerElementId + " not found for processing.");
+      return;
+    }
 
-  function processMarkdown() {
-    initialize();
-    renderStaticMarkdown();
-  }
+    const scrollableModalContainer = contentDiv.closest('.overflow-y-auto.max-h-\\[95\\%\\]');
 
-  document.body.addEventListener('htmx:afterSettle', processMarkdown);
+    if (scrollableModalContainer) {
+      setTimeout(() => {
+        scrollableModalContainer.scrollTop = 0;
+      }, 10);
+    } else {
+      console.warn('Scrollable modal container not found for #', readerElementId);
+    }
+  })();
 </script>
 {% endblock %}
 
