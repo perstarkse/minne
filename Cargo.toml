@@ -11,24 +11,48 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-axum = { version = "0.8", features = ["multipart", "macros"] }
-serde_json = "1.0.128"
-thiserror = "1.0.63"
 anyhow = "1.0.94"
-tracing = "0.1.40"
-surrealdb = { version = "2", features = ["kv-mem"] }
-futures = "0.3.31"
 async-openai = "0.24.1"
+async-stream = "0.3.6"
+async-trait = "0.1.88"
+axum-htmx = "0.7.0"
 axum_session = "0.16"
 axum_session_auth = "0.16"
 axum_session_surreal = "0.4"
 axum_typed_multipart = "0.16"
-tempfile = "3.12.0"
+axum = { version = "0.8", features = ["multipart", "macros"] }
+chrono-tz = "0.10.1"
+chrono = { version = "0.4.39", features = ["serde"] }
+config = "0.15.4"
 dom_smoothie = "0.10.0"
+futures = "0.3.31"
+headless_chrome = "1.0.17"
+include_dir = "0.7.4"
+mime = "0.3.17"
+mime_guess = "2.0.5"
+minijinja-autoreload = "2.5.0"
+minijinja-contrib = { version = "2.6.0", features = ["datetime", "timezone"] }
+minijinja-embed = { version = "2.8.0" }
+minijinja = { version = "2.5.0", features = ["loader", "multi_template"] }
+plotly = "0.12.1"
+reqwest = {version = "0.12.12", features = ["charset", "json"]}
+serde_json = "1.0.128"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10.8"
+surrealdb-migrations = "2.2.2"
+surrealdb = { version = "2", features = ["kv-mem"] }
+tempfile = "3.12.0"
+text-splitter = "0.18.1"
+thiserror = "1.0.63"
+tokio-util = { version = "0.7.15", features = ["io"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6.2", features = ["fs"] }
+tower-serve-static = "0.1.1"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+url = { version = "2.5.2", features = ["serde"] }
+uuid = { version = "1.10.0", features = ["v4", "serde"] }
 
-# The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"
 lto = "thin"

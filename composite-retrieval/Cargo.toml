@@ -2,9 +2,9 @@
 name = "composite-retrieval"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
-# Workspace dependencies
 tokio = { workspace = true }
 serde = { workspace = true }
 axum = { workspace = true }
@@ -15,7 +15,6 @@ serde_json = { workspace = true }
 surrealdb = { workspace = true }
 futures = { workspace = true }
 async-openai = { workspace = true }
-
-uuid = { version = "1.10.0", features = ["v4", "serde"] }
+uuid = { workspace = true }
  
 common = { path = "../common", features = ["test-utils"] }

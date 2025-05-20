@@ -2,9 +2,9 @@
 name = "ingestion-pipeline"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
-# Workspace dependencies
 tokio = { workspace = true }
 serde = { workspace = true }
 axum = { workspace = true }
@@ -16,13 +16,12 @@ surrealdb = { workspace = true }
 dom_smoothie = { workspace = true }
 tempfile = { workspace = true }
 axum_typed_multipart = { workspace = true} 
-
-reqwest = {version = "0.12.12", features = ["charset", "json"]}
-chrono = { version = "0.4.39", features = ["serde"] }
-text-splitter = "0.18.1"
-url = { version = "2.5.2", features = ["serde"] }
-uuid = { version = "1.10.0", features = ["v4", "serde"] }
-headless_chrome = "1.0.17"
+reqwest = { workspace = true }
+chrono = { workspace = true }
+text-splitter = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+headless_chrome = { workspace = true }
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }

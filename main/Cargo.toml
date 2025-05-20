@@ -3,6 +3,7 @@ name = "main"
 version = "0.1.1"
 edition = "2021"
 repository = "https://github.com/perstarkse/minne"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 tokio = { workspace = true }
@@ -15,8 +16,7 @@ axum = { workspace = true }
 surrealdb = { workspace = true }
 futures = { workspace = true }
 async-openai = { workspace = true }
-
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber = { workspace = true }
 
 ingestion-pipeline = { path = "../ingestion-pipeline" }
 api-router = { path = "../api-router" }
