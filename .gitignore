@@ -1,15 +1,15 @@
 .devenv
 .direnv
 .devenv
-database
 node_modules
 config.yaml
 
 
 target
-.aider
-.aider.chat.history.md .aider.input.history .aider.tags.cache.v3 .aider.tags.cache.v3/cache.db
+result
 data
+database
+
 # Devenv
 .devenv*
 devenv.local.nix

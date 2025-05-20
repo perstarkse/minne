@@ -46,7 +46,7 @@ pub async fn show_ingress_form(
     }
 
     Ok(TemplateResponse::new_template(
-        "index/signed_in/ingress_modal.html",
+        "ingestion_modal.html",
         ShowIngressFormData { user_categories },
     ))
 }
@@ -61,7 +61,7 @@ pub async fn hide_ingress_form(
 }
 
 #[derive(Debug, TryFromMultipart)]
-pub struct IngressParams {
+pub struct IngestionParams {
     pub content: Option<String>,
     pub context: String,
     pub category: String,
@@ -73,7 +73,7 @@ pub struct IngressParams {
 pub async fn process_ingress_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-    TypedMultipart(input): TypedMultipart<IngressParams>,
+    TypedMultipart(input): TypedMultipart<IngestionParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
     #[derive(Serialize)]
     pub struct IngressFormData {
@@ -117,9 +117,6 @@ pub async fn process_ingress_form(
 
     let tasks = try_join_all(futures).await?;
 
-    // Update the active jobs page with the newly created job
-    // let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
-
     #[derive(Serialize)]
     struct NewTasksData {
         user: User,
@@ -127,7 +124,7 @@ pub async fn process_ingress_form(
     }
 
     Ok(TemplateResponse::new_template(
-        "index/signed_in/new_task.html",
+        "dashboard/current_task.html",
         NewTasksData { user, tasks },
     ))
 }
@@ -137,37 +134,6 @@ pub struct QueryParams {
     task_id: String,
 }
 
-// pub async fn get_task_updates_stream(
-//     State(state): State<HtmlState>,
-//     auth: AuthSessionType,
-//     Query(params): Query<QueryParams>,
-// ) -> Sse<Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>> {
-//     let task_id = params.task_id.clone();
-//     let db = state.db.clone();
-
-//     let stream = async_stream::stream! {
-//         loop {
-//             match db.get_item::<IngestionTask>(&task_id).await {
-//                 Ok(Some(_task)) => {
-//                     // For now, just sending a placeholder event
-//                     yield Ok(Event::default().event("status").data("hey"));
-//                 },
-//                 _ => {
-//                     yield Ok(Event::default().event("error").data("Failed to get item"));
-//                     break;
-//                 }
-//             }
-//             sleep(Duration::from_secs(5)).await;
-//         }
-//     };
-
-//     Sse::new(stream.boxed()).keep_alive(
-//         KeepAlive::new()
-//             .interval(Duration::from_secs(15))
-//             .text("keep-alive"),
-//     )
-// }
-// Error handling function
 fn create_error_stream(
     message: impl Into<String>,
 ) -> Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>> {

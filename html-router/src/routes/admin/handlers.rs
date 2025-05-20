@@ -37,7 +37,7 @@ pub async fn show_admin_panel(
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
-        "auth/admin_panel.html",
+        "admin/base.html",
         AdminPanelData {
             user,
             settings,
@@ -91,7 +91,7 @@ pub async fn toggle_registration_status(
     SystemSettings::update(&state.db, new_settings.clone()).await?;
 
     Ok(TemplateResponse::new_partial(
-        "auth/admin_panel.html",
+        "admin/base.html",
         "registration_status_input",
         RegistrationToggleData {
             settings: new_settings,
@@ -131,7 +131,7 @@ pub async fn update_model_settings(
     SystemSettings::update(&state.db, new_settings.clone()).await?;
 
     Ok(TemplateResponse::new_partial(
-        "auth/admin_panel.html",
+        "admin/base.html",
         "model_settings_form",
         ModelSettingsData {
             settings: new_settings,
@@ -195,7 +195,7 @@ pub async fn patch_query_prompt(
     SystemSettings::update(&state.db, new_settings.clone()).await?;
 
     Ok(TemplateResponse::new_partial(
-        "auth/admin_panel.html",
+        "admin/base.html",
         "system_prompt_section",
         SystemPromptSectionData {
             settings: new_settings,
@@ -254,7 +254,7 @@ pub async fn patch_ingestion_prompt(
     SystemSettings::update(&state.db, new_settings.clone()).await?;
 
     Ok(TemplateResponse::new_partial(
-        "auth/admin_panel.html",
+        "admin/base.html",
         "system_prompt_section",
         SystemPromptSectionData {
             settings: new_settings,
