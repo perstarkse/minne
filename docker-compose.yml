@@ -13,6 +13,7 @@ services:
       SURREALDB_DATABASE: "test"
       SURREALDB_NAMESPACE: "test"
       OPENAI_API_KEY: "sk-key"
+      DATA_DIR: "./data"
       # RUST_LOG: "info"
     depends_on:
       - surrealdb 
