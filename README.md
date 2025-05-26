@@ -6,6 +6,8 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Latest Release](https://img.shields.io/github/v/release/perstarkse/minne?sort=semver)](https://github.com/perstarkse/minne/releases/latest)
 
+![Screenshot](screenshot.png)
+
 ## The "Why" Behind Minne
 
 For a while I've been fascinated by Zettelkasten-style PKM systems. While tools like Logseq and Obsidian are excellent, I found the manual linking process to be a hindrance for me. I also wanted a centralized storage and easy access across devices.
@@ -14,11 +16,11 @@ While developing Minne, I discovered [KaraKeep](https://karakeep.com/) (formerly
 
 ## Core Philosophy & Features
 
-Minne is designed to make it incredibly easy to save snippets of text, URLs, and other content(coming if there is demand). Simply send content along with a category tag. Minne then ingests this, leveraging AI to create relevant nodes and relationships within its graph database, alongside your manual categorization. This graph backend, powered by SurrealDB, allows for discoverable connections between your pieces of knowledge.
+Minne is designed to make it incredibly easy to save snippets of text, URLs, and other content (limited, pending demand). Simply send content along with a category tag. Minne then ingests this, leveraging AI to create relevant nodes and relationships within its graph database, alongside your manual categorization. This graph backend, powered by SurrealDB, allows for discoverable connections between your pieces of knowledge.
 
 You can converse with your knowledge base through an LLM-powered chat interface (via OpenAI API). For those who like to see the bigger picture, Minne also includes an **experimental feature to visually explore your knowledge graph.**
 
-The application is built for speed and efficiency using Rust with a Server-Side Rendered (SSR) frontend (HTMX and minimal JavaScript). It's fully responsive, offering a complete mobile interface for reading, editing, and managing your content, including the graph database itself. **PWA (Progressive Web App) support** means you can "install" Minne to your device for a native-like experience. For quick capture on the go, especially on iOS, a [**dedicated Shortcut**](https://www.icloud.com/shortcuts/9aa960600ec14329837ba4169f57a166) makes sending content to your Minne instance a breeze.
+The application is built for speed and efficiency using Rust with a Server-Side Rendered (SSR) frontend (HTMX and minimal JavaScript). It's fully responsive, offering a complete mobile interface for reading, editing, and managing your content, including the graph database itself. **PWA (Progressive Web App) support** means you can "install" Minne to your device for a native-like experience. For quick capture on the go on iOS, a [**Shortcut**](https://www.icloud.com/shortcuts/9aa960600ec14329837ba4169f57a166) makes sending content to your Minne instance a breeze.
 
 Minne is open source (AGPL), self-hostable, and can be deployed flexibly: via Nix, Docker Compose, pre-built binaries, or by building from source. It can run as a single `main` binary or as separate `server` and `worker` processes for optimized resource allocation.
 
@@ -26,7 +28,7 @@ Minne is open source (AGPL), self-hostable, and can be deployed flexibly: via Ni
 
 - **Backend:** Rust
 - **Frontend:** Server-Side Rendering (SSR) with HTMX, Axum, Minijinja, and plain JavaScript for interactivity.
-- **Database:** SurrealDB (as a graph database)
+- **Database:** SurrealDB
 - **AI Integration:** OpenAI API (for chat and content processing)
 - **Web Content Processing:** Relies on a Chromium instance for robust webpage fetching/rendering.
 
