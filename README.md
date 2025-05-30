@@ -12,11 +12,11 @@
 
 For a while I've been fascinated by Zettelkasten-style PKM systems. While tools like Logseq and Obsidian are excellent, I found the manual linking process to be a hindrance for me. I also wanted a centralized storage and easy access across devices.
 
-While developing Minne, I discovered [KaraKeep](https://karakeep.com/) (formerly Hoarder), which is an excellent application in a similar space – you probably want to check it out! However, if you're specifically interested in a PKM that leverages a **SurrealDB as its backend, utilizing both vector and graph retrieval**, offers the **possibility to chat with your knowledge resource**, and provides a blend of manual and AI-driven organization, then Minne might be for you.
+While developing Minne, I discovered [KaraKeep](https://karakeep.com/) (formerly Hoarder), which is an excellent application in a similar space – you probably want to check it out! However, if you're interested in a PKM that builds an automatic network between related concepts using AI, offers search and the **possibility to chat with your knowledge resource**, and provides a blend of manual and AI-driven organization, then Minne might be worth testing.
 
 ## Core Philosophy & Features
 
-Minne is designed to make it incredibly easy to save snippets of text, URLs, and other content (limited, pending demand). Simply send content along with a category tag. Minne then ingests this, leveraging AI to create relevant nodes and relationships within its graph database, alongside your manual categorization. This graph backend, powered by SurrealDB, allows for discoverable connections between your pieces of knowledge.
+Minne is designed to make it incredibly easy to save snippets of text, URLs, and other content (limited, pending demand). Simply send content along with a category tag. Minne then ingests this, leveraging AI to create relevant nodes and relationships within its graph database, alongside your manual categorization. This graph backend allows for discoverable connections between your pieces of knowledge.
 
 You can converse with your knowledge base through an LLM-powered chat interface (via OpenAI API). For those who like to see the bigger picture, Minne also includes an **experimental feature to visually explore your knowledge graph.**
 
@@ -130,18 +130,6 @@ This is a great way to manage Minne and its SurrealDB dependency together.
        driver: bridge
    ```
 
-1. Create a `.env` file in the same directory as your `docker-compose.yml` (recommended for sensitive data):
-
-   ```env
-   OPENAI_API_KEY="your_openai_api_key_here"
-   # You can override other environment variables here if needed
-   # e.g., if you want to expose SurrealDB differently or use different credentials.
-   # SURREALDB_USERNAME_MINNE="custom_user" # If changing Minne's access credentials
-   # SURREALDB_PASSWORD_MINNE="custom_pass"
-   ```
-
-   *(If using a `.env` file, ensure variables in `docker-compose.yml`'s `environment` section reference them like `${OPENAI_API_KEY}` or are directly set if not sensitive and common across setups)*
-
 1. Run:
 
    ```bash
@@ -201,7 +189,6 @@ Minne can be configured using environment variables or a `config.yaml` file plac
 
 - `RUST_LOG`: Controls logging level (e.g., `minne=info,tower_http=debug`).
 - `HTTP_PORT`: Port for the Minne server to listen on (Default: `3000`).
-- `CHROME_ADDRESS`: Address of a remote Chrome DevTools Protocol endpoint (e.g., `http://localhost:9222`, if not using local Chromium managed by Minne/Docker/Nix).
 
 **Example `config.yaml`:**
 
@@ -243,7 +230,7 @@ I've developed Minne primarily for my own use, but having been in the selfhosted
 The roadmap as of now is:
 
 - Handle uploaded images wisely.
-- An updated explorer of the graph database, and potentially the vector space.
+- An updated explorer of the graph database.
 - A TUI frontend which opens your system default editor for improved writing and document management.
 
 ## Contributing

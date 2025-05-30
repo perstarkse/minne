@@ -3,7 +3,6 @@
 [] archive ingressed webpage, pdf would be easy
 [] embed surrealdb for the main binary
 [] three js graph explorer
-[] three js vector explorer
 [x] add user_id to ingress objects
 [x] admin controls re registration
 [x] allow setting of data storage folder, via envs and config

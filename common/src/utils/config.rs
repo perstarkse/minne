@@ -11,6 +11,7 @@ pub struct AppConfig {
     pub surrealdb_database: String,
     #[serde(default = "default_data_dir")]
     pub data_dir: String,
+    pub http_port: u16,
 }
 
 fn default_data_dir() -> String {

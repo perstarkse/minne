@@ -58,8 +58,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             html_state,
         });
 
-    info!("Starting server listening on 0.0.0.0:3000");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    info!("Starting server listening on 0.0.0.0:{}", config.http_port);
+    let serve_address = format!("0.0.0.0:{}", config.http_port);
+    let listener = tokio::net::TcpListener::bind(serve_address).await?;
 
     // Start the server in a separate OS thread with its own runtime
     let server_handle = std::thread::spawn(move || {
