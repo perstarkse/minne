@@ -26,10 +26,10 @@ Minne is open source (AGPL), self-hostable, and can be deployed flexibly: via Ni
 
 ## Tech Stack
 
-- **Backend:** Rust
-- **Frontend:** Server-Side Rendering (SSR) with HTMX, Axum, Minijinja, and plain JavaScript for interactivity.
+- **Backend:** Rust. Server-Side Rendering (SSR). Axum. Minijinja for templating.
+- **Frontend:** HTML. HTMX and plain JavaScript for interactivity.
 - **Database:** SurrealDB
-- **AI Integration:** OpenAI API (for chat and content processing)
+- **AI Integration:** OpenAI API compatible endpoint(for chat and content processing)
 - **Web Content Processing:** Relies on a Chromium instance for robust webpage fetching/rendering.
 
 ## Prerequisites
