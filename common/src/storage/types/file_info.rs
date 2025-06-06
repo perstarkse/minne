@@ -349,6 +349,8 @@ mod tests {
             surrealdb_password: "test_pass".to_string(),
             surrealdb_namespace: "test_ns".to_string(),
             surrealdb_database: "test_db".to_string(),
+            http_port: 3000,
+            openai_base_url: "..".to_string(),
         };
 
         // Test file creation
@@ -406,6 +408,8 @@ mod tests {
             surrealdb_password: "test_pass".to_string(),
             surrealdb_namespace: "test_ns".to_string(),
             surrealdb_database: "test_db".to_string(),
+            http_port: 3000,
+            openai_base_url: "..".to_string(),
         };
 
         // Store the original file
@@ -459,6 +463,8 @@ mod tests {
             surrealdb_password: "test_pass".to_string(),
             surrealdb_namespace: "test_ns".to_string(),
             surrealdb_database: "test_db".to_string(),
+            http_port: 3000,
+            openai_base_url: "..".to_string(),
         };
         let file_info = FileInfo::new(field_data, &db, user_id, &config).await;
 
@@ -508,6 +514,8 @@ mod tests {
             surrealdb_password: "test_pass".to_string(),
             surrealdb_namespace: "test_ns".to_string(),
             surrealdb_database: "test_db".to_string(),
+            http_port: 3000,
+            openai_base_url: "..".to_string(),
         };
 
         let field_data1 = create_test_file(content, file_name);
@@ -844,6 +852,8 @@ mod tests {
             surrealdb_password: "test_pass".to_string(),
             surrealdb_namespace: "test_ns".to_string(),
             surrealdb_database: "test_db".to_string(),
+            http_port: 3000,
+            openai_base_url: "..".to_string(),
         };
 
         // Test file creation

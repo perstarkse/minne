@@ -1,5 +1,5 @@
-[] ollama and changing of openai_base_url
-[] allow changing of port the server listens to
+[x] ollama and changing of openai_base_url
+[x] allow changing of port the server listens to
 [] archive ingressed webpage, pdf would be easy
 [] embed surrealdb for the main binary
 [] three js graph explorer

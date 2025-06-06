@@ -1,13 +1,20 @@
+use async_openai::types::ListModelResponse;
 use axum::{extract::State, response::IntoResponse, Form};
 use serde::{Deserialize, Serialize};
 
-use common::storage::types::{
-    analytics::Analytics,
-    conversation::Conversation,
-    system_prompts::{DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT, DEFAULT_QUERY_SYSTEM_PROMPT},
-    system_settings::SystemSettings,
-    user::User,
+use common::{
+    error::AppError,
+    storage::types::{
+        analytics::Analytics,
+        conversation::Conversation,
+        knowledge_entity::KnowledgeEntity,
+        system_prompts::{DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT, DEFAULT_QUERY_SYSTEM_PROMPT},
+        system_settings::SystemSettings,
+        text_chunk::TextChunk,
+        user::User,
+    },
 };
+use tracing::{error, info};
 
 use crate::{
     html_state::HtmlState,
@@ -25,6 +32,7 @@ pub struct AdminPanelData {
     users: i64,
     default_query_prompt: String,
     conversation_archive: Vec<Conversation>,
+    available_models: ListModelResponse,
 }
 
 pub async fn show_admin_panel(
@@ -35,6 +43,12 @@ pub async fn show_admin_panel(
     let analytics = Analytics::get_current(&state.db).await?;
     let users_count = Analytics::get_users_amount(&state.db).await?;
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
+    let available_models = state
+        .openai_client
+        .models()
+        .list()
+        .await
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
 
     Ok(TemplateResponse::new_template(
         "admin/base.html",
@@ -42,6 +56,7 @@ pub async fn show_admin_panel(
             user,
             settings,
             analytics,
+            available_models,
             users: users_count,
             default_query_prompt: DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
             conversation_archive,
@@ -103,11 +118,14 @@ pub async fn toggle_registration_status(
 pub struct ModelSettingsInput {
     query_model: String,
     processing_model: String,
+    embedding_model: String,
+    embedding_dimensions: Option<u32>,
 }
 
 #[derive(Serialize)]
 pub struct ModelSettingsData {
     settings: SystemSettings,
+    available_models: ListModelResponse,
 }
 
 pub async fn update_model_settings(
@@ -122,19 +140,75 @@ pub async fn update_model_settings(
 
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
+    // Determine if re-embedding is required
+    let reembedding_needed = input
+        .embedding_dimensions
+        .is_some_and(|new_dims| new_dims != current_settings.embedding_dimensions);
+
     let new_settings = SystemSettings {
         query_model: input.query_model,
         processing_model: input.processing_model,
-        ..current_settings
+        embedding_model: input.embedding_model,
+        // Use new dimensions if provided, otherwise retain the current ones.
+        embedding_dimensions: input
+            .embedding_dimensions
+            .unwrap_or(current_settings.embedding_dimensions),
+        ..current_settings.clone()
     };
 
     SystemSettings::update(&state.db, new_settings.clone()).await?;
+
+    if reembedding_needed {
+        info!("Embedding dimensions changed. Spawning background re-embedding task...");
+
+        let db_for_task = state.db.clone();
+        let openai_for_task = state.openai_client.clone();
+        let new_model_for_task = new_settings.embedding_model.clone();
+        let new_dims_for_task = new_settings.embedding_dimensions;
+
+        tokio::spawn(async move {
+            // First, update all text chunks
+            if let Err(e) = TextChunk::update_all_embeddings(
+                &db_for_task,
+                &openai_for_task,
+                &new_model_for_task,
+                new_dims_for_task,
+            )
+            .await
+            {
+                error!("Background re-embedding task failed for TextChunks: {}", e);
+            }
+
+            // Second, update all knowledge entities
+            if let Err(e) = KnowledgeEntity::update_all_embeddings(
+                &db_for_task,
+                &openai_for_task,
+                &new_model_for_task,
+                new_dims_for_task,
+            )
+            .await
+            {
+                error!(
+                    "Background re-embedding task failed for KnowledgeEntities: {}",
+                    e
+                );
+            }
+        });
+    }
+
+    let available_models = state
+        .openai_client
+        .models()
+        .list()
+        .await
+        .map_err(|_e| AppError::InternalError("Failed to get models".to_string()))?;
 
     Ok(TemplateResponse::new_partial(
         "admin/base.html",
         "model_settings_form",
         ModelSettingsData {
             settings: new_settings,
+            available_models,
         },
     ))
 }

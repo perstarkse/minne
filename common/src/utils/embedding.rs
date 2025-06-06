@@ -1,6 +1,10 @@
 use async_openai::types::CreateEmbeddingRequestArgs;
+use tracing::debug;
 
-use crate::error::AppError;
+use crate::{
+    error::AppError,
+    storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
+};
 /// Generates an embedding vector for the given input text using OpenAI's embedding model.
 ///
 /// This function takes a text input and converts it into a numerical vector representation (embedding)
@@ -27,9 +31,13 @@ use crate::error::AppError;
 pub async fn generate_embedding(
     client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     input: &str,
+    db: &SurrealDbClient,
 ) -> Result<Vec<f32>, AppError> {
+    let model = SystemSettings::get_current(db).await?;
+
     let request = CreateEmbeddingRequestArgs::default()
-        .model("text-embedding-3-small")
+        .model(model.embedding_model)
+        .dimensions(model.embedding_dimensions)
         .input([input])
         .build()?;
 
@@ -43,6 +51,39 @@ pub async fn generate_embedding(
         .ok_or_else(|| AppError::LLMParsing("No embedding data received".into()))?
         .embedding
         .clone();
+
+    Ok(embedding)
+}
+
+/// Generates an embedding vector using a specific model and dimension.
+///
+/// This is used for the re-embedding process where the model and dimensions
+/// are known ahead of time and shouldn't be repeatedly fetched from settings.
+pub async fn generate_embedding_with_params(
+    client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+    input: &str,
+    model: &str,
+    dimensions: u32,
+) -> Result<Vec<f32>, AppError> {
+    let request = CreateEmbeddingRequestArgs::default()
+        .model(model)
+        .input([input])
+        .dimensions(dimensions as u32)
+        .build()?;
+
+    let response = client.embeddings().create(request).await?;
+
+    let embedding = response
+        .data
+        .first()
+        .ok_or_else(|| AppError::LLMParsing("No embedding data received from API".into()))?
+        .embedding
+        .clone();
+
+    debug!(
+        "Embedding was created with {:?} dimensions",
+        embedding.len()
+    );
 
     Ok(embedding)
 }

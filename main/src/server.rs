@@ -36,7 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let session_store = Arc::new(db.create_session_store().await?);
     let openai_client = Arc::new(async_openai::Client::with_config(
-        async_openai::config::OpenAIConfig::new().with_api_key(&config.openai_api_key),
+        async_openai::config::OpenAIConfig::new()
+            .with_api_key(&config.openai_api_key)
+            .with_api_base(&config.openai_base_url),
     ));
 
     let html_state =

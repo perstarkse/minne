@@ -11,6 +11,7 @@ use surrealdb::{
     Error, Notification, Surreal,
 };
 use surrealdb_migrations::MigrationRunner;
+use tracing::debug;
 
 static MIGRATIONS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/");
 
@@ -50,6 +51,7 @@ impl SurrealDbClient {
     pub async fn create_session_store(
         &self,
     ) -> Result<SessionStore<SessionSurrealPool<Any>>, SessionError> {
+        debug!("Creating session store");
         SessionStore::new(
             Some(self.client.clone().into()),
             SessionConfig::default()
@@ -65,6 +67,7 @@ impl SurrealDbClient {
     /// the database and selecting the appropriate namespace and database, but before
     /// the application starts performing operations that rely on the schema.
     pub async fn apply_migrations(&self) -> Result<(), AppError> {
+        debug!("Applying migrations");
         MigrationRunner::new(&self.client)
             .load_files(&MIGRATIONS_DIR)
             .up()
@@ -76,6 +79,7 @@ impl SurrealDbClient {
 
     /// Operation to rebuild indexes
     pub async fn rebuild_indexes(&self) -> Result<(), Error> {
+        debug!("Rebuilding indexes");
         self.client
             .query("REBUILD INDEX IF EXISTS idx_embedding_chunks ON text_chunk")
             .await?;
