@@ -11,6 +11,8 @@ pub struct SystemSettings {
     pub require_email_verification: bool,
     pub query_model: String,
     pub processing_model: String,
+    pub embedding_model: String,
+    pub embedding_dimensions: u32,
     pub query_system_prompt: String,
     pub ingestion_system_prompt: String,
 }
@@ -44,25 +46,12 @@ impl SystemSettings {
             "Something went wrong updating the settings".into(),
         ))
     }
-
-    pub fn new() -> Self {
-        Self {
-            id: "current".to_string(),
-            query_system_prompt: crate::storage::types::system_prompts::DEFAULT_QUERY_SYSTEM_PROMPT
-                .to_string(),
-            ingestion_system_prompt:
-                crate::storage::types::system_prompts::DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT
-                    .to_string(),
-            query_model: "gpt-4o-mini".to_string(),
-            processing_model: "gpt-4o-mini".to_string(),
-            registrations_enabled: true,
-            require_email_verification: false,
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::storage::types::text_chunk::TextChunk;
+
     use super::*;
     use uuid::Uuid;
 
@@ -157,7 +146,7 @@ mod tests {
             .expect("Failed to apply migrations");
 
         // Create updated settings
-        let mut updated_settings = SystemSettings::new();
+        let mut updated_settings = SystemSettings::get_current(&db).await.unwrap();
         updated_settings.id = "current".to_string();
         updated_settings.registrations_enabled = false;
         updated_settings.require_email_verification = true;
@@ -206,21 +195,60 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_new_method() {
-        let settings = SystemSettings::new();
+    async fn test_migration_after_changing_embedding_length() {
+        let db = SurrealDbClient::memory("test", &Uuid::new_v4().to_string())
+            .await
+            .expect("Failed to start DB");
 
-        assert!(settings.id.len() > 0);
-        assert_eq!(settings.registrations_enabled, true);
-        assert_eq!(settings.require_email_verification, false);
-        assert_eq!(settings.query_model, "gpt-4o-mini");
-        assert_eq!(settings.processing_model, "gpt-4o-mini");
-        assert_eq!(
-            settings.query_system_prompt,
-            crate::storage::types::system_prompts::DEFAULT_QUERY_SYSTEM_PROMPT
+        // Apply initial migrations. This sets up the text_chunk index with DIMENSION 1536.
+        db.apply_migrations()
+            .await
+            .expect("Initial migration failed");
+
+        let initial_chunk = TextChunk::new(
+            "source1".into(),
+            "This chunk has the original dimension".into(),
+            vec![0.1; 1536],
+            "user1".into(),
         );
-        assert_eq!(
-            settings.ingestion_system_prompt,
-            crate::storage::types::system_prompts::DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT
-        );
+
+        db.store_item(initial_chunk.clone())
+            .await
+            .expect("Failed to store initial chunk");
+
+        async fn simulate_reembedding(
+            db: &SurrealDbClient,
+            target_dimension: usize,
+            initial_chunk: TextChunk,
+        ) {
+            db.query("REMOVE INDEX idx_embedding_chunks ON TABLE text_chunk;")
+                .await
+                .unwrap();
+            let define_index_query = format!(
+                         "DEFINE INDEX idx_embedding_chunks ON TABLE text_chunk FIELDS embedding HNSW DIMENSION {};",
+                         target_dimension
+                     );
+            db.query(define_index_query)
+                .await
+                .expect("Re-defining index should succeed");
+
+            let new_embedding = vec![0.5; target_dimension];
+            let sql = "UPDATE type::thing('text_chunk', $id) SET embedding = $embedding;";
+
+            let update_result = db
+                .client
+                .query(sql)
+                .bind(("id", initial_chunk.id.clone()))
+                .bind(("embedding", new_embedding))
+                .await;
+
+            assert!(update_result.is_ok());
+        }
+
+        simulate_reembedding(&db, 768, initial_chunk).await;
+
+        let migration_result = db.apply_migrations().await;
+
+        assert!(migration_result.is_ok(), "Migrations should not fail");
     }
 }

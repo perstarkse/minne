@@ -26,7 +26,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?,
     );
 
-    let openai_client = Arc::new(async_openai::Client::new());
+    let openai_client = Arc::new(async_openai::Client::with_config(
+        async_openai::config::OpenAIConfig::new()
+            .with_api_key(&config.openai_api_key)
+            .with_api_base(&config.openai_base_url),
+    ));
 
     let ingestion_pipeline =
         Arc::new(IngestionPipeline::new(db.clone(), openai_client.clone(), config).await?);

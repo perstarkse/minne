@@ -138,7 +138,7 @@ pub async fn delete_job(
     let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_partial(
-        "index/signed_in/active_jobs.html",
+        "dashboard/active_jobs.html",
         "active_jobs_section",
         ActiveJobsData {
             user: user.clone(),

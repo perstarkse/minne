@@ -1,6 +1,4 @@
-use surrealdb::{engine::any::Any, Surreal};
-
-use common::{error::AppError, utils::embedding::generate_embedding};
+use common::{error::AppError, storage::db::SurrealDbClient, utils::embedding::generate_embedding};
 
 /// Compares vectors and retrieves a number of items from the specified table.
 ///
@@ -26,7 +24,7 @@ use common::{error::AppError, utils::embedding::generate_embedding};
 pub async fn find_items_by_vector_similarity<T>(
     take: u8,
     input_text: &str,
-    db_client: &Surreal<Any>,
+    db_client: &SurrealDbClient,
     table: &str,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     user_id: &str,
@@ -35,7 +33,7 @@ where
     T: for<'de> serde::Deserialize<'de>,
 {
     // Generate embeddings
-    let input_embedding = generate_embedding(openai_client, input_text).await?;
+    let input_embedding = generate_embedding(openai_client, input_text, db_client).await?;
 
     // Construct the query
     let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM {} WHERE user_id = '{}' AND embedding <|{},40|> {:?} ORDER BY distance", table, user_id, take, input_embedding);

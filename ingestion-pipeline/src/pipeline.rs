@@ -95,7 +95,7 @@ impl IngestionPipeline {
 
         // Convert analysis to application objects
         let (entities, relationships) = analysis
-            .to_database_entities(&content.id, &content.user_id, &self.openai_client)
+            .to_database_entities(&content.id, &content.user_id, &self.openai_client, &self.db)
             .await?;
 
         // Store everything
@@ -155,7 +155,7 @@ impl IngestionPipeline {
 
         // Could potentially process chunks in parallel with a bounded concurrent limit
         for chunk in chunks {
-            let embedding = generate_embedding(&self.openai_client, chunk).await?;
+            let embedding = generate_embedding(&self.openai_client, chunk, &self.db).await?;
             let text_chunk = TextChunk::new(
                 content.id.to_string(),
                 chunk.to_string(),

@@ -12,10 +12,16 @@ pub struct AppConfig {
     #[serde(default = "default_data_dir")]
     pub data_dir: String,
     pub http_port: u16,
+    #[serde(default = "default_base_url")]
+    pub openai_base_url: String,
 }
 
 fn default_data_dir() -> String {
     "./data".to_string()
+}
+
+fn default_base_url() -> String {
+    "https://api.openai.com/v1".to_string()
 }
 
 pub fn get_config() -> Result<AppConfig, ConfigError> {

@@ -6,9 +6,12 @@ use tokio::task;
 
 use common::{
     error::AppError,
-    storage::types::{
-        knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
-        knowledge_relationship::KnowledgeRelationship,
+    storage::{
+        db::SurrealDbClient,
+        types::{
+            knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
+            knowledge_relationship::KnowledgeRelationship,
+        },
     },
     utils::embedding::generate_embedding,
 };
@@ -56,13 +59,20 @@ impl LLMEnrichmentResult {
         source_id: &str,
         user_id: &str,
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+        db_client: &SurrealDbClient,
     ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         // Create mapper and pre-assign IDs
         let mapper = Arc::new(Mutex::new(self.create_mapper()?));
 
         // Process entities
         let entities = self
-            .process_entities(source_id, user_id, Arc::clone(&mapper), openai_client)
+            .process_entities(
+                source_id,
+                user_id,
+                Arc::clone(&mapper),
+                openai_client,
+                db_client,
+            )
             .await?;
 
         // Process relationships
@@ -88,6 +98,7 @@ impl LLMEnrichmentResult {
         user_id: &str,
         mapper: Arc<Mutex<GraphMapper>>,
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+        db_client: &SurrealDbClient,
     ) -> Result<Vec<KnowledgeEntity>, AppError> {
         let futures: Vec<_> = self
             .knowledge_entities
@@ -98,10 +109,18 @@ impl LLMEnrichmentResult {
                 let source_id = source_id.to_string();
                 let user_id = user_id.to_string();
                 let entity = entity.clone();
+                let db_client = db_client.clone();
 
                 task::spawn(async move {
-                    create_single_entity(&entity, &source_id, &user_id, mapper, &openai_client)
-                        .await
+                    create_single_entity(
+                        &entity,
+                        &source_id,
+                        &user_id,
+                        mapper,
+                        &openai_client,
+                        &db_client.clone(),
+                    )
+                    .await
                 })
             })
             .collect();
@@ -120,14 +139,14 @@ impl LLMEnrichmentResult {
         user_id: &str,
         mapper: Arc<Mutex<GraphMapper>>,
     ) -> Result<Vec<KnowledgeRelationship>, AppError> {
-        let mut mapper_guard = mapper
+        let mapper_guard = mapper
             .lock()
             .map_err(|_| AppError::GraphMapper("Failed to lock mapper".into()))?;
         self.relationships
             .iter()
             .map(|rel| {
-                let source_db_id = mapper_guard.get_or_parse_id(&rel.source);
-                let target_db_id = mapper_guard.get_or_parse_id(&rel.target);
+                let source_db_id = mapper_guard.get_or_parse_id(&rel.source)?;
+                let target_db_id = mapper_guard.get_or_parse_id(&rel.target)?;
 
                 Ok(KnowledgeRelationship::new(
                     source_db_id.to_string(),
@@ -146,17 +165,13 @@ async fn create_single_entity(
     user_id: &str,
     mapper: Arc<Mutex<GraphMapper>>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+    db_client: &SurrealDbClient,
 ) -> Result<KnowledgeEntity, AppError> {
     let assigned_id = {
         let mapper = mapper
             .lock()
             .map_err(|_| AppError::GraphMapper("Failed to lock mapper".into()))?;
-        mapper
-            .get_id(&llm_entity.key)
-            .ok_or_else(|| {
-                AppError::GraphMapper(format!("ID not found for key: {}", llm_entity.key))
-            })?
-            .to_string()
+        mapper.get_id(&llm_entity.key)?.to_string()
     };
 
     let embedding_input = format!(
@@ -164,7 +179,7 @@ async fn create_single_entity(
         llm_entity.name, llm_entity.description, llm_entity.entity_type
     );
 
-    let embedding = generate_embedding(openai_client, &embedding_input).await?;
+    let embedding = generate_embedding(openai_client, &embedding_input, db_client).await?;
 
     let now = Utc::now();
     Ok(KnowledgeEntity {

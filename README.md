@@ -29,7 +29,7 @@ Minne is open source (AGPL), self-hostable, and can be deployed flexibly: via Ni
 - **Backend:** Rust. Server-Side Rendering (SSR). Axum. Minijinja for templating.
 - **Frontend:** HTML. HTMX and plain JavaScript for interactivity.
 - **Database:** SurrealDB
-- **AI Integration:** OpenAI API compatible endpoint(for chat and content processing)
+- **AI Integration:** OpenAI API compatible endpoint (for chat and content processing), with support for structured outputs.
 - **Web Content Processing:** Relies on a Chromium instance for robust webpage fetching/rendering.
 
 ## Prerequisites
@@ -82,6 +82,8 @@ This is a great way to manage Minne and its SurrealDB dependency together.
          SURREALDB_DATABASE: "minne_db"
          SURREALDB_NAMESPACE: "minne_ns"
          OPENAI_API_KEY: "your_openai_api_key_here" # IMPORTANT: Replace with your actual key
+         #OPENAI_BASE_URL: "your_ollama_address" # Uncomment this and change it to override the default openai base url 
+         HTTP_PORT: 3000
          DATA_DIR: "/data" # Data directory inside the container
          RUST_LOG: "minne=info,tower_http=info" # Example logging level
        volumes:
@@ -183,12 +185,13 @@ Minne can be configured using environment variables or a `config.yaml` file plac
 - `SURREALDB_DATABASE`: Database name in SurrealDB (e.g., `minne_db`).
 - `SURREALDB_NAMESPACE`: Namespace in SurrealDB (e.g., `minne_ns`).
 - `OPENAI_API_KEY`: Your API key for OpenAI (e.g., `sk-YourActualOpenAIKeyGoesHere`).
-- `DATA_DIR`: Directory to store local data like fetched webpage content (e.g., `./minne_app_data`).
+- `HTTP_PORT`: Port for the Minne server to listen on (Default: `3000`).
 
 **Optional Configuration:**
 
 - `RUST_LOG`: Controls logging level (e.g., `minne=info,tower_http=debug`).
-- `HTTP_PORT`: Port for the Minne server to listen on (Default: `3000`).
+- `DATA_DIR`: Directory to store local data like fetched webpage content (e.g., `./data`).
+- `OPENAI_BASE_URL`: Base URL to a OpenAI API provider, such as Ollama.
 
 **Example `config.yaml`:**
 
@@ -223,6 +226,25 @@ Once Minne is running:
 1. Start adding notes, URLs and explore your growing knowledge graph.
 1. Engage with the chat interface to query your saved content.
 1. Try the experimental visual graph explorer to see connections.
+
+## AI Configuration & Model Selection
+
+Minne relies on an OpenAI-compatible API for processing content, generating graph relationships, and powering the chat feature.
+
+**Environment Variables / `config.yaml` keys:**
+
+- `OPENAI_API_KEY` (required): Your API key for the chosen AI provider.
+- `OPENAI_BASE_URL` (optional): Use this to override the default OpenAI API URL (`https://api.openai.com/v1`). This is essential for using local models via services like Ollama, or other API providers.
+  - **Example for Ollama:** `http://<your-ollama-ip>:11434/v1`
+
+### Changing Models
+
+Once you have configured the `OPENAI_BASE_URL` to point to your desired provider, you can select the specific models Minne should use.
+
+1. Navigate to the `/admin` page in your Minne instance.
+1. The page will list the models available from your configured endpoint. You can select different models for processing content and for chat.
+1. **Important:** For content processing, Minne relies on structured outputs (function calling). The model and provider you select for this task **must** support this feature.
+1. **Embedding Dimensions:** If you change the embedding model, you **must** update the "Embedding Dimensions" setting in the admin panel to match the output dimensions of your new model (e.g., `text-embedding-3-small` uses 1536, `nomic-embed-text` uses 768). Mismatched dimensions will cause errors. Some newer models will accept a dimension argument, and for these setting the dimensions to whatever should work.
 
 ## Roadmap
 
