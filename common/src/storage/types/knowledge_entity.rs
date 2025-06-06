@@ -1,8 +1,15 @@
+use std::collections::HashMap;
+
 use crate::{
     error::AppError, storage::db::SurrealDbClient, stored_object,
     utils::embedding::generate_embedding,
 };
 use async_openai::{config::OpenAIConfig, Client};
+use tokio_retry::{
+    strategy::{jitter, ExponentialBackoff},
+    Retry,
+};
+use tracing::{error, info};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -94,7 +101,7 @@ impl KnowledgeEntity {
             "name: {}, description: {}, type: {:?}",
             name, description, entity_type
         );
-        let embedding = generate_embedding(ai_client, &embedding_input).await?;
+        let embedding = generate_embedding(ai_client, &embedding_input, db_client).await?;
 
         db_client
             .client
@@ -116,6 +123,104 @@ impl KnowledgeEntity {
             .bind(("description", description.to_string()))
             .await?;
 
+        Ok(())
+    }
+
+    /// Re-creates embeddings for all knowledge entities in the database.
+    ///
+    /// This is a costly operation that should be run in the background. It follows the same
+    /// pattern as the text chunk update:
+    /// 1. Re-defines the vector index with the new dimensions.
+    /// 2. Fetches all existing entities.
+    /// 3. Sequentially regenerates the embedding for each and updates the record.
+    pub async fn update_all_embeddings(
+        db: &SurrealDbClient,
+        openai_client: &Client<OpenAIConfig>,
+        new_model: &str,
+        new_dimensions: u32,
+    ) -> Result<(), AppError> {
+        info!(
+            "Starting re-embedding process for all knowledge entities. New dimensions: {}",
+            new_dimensions
+        );
+
+        // Fetch all entities first
+        let all_entities: Vec<KnowledgeEntity> = db.select(Self::table_name()).await?;
+        let total_entities = all_entities.len();
+        if total_entities == 0 {
+            info!("No knowledge entities to update. Skipping.");
+            return Ok(());
+        }
+        info!("Found {} entities to process.", total_entities);
+
+        // Generate all new embeddings in memory
+        let mut new_embeddings: HashMap<String, Vec<f32>> = HashMap::new();
+        info!("Generating new embeddings for all entities...");
+        for entity in all_entities.iter() {
+            let embedding_input = format!(
+                "name: {}, description: {}, type: {:?}",
+                entity.name, entity.description, entity.entity_type
+            );
+            let retry_strategy = ExponentialBackoff::from_millis(100).map(jitter).take(3);
+
+            let embedding = Retry::spawn(retry_strategy, || {
+                crate::utils::embedding::generate_embedding_with_params(
+                    openai_client,
+                    &embedding_input,
+                    new_model,
+                    new_dimensions,
+                )
+            })
+            .await?;
+
+            // Check embedding lengths
+            if embedding.len() != new_dimensions as usize {
+                let err_msg = format!(
+                "CRITICAL: Generated embedding for entity {} has incorrect dimension ({}). Expected {}. Aborting.",
+                entity.id, embedding.len(), new_dimensions
+            );
+                error!("{}", err_msg);
+                return Err(AppError::InternalError(err_msg));
+            }
+            new_embeddings.insert(entity.id.clone(), embedding);
+        }
+        info!("Successfully generated all new embeddings.");
+
+        // Perform DB updates in a single transaction
+        info!("Applying schema and data changes in a transaction...");
+        let mut transaction_query = String::from("BEGIN TRANSACTION;");
+
+        // Add all update statements
+        for (id, embedding) in new_embeddings {
+            // We must properly serialize the vector for the SurrealQL query string
+            let embedding_str = format!(
+                "[{}]",
+                embedding
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+            transaction_query.push_str(&format!(
+            "UPDATE type::thing('knowledge_entity', '{}') SET embedding = {}, updated_at = time::now();",
+            id, embedding_str
+        ));
+        }
+
+        // Re-create the index after updating the data that it will index
+        transaction_query
+            .push_str("REMOVE INDEX idx_embedding_entities ON TABLE knowledge_entity;");
+        transaction_query.push_str(&format!(
+        "DEFINE INDEX idx_embedding_entities ON TABLE knowledge_entity FIELDS embedding HNSW DIMENSION {};",
+        new_dimensions
+    ));
+
+        transaction_query.push_str("COMMIT TRANSACTION;");
+
+        // Execute the entire atomic operation
+        db.query(transaction_query).await?;
+
+        info!("Re-embedding process for knowledge entities completed successfully.");
         Ok(())
     }
 }
