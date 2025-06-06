@@ -1,5 +1,6 @@
 pub mod llm_instructions;
 
+use common::error::AppError;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -21,24 +22,39 @@ impl GraphMapper {
             key_to_id: HashMap::new(),
         }
     }
-    /// Get ID, tries to parse UUID
-    pub fn get_or_parse_id(&mut self, key: &str) -> Uuid {
+    /// Tries to get an ID by first parsing the key as a UUID,
+    /// and if that fails, looking it up in the internal map.
+    pub fn get_or_parse_id(&self, key: &str) -> Result<Uuid, AppError> {
+        // First, try to parse the key as a UUID.
         if let Ok(parsed_uuid) = Uuid::parse_str(key) {
-            parsed_uuid
-        } else {
-            *self.key_to_id.get(key).unwrap()
+            return Ok(parsed_uuid);
         }
+
+        // If parsing fails, look it up in the map.
+        self.key_to_id
+            .get(key)
+            .map(|id| *id) // Dereference the &Uuid to get Uuid
+            // If `get` returned None, create and return an error.
+            .ok_or_else(|| {
+                AppError::GraphMapper(format!(
+                    "Key '{}' is not a valid UUID and was not found in the map.",
+                    key
+                ))
+            })
     }
 
-    /// Assigns a new UUID for a given key.
+    /// Assigns a new UUID for a given key. (No changes needed here)
     pub fn assign_id(&mut self, key: &str) -> Uuid {
         let id = Uuid::new_v4();
         self.key_to_id.insert(key.to_string(), id);
         id
     }
 
-    /// Retrieves the UUID for a given key.
-    pub fn get_id(&self, key: &str) -> Option<&Uuid> {
-        self.key_to_id.get(key)
+    /// Retrieves the UUID for a given key, returning a Result for consistency.
+    pub fn get_id(&self, key: &str) -> Result<Uuid, AppError> {
+        self.key_to_id
+            .get(key)
+            .map(|id| *id)
+            .ok_or_else(|| AppError::GraphMapper(format!("Key '{}' not found in map.", key)))
     }
 }
