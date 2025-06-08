@@ -8,17 +8,15 @@
     </figure>
     {% endif %}
     <div class="card-body">
-      <div class="flex justify-between space-x-2">
-        <h2 class="card-title truncate">
-          {% if text_content.url_info %}
-          {{text_content.url_info.title}}
-          {% elif text_content.file_info %}
-          {{text_content.file_info.file_name}}
-          {% else %}
-          {{text_content.text}}
-          {% endif %}
-        </h2>
-      </div>
+      <h2 class="card-title truncate">
+        {% if text_content.url_info %}
+        {{text_content.url_info.title}}
+        {% elif text_content.file_info %}
+        {{text_content.file_info.file_name}}
+        {% else %}
+        {{text_content.text}}
+        {% endif %}
+      </h2>
       <div class="flex items-center justify-between">
         <p class="text-xs opacity-60">
           {{ text_content.created_at | datetimeformat(format="short", tz=user.timezone) }}
