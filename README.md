@@ -18,7 +18,9 @@ While developing Minne, I discovered [KaraKeep](https://karakeep.com/) (formerly
 
 Minne is designed to make it incredibly easy to save snippets of text, URLs, and other content (limited, pending demand). Simply send content along with a category tag. Minne then ingests this, leveraging AI to create relevant nodes and relationships within its graph database, alongside your manual categorization. This graph backend allows for discoverable connections between your pieces of knowledge.
 
-You can converse with your knowledge base through an LLM-powered chat interface (via OpenAI API). For those who like to see the bigger picture, Minne also includes an **experimental feature to visually explore your knowledge graph.**
+You can converse with your knowledge base through an LLM-powered chat interface (via OpenAI compatible API, like Ollama or others). For those who like to see the bigger picture, Minne also includes an **experimental feature to visually explore your knowledge graph.**
+
+You may switch and choose between models used, and have the possiblity to change the prompts to your liking. There is since release **0.1.3** the option to change embeddings length, making it easy to test another embedding model.
 
 The application is built for speed and efficiency using Rust with a Server-Side Rendered (SSR) frontend (HTMX and minimal JavaScript). It's fully responsive, offering a complete mobile interface for reading, editing, and managing your content, including the graph database itself. **PWA (Progressive Web App) support** means you can "install" Minne to your device for a native-like experience. For quick capture on the go on iOS, a [**Shortcut**](https://www.icloud.com/shortcuts/9aa960600ec14329837ba4169f57a166) makes sending content to your Minne instance a breeze.
 
