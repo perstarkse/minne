@@ -43,7 +43,6 @@ fn add_char_into_object(
     current_char: char,
 ) -> Result<(), String> {
     match (&*object, &*current_status, current_char) {
-        // String escape handling
         (&Value::String(_), &ObjectStatus::StringQuoteOpen(true), '"') => {
             if let Value::String(str) = object {
                 str.push('"');
@@ -54,7 +53,6 @@ fn add_char_into_object(
             *current_status = ObjectStatus::StringQuoteClose;
         }
         (&Value::String(_), &ObjectStatus::StringQuoteOpen(true), c) => {
-            // Handle other escaped chars
             if let Value::String(str) = object {
                 str.push('\\');
                 str.push(c);
@@ -70,7 +68,6 @@ fn add_char_into_object(
             }
         }
 
-        // Key escape handling
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: true, .. }, '"') => {
             if let ObjectStatus::KeyQuoteOpen {
                 ref mut key_so_far, ..
@@ -124,7 +121,6 @@ fn add_char_into_object(
             }
         }
 
-        // Value string escape handling
         (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: true, .. }, '"') => {
             if let ObjectStatus::ValueQuoteOpen { ref key, .. } = current_status {
                 let key_str = key.iter().collect::<String>();
@@ -178,7 +174,6 @@ fn add_char_into_object(
             }
         }
 
-        // All other cases from the original implementation
         (&Value::Null, &ObjectStatus::Ready, '"') => {
             *object = json!("");
             *current_status = ObjectStatus::StringQuoteOpen(false);
@@ -188,7 +183,6 @@ fn add_char_into_object(
             *current_status = ObjectStatus::StartProperty;
         }
 
-        // ------ true ------
         (&Value::Null, &ObjectStatus::Ready, 't') => {
             *object = json!(true);
             *current_status = ObjectStatus::Scalar {
@@ -219,7 +213,6 @@ fn add_char_into_object(
             *current_status = ObjectStatus::Closed;
         }
 
-        // ------ false ------
         (&Value::Null, &ObjectStatus::Ready, 'f') => {
             *object = json!(false);
             *current_status = ObjectStatus::Scalar {
@@ -260,7 +253,6 @@ fn add_char_into_object(
             *current_status = ObjectStatus::Closed;
         }
 
-        // ------ null ------
         (&Value::Null, &ObjectStatus::Ready, 'n') => {
             *object = json!(null);
             *current_status = ObjectStatus::Scalar {
@@ -285,13 +277,11 @@ fn add_char_into_object(
                 if *value_so_far == vec!['n', 'u'] {
                     value_so_far.push('l');
                 } else if *value_so_far == vec!['n', 'u', 'l'] {
-                    // This is for the second 'l' in "null"
                     *current_status = ObjectStatus::Closed;
                 }
             }
         }
 
-        // ------ number ------
         (&Value::Null, &ObjectStatus::Ready, c @ '0'..='9') => {
             *object = Value::Number(c.to_digit(10).unwrap().into());
             *current_status = ObjectStatus::ScalarNumber {
@@ -310,7 +300,6 @@ fn add_char_into_object(
             } = current_status
             {
                 value_so_far.push(c);
-                // Parse based on whether it's a float or int
                 if let Value::Number(ref mut num) = object {
                     if value_so_far.contains(&'.') {
                         let parsed_number = value_so_far
@@ -341,7 +330,6 @@ fn add_char_into_object(
             }
         }
 
-        // Object handling
         (&Value::Object(_), &ObjectStatus::StartProperty, '"') => {
             *current_status = ObjectStatus::KeyQuoteOpen {
                 key_so_far: vec![],
@@ -367,7 +355,6 @@ fn add_char_into_object(
             }
         }
 
-        // ------ Add Scalar Value ------
         (&Value::Object(_), &ObjectStatus::Colon { .. }, char) => {
             if let ObjectStatus::Colon { ref key } = current_status {
                 *current_status = ObjectStatus::ValueScalar {
@@ -424,7 +411,6 @@ fn add_char_into_object(
             }
         }
 
-        // ------ Finished taking value ------
         (&Value::Object(_), &ObjectStatus::ValueQuoteClose, ',') => {
             *current_status = ObjectStatus::StartProperty;
         }
@@ -432,7 +418,6 @@ fn add_char_into_object(
             *current_status = ObjectStatus::Closed;
         }
 
-        // ------ white spaces ------
         (_, _, ' ' | '\n') => {}
 
         (val, st, c) => {
@@ -445,7 +430,6 @@ fn add_char_into_object(
     Ok(())
 }
 
-// The rest of the code remains the same
 #[cfg(debug_assertions)]
 pub fn parse_stream(json_string: &str) -> Result<Value, String> {
     let mut out: Value = Value::Null;
