@@ -59,7 +59,8 @@ impl IngestionPipeline {
         )
         .await?;
 
-        let text_content = to_text_content(task.content, &self.db, &self.config).await?;
+        let text_content =
+            to_text_content(task.content, &self.db, &self.config, &self.openai_client).await?;
 
         match self.process(&text_content).await {
             Ok(_) => {

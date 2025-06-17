@@ -22,10 +22,13 @@ use std::io::{Seek, SeekFrom};
 use tempfile::NamedTempFile;
 use tracing::{error, info};
 
+use crate::utils::image_parsing::extract_text_from_image;
+
 pub async fn to_text_content(
     ingestion_payload: IngestionPayload,
     db: &SurrealDbClient,
     config: &AppConfig,
+    openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
 ) -> Result<TextContent, AppError> {
     match ingestion_payload {
         IngestionPayload::Url {
@@ -67,7 +70,7 @@ pub async fn to_text_content(
             category,
             user_id,
         } => {
-            let text = extract_text_from_file(&file_info).await?;
+            let text = extract_text_from_file(&file_info, db, openai_client).await?;
             Ok(TextContent::new(
                 text,
                 Some(context),
@@ -195,7 +198,11 @@ async fn fetch_article_from_url(
 }
 
 /// Extracts text from a file based on its MIME type.
-async fn extract_text_from_file(file_info: &FileInfo) -> Result<String, AppError> {
+async fn extract_text_from_file(
+    file_info: &FileInfo,
+    db_client: &SurrealDbClient,
+    openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+) -> Result<String, AppError> {
     match file_info.mime_type.as_str() {
         "text/plain" => {
             // Read the file and return its content
@@ -212,8 +219,9 @@ async fn extract_text_from_file(file_info: &FileInfo) -> Result<String, AppError
             Err(AppError::NotFound(file_info.mime_type.clone()))
         }
         "image/png" | "image/jpeg" => {
-            // TODO: Implement OCR on image using a crate like `tesseract`
-            Err(AppError::NotFound(file_info.mime_type.clone()))
+            let content =
+                extract_text_from_image(&file_info.path, db_client, openai_client).await?;
+            Ok(content)
         }
         "application/octet-stream" => {
             let content = tokio::fs::read_to_string(&file_info.path).await?;

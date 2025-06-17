@@ -7,6 +7,11 @@
       <img src="/file/{{text_content.url_info.image_id}}" alt="website screenshot" />
     </figure>
     {% endif %}
+    {% if text_content.file_info.mime_type == "image/png" or text_content.file_info.mime_type == "image/jpeg" %}
+    <figure>
+      <img src="/file/{{text_content.file_info.id}}" alt="{{text_content.file_info.file_name}}" />
+    </figure>
+    {% endif %}
     <div class="card-body max-w-[95vw]">
       <h2 class="card-title truncate">
         {% if text_content.url_info %}

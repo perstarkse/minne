@@ -6,6 +6,11 @@
 {% if text_content.url_info.image_id %}
 <img class="rounded-t-md overflow-clip" src="/file/{{text_content.url_info.image_id}}" alt="Screenshot of the site" />
 {% endif %}
+{% if text_content.file_info.mime_type == "image/png" or text_content.file_info.mime_type == "image/jpeg" %}
+<figure>
+  <img src="/file/{{text_content.file_info.id}}" alt="{{text_content.file_info.file_name}}" />
+</figure>
+{% endif %}
 <div id="reader-{{text_content.id}}" class="markdown-content prose" data-content="{{text_content.text | escape }}">
   {{text_content.text | escape }}
 </div>

@@ -2819,6 +2819,7 @@ dependencies = [
  "async-openai",
  "axum",
  "axum_typed_multipart",
+ "base64 0.22.1",
  "chrono",
  "common",
  "composite-retrieval",

@@ -1,3 +1,4 @@
+[] implement prompt and model choice for image processing?
 [x] ollama and changing of openai_base_url
 [x] allow changing of port the server listens to
 [] archive ingressed webpage, pdf would be easy

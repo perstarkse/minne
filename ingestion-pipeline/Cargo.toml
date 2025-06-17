@@ -22,9 +22,9 @@ text-splitter = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 headless_chrome = { workspace = true }
+base64 = { workspace = true }
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }
-
 [features]
 docker = []

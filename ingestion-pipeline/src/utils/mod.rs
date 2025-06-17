@@ -1,3 +1,4 @@
+pub mod image_parsing;
 pub mod llm_instructions;
 
 use common::error::AppError;
