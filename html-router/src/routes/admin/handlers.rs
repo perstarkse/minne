@@ -39,27 +39,31 @@ pub async fn show_admin_panel(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let settings = SystemSettings::get_current(&state.db).await?;
-    let analytics = Analytics::get_current(&state.db).await?;
-    let users_count = Analytics::get_users_amount(&state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
-    let available_models = state
-        .openai_client
-        .models()
-        .list()
-        .await
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+    let (
+        settings_res,
+        analytics_res,
+        user_count_res,
+        conversation_archive_res,
+        available_models_res,
+    ) = tokio::join!(
+        SystemSettings::get_current(&state.db),
+        Analytics::get_current(&state.db),
+        Analytics::get_users_amount(&state.db),
+        User::get_user_conversations(&user.id, &state.db),
+        async { state.openai_client.models().list().await }
+    );
 
     Ok(TemplateResponse::new_template(
         "admin/base.html",
         AdminPanelData {
             user,
-            settings,
-            analytics,
-            available_models,
-            users: users_count,
+            settings: settings_res?,
+            analytics: analytics_res?,
+            available_models: available_models_res
+                .map_err(|e| AppError::InternalError(e.to_string()))?,
+            users: user_count_res?,
             default_query_prompt: DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
-            conversation_archive,
+            conversation_archive: conversation_archive_res?,
         },
     ))
 }
