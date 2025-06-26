@@ -14,7 +14,8 @@ services:
       SURREALDB_NAMESPACE: "test"
       OPENAI_API_KEY: "sk-key"
       DATA_DIR: "./data"
-      # RUST_LOG: "info"
+      HTTP_PORT: 3000
+      RUST_LOG: "info"
     depends_on:
       - surrealdb 
     networks:

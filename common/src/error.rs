@@ -29,8 +29,8 @@ pub enum AppError {
     Io(#[from] std::io::Error),
     #[error("Reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
-    #[error("Tiktoken error: {0}")]
-    Tiktoken(#[from] anyhow::Error),
+    #[error("Anyhow error: {0}")]
+    Anyhow(#[from] anyhow::Error),
     #[error("Ingestion Processing error: {0}")]
     Processing(String),
     #[error("DOM smoothie error: {0}")]
