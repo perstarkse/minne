@@ -7,6 +7,7 @@ use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 use super::ingestion_payload::IngestionPayload;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "name")]
 pub enum IngestionTaskStatus {
     Created,
     InProgress {
@@ -14,7 +15,9 @@ pub enum IngestionTaskStatus {
         last_attempt: DateTime<Utc>,
     },
     Completed,
-    Error(String),
+    Error {
+        message: String,
+    },
     Cancelled,
 }
 
@@ -85,10 +88,10 @@ impl IngestionTask {
             .query(
                 "SELECT * FROM type::table($table) 
              WHERE 
-                status = 'Created' 
+                status.name = 'Created' 
                 OR (
-                    status.InProgress != NONE 
-                    AND status.InProgress.attempts < $max_attempts
+                    status.name = 'InProgress'
+                    AND status.attempts < $max_attempts
                 )
              ORDER BY created_at ASC",
             )
@@ -241,7 +244,9 @@ mod tests {
         completed_task.status = IngestionTaskStatus::Completed;
 
         let mut error_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
-        error_task.status = IngestionTaskStatus::Error("Test error".to_string());
+        error_task.status = IngestionTaskStatus::Error {
+            message: "Test error".to_string(),
+        };
 
         // Store all tasks
         db.store_item(created_task)
@@ -280,7 +285,7 @@ mod tests {
                     }
                 }
                 IngestionTaskStatus::Completed => "Completed",
-                IngestionTaskStatus::Error(_) => "Error",
+                IngestionTaskStatus::Error { .. } => "Error",
                 IngestionTaskStatus::Cancelled => "Cancelled",
             })
             .collect();

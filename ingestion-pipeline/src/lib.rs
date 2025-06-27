@@ -44,7 +44,7 @@ pub async fn run_worker_loop(
                         Action::Update => {
                             match notification.data.status {
                                 IngestionTaskStatus::Completed
-                                | IngestionTaskStatus::Error(_)
+                                | IngestionTaskStatus::Error { .. }
                                 | IngestionTaskStatus::Cancelled => {
                                     info!(
                                         "Skipping already completed/error/cancelled task: {}",
@@ -58,7 +58,7 @@ pub async fn run_worker_loop(
                                         db.get_item::<IngestionTask>(&notification.data.id).await
                                     {
                                         match current_task.status {
-                                              IngestionTaskStatus::Error(_)
+                                            IngestionTaskStatus::Error { .. }
                                                   if attempts
                                                       < common::storage::types::ingestion_task::MAX_ATTEMPTS =>
                                               {

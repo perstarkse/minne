@@ -6,10 +6,7 @@ DEFINE TABLE IF NOT EXISTS ingestion_task SCHEMALESS;
 DEFINE FIELD IF NOT EXISTS created_at ON ingestion_task TYPE string;
 DEFINE FIELD IF NOT EXISTS updated_at ON ingestion_task TYPE string;
 
-# Custom fields from the IngestionTask struct
-# IngestionPayload is complex, store as object
 DEFINE FIELD IF NOT EXISTS content ON ingestion_task TYPE object;
-# IngestionTaskStatus can hold data (InProgress), store as object
 DEFINE FIELD IF NOT EXISTS status ON ingestion_task TYPE object;
 DEFINE FIELD IF NOT EXISTS user_id ON ingestion_task TYPE string;
 

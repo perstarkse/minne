@@ -186,9 +186,9 @@ pub async fn get_task_updates_stream(
                                     format!("In progress, attempt {}", attempts)
                                 }
                                 IngestionTaskStatus::Completed => "Completed".to_string(),
-                                IngestionTaskStatus::Error(ref err_msg) => {
+                                IngestionTaskStatus::Error { message } => {
                                     // Providing a user-friendly error message from the status
-                                    format!("Error: {}", err_msg)
+                                    format!("Error: {}", message)
                                 }
                                 IngestionTaskStatus::Cancelled => "Cancelled".to_string(),
                             };
@@ -197,9 +197,9 @@ pub async fn get_task_updates_stream(
 
                             // Check for terminal states to close the stream
                             match updated_task.status {
-                                IngestionTaskStatus::Completed |
-                                IngestionTaskStatus::Error(_) |
-                                IngestionTaskStatus::Cancelled => {
+                                IngestionTaskStatus::Completed
+                                | IngestionTaskStatus::Error { .. }
+                                | IngestionTaskStatus::Cancelled => {
                                     // Send a specific event that HTMX uses to close the connection
                                     // Send a event to reload the recent content
                                     // Send a event to remove the loading indicatior

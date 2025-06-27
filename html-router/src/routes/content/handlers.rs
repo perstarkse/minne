@@ -7,7 +7,7 @@ use axum_htmx::{HxBoosted, HxRequest};
 use serde::{Deserialize, Serialize};
 
 use common::storage::types::{
-    conversation::Conversation, file_info::FileInfo, text_content::TextContent, user::User,
+    conversation::Conversation, file_info::FileInfo, text_content::TextContent, user::User, knowledge_entity::KnowledgeEntity, text_chunk::TextChunk,
 };
 
 use crate::{
@@ -137,6 +137,10 @@ pub async fn delete_text_content(
     if let Some(file_info) = &text_content.file_info {
         FileInfo::delete_by_id(&file_info.id, &state.db).await?;
     }
+
+    // Delete related knowledge entities and text chunks
+    KnowledgeEntity::delete_by_source_id(&id, &state.db).await?;
+    TextChunk::delete_by_source_id(&id, &state.db).await?;
 
     // Delete the text content
     state.db.delete_item::<TextContent>(&id).await?;

@@ -19,10 +19,12 @@
     </div>
     <div>
       <div class="[&:before]:content-['Status:_'] [&:before]:opacity-60">
-        {% if item.status.InProgress %}
-        In Progress, attempt {{item.status.InProgress.attempts}}
+        {% if item.status.name == "InProgress" %}
+        In Progress, attempt {{item.status.attempts}}
+        {% elif item.status.name == "Error" %}
+        Error: {{item.status.message}}
         {% else %}
-        {{item.status}}
+        {{item.status.name}}
         {% endif %}
       </div>
       <div class="text-xs font-semibold opacity-60">

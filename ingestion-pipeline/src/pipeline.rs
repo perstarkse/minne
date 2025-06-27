@@ -72,7 +72,9 @@ impl IngestionPipeline {
                 if current_attempts >= MAX_ATTEMPTS {
                     IngestionTask::update_status(
                         &task.id,
-                        IngestionTaskStatus::Error(format!("Max attempts reached: {}", e)),
+                        IngestionTaskStatus::Error {
+                            message: format!("Max attempts reached: {}", e),
+                        },
                         &self.db,
                     )
                     .await?;
