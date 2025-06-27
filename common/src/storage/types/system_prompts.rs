@@ -54,3 +54,10 @@ Guidelines:
 7. Only create relationships between existing KnowledgeEntities.
 8. Entities that exist already in the database should NOT be created again. If there is only a minor overlap, skip creating a new entity.
 9. A new relationship MUST include a newly created KnowledgeEntity."#;
+
+pub static DEFAULT_IMAGE_PROCESSING_PROMPT: &str = r#"Analyze this image and respond based on its primary content:
+- If the image is mainly text (document, screenshot, sign), transcribe the text verbatim.
+- If the image is mainly visual (photograph, art, landscape), provide a concise description of the scene.
+- For hybrid images (diagrams, ads), briefly describe the visual, then transcribe the text under a "Text:" heading.
+
+Respond directly with the analysis."#;

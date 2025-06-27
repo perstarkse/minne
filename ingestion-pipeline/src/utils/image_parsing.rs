@@ -22,17 +22,12 @@ pub async fn extract_text_from_image(
     let image_url = format!("data:image/png;base64,{}", base64_image);
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model(system_settings.processing_model)
+        .model(system_settings.image_processing_model)
         .max_tokens(6400_u32)
         .messages([ChatCompletionRequestUserMessageArgs::default()
             .content(vec![
                 ChatCompletionRequestMessageContentPartTextArgs::default()
-                    .text(r#"Analyze this image and respond based on its primary content:
-                            - If the image is mainly text (document, screenshot, sign), transcribe the text verbatim.
-                            - If the image is mainly visual (photograph, art, landscape), provide a concise description of the scene.
-                            - For hybrid images (diagrams, ads), briefly describe the visual, then transcribe the text under a "Text:" heading.
-                            
-                            Respond directly with the analysis."#)
+                    .text(system_settings.image_processing_prompt)
                     .build()?
                     .into(),
                 ChatCompletionRequestMessageContentPartImageArgs::default()

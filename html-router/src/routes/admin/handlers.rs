@@ -8,7 +8,10 @@ use common::{
         analytics::Analytics,
         conversation::Conversation,
         knowledge_entity::KnowledgeEntity,
-        system_prompts::{DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT, DEFAULT_QUERY_SYSTEM_PROMPT},
+        system_prompts::{
+            DEFAULT_IMAGE_PROCESSING_PROMPT, DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT,
+            DEFAULT_QUERY_SYSTEM_PROMPT,
+        },
         system_settings::SystemSettings,
         text_chunk::TextChunk,
         user::User,
@@ -31,6 +34,7 @@ pub struct AdminPanelData {
     analytics: Analytics,
     users: i64,
     default_query_prompt: String,
+    default_image_prompt: String,
     conversation_archive: Vec<Conversation>,
     available_models: ListModelResponse,
 }
@@ -63,6 +67,7 @@ pub async fn show_admin_panel(
                 .map_err(|e| AppError::InternalError(e.to_string()))?,
             users: user_count_res?,
             default_query_prompt: DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
+            default_image_prompt: DEFAULT_IMAGE_PROCESSING_PROMPT.to_string(),
             conversation_archive: conversation_archive_res?,
         },
     ))
@@ -122,6 +127,7 @@ pub async fn toggle_registration_status(
 pub struct ModelSettingsInput {
     query_model: String,
     processing_model: String,
+    image_processing_model: String,
     embedding_model: String,
     embedding_dimensions: Option<u32>,
 }
@@ -152,6 +158,7 @@ pub async fn update_model_settings(
     let new_settings = SystemSettings {
         query_model: input.query_model,
         processing_model: input.processing_model,
+        image_processing_model: input.image_processing_model,
         embedding_model: input.embedding_model,
         // Use new dimensions if provided, otherwise retain the current ones.
         embedding_dimensions: input
@@ -326,6 +333,65 @@ pub async fn patch_ingestion_prompt(
 
     let new_settings = SystemSettings {
         ingestion_system_prompt: input.ingestion_system_prompt,
+        ..current_settings.clone()
+    };
+
+    SystemSettings::update(&state.db, new_settings.clone()).await?;
+
+    Ok(TemplateResponse::new_partial(
+        "admin/base.html",
+        "system_prompt_section",
+        SystemPromptSectionData {
+            settings: new_settings,
+        },
+    ))
+}
+
+#[derive(Serialize)]
+pub struct ImagePromptEditData {
+    settings: SystemSettings,
+    default_image_prompt: String,
+}
+
+pub async fn show_edit_image_prompt(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Early return if the user is not admin
+    if !user.admin {
+        return Ok(TemplateResponse::redirect("/"));
+    };
+
+    let settings = SystemSettings::get_current(&state.db).await?;
+
+    Ok(TemplateResponse::new_template(
+        "admin/edit_image_prompt_modal.html",
+        ImagePromptEditData {
+            settings,
+            default_image_prompt: DEFAULT_IMAGE_PROCESSING_PROMPT.to_string(),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct ImagePromptUpdateInput {
+    image_processing_prompt: String,
+}
+
+pub async fn patch_image_prompt(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    Form(input): Form<ImagePromptUpdateInput>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Early return if the user is not admin
+    if !user.admin {
+        return Ok(TemplateResponse::redirect("/"));
+    };
+
+    let current_settings = SystemSettings::get_current(&state.db).await?;
+
+    let new_settings = SystemSettings {
+        image_processing_prompt: input.image_processing_prompt,
         ..current_settings.clone()
     };
 

@@ -15,6 +15,8 @@ pub struct SystemSettings {
     pub embedding_dimensions: u32,
     pub query_system_prompt: String,
     pub ingestion_system_prompt: String,
+    pub image_processing_model: String,
+    pub image_processing_prompt: String,
 }
 
 impl StoredObject for SystemSettings {
@@ -78,6 +80,7 @@ mod tests {
         assert_eq!(settings.require_email_verification, false);
         assert_eq!(settings.query_model, "gpt-4o-mini");
         assert_eq!(settings.processing_model, "gpt-4o-mini");
+        assert_eq!(settings.image_processing_model, "gpt-4o-mini");
         // Dont test these for now, having a hard time getting the formatting exactly the same
         // assert_eq!(
         //     settings.query_system_prompt,

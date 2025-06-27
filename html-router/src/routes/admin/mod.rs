@@ -5,8 +5,9 @@ use axum::{
     Router,
 };
 use handlers::{
-    patch_ingestion_prompt, patch_query_prompt, show_admin_panel, show_edit_ingestion_prompt,
-    show_edit_system_prompt, toggle_registration_status, update_model_settings,
+    patch_image_prompt, patch_ingestion_prompt, patch_query_prompt, show_admin_panel,
+    show_edit_image_prompt, show_edit_ingestion_prompt, show_edit_system_prompt,
+    toggle_registration_status, update_model_settings,
 };
 
 use crate::html_state::HtmlState;
@@ -24,4 +25,6 @@ where
         .route("/update-query-prompt", patch(patch_query_prompt))
         .route("/edit-ingestion-prompt", get(show_edit_ingestion_prompt))
         .route("/update-ingestion-prompt", patch(patch_ingestion_prompt))
+        .route("/edit-image-prompt", get(show_edit_image_prompt))
+        .route("/update-image-prompt", patch(patch_image_prompt))
 }
