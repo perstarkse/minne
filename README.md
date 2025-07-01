@@ -8,6 +8,10 @@
 
 ![Screenshot](screenshot.png)
 
+## Demo deployment
+
+To test *Minne* out, enter [this](https://minne-demo.stark.pub) read-only demo deployment to view and test functionality out.
+
 ## The "Why" Behind Minne
 
 For a while I've been fascinated by Zettelkasten-style PKM systems. While tools like Logseq and Obsidian are excellent, I found the manual linking process to be a hindrance for me. I also wanted a centralized storage and easy access across devices.
