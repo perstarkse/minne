@@ -13,3 +13,4 @@ DEFINE FIELD IF NOT EXISTS embedding_dimensions ON system_settings TYPE int;
 DEFINE FIELD IF NOT EXISTS query_system_prompt ON system_settings TYPE string;
 DEFINE FIELD IF NOT EXISTS ingestion_system_prompt ON system_settings TYPE string;
 DEFINE FIELD IF NOT EXISTS image_processing_prompt ON system_settings TYPE string;
+DEFINE FIELD IF NOT EXISTS voice_processing_model ON system_settings TYPE string;

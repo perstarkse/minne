@@ -22,7 +22,7 @@ use std::io::{Seek, SeekFrom};
 use tempfile::NamedTempFile;
 use tracing::{error, info};
 
-use crate::utils::image_parsing::extract_text_from_image;
+use crate::utils::{audio_transcription::transcribe_audio_file, image_parsing::extract_text_from_image};
 
 pub async fn to_text_content(
     ingestion_payload: IngestionPayload,
@@ -230,6 +230,10 @@ async fn extract_text_from_file(
         "text/x-rust" => {
             let content = tokio::fs::read_to_string(&file_info.path).await?;
             Ok(content)
+        }
+        "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav" | "audio/webm" | "audio/mp4" | "audio/ogg" | "audio/flac" => {
+
+            transcribe_audio_file(&file_info.path, db_client, openai_client).await
         }
         // Handle other MIME types as needed
         _ => Err(AppError::NotFound(file_info.mime_type.clone())),

@@ -128,6 +128,7 @@ pub struct ModelSettingsInput {
     query_model: String,
     processing_model: String,
     image_processing_model: String,
+    voice_processing_model: String,
     embedding_model: String,
     embedding_dimensions: Option<u32>,
 }
@@ -159,6 +160,7 @@ pub async fn update_model_settings(
         query_model: input.query_model,
         processing_model: input.processing_model,
         image_processing_model: input.image_processing_model,
+        voice_processing_model: input.voice_processing_model,
         embedding_model: input.embedding_model,
         // Use new dimensions if provided, otherwise retain the current ones.
         embedding_dimensions: input

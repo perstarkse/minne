@@ -107,6 +107,22 @@
           </p>
         </div>
 
+        <!-- Voice Processing Model -->
+        <div class="form-control mb-4">
+          <label class="label">
+            <span class="label-text">Voice Processing Model</span>
+          </label>
+          <select name="voice_processing_model" class="select select-bordered w-full">
+            {% for model in available_models.data %}
+            <option value="{{model.id}}" {% if settings.voice_processing_model==model.id %} selected {% endif %}>{{model.id}}</option>
+            {% endfor %}
+          </select>
+          <p class="text-xs text-gray-500 mt-1">
+            Current used:
+            <span class="font-mono">{{settings.voice_processing_model}}</span>
+          </p>
+        </div>
+
         <!-- Embedding Model -->
         <div class="form-control mb-4">
           <label class="label">

@@ -10,7 +10,7 @@
 
 ## Demo deployment
 
-To test *Minne* out, enter [this](https://minne-demo.stark.pub) read-only demo deployment to view and test functionality out.
+To test _Minne_ out, enter [this](https://minne-demo.stark.pub) read-only demo deployment to view and test functionality out.
 
 ## The "Why" Behind Minne
 
@@ -70,7 +70,7 @@ This is a great way to manage Minne and its SurrealDB dependency together.
 1. Create a `docker-compose.yml` file:
 
    ```yaml
-   version: '3.8'
+   version: "3.8"
    services:
      minne:
        image: ghcr.io/perstarkse/minne:latest # Pulls the latest pre-built image
@@ -88,7 +88,7 @@ This is a great way to manage Minne and its SurrealDB dependency together.
          SURREALDB_DATABASE: "minne_db"
          SURREALDB_NAMESPACE: "minne_ns"
          OPENAI_API_KEY: "your_openai_api_key_here" # IMPORTANT: Replace with your actual key
-         #OPENAI_BASE_URL: "your_ollama_address" # Uncomment this and change it to override the default openai base url 
+         #OPENAI_BASE_URL: "your_ollama_address" # Uncomment this and change it to override the default openai base url
          HTTP_PORT: 3000
          DATA_DIR: "/data" # Data directory inside the container
          RUST_LOG: "minne=info,tower_http=info" # Example logging level
@@ -177,7 +177,7 @@ Binaries for Windows, macOS, and Linux (combined `main` version) are available o
      ```bash
      cargo run --release --bin worker
      ```
-   The compiled binaries will be in `target/release/`.
+     The compiled binaries will be in `target/release/`.
 
 ## Configuration
 
@@ -229,7 +229,7 @@ Once Minne is running:
 
 1. Access the web interface at `http://localhost:3000` (or your configured port).
 1. On iOS, consider setting up the [Minne iOS Shortcut](https://www.icloud.com/shortcuts/9aa960600ec14329837ba4169f57a166) for effortless content sending. **Add the shortcut, replace the [insert_url] and the [insert_api_key] snippets**.
-1. Start adding notes, URLs and explore your growing knowledge graph.
+1. Add notes, URLs, **audio files**, and explore your growing knowledge graph.
 1. Engage with the chat interface to query your saved content.
 1. Try the experimental visual graph explorer to see connections.
 

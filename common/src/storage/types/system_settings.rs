@@ -17,6 +17,7 @@ pub struct SystemSettings {
     pub ingestion_system_prompt: String,
     pub image_processing_model: String,
     pub image_processing_prompt: String,
+    pub voice_processing_model: String,
 }
 
 impl StoredObject for SystemSettings {

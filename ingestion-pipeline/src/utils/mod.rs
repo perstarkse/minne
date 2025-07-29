@@ -1,5 +1,6 @@
 pub mod image_parsing;
 pub mod llm_instructions;
+pub mod audio_transcription;
 
 use common::error::AppError;
 use std::collections::HashMap;
