@@ -1,0 +1,40 @@
+[package]
+name = "integration-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core dependencies
+tokio = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+
+# Axum and testing
+axum = { workspace = true }
+axum-test = { workspace = true }
+tower = { workspace = true }
+hyper = { workspace = true }
+
+# Database
+surrealdb = { workspace = true }
+
+# OpenAI client
+async-openai = { workspace = true }
+
+# Session management
+axum_session = { workspace = true }
+axum_session_surreal = { workspace = true }
+
+# Local workspace dependencies
+common = { path = "../common" }
+api-router = { path = "../api-router" }
+html-router = { path = "../html-router" }
+
+# Test utilities
+tempfile = { workspace = true }
+
+[[test]]
+name = "integration_tests"
+path = "tests/integration_tests.rs"

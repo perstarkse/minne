@@ -6,7 +6,8 @@ members = [
   "html-router",
   "ingestion-pipeline",
   "composite-retrieval",
-  "json-stream-parser"
+  "json-stream-parser",
+  "integration-tests"
 ]
 resolver = "2"
 
@@ -54,6 +55,11 @@ url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4", "serde"] }
 tokio-retry = "0.3.0"
 base64 = "0.22.1"
+
+# Testing dependencies
+axum-test = "15.0.1"
+tower = "0.5.1"
+hyper = "1.5.0"
 
 [profile.dist]
 inherits = "release"
