@@ -39,6 +39,8 @@ url = { workspace = true }
 uuid = { workspace = true } 
 surrealdb-migrations = { workspace = true } 
 tokio-retry = { workspace = true }
+object_store = { workspace = true }
+bytes = { workspace = true }
 
 
 [features]

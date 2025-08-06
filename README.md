@@ -87,11 +87,24 @@ This is a great way to manage Minne and its SurrealDB dependency together.
          SURREALDB_PASSWORD: "root_password" # Default from SurrealDB service below
          SURREALDB_DATABASE: "minne_db"
          SURREALDB_NAMESPACE: "minne_ns"
-         OPENAI_API_KEY: "your_openai_api_key_here" # IMPORTANT: Replace with your actual key
-         #OPENAI_BASE_URL: "your_ollama_address" # Uncomment this and change it to override the default openai base url
-         HTTP_PORT: 3000
-         DATA_DIR: "/data" # Data directory inside the container
-         RUST_LOG: "minne=info,tower_http=info" # Example logging level
+                 OPENAI_API_KEY: "your_openai_api_key_here" # IMPORTANT: Replace with your actual key
+        #OPENAI_BASE_URL: "your_ollama_address" # Uncomment this and change it to override the default openai base url
+        HTTP_PORT: 3000
+        
+        # Storage configuration (default: filesystem)
+        STORAGE_BACKEND: "filesystem"
+        DATA_DIR: "/data" # Data directory inside the container (filesystem backend only)
+        
+        # Alternative: S3 storage (uncomment and configure as needed)
+        # STORAGE_BACKEND: "s3"
+        # S3_BUCKET: "my-minne-bucket"
+        # S3_REGION: "us-east-1"
+        # S3_ENDPOINT: "https://s3.amazonaws.com"  # Optional, for S3-compatible services
+        # S3_ACCESS_KEY_ID: "your-access-key"     # Optional if using IAM roles
+        # S3_SECRET_ACCESS_KEY: "your-secret-key" # Optional if using IAM roles
+        # S3_PREFIX: "minne"                      # Optional
+        
+        RUST_LOG: "minne=info,tower_http=info" # Example logging level
        volumes:
          - ./minne_data:/data # Persists Minne's data (e.g., scraped content) on the host
        depends_on:
@@ -196,8 +209,21 @@ Minne can be configured using environment variables or a `config.yaml` file plac
 **Optional Configuration:**
 
 - `RUST_LOG`: Controls logging level (e.g., `minne=info,tower_http=debug`).
-- `DATA_DIR`: Directory to store local data like fetched webpage content (e.g., `./data`).
+- `DATA_DIR`: Directory to store local data like fetched webpage content (e.g., `./data`). Only used when `STORAGE_BACKEND=filesystem`.
 - `OPENAI_BASE_URL`: Base URL to a OpenAI API provider, such as Ollama.
+
+**Storage Backend Configuration:**
+
+- `STORAGE_BACKEND`: Storage backend to use (`filesystem` or `s3`). Default: `filesystem`.
+
+**S3 Storage Configuration (when `STORAGE_BACKEND=s3`):**
+
+- `S3_BUCKET`: S3 bucket name (required for S3 backend).
+- `S3_REGION`: AWS region (e.g., `us-east-1`). Optional if using custom endpoint.
+- `S3_ENDPOINT`: Custom S3 endpoint for S3-compatible services like MinIO, DigitalOcean Spaces, etc.
+- `S3_ACCESS_KEY_ID`: S3 access key ID. Optional if using IAM roles or environment credentials.
+- `S3_SECRET_ACCESS_KEY`: S3 secret access key. Optional if using IAM roles or environment credentials.
+- `S3_PREFIX`: Prefix for all object keys in the bucket. Default: `minne`.
 
 **Example `config.yaml`:**
 
@@ -208,10 +234,60 @@ surrealdb_password: "root_password"
 surrealdb_database: "minne_db"
 surrealdb_namespace: "minne_ns"
 openai_api_key: "sk-YourActualOpenAIKeyGoesHere"
+
+# Filesystem storage (default)
+storage_backend: "filesystem"
 data_dir: "./minne_app_data"
+
+# Alternative: S3 storage
+# storage_backend: "s3"
+# s3_bucket: "my-minne-bucket"
+# s3_region: "us-east-1"
+# s3_endpoint: "https://s3.amazonaws.com"  # Optional, use for S3-compatible services
+# s3_access_key_id: "your-access-key"     # Optional if using IAM roles
+# s3_secret_access_key: "your-secret-key" # Optional if using IAM roles
+# s3_prefix: "minne"                      # Optional, defaults to "minne"
+
 # rust_log: "info"
 # http_port: 3000
 ```
+
+## Storage Backends
+
+Minne supports multiple storage backends for file storage:
+
+### Filesystem Storage (Default)
+
+The default storage backend stores files on the local filesystem in a configurable directory structure: `{data_dir}/{user_id}/{file_id}/{filename}`.
+
+### S3-Compatible Object Storage
+
+Minne supports S3 and S3-compatible object storage services including:
+
+- **Amazon S3**: Set `S3_REGION` and optionally use IAM roles for authentication
+- **MinIO**: Set `S3_ENDPOINT` to your MinIO server URL
+- **DigitalOcean Spaces**: Set `S3_ENDPOINT` to your region's Spaces endpoint
+- **Backblaze B2**: Set `S3_ENDPOINT` to the B2 S3-compatible API endpoint
+- **Cloudflare R2**: Set `S3_ENDPOINT` to your R2 endpoint
+- **Any S3-compatible service**: Configure the appropriate endpoint
+
+**S3 Configuration Tips:**
+
+- For AWS S3, you can use IAM roles instead of access keys when running on EC2
+- For S3-compatible services, always set the `S3_ENDPOINT` to the service's API endpoint
+- The `S3_PREFIX` helps organize your files within the bucket and avoid conflicts
+- File paths in S3 follow the pattern: `{prefix}/{user_id}/{file_id}/{filename}`
+
+### Migrating Between Storage Backends
+
+When migrating from filesystem to S3 storage (or vice versa), you'll need to:
+
+1. **Export your data**: Use the SurrealDB export functionality to backup your database
+2. **Update configuration**: Change the `STORAGE_BACKEND` and related settings
+3. **Migrate files**: Manually copy files from the old storage to the new storage location
+4. **Update database paths**: Update the `path` field in `FileInfo` records to match the new storage format
+
+⚠️ **Note**: Automatic migration between storage backends is not currently implemented. Plan your storage backend choice accordingly or implement custom migration scripts if needed.
 
 ## Application Architecture (Binaries)
 

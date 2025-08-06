@@ -1,4 +1,6 @@
 use axum_typed_multipart::FieldData;
+use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use mime_guess::from_path;
 use sha2::{Digest, Sha256};
 use std::{
@@ -8,11 +10,18 @@ use std::{
 use tempfile::NamedTempFile;
 use thiserror::Error;
 use tokio::fs::remove_dir_all;
+use tokio::io::AsyncReadExt;
 use tracing::info;
 use uuid::Uuid;
 
 use crate::{
-    error::AppError, storage::db::SurrealDbClient, stored_object, utils::config::AppConfig,
+    error::AppError, 
+    storage::{
+        db::SurrealDbClient, 
+        backends::{StorageBackend, StorageError}
+    }, 
+    stored_object, 
+    utils::config::AppConfig,
 };
 
 #[derive(Error, Debug)]
@@ -34,6 +43,9 @@ pub enum FileError {
 
     #[error("File name missing in metadata")]
     MissingFileName,
+
+    #[error("Storage backend error: {0}")]
+    Storage(#[from] StorageError),
 }
 
 stored_object!(FileInfo, "file", {
@@ -49,17 +61,22 @@ impl FileInfo {
         field_data: FieldData<NamedTempFile>,
         db_client: &SurrealDbClient,
         user_id: &str,
-        config: &AppConfig,
+        storage_backend: &dyn StorageBackend,
     ) -> Result<Self, FileError> {
-        info!("Data_dir: {:?}", config);
         let file = field_data.contents;
         let file_name = field_data
             .metadata
             .file_name
             .ok_or(FileError::MissingFileName)?;
 
+        // Read file content into memory
+        let mut file_content = Vec::new();
+        let mut file_reader = tokio::fs::File::open(file.path()).await?;
+        file_reader.read_to_end(&mut file_content).await?;
+        let content_bytes = Bytes::from(file_content);
+
         // Calculate SHA256
-        let sha256 = Self::get_sha(&file).await?;
+        let sha256 = Self::calculate_sha256(&content_bytes);
 
         // Early return if file already exists
         match Self::get_by_sha(&sha256, db_client).await {
@@ -75,6 +92,20 @@ impl FileInfo {
         let uuid = Uuid::new_v4();
         let sanitized_file_name = Self::sanitize_file_name(&file_name);
 
+        // Guess content type
+        let content_type = Self::guess_mime_type(Path::new(&sanitized_file_name));
+
+        // Store file using the storage backend
+        let storage_path = storage_backend
+            .store_file(
+                user_id,
+                &uuid,
+                &sanitized_file_name,
+                content_bytes,
+                Some(&content_type),
+            )
+            .await?;
+
         let now = Utc::now();
         // Create new FileInfo instance
         let file_info = Self {
@@ -83,11 +114,8 @@ impl FileInfo {
             updated_at: now,
             file_name,
             sha256,
-            path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id, config)
-                .await?
-                .to_string_lossy()
-                .into(),
-            mime_type: Self::guess_mime_type(Path::new(&sanitized_file_name)),
+            path: storage_path,
+            mime_type: content_type,
             user_id: user_id.to_string(),
         };
 
@@ -95,6 +123,17 @@ impl FileInfo {
         db_client.store_item(file_info.clone()).await?;
 
         Ok(file_info)
+    }
+
+    /// Legacy method: Create a new FileInfo using filesystem storage
+    pub async fn new_with_config(
+        field_data: FieldData<NamedTempFile>,
+        db_client: &SurrealDbClient,
+        user_id: &str,
+        config: &AppConfig,
+    ) -> Result<Self, FileError> {
+        let storage_backend = config.create_storage_backend().await?;
+        Self::new(field_data, db_client, user_id, storage_backend.as_ref()).await
     }
 
     /// Guesses the MIME type based on the file extension.
@@ -132,6 +171,14 @@ impl FileInfo {
 
         let digest = hasher.finalize();
         Ok(format!("{:x}", digest))
+    }
+
+    /// Calculate SHA256 hash from bytes
+    fn calculate_sha256(content: &Bytes) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(content);
+        let digest = hasher.finalize();
+        format!("{:x}", digest)
     }
 
     /// Sanitizes the file name to prevent security vulnerabilities like directory traversal.
@@ -232,7 +279,68 @@ impl FileInfo {
             .ok_or(FileError::FileNotFound(sha256.to_string()))
     }
 
-    /// Removes FileInfo from database and file from disk
+    /// Retrieve file content using storage backend
+    ///
+    /// # Arguments
+    /// * `storage_backend` - Reference to storage backend
+    ///
+    /// # Returns
+    /// * `Result<Bytes, FileError>` - The file content or an error
+    pub async fn get_content(&self, storage_backend: &dyn StorageBackend) -> Result<Bytes, FileError> {
+        let stored_file = storage_backend.get_file(&self.path).await?;
+        Ok(stored_file.content)
+    }
+
+    /// Delete file using storage backend
+    ///
+    /// # Arguments
+    /// * `storage_backend` - Reference to storage backend
+    ///
+    /// # Returns
+    /// * `Result<(), FileError>` - Success or an error
+    pub async fn delete_content(&self, storage_backend: &dyn StorageBackend) -> Result<(), FileError> {
+        storage_backend.delete_file(&self.path).await?;
+        Ok(())
+    }
+
+    /// Removes FileInfo from database and file from storage backend
+    ///
+    /// # Arguments
+    /// * `id` - Id of the FileInfo
+    /// * `db_client` - Reference to SurrealDbClient
+    /// * `storage_backend` - Reference to storage backend
+    ///
+    /// # Returns
+    ///  `Result<(), FileError>`
+    pub async fn delete_by_id_with_storage(
+        id: &str, 
+        db_client: &SurrealDbClient,
+        storage_backend: &dyn StorageBackend,
+    ) -> Result<(), AppError> {
+        // Get the FileInfo from the database
+        let file_info = match db_client.get_item::<FileInfo>(id).await? {
+            Some(info) => info,
+            None => {
+                return Err(AppError::from(FileError::FileNotFound(format!(
+                    "File with id {} was not found",
+                    id
+                ))))
+            }
+        };
+
+        // Delete the file from storage
+        if let Err(e) = file_info.delete_content(storage_backend).await {
+            // Log the error but don't fail the operation if the file is already gone
+            info!("Failed to delete file from storage: {}", e);
+        }
+
+        // Delete the FileInfo from the database
+        db_client.delete_item::<FileInfo>(id).await?;
+
+        Ok(())
+    }
+
+    /// Legacy method: Removes FileInfo from database and file from disk
     ///
     /// # Arguments
     /// * `id` - Id of the FileInfo
