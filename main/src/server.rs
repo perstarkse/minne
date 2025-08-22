@@ -11,7 +11,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up tracing
     tracing_subscriber::registry()
-        .with(fmt::layer())
+        .with(fmt::layer().with_writer(std::io::stderr))
         .with(EnvFilter::from_default_env())
         .try_init()
         .ok();
