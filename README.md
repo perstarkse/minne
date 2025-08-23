@@ -265,6 +265,14 @@ The roadmap as of now is:
 
 Contributions are welcome! Whether it's bug reports, feature suggestions, documentation improvements, or code contributions, please feel free to open an issue or submit a pull request.
 
+## Development
+
+Run test with
+```rust
+cargo test
+```
+There is currently a variety of unit tests for commonly used functions. Additional tests, especially integration tests would be very welcome.
+
 ## License
 
 Minne is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See the [LICENSE](LICENSE) file for details. This means if you run a modified version of Minne as a network service, you must also offer the source code of that modified version to its users.
