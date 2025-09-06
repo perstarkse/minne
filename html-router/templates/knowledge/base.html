@@ -3,10 +3,10 @@
 {% block title %}Minne - Knowledge{% endblock %}
 
 {% block main %}
-<main id="knowledge_pane" class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10">
-  <div class="container">
+<div id="knowledge_pane" class="flex justify-center grow mt-2 sm:mt-4 gap-6 ">
+  <div class="container overflow-y-auto">
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-      <h2 class="text-2xl font-bold">Entities</h2>
+      <h2 class="text-2xl font-bold">Knowledge Entities</h2>
       <form hx-get="/knowledge" hx-target="#knowledge_pane" hx-push-url="true" hx-swap="outerHTML"
         class="flex items-center gap-4 mt-2 sm:mt-0">
         <div class="form-control">
@@ -30,12 +30,16 @@
       </form>
     </div>
 
+    <h2 class="text-2xl font-bold mb-2 mt-10">Graph</h2>
+    <div class="rounded-box overflow-clip mt-4 shadow p-2 mb-10">
+      <div id="knowledge-graph" class="w-full" style="height: 640px;"
+        data-entity-type="{{ selected_entity_type | default(value='') }}"
+        data-content-category="{{ selected_content_category | default(value='') }}">
+      </div>
+    </div>
     {% include "knowledge/entity_list.html" %}
     <h2 class="text-2xl font-bold mb-2 mt-10">Relationships</h2>
     {% include "knowledge/relationship_table.html" %}
-    <div class="rounded-box overflow-clip mt-10 shadow">
-      {{ plot_html | safe }}
-    </div>
   </div>
-</main>
+</div>
 {% endblock %}

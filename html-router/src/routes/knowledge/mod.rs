@@ -6,8 +6,9 @@ use axum::{
     Router,
 };
 use handlers::{
-    delete_knowledge_entity, delete_knowledge_relationship, patch_knowledge_entity,
-    save_knowledge_relationship, show_edit_knowledge_entity_form, show_knowledge_page,
+    delete_knowledge_entity, delete_knowledge_relationship, get_knowledge_graph_json,
+    patch_knowledge_entity, save_knowledge_relationship, show_edit_knowledge_entity_form,
+    show_knowledge_page,
 };
 
 use crate::html_state::HtmlState;
@@ -19,6 +20,7 @@ where
 {
     Router::new()
         .route("/knowledge", get(show_knowledge_page))
+        .route("/knowledge/graph.json", get(get_knowledge_graph_json))
         .route(
             "/knowledge-entity/{id}",
             get(show_edit_knowledge_entity_form)

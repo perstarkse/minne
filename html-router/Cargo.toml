@@ -26,7 +26,6 @@ minijinja-embed = { workspace = true }
 minijinja-contrib = {workspace = true }
 axum-htmx = { workspace = true } 
 async-stream = { workspace = true } 
-plotly = { workspace = true } 
 tower-http = { workspace = true } 
 chrono-tz = { workspace = true } 
 tower-serve-static = { workspace = true } 

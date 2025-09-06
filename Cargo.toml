@@ -34,7 +34,6 @@ minijinja-autoreload = "2.5.0"
 minijinja-contrib = { version = "2.6.0", features = ["datetime", "timezone"] }
 minijinja-embed = { version = "2.8.0" }
 minijinja = { version = "2.5.0", features = ["loader", "multi_template"] }
-plotly = "0.12.1"
 reqwest = {version = "0.12.12", features = ["charset", "json"]}
 serde_json = "1.0.128"
 serde = { version = "1", features = ["derive"] }
