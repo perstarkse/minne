@@ -441,11 +441,9 @@ pub fn parse_stream(json_string: &str) -> Result<Value, String> {
             current_status.clone(),
             current_char.to_string()
         );
-        if let Err(e) = add_char_into_object(&mut out, &mut current_status, current_char) {
-            return Err(e);
-        }
+        add_char_into_object(&mut out, &mut current_status, current_char)?
     }
-    return Ok(out);
+    Ok(out)
 }
 
 #[cfg(not(debug_assertions))]
@@ -463,6 +461,11 @@ pub fn parse_stream(json_string: &str) -> Result<Value, String> {
 pub struct JsonStreamParser {
     object: Value,
     current_status: ObjectStatus,
+}
+impl Default for JsonStreamParser {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl JsonStreamParser {

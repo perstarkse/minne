@@ -22,7 +22,9 @@ use std::io::{Seek, SeekFrom};
 use tempfile::NamedTempFile;
 use tracing::{error, info};
 
-use crate::utils::{audio_transcription::transcribe_audio_file, image_parsing::extract_text_from_image};
+use crate::utils::{
+    audio_transcription::transcribe_audio_file, image_parsing::extract_text_from_image,
+};
 
 pub async fn to_text_content(
     ingestion_payload: IngestionPayload,
@@ -37,7 +39,7 @@ pub async fn to_text_content(
             category,
             user_id,
         } => {
-            let (article, file_info) = fetch_article_from_url(&url, db, &user_id, &config).await?;
+            let (article, file_info) = fetch_article_from_url(&url, db, &user_id, config).await?;
             Ok(TextContent::new(
                 article.text_content.into(),
                 Some(context),
@@ -179,7 +181,7 @@ async fn fetch_article_from_url(
     };
 
     // Store screenshot
-    let file_info = FileInfo::new(field_data, db, user_id, &config).await?;
+    let file_info = FileInfo::new(field_data, db, user_id, config).await?;
 
     // Parse content...
     let config = dom_smoothie::Config {
@@ -231,8 +233,8 @@ async fn extract_text_from_file(
             let content = tokio::fs::read_to_string(&file_info.path).await?;
             Ok(content)
         }
-        "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav" | "audio/webm" | "audio/mp4" | "audio/ogg" | "audio/flac" => {
-
+        "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav" | "audio/webm" | "audio/mp4"
+        | "audio/ogg" | "audio/flac" => {
             transcribe_audio_file(&file_info.path, db_client, openai_client).await
         }
         // Handle other MIME types as needed

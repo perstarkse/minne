@@ -83,7 +83,7 @@ pub async fn process_ingress_form(
         error: String,
     }
 
-    if input.content.as_ref().map_or(true, |c| c.len() < 2) && input.files.is_empty() {
+    if input.content.as_ref().is_none_or(|c| c.len() < 2) && input.files.is_empty() {
         return Ok(TemplateResponse::new_template(
             "index/signed_in/ingress_form.html",
             IngressFormData {

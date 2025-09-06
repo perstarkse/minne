@@ -30,5 +30,5 @@ pub fn get_config() -> Result<AppConfig, ConfigError> {
         .add_source(Environment::default())
         .build()?;
 
-    Ok(config.try_deserialize()?)
+    config.try_deserialize()
 }

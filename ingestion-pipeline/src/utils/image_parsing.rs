@@ -48,7 +48,7 @@ pub async fn extract_text_from_image(
 
     let description = response
         .choices
-        .get(0)
+        .first()
         .and_then(|c| c.message.content.as_ref())
         .cloned()
         .unwrap_or_else(|| "No description found.".to_string());

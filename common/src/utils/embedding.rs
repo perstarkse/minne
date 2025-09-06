@@ -68,7 +68,7 @@ pub async fn generate_embedding_with_params(
     let request = CreateEmbeddingRequestArgs::default()
         .model(model)
         .input([input])
-        .dimensions(dimensions as u32)
+        .dimensions(dimensions)
         .build()?;
 
     let response = client.embeddings().create(request).await?;

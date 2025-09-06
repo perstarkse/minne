@@ -50,7 +50,7 @@ pub async fn ingest_data(
         })
         .collect();
 
-    try_join_all(futures).await.map_err(AppError::from)?;
+    try_join_all(futures).await?;
 
     Ok(StatusCode::OK)
 }

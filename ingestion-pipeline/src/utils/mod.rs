@@ -1,6 +1,6 @@
+pub mod audio_transcription;
 pub mod image_parsing;
 pub mod llm_instructions;
-pub mod audio_transcription;
 
 use common::error::AppError;
 use std::collections::HashMap;
@@ -33,16 +33,12 @@ impl GraphMapper {
         }
 
         // If parsing fails, look it up in the map.
-        self.key_to_id
-            .get(key)
-            .map(|id| *id) // Dereference the &Uuid to get Uuid
-            // If `get` returned None, create and return an error.
-            .ok_or_else(|| {
-                AppError::GraphMapper(format!(
-                    "Key '{}' is not a valid UUID and was not found in the map.",
-                    key
-                ))
-            })
+        self.key_to_id.get(key).copied().ok_or_else(|| {
+            AppError::GraphMapper(format!(
+                "Key '{}' is not a valid UUID and was not found in the map.",
+                key
+            ))
+        })
     }
 
     /// Assigns a new UUID for a given key. (No changes needed here)
@@ -56,7 +52,7 @@ impl GraphMapper {
     pub fn get_id(&self, key: &str) -> Result<Uuid, AppError> {
         self.key_to_id
             .get(key)
-            .map(|id| *id)
+            .copied()
             .ok_or_else(|| AppError::GraphMapper(format!("Key '{}' not found in map.", key)))
     }
 }

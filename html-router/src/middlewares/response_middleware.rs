@@ -188,7 +188,7 @@ where
                 if is_htmx {
                     (StatusCode::OK, [(axum_htmx::HX_REDIRECT, path)], "").into_response()
                 } else {
-                    Redirect::to(&path).into_response()
+                    Redirect::to(path).into_response()
                 }
             }
         }
