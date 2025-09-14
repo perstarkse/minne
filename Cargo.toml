@@ -53,6 +53,8 @@ url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4", "serde"] }
 tokio-retry = "0.3.0"
 base64 = "0.22.1"
+object_store = { version = "0.11.2" }
+bytes = "1.7.1"
 
 [profile.dist]
 inherits = "release"

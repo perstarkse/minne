@@ -2,6 +2,16 @@ use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 
 #[derive(Clone, Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum StorageKind {
+    Local,
+}
+
+fn default_storage_kind() -> StorageKind {
+    StorageKind::Local
+}
+
+#[derive(Clone, Deserialize, Debug)]
 pub struct AppConfig {
     pub openai_api_key: String,
     pub surrealdb_address: String,
@@ -14,6 +24,8 @@ pub struct AppConfig {
     pub http_port: u16,
     #[serde(default = "default_base_url")]
     pub openai_base_url: String,
+    #[serde(default = "default_storage_kind")]
+    pub storage: StorageKind,
 }
 
 fn default_data_dir() -> String {

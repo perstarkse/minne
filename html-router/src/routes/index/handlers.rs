@@ -5,8 +5,7 @@ use axum::{
     response::IntoResponse,
 };
 use serde::Serialize;
-use tokio::{fs::File, join};
-use tokio_util::io::ReaderStream;
+use tokio::join;
 
 use crate::{
     middlewares::{
@@ -23,6 +22,7 @@ use common::{
         text_chunk::TextChunk, text_content::TextContent, user::User,
     },
 };
+use common::storage::store;
 
 use crate::html_state::HtmlState;
 
@@ -77,7 +77,7 @@ pub async fn delete_text_content(
     let (_res1, _res2, _res3, _res4, _res5) = join!(
         async {
             if let Some(file_info) = text_content.file_info {
-                FileInfo::delete_by_id(&file_info.id, &state.db).await
+                FileInfo::delete_by_id(&file_info.id, &state.db, &state.config).await
             } else {
                 Ok(())
             }
@@ -177,14 +177,10 @@ pub async fn serve_file(
         return Ok(TemplateResponse::unauthorized().into_response());
     }
 
-    let path = std::path::Path::new(&file_info.path);
-
-    let file = match File::open(path).await {
-        Ok(f) => f,
-        Err(_e) => return Ok(TemplateResponse::server_error().into_response()),
+    let stream = match store::get_stream_at(&file_info.path, &state.config).await {
+        Ok(s) => s,
+        Err(_) => return Ok(TemplateResponse::server_error().into_response()),
     };
-
-    let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
 
     let mut headers = HeaderMap::new();

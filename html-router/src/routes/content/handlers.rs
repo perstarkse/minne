@@ -135,7 +135,7 @@ pub async fn delete_text_content(
 
     // If it has file info, delete that too
     if let Some(file_info) = &text_content.file_info {
-        FileInfo::delete_by_id(&file_info.id, &state.db).await?;
+        FileInfo::delete_by_id(&file_info.id, &state.db, &state.config).await?;
     }
 
     // Delete related knowledge entities and text chunks

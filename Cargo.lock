@@ -1212,6 +1212,7 @@ dependencies = [
  "axum_session_auth",
  "axum_session_surreal",
  "axum_typed_multipart",
+ "bytes",
  "chrono",
  "chrono-tz",
  "config",
@@ -1224,6 +1225,7 @@ dependencies = [
  "minijinja-autoreload",
  "minijinja-contrib",
  "minijinja-embed",
+ "object_store 0.11.2",
  "reqwest",
  "serde",
  "serde_json",
@@ -3545,6 +3547,27 @@ dependencies = [
 
 [[package]]
 name = "object_store"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cfccb68961a56facde1163f9319e0d15743352344e7808a11795fb99698dcaf"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chrono",
+ "futures",
+ "humantime",
+ "itertools 0.13.0",
+ "parking_lot",
+ "percent-encoding",
+ "snafu",
+ "tokio",
+ "tracing",
+ "url",
+ "walkdir",
+]
+
+[[package]]
+name = "object_store"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9ce831b09395f933addbc56d894d889e4b226eba304d4e7adbab591e26daf1e"
@@ -5043,6 +5066,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "snafu"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e84b3f4eacbf3a1ce05eac6763b4d629d60cbc94d632e4092c54ade71f1e1a2"
+dependencies = [
+ "snafu-derive",
+]
+
+[[package]]
+name = "snafu-derive"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+]
+
+[[package]]
 name = "snap"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5271,7 +5315,7 @@ dependencies = [
  "ndarray-stats",
  "num-traits",
  "num_cpus",
- "object_store",
+ "object_store 0.12.0",
  "parking_lot",
  "pbkdf2",
  "pharos",

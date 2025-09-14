@@ -3,16 +3,20 @@ use mime_guess::from_path;
 use sha2::{Digest, Sha256};
 use std::{
     io::{BufReader, Read},
-    path::{Path, PathBuf},
+    path::Path,
 };
 use tempfile::NamedTempFile;
 use thiserror::Error;
-use tokio::fs::remove_dir_all;
+use object_store::Error as ObjectStoreError;
+// futures imports no longer needed here after abstraction
 use tracing::info;
 use uuid::Uuid;
 
 use crate::{
-    error::AppError, storage::db::SurrealDbClient, stored_object, utils::config::AppConfig,
+    error::AppError,
+    storage::{db::SurrealDbClient, store},
+    stored_object,
+    utils::config::AppConfig,
 };
 
 #[derive(Error, Debug)]
@@ -34,6 +38,9 @@ pub enum FileError {
 
     #[error("File name missing in metadata")]
     MissingFileName,
+
+    #[error("Object store error: {0}")]
+    ObjectStore(#[from] ObjectStoreError),
 }
 
 stored_object!(FileInfo, "file", {
@@ -84,9 +91,7 @@ impl FileInfo {
             file_name,
             sha256,
             path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id, config)
-                .await?
-                .to_string_lossy()
-                .into(),
+                .await?,
             mime_type: Self::guess_mime_type(Path::new(&sanitized_file_name)),
             user_id: user_id.to_string(),
         };
@@ -165,7 +170,7 @@ impl FileInfo {
         }
     }
 
-    /// Persists the file to the filesystem under `{data_dir}/{user_id}/{uuid}/{file_name}`.
+    /// Persists the file under the logical location `{user_id}/{uuid}/{file_name}`.
     ///
     /// # Arguments
     /// * `uuid` - The UUID of the file.
@@ -175,43 +180,24 @@ impl FileInfo {
     /// * `config` - Application configuration containing data directory path
     ///
     /// # Returns
-    /// * `Result<PathBuf, FileError>` - The persisted file path or an error.
+    /// * `Result<String, FileError>` - The logical object location or an error.
     async fn persist_file(
         uuid: &Uuid,
         file: NamedTempFile,
         file_name: &str,
         user_id: &str,
         config: &AppConfig,
-    ) -> Result<PathBuf, FileError> {
-        info!("Data dir: {:?}", config.data_dir);
-        // Convert relative path to absolute path
-        let base_dir = if config.data_dir.starts_with('/') {
-            Path::new(&config.data_dir).to_path_buf()
-        } else {
-            std::env::current_dir()
-                .map_err(FileError::Io)?
-                .join(&config.data_dir)
-        };
+    ) -> Result<String, FileError> {
+        // Logical object location relative to the store root
+        let location = format!("{}/{}/{}", user_id, uuid, file_name);
+        info!("Persisting to object location: {}", location);
 
-        let user_dir = base_dir.join(user_id); // Create the user directory
-        let uuid_dir = user_dir.join(uuid.to_string()); // Create the UUID directory under the user directory
-
-        // Create the user and UUID directories if they don't exist
-        tokio::fs::create_dir_all(&uuid_dir)
+        let bytes = tokio::fs::read(file.path()).await?;
+        store::put_bytes_at(&location, bytes.into(), config)
             .await
-            .map_err(FileError::Io)?;
+            .map_err(FileError::from)?;
 
-        // Define the final file path
-        let final_path = uuid_dir.join(file_name);
-        info!("Final path: {:?}", final_path);
-
-        // Copy the temporary file to the final path
-        tokio::fs::copy(file.path(), &final_path)
-            .await
-            .map_err(FileError::Io)?;
-        info!("Copied file to {:?}", final_path);
-
-        Ok(final_path)
+        Ok(location)
     }
 
     /// Retrieves a `FileInfo` by SHA256.
@@ -240,7 +226,11 @@ impl FileInfo {
     ///
     /// # Returns
     ///  `Result<(), FileError>`
-    pub async fn delete_by_id(id: &str, db_client: &SurrealDbClient) -> Result<(), AppError> {
+    pub async fn delete_by_id(
+        id: &str,
+        db_client: &SurrealDbClient,
+        config: &AppConfig,
+    ) -> Result<(), AppError> {
         // Get the FileInfo from the database
         let file_info = match db_client.get_item::<FileInfo>(id).await? {
             Some(info) => info,
@@ -252,25 +242,13 @@ impl FileInfo {
             }
         };
 
-        // Remove the file and its parent directory
-        let file_path = Path::new(&file_info.path);
-        if file_path.exists() {
-            // Get the parent directory of the file
-            if let Some(parent_dir) = file_path.parent() {
-                // Remove the entire directory containing the file
-                remove_dir_all(parent_dir).await?;
-                info!("Removed directory {:?} and its contents", parent_dir);
-            } else {
-                return Err(AppError::from(FileError::FileNotFound(
-                    "File has no parent directory".to_string(),
-                )));
-            }
-        } else {
-            return Err(AppError::from(FileError::FileNotFound(format!(
-                "File at path {:?} was not found",
-                file_path
-            ))));
-        }
+        // Remove the object's parent prefix in the object store
+        let (parent_prefix, _file_name) = store::split_object_path(&file_info.path)
+            .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
+        store::delete_prefix_at(&parent_prefix, config)
+            .await
+            .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
+        info!("Removed object prefix {} and its contents via object_store", parent_prefix);
 
         // Delete the FileInfo from the database
         db_client.delete_item::<FileInfo>(id).await?;
@@ -300,6 +278,7 @@ mod tests {
     use super::*;
     use axum::http::HeaderMap;
     use axum_typed_multipart::FieldMetadata;
+    use crate::utils::config::StorageKind;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -326,7 +305,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cross_filesystem_file_operations() {
+    async fn test_fileinfo_create_read_delete() {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
@@ -351,6 +330,7 @@ mod tests {
             surrealdb_database: "test_db".to_string(),
             http_port: 3000,
             openai_base_url: "..".to_string(),
+            storage: StorageKind::Local,
         };
 
         // Test file creation
@@ -358,14 +338,11 @@ mod tests {
             .await
             .expect("Failed to create file across filesystems");
 
-        // Verify the file exists and has correct content
-        let file_path = Path::new(&file_info.path);
-        assert!(file_path.exists(), "File should exist at {:?}", file_path);
-
-        let file_content = tokio::fs::read_to_string(file_path)
+        // Verify the file exists via object_store and has correct content
+        let bytes = store::get_bytes_at(&file_info.path, &config)
             .await
-            .expect("Failed to read file content");
-        assert_eq!(file_content, String::from_utf8_lossy(content));
+            .expect("Failed to read file content via object_store");
+        assert_eq!(bytes, content.as_slice());
 
         // Test file reading
         let retrieved = FileInfo::get_by_id(&file_info.id, &db)
@@ -375,17 +352,20 @@ mod tests {
         assert_eq!(retrieved.sha256, file_info.sha256);
 
         // Test file deletion
-        FileInfo::delete_by_id(&file_info.id, &db)
+        FileInfo::delete_by_id(&file_info.id, &db, &config)
             .await
             .expect("Failed to delete file");
-        assert!(!file_path.exists(), "File should be deleted");
+        assert!(
+            store::get_bytes_at(&file_info.path, &config).await.is_err(),
+            "File should be deleted"
+        );
 
         // Clean up the test directory
         let _ = tokio::fs::remove_dir_all(&config.data_dir).await;
     }
 
     #[tokio::test]
-    async fn test_cross_filesystem_duplicate_detection() {
+    async fn test_fileinfo_duplicate_detection() {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
@@ -410,6 +390,7 @@ mod tests {
             surrealdb_database: "test_db".to_string(),
             http_port: 3000,
             openai_base_url: "..".to_string(),
+            storage: StorageKind::Local,
         };
 
         // Store the original file
@@ -433,7 +414,7 @@ mod tests {
         assert_ne!(duplicate_file_info.file_name, duplicate_name);
 
         // Clean up
-        FileInfo::delete_by_id(&original_file_info.id, &db)
+        FileInfo::delete_by_id(&original_file_info.id, &db, &config)
             .await
             .expect("Failed to delete file");
         let _ = tokio::fs::remove_dir_all(&config.data_dir).await;
@@ -465,6 +446,7 @@ mod tests {
             surrealdb_database: "test_db".to_string(),
             http_port: 3000,
             openai_base_url: "..".to_string(),
+            storage: StorageKind::Local,
         };
         let file_info = FileInfo::new(field_data, &db, user_id, &config).await;
 
@@ -478,6 +460,11 @@ mod tests {
         assert_eq!(file_info.file_name, file_name);
         assert!(!file_info.sha256.is_empty());
         assert!(!file_info.path.is_empty());
+        // path should be logical: "user_id/uuid/file_name"
+        let parts: Vec<&str> = file_info.path.split('/').collect();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0], user_id);
+        assert_eq!(parts[2], file_name);
         assert!(file_info.mime_type.contains("text/plain"));
 
         // Verify it's in the database
@@ -516,6 +503,7 @@ mod tests {
             surrealdb_database: "test_db".to_string(),
             http_port: 3000,
             openai_base_url: "..".to_string(),
+            storage: StorageKind::Local,
         };
 
         let field_data1 = create_test_file(content, file_name);
@@ -667,50 +655,14 @@ mod tests {
             .await
             .expect("Failed to start in-memory surrealdb");
 
-        // Create a FileInfo instance directly (without persistence to disk)
-        let now = Utc::now();
-        let file_id = Uuid::new_v4().to_string();
-
-        // Create a temporary directory that mimics the structure we would have on disk
-        let base_dir = Path::new("./data");
-        let user_id = "test_user";
-        let user_dir = base_dir.join(user_id);
-        let uuid_dir = user_dir.join(&file_id);
-
-        tokio::fs::create_dir_all(&uuid_dir)
-            .await
-            .expect("Failed to create test directories");
-
-        // Create a test file in the directory
-        let test_file_path = uuid_dir.join("test_file.txt");
-        tokio::fs::write(&test_file_path, b"test content")
-            .await
-            .expect("Failed to write test file");
-
-        // The file path should point to our test file
-        let file_info = FileInfo {
-            id: file_id.clone(),
-            user_id: "user123".to_string(),
-            created_at: now,
-            updated_at: now,
-            sha256: "test_sha256_hash".to_string(),
-            path: test_file_path.to_string_lossy().to_string(),
-            file_name: "test_file.txt".to_string(),
-            mime_type: "text/plain".to_string(),
-        };
-
-        // Store it in the database
-        db.store_item(file_info.clone())
-            .await
-            .expect("Failed to store file info");
-
-        // Verify file exists on disk
-        assert!(tokio::fs::try_exists(&test_file_path)
-            .await
-            .unwrap_or(false));
+        // Create and persist a test file via FileInfo::new
+        let user_id = "user123";
+        let cfg = AppConfig { data_dir: "./data".to_string(), openai_api_key: "".to_string(), surrealdb_address: "".to_string(), surrealdb_username: "".to_string(), surrealdb_password: "".to_string(), surrealdb_namespace: "".to_string(), surrealdb_database: "".to_string(), http_port: 0, openai_base_url: "".to_string(), storage: crate::utils::config::StorageKind::Local };
+        let temp = create_test_file(b"test content", "test_file.txt");
+        let file_info = FileInfo::new(temp, &db, user_id, &cfg).await.expect("create file");
 
         // Delete the file
-        let delete_result = FileInfo::delete_by_id(&file_id, &db).await;
+        let delete_result = FileInfo::delete_by_id(&file_info.id, &db, &cfg).await;
 
         // Delete should be successful
         assert!(
@@ -721,7 +673,7 @@ mod tests {
 
         // Verify the file is removed from the database
         let retrieved: Option<FileInfo> = db
-            .get_item(&file_id)
+            .get_item(&file_info.id)
             .await
             .expect("Failed to query database");
         assert!(
@@ -729,14 +681,8 @@ mod tests {
             "FileInfo should be deleted from the database"
         );
 
-        // Verify directory is gone
-        assert!(
-            !tokio::fs::try_exists(&uuid_dir).await.unwrap_or(true),
-            "UUID directory should be deleted"
-        );
-
-        // Clean up test directory if it exists
-        let _ = tokio::fs::remove_dir_all(base_dir).await;
+        // Verify content no longer retrievable
+        assert!(store::get_bytes_at(&file_info.path, &cfg).await.is_err());
     }
 
     #[tokio::test]
@@ -749,7 +695,7 @@ mod tests {
             .expect("Failed to start in-memory surrealdb");
 
         // Try to delete a file that doesn't exist
-        let result = FileInfo::delete_by_id("nonexistent_id", &db).await;
+        let result = FileInfo::delete_by_id("nonexistent_id", &db, &AppConfig { data_dir: "./data".to_string(), openai_api_key: "".to_string(), surrealdb_address: "".to_string(), surrealdb_username: "".to_string(), surrealdb_password: "".to_string(), surrealdb_namespace: "".to_string(), surrealdb_database: "".to_string(), http_port: 0, openai_base_url: "".to_string(), storage: crate::utils::config::StorageKind::Local }).await;
 
         // Should fail with FileNotFound error
         assert!(result.is_err());
@@ -828,7 +774,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_data_directory_configuration() {
+    async fn test_fileinfo_persist_with_custom_root() {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
@@ -854,6 +800,7 @@ mod tests {
             surrealdb_database: "test_db".to_string(),
             http_port: 3000,
             openai_base_url: "..".to_string(),
+            storage: StorageKind::Local,
         };
 
         // Test file creation
@@ -861,27 +808,17 @@ mod tests {
             .await
             .expect("Failed to create file in custom data directory");
 
-        // Verify the file exists in the correct location
-        let file_path = Path::new(&file_info.path);
-        assert!(file_path.exists(), "File should exist at {:?}", file_path);
-
-        // Verify the file is in the correct data directory
-        assert!(
-            file_path.starts_with(custom_data_dir),
-            "File should be stored in the custom data directory"
-        );
-
-        // Verify the file has the correct content
-        let file_content = tokio::fs::read_to_string(file_path)
+        // Verify the file has the correct content via object_store
+        let file_content = store::get_bytes_at(&file_info.path, &config)
             .await
             .expect("Failed to read file content");
-        assert_eq!(file_content, String::from_utf8_lossy(content));
+        assert_eq!(file_content.as_ref(), content);
 
         // Test file deletion
-        FileInfo::delete_by_id(&file_info.id, &db)
+        FileInfo::delete_by_id(&file_info.id, &db, &config)
             .await
             .expect("Failed to delete file");
-        assert!(!file_path.exists(), "File should be deleted");
+        assert!(store::get_bytes_at(&file_info.path, &config).await.is_err());
 
         // Clean up the test directory
         let _ = tokio::fs::remove_dir_all(custom_data_dir).await;
