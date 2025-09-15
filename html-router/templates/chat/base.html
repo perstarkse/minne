@@ -9,6 +9,12 @@
 {% block main %}
 <div class="flex grow relative justify-center mt-2 sm:mt-4">
   <div class="container">
+    <section class="mb-3">
+      <div class="nb-panel p-3 flex items-center justify-between">
+        <h1 class="text-xl font-extrabold tracking-tight">Chat</h1>
+        <div class="text-xs opacity-70">Converse with your knowledge</div>
+      </div>
+    </section>
     <div class="overflow-auto hide-scrollbar">
       {% include "chat/history.html" %}
       {% include "chat/new_message_form.html" %}

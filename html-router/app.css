@@ -23,7 +23,7 @@
 
 @layer base {
   body {
-    @apply font-satoshi;
+    @apply font-satoshi bg-base-100 text-base-content antialiased selection:bg-yellow-300/40 selection:text-neutral;
   }
 
   html {
@@ -36,6 +36,245 @@
   ::backdrop,
   ::file-selector-button {
     border-color: var(--color-gray-200, currentColor);
+  }
+}
+
+/* Neobrutalist helpers influenced by Tufte principles */
+@layer components {
+
+  /* Offset, hard-edge shadow; minimal ink with strong contrast */
+  .nb-shadow {
+    box-shadow: 4px 4px 0 0 #000;
+    transition: transform 150ms, box-shadow 150ms;
+  }
+
+  .nb-shadow:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 0 #000;
+  }
+
+  .nb-card {
+    @apply bg-base-100 border-2 border-neutral p-4;
+    box-shadow: 4px 4px 0 0 #000;
+    transition: transform 150ms, box-shadow 150ms;
+  }
+
+  .nb-panel {
+    @apply bg-base-200 border-2 border-neutral;
+    box-shadow: 4px 4px 0 0 #000;
+    transition: transform 150ms, box-shadow 150ms;
+  }
+
+  .nb-btn {
+    @apply btn rounded-none border-2 border-neutral;
+    box-shadow: 4px 4px 0 0 #000;
+    transition: transform 150ms, box-shadow 150ms;
+  }
+
+  .nb-link {
+    @apply underline underline-offset-2 decoration-neutral hover:decoration-4;
+  }
+
+  .nb-stat {
+    @apply p-5 flex flex-col gap-1 bg-base-100 border-2 border-neutral;
+    box-shadow: 4px 4px 0 0 #000;
+    transition: transform 150ms, box-shadow 150ms;
+  }
+
+  /* Hairline rules and quiet gridlines for Tufte feel */
+  .u-hairline {
+    @apply border-t border-neutral/20;
+  }
+
+  .prose-tufte {
+    @apply prose prose-neutral max-w-prose leading-relaxed;
+  }
+
+  /* Encourage a consistent card look app-wide */
+  .card {
+    @apply border-2 border-neutral rounded-none;
+    box-shadow: 4px 4px 0 0 #000;
+  }
+
+  .card:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 0 #000;
+  }
+
+  /* Input styling with good dark/light contrast */
+  .nb-input {
+    @apply rounded-none border-2 border-neutral bg-base-100 text-base-content placeholder:text-base-content/60 px-3 py-[0.5rem];
+    box-shadow: 4px 4px 0 0 #000;
+    transition: transform 150ms, box-shadow 150ms, border-color 150ms;
+  }
+
+  .nb-input:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 0 #000;
+  }
+
+  .nb-input:focus {
+    outline: none;
+    box-shadow: 6px 6px 0 0 #000;
+  }
+
+  /* Select styling parallels inputs */
+  .nb-select {
+    @apply rounded-none border-2 border-neutral bg-base-100 text-base-content px-3 py-[0.5rem];
+    box-shadow: 4px 4px 0 0 #000;
+    transition: transform 150ms, box-shadow 150ms, border-color 150ms;
+  }
+
+  .nb-select:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 0 #000;
+  }
+
+  .nb-select:focus {
+    outline: none;
+    box-shadow: 6px 6px 0 0 #000;
+  }
+
+  /* Compact variants */
+  .nb-input-sm {
+    @apply text-sm px-2 py-[0.25rem];
+  }
+
+  .nb-select-sm {
+    @apply text-sm px-2 py-[0.25rem];
+  }
+
+  .nb-cta {
+    background-color: #9b5de5;
+    color: #fff;
+    border-color: #000;
+  }
+
+  .nb-cta:hover {
+    /* Match other nb-* hover affordances */
+    filter: saturate(1.1) brightness(1.05);
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 0 #000;
+  }
+
+  /* Badges */
+  .nb-badge {
+    @apply inline-flex items-center uppercase tracking-wide text-[10px] px-2 py-0.5 bg-base-100 border-2 border-neutral rounded-none;
+    box-shadow: 3px 3px 0 0 #000;
+  }
+
+  /* Chat bubbles neobrutalist */
+  .chat .chat-bubble {
+    @apply rounded-none border-2 border-neutral bg-base-100 text-neutral;
+    box-shadow: 4px 4px 0 0 #000;
+  }
+
+  /* Remove DaisyUI tail so our rectangle keeps clean borders/shadows */
+  .chat .chat-bubble::before,
+  .chat .chat-bubble::after {
+    display: none !important;
+    content: none !important;
+  }
+
+  .chat.chat-start .chat-bubble {
+    @apply bg-secondary text-secondary-content;
+  }
+
+  .chat.chat-end .chat-bubble {
+    @apply bg-base-100 text-neutral;
+  }
+
+  /* Tables */
+  .nb-table {
+    @apply w-full;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .nb-table thead th {
+    @apply uppercase tracking-wide text-xs bg-base-200 border-b-2 border-neutral;
+  }
+
+  .nb-table th,
+  .nb-table td {
+    @apply p-3;
+  }
+
+  .nb-table tbody tr+tr td {
+    @apply border-t border-neutral/30;
+  }
+
+  .nb-table tbody tr:hover {
+    @apply bg-base-200/40;
+  }
+
+  .nb-table tbody tr:hover td:first-child {
+    box-shadow: inset 3px 0 0 0 #000;
+  }
+
+  /* Checkboxes */
+  .nb-checkbox {
+    @apply appearance-none inline-block align-middle rounded-none border-2 border-neutral bg-base-100;
+    width: 1rem;
+    height: 1rem;
+    box-shadow: 3px 3px 0 0 #000;
+    transition: transform 150ms, box-shadow 150ms, border-color 150ms, background-color 150ms;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 80% 80%;
+    cursor: pointer;
+  }
+
+  .nb-checkbox:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 0 #000;
+  }
+
+  .nb-checkbox:focus-visible {
+    outline: 2px solid #000;
+    outline-offset: 2px;
+  }
+
+  .nb-checkbox:active {
+    transform: translate(0, 0);
+    box-shadow: 3px 3px 0 0 #000;
+  }
+
+  /* Tick mark in light mode (black) */
+  .nb-checkbox:checked {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+  }
+
+  /* Tick mark in dark mode (white) */
+  [data-theme="dark"] .nb-checkbox:checked {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+  }
+
+  /* Compact size */
+  .nb-checkbox-sm {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  /* Placeholder style for smaller, quieter helper text */
+  .nb-input::placeholder {
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    opacity: 0.75;
+  }
+}
+
+/* Theme-aware placeholder contrast tweaks */
+@layer base {
+
+  /* Light theme keeps default neutral tone via utilities */
+  [data-theme="dark"] .nb-input::placeholder,
+  [data-theme="dark"] .input::placeholder,
+  [data-theme="dark"] .textarea::placeholder,
+  [data-theme="dark"] textarea::placeholder,
+  [data-theme="dark"] input::placeholder {
+    color: rgba(255, 255, 255, 0.78) !important;
+    opacity: 0.85;
   }
 }
 
