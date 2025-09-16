@@ -13,7 +13,7 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         analytics_middleware::analytics_middleware, auth_middleware::require_auth,
-        response_middleware::with_template_response,
+        compression::compression_layer, response_middleware::with_template_response,
     },
 };
 
@@ -48,6 +48,7 @@ pub struct RouterFactory<S> {
     nested_protected_routes: Vec<(String, Router<S>)>,
     custom_middleware: MiddleWareVecType<S>,
     public_assets_config: Option<AssetsConfig>,
+    compression_enabled: bool,
 }
 
 struct AssetsConfig {
@@ -69,6 +70,7 @@ where
             nested_protected_routes: Vec::new(),
             custom_middleware: Vec::new(),
             public_assets_config: None,
+            compression_enabled: false,
         }
     }
 
@@ -112,6 +114,12 @@ where
         F: FnOnce(Router<S>) -> Router<S> + Send + 'static,
     {
         self.custom_middleware.push(Box::new(middleware_fn));
+        self
+    }
+
+    /// Enables response compression when building the router.
+    pub fn with_compression(mut self) -> Self {
+        self.compression_enabled = true;
         self
     }
 
@@ -169,21 +177,26 @@ where
         }
 
         // Apply common middleware
+        router = router.layer(from_fn_with_state(
+            self.app_state.clone(),
+            analytics_middleware::<HtmlState>,
+        ));
+        router = router.layer(map_response_with_state(
+            self.app_state.clone(),
+            with_template_response::<HtmlState>,
+        ));
+        router = router.layer(
+            AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(
+                self.app_state.db.client.clone(),
+            ))
+            .with_config(AuthConfig::<String>::default()),
+        );
+        router = router.layer(SessionLayer::new((*self.app_state.session_store).clone()));
+
+        if self.compression_enabled {
+            router = router.layer(compression_layer());
+        }
+
         router
-            .layer(from_fn_with_state(
-                self.app_state.clone(),
-                analytics_middleware::<HtmlState>,
-            ))
-            .layer(map_response_with_state(
-                self.app_state.clone(),
-                with_template_response::<HtmlState>,
-            ))
-            .layer(
-                AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(
-                    self.app_state.db.client.clone(),
-                ))
-                .with_config(AuthConfig::<String>::default()),
-            )
-            .layer(SessionLayer::new((*self.app_state.session_store).clone()))
     }
 }
