@@ -80,7 +80,7 @@
       function createTooltip() {
         const tooltip = document.createElement('div');
         tooltip.id = tooltipId;
-        tooltip.className = 'fixed z-[9999] bg-base-100 text-neutral p-3 border-2 border-neutral shadow-[4px_4px_0_0_#000] text-sm w-72 max-w-xs hidden';
+        tooltip.className = 'reference-tooltip hidden';
         tooltip.innerHTML = '<div class="animate-pulse">Loading...</div>';
         document.body.appendChild(tooltip);
         return tooltip;
@@ -135,15 +135,3 @@
     });
   }
 </script>
-
-<style>
-  #references-toggle- {
-      {
-      message.id
-    }
-  }
-
-  svg {
-    transition: transform 0.2s ease;
-  }
-</style>

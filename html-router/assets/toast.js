@@ -6,33 +6,31 @@
         return;
       }
       const alert = document.createElement('div');
-      // Base classes for the alert
-      alert.className = `alert alert-${type} mt-2 shadow-md flex flex-col text-start`;
+      alert.className = `alert toast-alert alert-${type}`;
+      alert.style.opacity = '1';
+      alert.style.transition = 'opacity 0.5s ease-out';
 
-      // Build inner HTML based on whether title is provided
-      let innerHTML = '';
       if (title) {
-        innerHTML += `<div class="font-bold text-lg">${title}</div>`; // Title element
-        innerHTML += `<div>${description}</div>`; // Description element
-      } else {
-        // Structure without title
-        innerHTML += `<span>${description}</span>`;
+        const titleEl = document.createElement('div');
+        titleEl.className = 'toast-alert-title';
+        titleEl.textContent = title;
+        alert.appendChild(titleEl);
       }
 
-      alert.innerHTML = innerHTML;
+      const bodyEl = document.createElement(title ? 'div' : 'span');
+      bodyEl.textContent = description;
+      alert.appendChild(bodyEl);
+
       container.appendChild(alert);
 
       // Auto-remove after a delay
       setTimeout(() => {
-        // Optional: Add fade-out effect
         alert.style.opacity = '0';
-        alert.style.transition = 'opacity 0.5s ease-out';
-        setTimeout(() => alert.remove(), 500); // Remove after fade
-      }, 3000); // Start fade-out after 3 seconds
+        setTimeout(() => alert.remove(), 500);
+      }, 3000);
     };
 
     document.body.addEventListener('toast', function (event) {
-      console.log(event);
       // Extract data from the event detail, matching the Rust payload
       const detail = event.detail;
       if (detail && detail.description) {
@@ -54,4 +52,3 @@
       if (container) container.innerHTML = '';
     });
   })
-

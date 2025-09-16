@@ -3,12 +3,6 @@
 {% block title %}Minne - Account{% endblock %}
 
 {% block main %}
-<style>
-  form.htmx-request {
-    opacity: 0.5;
-  }
-</style>
-
 <div class="flex justify-center grow mt-2 sm:mt-4 pb-4">
   <div class="container">
     <section class="mb-4">
@@ -41,7 +35,7 @@
           <a href="https://www.icloud.com/shortcuts/66985f7b98a74aaeac6ba29c3f1f0960"
             class="nb-btn nb-cta mt-2 w-full">Download iOS shortcut</a>
           {% else %}
-          <button hx-post="/set-api-key" class="nb-btn w-full" hx-swap="outerHTML">Create API-Key</button>
+          <button hx-post="/set-api-key" class="nb-btn nb-cta w-full" hx-swap="outerHTML">Create API-Key</button>
           {% endif %}
           {% endblock %}
         </label>
