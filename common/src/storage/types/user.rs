@@ -4,11 +4,14 @@ use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
+use super::text_chunk::TextChunk;
 use super::{
     conversation::Conversation, ingestion_task::IngestionTask, knowledge_entity::KnowledgeEntity,
     knowledge_relationship::KnowledgeRelationship, system_settings::SystemSettings,
     text_content::TextContent,
 };
+use chrono::Duration;
+use futures::try_join;
 
 #[derive(Deserialize)]
 pub struct CategoryResponse {
@@ -61,7 +64,93 @@ fn validate_timezone(input: &str) -> String {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DashboardStats {
+    pub total_documents: i64,
+    pub new_documents_week: i64,
+    pub total_entities: i64,
+    pub new_entities_week: i64,
+    pub total_conversations: i64,
+    pub new_conversations_week: i64,
+    pub total_text_chunks: i64,
+    pub new_text_chunks_week: i64,
+}
+
+#[derive(Deserialize)]
+struct CountResult {
+    count: i64,
+}
+
 impl User {
+    async fn count_total<T: crate::storage::types::StoredObject>(
+        db: &SurrealDbClient,
+        user_id: &str,
+    ) -> Result<i64, AppError> {
+        let result: Option<CountResult> = db
+            .client
+            .query("SELECT count() as count FROM type::table($table) WHERE user_id = $user_id GROUP ALL")
+            .bind(("table", T::table_name()))
+            .bind(("user_id", user_id.to_string()))
+            .await?
+            .take(0)?;
+        Ok(result.map(|r| r.count).unwrap_or(0))
+    }
+
+    async fn count_since<T: crate::storage::types::StoredObject>(
+        db: &SurrealDbClient,
+        user_id: &str,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, AppError> {
+        let result: Option<CountResult> = db
+            .client
+            .query(
+                "SELECT count() as count FROM type::table($table) WHERE user_id = $user_id AND created_at >= $since GROUP ALL",
+            )
+            .bind(("table", T::table_name()))
+            .bind(("user_id", user_id.to_string()))
+            .bind(("since", since))
+            .await?
+            .take(0)?;
+        Ok(result.map(|r| r.count).unwrap_or(0))
+    }
+
+    pub async fn get_dashboard_stats(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<DashboardStats, AppError> {
+        let since = chrono::Utc::now() - Duration::days(7);
+
+        let (
+            total_documents,
+            new_documents_week,
+            total_entities,
+            new_entities_week,
+            total_conversations,
+            new_conversations_week,
+            total_text_chunks,
+            new_text_chunks_week,
+        ) = try_join!(
+            Self::count_total::<TextContent>(db, user_id),
+            Self::count_since::<TextContent>(db, user_id, since),
+            Self::count_total::<KnowledgeEntity>(db, user_id),
+            Self::count_since::<KnowledgeEntity>(db, user_id, since),
+            Self::count_total::<Conversation>(db, user_id),
+            Self::count_since::<Conversation>(db, user_id, since),
+            Self::count_total::<TextChunk>(db, user_id),
+            Self::count_since::<TextChunk>(db, user_id, since)
+        )?;
+
+        Ok(DashboardStats {
+            total_documents,
+            new_documents_week,
+            total_entities,
+            new_entities_week,
+            total_conversations,
+            new_conversations_week,
+            total_text_chunks,
+            new_text_chunks_week,
+        })
+    }
     pub async fn create_new(
         email: String,
         password: String,

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result as AnyResult};
 use bytes::Bytes;
-use futures::{StreamExt, TryStreamExt};
 use futures::stream::BoxStream;
+use futures::{StreamExt, TryStreamExt};
 use object_store::local::LocalFileSystem;
 use object_store::{path::Path as ObjPath, ObjectStore};
 
@@ -26,12 +26,12 @@ pub async fn build_store(prefix: &Path, cfg: &AppConfig) -> object_store::Result
     match cfg.storage {
         StorageKind::Local => {
             if !prefix.exists() {
-                tokio::fs::create_dir_all(prefix)
-                    .await
-                    .map_err(|e| object_store::Error::Generic {
+                tokio::fs::create_dir_all(prefix).await.map_err(|e| {
+                    object_store::Error::Generic {
                         store: "LocalFileSystem",
                         source: e.into(),
-                    })?;
+                    }
+                })?;
             }
             let store = LocalFileSystem::new_with_prefix(prefix)?;
             Ok(Arc::new(store))
@@ -46,7 +46,8 @@ pub fn resolve_base_dir(cfg: &AppConfig) -> PathBuf {
     if cfg.data_dir.starts_with('/') {
         PathBuf::from(&cfg.data_dir)
     } else {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
             .join(&cfg.data_dir)
     }
 }
@@ -64,7 +65,12 @@ pub async fn build_store_root(cfg: &AppConfig) -> object_store::Result<DynStore>
 ///
 /// Prefer [`put_bytes_at`] for location-based writes that do not need to compute
 /// a separate filesystem prefix.
-pub async fn put_bytes(prefix: &Path, file_name: &str, data: Bytes, cfg: &AppConfig) -> object_store::Result<()> {
+pub async fn put_bytes(
+    prefix: &Path,
+    file_name: &str,
+    data: Bytes,
+    cfg: &AppConfig,
+) -> object_store::Result<()> {
     let store = build_store(prefix, cfg).await?;
     let payload = object_store::PutPayload::from_bytes(data);
     store.put(&ObjPath::from(file_name), payload).await?;
@@ -75,7 +81,11 @@ pub async fn put_bytes(prefix: &Path, file_name: &str, data: Bytes, cfg: &AppCon
 ///
 /// The store root is taken from `AppConfig::data_dir` for the local backend.
 /// This performs an atomic write as guaranteed by `object_store`.
-pub async fn put_bytes_at(location: &str, data: Bytes, cfg: &AppConfig) -> object_store::Result<()> {
+pub async fn put_bytes_at(
+    location: &str,
+    data: Bytes,
+    cfg: &AppConfig,
+) -> object_store::Result<()> {
     let store = build_store_root(cfg).await?;
     let payload = object_store::PutPayload::from_bytes(data);
     store.put(&ObjPath::from(location), payload).await?;
@@ -85,7 +95,11 @@ pub async fn put_bytes_at(location: &str, data: Bytes, cfg: &AppConfig) -> objec
 /// Read bytes from `file_name` within a filesystem `prefix` using the configured store.
 ///
 /// Prefer [`get_bytes_at`] for location-based reads.
-pub async fn get_bytes(prefix: &Path, file_name: &str, cfg: &AppConfig) -> object_store::Result<Bytes> {
+pub async fn get_bytes(
+    prefix: &Path,
+    file_name: &str,
+    cfg: &AppConfig,
+) -> object_store::Result<Bytes> {
     let store = build_store(prefix, cfg).await?;
     let r = store.get(&ObjPath::from(file_name)).await?;
     let b = r.bytes().await?;
@@ -105,7 +119,10 @@ pub async fn get_bytes_at(location: &str, cfg: &AppConfig) -> object_store::Resu
 ///
 /// Returns a fallible `BoxStream` of `Bytes`, suitable for use with
 /// `axum::body::Body::from_stream` to stream responses without buffering.
-pub async fn get_stream_at(location: &str, cfg: &AppConfig) -> object_store::Result<BoxStream<'static, object_store::Result<Bytes>>> {
+pub async fn get_stream_at(
+    location: &str,
+    cfg: &AppConfig,
+) -> object_store::Result<BoxStream<'static, object_store::Result<Bytes>>> {
     let store = build_store_root(cfg).await?;
     let r = store.get(&ObjPath::from(location)).await?;
     Ok(r.into_stream())
@@ -119,7 +136,10 @@ pub async fn delete_prefix(prefix: &Path, cfg: &AppConfig) -> object_store::Resu
     let store = build_store(prefix, cfg).await?;
     // list everything and delete
     let locations = store.list(None).map_ok(|m| m.location).boxed();
-    store.delete_stream(locations).try_collect::<Vec<_>>().await?;
+    store
+        .delete_stream(locations)
+        .try_collect::<Vec<_>>()
+        .await?;
     // Best effort remove the directory itself
     if tokio::fs::try_exists(prefix).await.unwrap_or(false) {
         let _ = tokio::fs::remove_dir_all(prefix).await;
@@ -134,8 +154,14 @@ pub async fn delete_prefix(prefix: &Path, cfg: &AppConfig) -> object_store::Resu
 pub async fn delete_prefix_at(prefix: &str, cfg: &AppConfig) -> object_store::Result<()> {
     let store = build_store_root(cfg).await?;
     let prefix_path = ObjPath::from(prefix);
-    let locations = store.list(Some(&prefix_path)).map_ok(|m| m.location).boxed();
-    store.delete_stream(locations).try_collect::<Vec<_>>().await?;
+    let locations = store
+        .list(Some(&prefix_path))
+        .map_ok(|m| m.location)
+        .boxed();
+    store
+        .delete_stream(locations)
+        .try_collect::<Vec<_>>()
+        .await?;
     // Best effort remove empty directory on disk for local storage
     let base_dir = resolve_base_dir(cfg).join(prefix);
     if tokio::fs::try_exists(&base_dir).await.unwrap_or(false) {
@@ -209,12 +235,16 @@ mod tests {
         let location = format!("{}/{}", &location_prefix, file_name);
         let payload = Bytes::from_static(b"hello world");
 
-        put_bytes_at(&location, payload.clone(), &cfg).await.expect("put");
+        put_bytes_at(&location, payload.clone(), &cfg)
+            .await
+            .expect("put");
         let got = get_bytes_at(&location, &cfg).await.expect("get");
         assert_eq!(got.as_ref(), payload.as_ref());
 
         // Delete the whole prefix and ensure retrieval fails
-        delete_prefix_at(&location_prefix, &cfg).await.expect("delete prefix");
+        delete_prefix_at(&location_prefix, &cfg)
+            .await
+            .expect("delete prefix");
         assert!(get_bytes_at(&location, &cfg).await.is_err());
 
         let _ = tokio::fs::remove_dir_all(&base).await;
@@ -244,12 +274,9 @@ mod tests {
 
         assert_eq!(combined, content);
 
-        delete_prefix_at(
-            &split_object_path(&location).unwrap().0,
-            &cfg,
-        )
-        .await
-        .ok();
+        delete_prefix_at(&split_object_path(&location).unwrap().0, &cfg)
+            .await
+            .ok();
 
         let _ = tokio::fs::remove_dir_all(&base).await;
     }
