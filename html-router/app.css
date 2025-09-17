@@ -440,14 +440,63 @@
   }
 
   .kg-overlay {
-    @apply absolute top-4 left-4 z-10 flex items-center gap-2;
+    @apply absolute top-4 left-4 right-4 z-10 flex flex-col items-stretch gap-2;
+    max-width: min(420px, calc(100% - 2rem));
+  }
+
+  .kg-control-row {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .kg-control-row-primary {
+    @apply justify-start;
+  }
+
+  .kg-control-row-secondary {
+    @apply justify-center;
   }
 
   .kg-search-input {
     @apply pl-2;
     height: 2rem;
-    min-width: 220px;
+    width: 100%;
     max-width: 320px;
+    min-width: 0;
+  }
+
+  .kg-control-row-primary .kg-search-input {
+    flex: 1 1 auto;
+  }
+
+  .kg-search-btn {
+    flex: 0 0 auto;
+  }
+
+  .kg-toggle {
+    @apply transition-colors;
+  }
+
+  .kg-toggle-active {
+    --btn-color: var(--color-accent);
+    --btn-fg: var(--color-accent-content);
+    --btn-noise: none;
+    background-image: none;
+    background-color: var(--color-accent);
+    color: var(--color-accent-content);
+  }
+
+  .kg-toggle-active:hover {
+    background-color: var(--color-accent);
+    color: var(--color-accent-content);
+    filter: saturate(1.1) brightness(1.05);
+  }
+
+  @media (min-width: 768px) {
+    .kg-overlay {
+      right: auto;
+      max-width: none;
+      width: auto;
+    }
   }
 
   .kg-legend {

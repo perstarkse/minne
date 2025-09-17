@@ -71,9 +71,15 @@
     return { idToNode, neighbors };
   }
 
-  function attachOverlay(container, { onSearch, onToggleLabels, onCenter }) {
+  function attachOverlay(container, { onSearch, onToggleNames, onToggleEdgeLabels, onCenter }) {
     const overlay = document.createElement('div');
     overlay.className = 'kg-overlay';
+
+    const primaryRow = document.createElement('div');
+    primaryRow.className = 'kg-control-row kg-control-row-primary';
+
+    const secondaryRow = document.createElement('div');
+    secondaryRow.className = 'kg-control-row kg-control-row-secondary';
 
     // search box
     const input = document.createElement('input');
@@ -85,29 +91,41 @@
     });
 
     const searchBtn = document.createElement('button');
-    searchBtn.className = 'nb-btn btn-xs nb-cta';
+    searchBtn.className = 'nb-btn btn-xs nb-cta kg-search-btn';
     searchBtn.textContent = 'Go';
     searchBtn.addEventListener('click', () => onSearch && onSearch(input.value.trim()));
 
+    const namesToggle = document.createElement('button');
+    namesToggle.className = 'nb-btn btn-xs kg-toggle';
+    namesToggle.type = 'button';
+    namesToggle.textContent = 'Names';
+    namesToggle.addEventListener('click', () => onToggleNames && onToggleNames());
+
     const labelToggle = document.createElement('button');
-    labelToggle.className = 'nb-btn btn-xs';
+    labelToggle.className = 'nb-btn btn-xs kg-toggle';
+    labelToggle.type = 'button';
     labelToggle.textContent = 'Labels';
-    labelToggle.addEventListener('click', () => onToggleLabels && onToggleLabels());
+    labelToggle.addEventListener('click', () => onToggleEdgeLabels && onToggleEdgeLabels());
 
     const centerBtn = document.createElement('button');
     centerBtn.className = 'nb-btn btn-xs';
     centerBtn.textContent = 'Center';
     centerBtn.addEventListener('click', () => onCenter && onCenter());
 
-    overlay.appendChild(input);
-    overlay.appendChild(searchBtn);
-    overlay.appendChild(labelToggle);
-    overlay.appendChild(centerBtn);
+    primaryRow.appendChild(input);
+    primaryRow.appendChild(searchBtn);
+
+    secondaryRow.appendChild(namesToggle);
+    secondaryRow.appendChild(labelToggle);
+    secondaryRow.appendChild(centerBtn);
+
+    overlay.appendChild(primaryRow);
+    overlay.appendChild(secondaryRow);
 
     container.style.position = 'relative';
     container.appendChild(overlay);
 
-    return { input, overlay };
+    return { input, overlay, namesToggle, labelToggle };
   }
 
   function attachLegends(container, typeColor, relColor) {
@@ -180,12 +198,32 @@
     const { neighbors } = buildAdjacency(data.nodes, data.links);
 
     // Build overlay controls
-    let labelsVisible = true;
-    const { input } = attachOverlay(container, {
+    let namesVisible = true;
+    let edgeLabelsVisible = true;
+
+    const togglePressedState = (button, state) => {
+      if (!button) return;
+      button.setAttribute('aria-pressed', state ? 'true' : 'false');
+      button.classList.toggle('kg-toggle-active', !!state);
+    };
+
+    const { input, namesToggle, labelToggle } = attachOverlay(container, {
       onSearch: (q) => focusSearch(q),
-      onToggleLabels: () => { labelsVisible = !labelsVisible; label.style('display', labelsVisible ? null : 'none'); },
+      onToggleNames: () => {
+        namesVisible = !namesVisible;
+        label.style('display', namesVisible ? null : 'none');
+        togglePressedState(namesToggle, namesVisible);
+      },
+      onToggleEdgeLabels: () => {
+        edgeLabelsVisible = !edgeLabelsVisible;
+        linkLabel.style('display', edgeLabelsVisible ? null : 'none');
+        togglePressedState(labelToggle, edgeLabelsVisible);
+      },
       onCenter: () => zoomTo(1, [width / 2, height / 2])
     });
+
+    togglePressedState(namesToggle, namesVisible);
+    togglePressedState(labelToggle, edgeLabelsVisible);
 
     // SVG + zoom
     const svg = d3.select(container)
