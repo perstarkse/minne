@@ -5,9 +5,9 @@
         {% block modal_content %}{% endblock %}
       </div>
 
-      <div class="u-hairline mt-4 pt-3 flex justify-end gap-2">
+      <div class="u-hairline mt-4 pt-3 flex flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
         <!-- Close button (always visible) -->
-        <button type="button" class="nb-btn" onclick="document.getElementById('body_modal').close()">
+        <button type="button" class="nb-btn w-full sm:w-auto" onclick="document.getElementById('body_modal').close()">
           Close
         </button>
 
