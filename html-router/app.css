@@ -265,6 +265,32 @@
     line-height: 1.6;
   }
 
+  [data-theme="dark"] .prose-tufte,
+  [data-theme="dark"] .prose-tufte-compact {
+    color: var(--color-base-content);
+    --tw-prose-body: var(--color-base-content);
+    --tw-prose-headings: var(--color-base-content);
+    --tw-prose-lead: rgba(255, 255, 255, 0.78);
+    --tw-prose-links: var(--color-accent);
+    --tw-prose-bold: var(--color-base-content);
+    --tw-prose-counters: rgba(255, 255, 255, 0.7);
+    --tw-prose-bullets: rgba(255, 255, 255, 0.35);
+    --tw-prose-hr: rgba(255, 255, 255, 0.2);
+    --tw-prose-quotes: var(--color-base-content);
+    --tw-prose-quote-borders: rgba(255, 255, 255, 0.25);
+    --tw-prose-captions: rgba(255, 255, 255, 0.65);
+    --tw-prose-code: var(--color-base-content);
+    --tw-prose-pre-code: inherit;
+    --tw-prose-pre-bg: rgba(255, 255, 255, 0.07);
+    --tw-prose-th-borders: rgba(255, 255, 255, 0.25);
+    --tw-prose-td-borders: rgba(255, 255, 255, 0.2);
+  }
+
+  [data-theme="dark"] .prose-tufte a,
+  [data-theme="dark"] .prose-tufte-compact a {
+    color: var(--color-accent);
+  }
+
   /* Encourage a consistent card look app-wide */
   .card {
     @apply border-2 border-neutral rounded-none;
@@ -542,6 +568,11 @@
     text-align: left;
   }
 
+  [data-theme="dark"] .markdown-content th,
+  [data-theme="dark"] .markdown-content td {
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
   .markdown-content blockquote {
     border-left: 4px solid rgba(0, 0, 0, 0.15);
     padding-left: 10px;
@@ -558,6 +589,10 @@
     border: none;
     border-top: 1px solid rgba(0, 0, 0, 0.15);
     margin: 0.75em 0;
+  }
+
+  [data-theme="dark"] .markdown-content hr {
+    border-top-color: rgba(255, 255, 255, 0.2);
   }
 
   [data-theme="dark"] .markdown-content pre,
