@@ -1,12 +1,11 @@
-<div id="relationship_table_section"
-  class="overflow-x-auto shadow rounded-box border border-base-content/5 bg-base-100 mb-10">
-  <table class="table">
+<div id="relationship_table_section" class="overflow-x-auto nb-card mb-10">
+  <table class="nb-table">
     <thead>
       <tr>
-        <th>Origin</th>
-        <th>Target</th>
-        <th>Type</th>
-        <th>Actions</th>
+        <th class="text-left">Origin</th>
+        <th class="text-left">Target</th>
+        <th class="text-left">Type</th>
+        <th class="text-left">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -31,9 +30,9 @@
           {{ relationship.out }}
           {% endfor %}
         </td>
-        <td>{{ relationship.metadata.relationship_type }}</td>
+        <td class="uppercase tracking-wide text-xs">{{ relationship.metadata.relationship_type }}</td>
         <td>
-          <button class="btn btn-sm btn-outline" hx-delete="/knowledge-relationship/{{ relationship.id }}"
+          <button class="nb-btn btn-xs" hx-delete="/knowledge-relationship/{{ relationship.id }}"
             hx-target="#relationship_table_section" hx-swap="outerHTML">
             {% include "icons/delete_icon.html" %}
           </button>
@@ -43,7 +42,7 @@
       <!-- New linking row -->
       <tr id="new_relationship">
         <td>
-          <select name="in_" class="select select-bordered w-full new_relationship_input">
+          <select name="in_" class="nb-select w-full new_relationship_input">
             <option disabled selected>Select Origin</option>
             {% for entity in entities %}
             <option value="{{ entity.id }}">
@@ -53,7 +52,7 @@
           </select>
         </td>
         <td>
-          <select name="out" class="select select-bordered w-full new_relationship_input">
+          <select name="out" class="nb-select w-full new_relationship_input">
             <option disabled selected>Select Target</option>
             {% for entity in entities %}
             <option value="{{ entity.id }}">{{ entity.name }}</option>
@@ -62,12 +61,11 @@
         </td>
         <td>
           <input id="relationship_type_input" name="relationship_type" type="text" placeholder="RelatedTo"
-            class="input input-bordered w-full new_relationship_input" />
+            class="nb-input w-full new_relationship_input" />
         </td>
         <td>
-          <button id="save_relationship_button" type="button" class="btn btn-primary btn-sm"
-            hx-post="/knowledge-relationship" hx-target="#relationship_table_section" hx-swap="outerHTML"
-            hx-include=".new_relationship_input">
+          <button id="save_relationship_button" type="button" class="nb-btn btn-sm" hx-post="/knowledge-relationship"
+            hx-target="#relationship_table_section" hx-swap="outerHTML" hx-include=".new_relationship_input">
             Save
           </button>
         </td>

@@ -4,11 +4,17 @@ use axum_session_auth::Authentication;
 use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
+use super::text_chunk::TextChunk;
 use super::{
-    conversation::Conversation, ingestion_task::IngestionTask, knowledge_entity::KnowledgeEntity,
-    knowledge_relationship::KnowledgeRelationship, system_settings::SystemSettings,
+    conversation::Conversation,
+    ingestion_task::{IngestionTask, MAX_ATTEMPTS},
+    knowledge_entity::KnowledgeEntity,
+    knowledge_relationship::KnowledgeRelationship,
+    system_settings::SystemSettings,
     text_content::TextContent,
 };
+use chrono::Duration;
+use futures::try_join;
 
 #[derive(Deserialize)]
 pub struct CategoryResponse {
@@ -61,7 +67,93 @@ fn validate_timezone(input: &str) -> String {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DashboardStats {
+    pub total_documents: i64,
+    pub new_documents_week: i64,
+    pub total_entities: i64,
+    pub new_entities_week: i64,
+    pub total_conversations: i64,
+    pub new_conversations_week: i64,
+    pub total_text_chunks: i64,
+    pub new_text_chunks_week: i64,
+}
+
+#[derive(Deserialize)]
+struct CountResult {
+    count: i64,
+}
+
 impl User {
+    async fn count_total<T: crate::storage::types::StoredObject>(
+        db: &SurrealDbClient,
+        user_id: &str,
+    ) -> Result<i64, AppError> {
+        let result: Option<CountResult> = db
+            .client
+            .query("SELECT count() as count FROM type::table($table) WHERE user_id = $user_id GROUP ALL")
+            .bind(("table", T::table_name()))
+            .bind(("user_id", user_id.to_string()))
+            .await?
+            .take(0)?;
+        Ok(result.map(|r| r.count).unwrap_or(0))
+    }
+
+    async fn count_since<T: crate::storage::types::StoredObject>(
+        db: &SurrealDbClient,
+        user_id: &str,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, AppError> {
+        let result: Option<CountResult> = db
+            .client
+            .query(
+                "SELECT count() as count FROM type::table($table) WHERE user_id = $user_id AND created_at >= $since GROUP ALL",
+            )
+            .bind(("table", T::table_name()))
+            .bind(("user_id", user_id.to_string()))
+            .bind(("since", since))
+            .await?
+            .take(0)?;
+        Ok(result.map(|r| r.count).unwrap_or(0))
+    }
+
+    pub async fn get_dashboard_stats(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<DashboardStats, AppError> {
+        let since = chrono::Utc::now() - Duration::days(7);
+
+        let (
+            total_documents,
+            new_documents_week,
+            total_entities,
+            new_entities_week,
+            total_conversations,
+            new_conversations_week,
+            total_text_chunks,
+            new_text_chunks_week,
+        ) = try_join!(
+            Self::count_total::<TextContent>(db, user_id),
+            Self::count_since::<TextContent>(db, user_id, since),
+            Self::count_total::<KnowledgeEntity>(db, user_id),
+            Self::count_since::<KnowledgeEntity>(db, user_id, since),
+            Self::count_total::<Conversation>(db, user_id),
+            Self::count_since::<Conversation>(db, user_id, since),
+            Self::count_total::<TextChunk>(db, user_id),
+            Self::count_since::<TextChunk>(db, user_id, since)
+        )?;
+
+        Ok(DashboardStats {
+            total_documents,
+            new_documents_week,
+            total_entities,
+            new_entities_week,
+            total_conversations,
+            new_conversations_week,
+            total_text_chunks,
+            new_text_chunks_week,
+        })
+    }
     pub async fn create_new(
         email: String,
         password: String,
@@ -444,17 +536,17 @@ impl User {
                 "SELECT * FROM type::table($table) 
              WHERE user_id = $user_id 
              AND (
-                status = 'Created' 
+                status.name = 'Created' 
                 OR (
-                    status.InProgress != NONE 
-                    AND status.InProgress.attempts < $max_attempts
+                    status.name = 'InProgress'
+                    AND status.attempts < $max_attempts
                 )
              )
              ORDER BY created_at DESC",
             )
             .bind(("table", IngestionTask::table_name()))
             .bind(("user_id", user_id.to_owned()))
-            .bind(("max_attempts", 3))
+            .bind(("max_attempts", MAX_ATTEMPTS))
             .await?
             .take(0)?;
 
@@ -511,6 +603,9 @@ impl User {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::types::ingestion_payload::IngestionPayload;
+    use crate::storage::types::ingestion_task::{IngestionTask, IngestionTaskStatus, MAX_ATTEMPTS};
+    use std::collections::HashSet;
 
     // Helper function to set up a test database with SystemSettings
     async fn setup_test_db() -> SurrealDbClient {
@@ -594,6 +689,75 @@ mod tests {
         // Test failed authentication with non-existent user
         let nonexistent = User::authenticate("nonexistent@example.com", password, &db).await;
         assert!(nonexistent.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_unfinished_ingestion_tasks_filters_correctly() {
+        let db = setup_test_db().await;
+        let user_id = "unfinished_user";
+        let other_user_id = "other_user";
+
+        let payload = IngestionPayload::Text {
+            text: "Test".to_string(),
+            context: "Context".to_string(),
+            category: "Category".to_string(),
+            user_id: user_id.to_string(),
+        };
+
+        let created_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        db.store_item(created_task.clone())
+            .await
+            .expect("Failed to store created task");
+
+        let mut in_progress_allowed =
+            IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        in_progress_allowed.status = IngestionTaskStatus::InProgress {
+            attempts: 1,
+            last_attempt: chrono::Utc::now(),
+        };
+        db.store_item(in_progress_allowed.clone())
+            .await
+            .expect("Failed to store in-progress task");
+
+        let mut in_progress_blocked =
+            IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        in_progress_blocked.status = IngestionTaskStatus::InProgress {
+            attempts: MAX_ATTEMPTS,
+            last_attempt: chrono::Utc::now(),
+        };
+        db.store_item(in_progress_blocked.clone())
+            .await
+            .expect("Failed to store blocked task");
+
+        let mut completed_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        completed_task.status = IngestionTaskStatus::Completed;
+        db.store_item(completed_task.clone())
+            .await
+            .expect("Failed to store completed task");
+
+        let other_payload = IngestionPayload::Text {
+            text: "Other".to_string(),
+            context: "Context".to_string(),
+            category: "Category".to_string(),
+            user_id: other_user_id.to_string(),
+        };
+        let other_task = IngestionTask::new(other_payload, other_user_id.to_string()).await;
+        db.store_item(other_task)
+            .await
+            .expect("Failed to store other user task");
+
+        let unfinished = User::get_unfinished_ingestion_tasks(user_id, &db)
+            .await
+            .expect("Failed to fetch unfinished tasks");
+
+        let unfinished_ids: HashSet<String> =
+            unfinished.iter().map(|task| task.id.clone()).collect();
+
+        assert!(unfinished_ids.contains(&created_task.id));
+        assert!(unfinished_ids.contains(&in_progress_allowed.id));
+        assert!(!unfinished_ids.contains(&in_progress_blocked.id));
+        assert!(!unfinished_ids.contains(&completed_task.id));
+        assert_eq!(unfinished_ids.len(), 2);
     }
 
     #[tokio::test]

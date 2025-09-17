@@ -15,11 +15,12 @@
 <div class="drawer-side z-20">
   <label for="my-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
 
-  <ul class="menu p-0 w-72 h-full bg-base-200 text-base-content flex flex-col">
-    <!-- <a class="px-2 mt-4 text-center text-2xl text-primary font-bold" href="/" hx-boost="true">Minne</a> -->
+  <ul class="menu p-0 w-72 h-full nb-canvas text-base-content flex flex-col border-r-2 border-neutral">
+    <!-- <a class="px-4 py-4 text-2xl font-extrabold tracking-tight text-primary border-b-2 border-neutral bg-base-100 nb-shadow" -->
+    <!-- href="/" hx-boost="true">Minne</a> -->
 
     <!-- === TOP FIXED SECTION === -->
-    <div class="px-2 mt-14">
+    <div class="px-2 mt-4 space-y-3">
       {% for url, name, label in [
       ("/", "home", "Dashboard"),
       ("/knowledge", "book", "Knowledge"),
@@ -28,22 +29,22 @@
       ("/search", "search", "Search")
       ] %}
       <li>
-        <a hx-boost="true" href="{{ url }}" class="flex items-center gap-3">
+        <a hx-boost="true" href="{{ url }}" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
           {{ icon(name) }}
-          <span>{{ label }}</span>
+          <span class="uppercase tracking-wide">{{ label }}</span>
         </a>
       </li>
       {% endfor %}
       <li>
-        <button class="btn btn-primary btn-outline w-full flex items-center gap-3 justify-start mt-2"
-          hx-get="/ingress-form" hx-target="#modal" hx-swap="innerHTML">{% include "icons/send_icon.html" %} Add
+        <button class="nb-btn nb-cta w-full flex items-center gap-3 justify-start mt-2" hx-get="/ingress-form"
+          hx-target="#modal" hx-swap="innerHTML">{% include "icons/send_icon.html" %} Add
           Content</button>
       </li>
-      <div class="divider "></div>
+      <div class="u-hairline mt-4"></div>
     </div>
 
     <!-- === MIDDLE SCROLLABLE SECTION === -->
-    <span class="menu-title pb-4 ">Recent Chats</span>
+    <span class="px-4 py-2 font-semibold tracking-wide">Recent Chats</span>
     <div class="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
       {% if conversation_archive is defined and conversation_archive %}
       {% for conversation in conversation_archive %}
@@ -51,12 +52,12 @@
         {% if edit_conversation_id == conversation.id %}
         <!-- Edit mode -->
         <form hx-patch="/chat/{{ conversation.id }}/title" hx-target=".drawer-side" hx-swap="outerHTML"
-          class="flex items-center gap-1 px-2 py-2">
-          <input type="text" name="title" value="{{ conversation.title }}" class="input input-sm flex-grow" />
-          <div class="flex gap-0.5">
-            <button type="submit" class="btn btn-ghost btn-xs">{% include "icons/check_icon.html" %}</button>
+          class="flex items-center gap-1 px-2 py-2 max-w-72 relative">
+          <input type="text" name="title" value="{{ conversation.title }}" class="nb-input nb-input-sm max-w-52" />
+          <div class="flex gap-0.5 absolute right-2">
+            <button type="submit" class="btn btn-ghost btn-xs !p-0">{% include "icons/check_icon.html" %}</button>
             <button type="button" hx-get="/chat/sidebar" hx-target=".drawer-side" hx-swap="outerHTML"
-              class="btn btn-ghost btn-xs">
+              class="btn btn-ghost btn-xs !p-0">
               {% include "icons/x_icon.html" %}
             </button>
           </div>
@@ -86,27 +87,28 @@
     </div>
 
     <!-- === BOTTOM FIXED SECTION === -->
-    <div class="px-2 pb-4">
-      <div class="divider "></div>
+    <div class="px-2 pb-4 space-y-3">
       <li>
-        <a hx-boost="true" href="/account" class="flex btn btn-ghost justify-start items-center gap-3">
+        <a hx-boost="true" href="/account"
+          class="nb-btn w-full justify-start items-center gap-3 bg-base-100 hover:bg-base-200">
           {% include "icons/user_icon.html" %}
-          <span>Account</span>
+          <span class="uppercase tracking-wide">Account</span>
         </a>
       </li>
       {% if user.admin %}
       <li>
-        <a hx-boost="true" href="/admin" class="flex btn btn-ghost justify-start items-center gap-3">
+        <a hx-boost="true" href="/admin"
+          class="nb-btn w-full justify-start items-center gap-3 bg-base-100 hover:bg-base-200">
           {% include "icons/wrench_screwdriver_icon.html" %}
-          <span>Admin</span>
+          <span class="uppercase tracking-wide">Admin</span>
         </a>
       </li>
       {% endif %}
       <li>
         <a hx-boost="true" href="/signout"
-          class="btn btn-error btn-outline w-full flex items-center gap-3 justify-start !mt-2">
+          class="nb-btn w-full justify-start items-center gap-3  bg-base-100 hover:bg-base-200 border-error text-error">
           {% include "icons/logout_icon.html" %}
-          <span>Logout</span>
+          <span class="uppercase tracking-wide">Logout</span>
         </a>
       </li>
     </div>

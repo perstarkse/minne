@@ -1,19 +1,19 @@
-<div class="columns-1 md:columns-2 2xl:columns-3 gap-4" id="text_content_cards">
+<div class="nb-masonry w-full" id="text_content_cards">
   {% for text_content in text_contents %}
-  <div class="card cursor-pointer mb-4 bg-base-100 shadow break-inside-avoid-column"
+  <article class="nb-card cursor-pointer mx-auto mb-4 w-full max-w-[92vw] space-y-3 sm:max-w-none"
     hx-get="/content/{{ text_content.id }}/read" hx-target="#modal" hx-swap="innerHTML">
     {% if text_content.url_info %}
-    <figure>
-      <img src="/file/{{text_content.url_info.image_id}}" alt="website screenshot" />
+    <figure class="-mx-4 -mt-4 border-b-2 border-neutral bg-base-200">
+      <img class="w-full h-auto" src="/file/{{text_content.url_info.image_id}}" alt="website screenshot" />
     </figure>
     {% endif %}
     {% if text_content.file_info.mime_type == "image/png" or text_content.file_info.mime_type == "image/jpeg" %}
-    <figure>
-      <img src="/file/{{text_content.file_info.id}}" alt="{{text_content.file_info.file_name}}" />
+    <figure class="-mx-4 -mt-4 border-b-2 border-neutral bg-base-200">
+      <img class="w-full h-auto" src="/file/{{text_content.file_info.id}}" alt="{{text_content.file_info.file_name}}" />
     </figure>
     {% endif %}
-    <div class="card-body max-w-[95vw]">
-      <h2 class="card-title truncate">
+    <div class="space-y-3 break-words">
+      <h2 class="text-lg font-extrabold tracking-tight truncate">
         {% if text_content.url_info %}
         {{text_content.url_info.title}}
         {% elif text_content.file_info %}
@@ -22,37 +22,36 @@
         {{text_content.text}}
         {% endif %}
       </h2>
-      <div class="flex items-center justify-between">
-        <p class="text-xs opacity-60">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-xs opacity-60 shrink-0">
           {{ text_content.created_at | datetimeformat(format="short", tz=user.timezone) }}
         </p>
-        <div class="badge badge-soft badge-secondary mr-2">{{ text_content.category }}</div>
+        <span class="nb-badge">{{ text_content.category }}</span>
         <div class="flex gap-2" hx-on:click="event.stopPropagation()">
           {% if text_content.url_info %}
-          <button class="btn-btn-square btn-ghost btn-sm">
-            <a href="{{text_content.url_info.url}}" target="_blank" rel="noopener noreferrer">
-              {% include "icons/link_icon.html" %}
-            </a>
-          </button>
+          <a href="{{text_content.url_info.url}}" target="_blank" rel="noopener noreferrer"
+            class="nb-btn btn-square btn-sm" aria-label="Open source link">
+            {% include "icons/link_icon.html" %}
+          </a>
           {% endif %}
           <button hx-get="/content/{{ text_content.id }}/read" hx-target="#modal" hx-swap="innerHTML"
-            class="btn btn-square btn-ghost btn-sm">
+            class="nb-btn btn-square btn-sm" aria-label="Read content">
             {% include "icons/read_icon.html" %}
           </button>
           <button hx-get="/content/{{ text_content.id }}" hx-target="#modal" hx-swap="innerHTML"
-            class="btn btn-square btn-ghost btn-sm">
+            class="nb-btn btn-square btn-sm" aria-label="Edit content">
             {% include "icons/edit_icon.html" %}
           </button>
           <button hx-delete="/content/{{ text_content.id }}" hx-target="#text_content_cards" hx-swap="outerHTML"
-            class="btn btn-square btn-ghost btn-sm">
+            class="nb-btn btn-square btn-sm" aria-label="Delete content">
             {% include "icons/delete_icon.html" %}
           </button>
         </div>
       </div>
-      <p class="mt-2">
+      <p class="text-sm leading-relaxed">
         {{ text_content.instructions }}
       </p>
     </div>
-  </div>
+  </article>
   {% endfor %}
 </div>

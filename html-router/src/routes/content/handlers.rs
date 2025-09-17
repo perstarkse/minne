@@ -3,11 +3,12 @@ use axum::{
     response::IntoResponse,
     Form,
 };
-use axum_htmx::{HxBoosted, HxRequest};
+use axum_htmx::{HxBoosted, HxRequest, HxTarget};
 use serde::{Deserialize, Serialize};
 
 use common::storage::types::{
-    conversation::Conversation, file_info::FileInfo, text_content::TextContent, user::User, knowledge_entity::KnowledgeEntity, text_chunk::TextChunk,
+    conversation::Conversation, file_info::FileInfo, knowledge_entity::KnowledgeEntity,
+    text_chunk::TextChunk, text_content::TextContent, user::User,
 };
 
 use crate::{
@@ -25,6 +26,12 @@ pub struct ContentPageData {
     categories: Vec<String>,
     selected_category: Option<String>,
     conversation_archive: Vec<Conversation>,
+}
+
+#[derive(Serialize)]
+pub struct RecentTextContentData {
+    pub user: User,
+    pub text_contents: Vec<TextContent>,
 }
 
 #[derive(Deserialize)]
@@ -102,11 +109,24 @@ pub async fn patch_text_content(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
+    HxTarget(target): HxTarget,
     Form(form): Form<PatchTextContentParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
     User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
 
     TextContent::patch(&id, &form.context, &form.category, &form.text, &state.db).await?;
+
+    if target.as_deref() == Some("latest_content_section") {
+        let text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
+
+        return Ok(TemplateResponse::new_template(
+            "dashboard/recent_content.html",
+            RecentTextContentData {
+                user,
+                text_contents,
+            },
+        ));
+    }
 
     let text_contents = User::get_text_contents(&user.id, &state.db).await?;
     let categories = User::get_user_categories(&user.id, &state.db).await?;
@@ -186,12 +206,6 @@ pub async fn show_recent_content(
     RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
     let text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
-
-    #[derive(Serialize)]
-    pub struct RecentTextContentData {
-        pub user: User,
-        pub text_contents: Vec<TextContent>,
-    }
 
     Ok(TemplateResponse::new_template(
         "dashboard/recent_content.html",

@@ -4,6 +4,7 @@ use axum::{
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
 };
+use futures::try_join;
 use serde::Serialize;
 use tokio::join;
 
@@ -14,6 +15,8 @@ use crate::{
     },
     AuthSessionType,
 };
+use common::storage::store;
+use common::storage::types::user::DashboardStats;
 use common::{
     error::AppError,
     storage::types::{
@@ -22,7 +25,6 @@ use common::{
         text_chunk::TextChunk, text_content::TextContent, user::User,
     },
 };
-use common::storage::store;
 
 use crate::html_state::HtmlState;
 
@@ -30,6 +32,7 @@ use crate::html_state::HtmlState;
 pub struct IndexPageData {
     user: Option<User>,
     text_contents: Vec<TextContent>,
+    stats: DashboardStats,
     active_jobs: Vec<IngestionTask>,
     conversation_archive: Vec<Conversation>,
 }
@@ -42,19 +45,21 @@ pub async fn index_handler(
         return Ok(TemplateResponse::redirect("/signin"));
     };
 
-    let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
-
-    let text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
-
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
+    let (text_contents, conversation_archive, stats, active_jobs) = try_join!(
+        User::get_latest_text_contents(&user.id, &state.db),
+        User::get_user_conversations(&user.id, &state.db),
+        User::get_dashboard_stats(&user.id, &state.db),
+        User::get_unfinished_ingestion_tasks(&user.id, &state.db)
+    )?;
 
     Ok(TemplateResponse::new_template(
         "dashboard/base.html",
         IndexPageData {
             user: Some(user),
             text_contents,
-            active_jobs,
+            stats,
             conversation_archive,
+            active_jobs,
         },
     ))
 }
@@ -153,9 +158,8 @@ pub async fn show_active_jobs(
 ) -> Result<impl IntoResponse, HtmlError> {
     let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
 
-    Ok(TemplateResponse::new_partial(
+    Ok(TemplateResponse::new_template(
         "dashboard/active_jobs.html",
-        "active_jobs_section",
         ActiveJobsData {
             user: user.clone(),
             active_jobs,

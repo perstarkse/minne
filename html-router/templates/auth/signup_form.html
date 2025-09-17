@@ -3,56 +3,48 @@
 {% block title %}Minne - Sign up{% endblock %}
 
 {% block body %}
-<style>
-  form.htmx-request {
-    opacity: 0.5;
-  }
-</style>
+<div class="min-h-[100dvh] flex items-center">
+  <div class="container mx-auto px-4 sm:max-w-md">
+    <div class="nb-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-3xl font-extrabold tracking-tight">MINNE</div>
+        <span class="nb-badge">Sign Up</span>
+      </div>
+      <div class="u-hairline mb-3"></div>
 
-<div class="min-h-[100dvh] container mx-auto px-4 sm:px-0 sm:max-w-md flex justify-center flex-col">
-  <h1
-    class="text-5xl sm:text-6xl py-4 pt-10 font-bold bg-linear-to-r from-primary to-secondary text-center text-transparent bg-clip-text">
-    Minne
-  </h1>
-  <h2 class="text-2xl font-bold text-center mb-8">Create your account</h2>
+      <form hx-post="/signup" hx-target="#signup-result" class="flex flex-col gap-4">
+        <label class="w-full">
+          <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Email</div>
+          <input type="email" placeholder="Email" name="email" required class="nb-input w-full validator" />
+          <div class="validator-hint hidden text-xs opacity-70 mt-1">Enter valid email address</div>
+        </label>
 
-  <form hx-post="/signup" hx-target="#signup-result" class="">
-    <div class="form-control">
-      <label class="floating-label">
-        <span>Email</span>
-        <input type="email" placeholder="Email" name="email" required class="input input-md w-full validator" />
-        <div class="validator-hint hidden">Enter valid email address</div>
-      </label>
+        <label class="w-full">
+          <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Password</div>
+          <input type="password" name="password" class="nb-input w-full validator" required placeholder="Password"
+            minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+            title="Must be more than 8 characters, including number, lowercase letter, uppercase letter" />
+          <p class="validator-hint hidden text-xs opacity-70 mt-1">
+            Must be more than 8 characters, including
+            <br />At least one number
+            <br />At least one lowercase letter
+            <br />At least one uppercase letter
+          </p>
+        </label>
+
+        <div class="mt-2 text-error" id="signup-result"></div>
+        <div class="form-control mt-1">
+          <button id="submit-btn" class="nb-btn nb-cta w-full">Create Account</button>
+        </div>
+        <input type="hidden" name="timezone" id="timezone" />
+      </form>
+
+      <div class="u-hairline my-3"></div>
+      <div class="text-center text-sm">
+        Already have an account?
+        <a href="/signin" hx-boost="true" class="nb-link">Sign in</a>
+      </div>
     </div>
-
-    <div class="form-control mt-4">
-      <label class="floating-label">
-        <span>Password</span>
-        <input type="password" name="password" class="input validator w-full" required placeholder="Password"
-          minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
-          title="Must be more than 8 characters, including number, lowercase letter, uppercase letter" />
-        <p class="validator-hint hidden">
-          Must be more than 8 characters, including
-          <br />At least one number
-          <br />At least one lowercase letter
-          <br />At least one uppercase letter
-        </p>
-      </label>
-    </div>
-    <div class="mt-4 text-error" id="signup-result"></div>
-    <div class="form-control mt-6">
-      <button id="submit-btn" class="btn btn-primary w-full">
-        Create Account
-      </button>
-    </div>
-    <input type="hidden" name="timezone" id="timezone" />
-  </form>
-
-  <div class="divider">OR</div>
-
-  <div class="text-center text-sm">
-    Already have an account?
-    <a href="/signin" hx-boost="true" class="link link-primary">Sign in</a>
   </div>
 </div>
 <script>

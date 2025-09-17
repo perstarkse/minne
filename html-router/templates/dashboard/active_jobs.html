@@ -1,49 +1,63 @@
 {% block active_jobs_section %}
-<ul id="active_jobs_section" class="list">
-  <div class="flex items-center gap-4">
-    <li class="py-4 text-2xl font-bold tracking-wide">Active Tasks</li>
-    <button class="cursor-pointer scale-75" hx-get="/active-jobs" hx-target="#active_jobs_section" hx-swap="outerHTML">
+<section id="active_jobs_section" class="nb-panel p-4 space-y-4 mt-6 sm:mt-8">
+  <header class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-xl font-extrabold tracking-tight">Active Tasks</h2>
+    <button class="nb-btn btn-square btn-sm" hx-get="/active-jobs" hx-target="#active_jobs_section" hx-swap="outerHTML"
+      aria-label="Refresh active tasks">
       {% include "icons/refresh_icon.html" %}
     </button>
-  </div>
-  {% for item in active_jobs %}
-  <li class="list-row">
-    <div class="bg-secondary rounded-box size-10 flex justify-center items-center text-secondary-content">
-      {% if item.content.Url %}
-      {% include "icons/link_icon.html" %}
-      {% elif item.content.File %}
-      {% include "icons/document_icon.html" %}
-      {% else %}
-      {% include "icons/bars_icon.html" %}
-      {% endif %}
-    </div>
-    <div>
-      <div class="[&:before]:content-['Status:_'] [&:before]:opacity-60">
-        {% if item.status.name == "InProgress" %}
-        In Progress, attempt {{item.status.attempts}}
-        {% elif item.status.name == "Error" %}
-        Error: {{item.status.message}}
-        {% else %}
-        {{item.status.name}}
-        {% endif %}
+  </header>
+  {% if active_jobs %}
+  <ul class="flex flex-col gap-3 list-none p-0 m-0">
+    {% for item in active_jobs %}
+    <li class="nb-panel p-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <div class="size-10 shrink-0 flex items-center justify-center border-2 border-neutral bg-transparent">
+          {% if item.content.Url %}
+          {% include "icons/link_icon.html" %}
+          {% elif item.content.File %}
+          {% include "icons/document_icon.html" %}
+          {% else %}
+          {% include "icons/bars_icon.html" %}
+          {% endif %}
+        </div>
+        <div class="space-y-1">
+          <div class="text-sm font-semibold">
+            {% if item.status.name == "InProgress" %}
+            In progress, attempt {{ item.status.attempts }}
+            {% elif item.status.name == "Error" %}
+            Error: {{ item.status.message }}
+            {% else %}
+            {{ item.status.name }}
+            {% endif %}
+          </div>
+          <div class="text-xs font-semibold opacity-60">
+            {{ item.created_at|datetimeformat(format="short", tz=user.timezone) }}
+          </div>
+        </div>
       </div>
-      <div class="text-xs font-semibold opacity-60">
-        {{item.created_at|datetimeformat(format="short", tz=user.timezone)}} </div>
-    </div>
-    <p class="list-col-wrap text-xs [&:before]:content-['Content:_']  [&:before]:opacity-60">
-      {% if item.content.Url %}
-      {{item.content.Url.url}}
-      {% elif item.content.File %}
-      {{item.content.File.file_info.file_name}}
-      {% else %}
-      {{item.content.Text.text}}
-      {% endif %}
-    </p>
-    <button hx-delete="/jobs/{{item.id}}" hx-target="#active_jobs_section" hx-swap="outerHTML"
-      class="btn btn-square btn-ghost btn-sm">
-      {% include "icons/delete_icon.html" %}
-    </button>
-  </li>
-  {% endfor %}
-</ul>
+
+      <div class="sm:flex-1 sm:text-right">
+        <p class="text-xs opacity-80 leading-snug break-words">
+          {% if item.content.Url %}
+          {{ item.content.Url.url }}
+          {% elif item.content.File %}
+          {{ item.content.File.file_info.file_name }}
+          {% else %}
+          {{ item.content.Text.text }}
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="flex items-center justify-end gap-2">
+        <button hx-delete="/jobs/{{ item.id }}" hx-target="#active_jobs_section" hx-swap="outerHTML"
+          class="nb-btn btn-square btn-sm" aria-label="Cancel task">
+          {% include "icons/delete_icon.html" %}
+        </button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
 {% endblock %}

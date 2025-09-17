@@ -8,34 +8,49 @@ flex flex-col min-h-[95%] w-11/12 max-w-[90ch] max-h-[95%]
 hx-patch="/content/{{text_content.id}}"
 hx-target="#main_section"
 hx-swap="outerHTML"
-class="flex flex-col flex-1 h-full"
+class="flex flex-col flex-1 h-full min-h-0"
 {% endblock %}
 
 {% block modal_content %}
-<h3 class="text-lg font-bold">Edit Content</h3>
-<div class="form-control">
-  <label class="floating-label">
-    <span class="label-text">Context</span>
-    <input type="text" name="context" value="{{ text_content.context }}" class="w-full input input-bordered">
+<h3 class="text-xl font-extrabold tracking-tight">Edit Content</h3>
+<div class="flex flex-col gap-3 flex-1 min-h-0">
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Context</div>
+    <input type="text" name="context" value="{{ text_content.context }}" class="nb-input w-full">
+  </label>
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Category</div>
+    <input type="text" name="category" value="{{ text_content.category }}" class="nb-input w-full">
+  </label>
+  <label class="w-full flex-1 flex flex-col min-h-0">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Text</div>
+    <textarea name="text" class="nb-input w-full flex-1 min-h-0 h-full resize-none overflow-y-auto">{{ text_content.text
+      }}</textarea>
   </label>
 </div>
-<div class="form-control">
-  <label class="floating-label">
-    <span class="label-text">Category</span>
-    <input type="text" name="category" value="{{ text_content.category }}" class="w-full input input-bordered">
-  </label>
-</div>
-<div class="form-control flex-1 flex flex-col min-h-0">
-  <label class="floating-label flex-1 flex flex-col min-h-0">
-    <span class="label-text">Text</span>
-    <textarea name="text" class="textarea textarea-bordered w-full flex-1 min-h-[200px] h-full resize-none">{{
-      text_content.text }}</textarea>
-  </label>
-</div>
+<script>
+  (function () {
+    const form = document.getElementById('modal_form');
+    if (!form) return;
+
+    if (document.getElementById('main_section')) {
+      form.setAttribute('hx-target', '#main_section');
+      form.setAttribute('hx-swap', 'outerHTML');
+      return;
+    }
+
+    if (document.getElementById('latest_content_section')) {
+      form.setAttribute('hx-target', '#latest_content_section');
+      form.setAttribute('hx-swap', 'outerHTML');
+      return;
+    }
+
+    form.removeAttribute('hx-target');
+    form.setAttribute('hx-swap', 'none');
+  })();
+</script>
 {% endblock %}
 
 {% block primary_actions %}
-<button type="submit" class="btn btn-primary">
-  Save Changes
-</button>
+<button type="submit" class="nb-btn nb-cta">Save Changes</button>
 {% endblock %}

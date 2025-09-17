@@ -73,29 +73,29 @@
 
   function attachOverlay(container, { onSearch, onToggleLabels, onCenter }) {
     const overlay = document.createElement('div');
-    overlay.className = 'absolute top-2 left-2 z-10 flex gap-2 items-center';
+    overlay.className = 'kg-overlay';
 
     // search box
     const input = document.createElement('input');
     input.type = 'text';
     input.placeholder = 'Search nodes…';
-    input.className = 'input input-sm input-bordered';
+    input.className = 'nb-input kg-search-input';
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') onSearch && onSearch(input.value.trim());
     });
 
     const searchBtn = document.createElement('button');
-    searchBtn.className = 'btn btn-sm';
+    searchBtn.className = 'nb-btn btn-xs nb-cta';
     searchBtn.textContent = 'Go';
     searchBtn.addEventListener('click', () => onSearch && onSearch(input.value.trim()));
 
     const labelToggle = document.createElement('button');
-    labelToggle.className = 'btn btn-sm';
+    labelToggle.className = 'nb-btn btn-xs';
     labelToggle.textContent = 'Labels';
     labelToggle.addEventListener('click', () => onToggleLabels && onToggleLabels());
 
     const centerBtn = document.createElement('button');
-    centerBtn.className = 'btn btn-sm';
+    centerBtn.className = 'nb-btn btn-xs';
     centerBtn.textContent = 'Center';
     centerBtn.addEventListener('click', () => onCenter && onCenter());
 
@@ -112,15 +112,15 @@
 
   function attachLegends(container, typeColor, relColor) {
     const wrap = document.createElement('div');
-    wrap.className = 'absolute bottom-2 left-2 z-10 flex gap-6 flex-wrap';
+    wrap.className = 'kg-legend';
 
     function section(title, items) {
       const sec = document.createElement('div');
-      sec.className = 'rounded-box bg-base-100/80 backdrop-blur shadow p-2';
-      const h = document.createElement('div'); h.className = 'text-xs opacity-70 mb-1'; h.textContent = title; sec.appendChild(h);
+      sec.className = 'nb-card kg-legend-card';
+      const h = document.createElement('div'); h.className = 'kg-legend-heading'; h.textContent = title; sec.appendChild(h);
       items.forEach(([label, color]) => {
-        const row = document.createElement('div'); row.className = 'flex items-center gap-2 text-xs';
-        const sw = document.createElement('span'); sw.style.background = color; sw.style.width = '10px'; sw.style.height = '10px'; sw.style.borderRadius = '9999px';
+        const row = document.createElement('div'); row.className = 'kg-legend-row';
+        const sw = document.createElement('span'); sw.style.background = color; sw.style.width = '12px'; sw.style.height = '12px'; sw.style.border = '2px solid #000';
         const t = document.createElement('span'); t.textContent = label || '—';
         row.appendChild(sw); row.appendChild(t); sec.appendChild(row);
       });

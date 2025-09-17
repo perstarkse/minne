@@ -1,0 +1,25 @@
+<section class="mb-4 sm:mt-4">
+  <h2 class="text-2xl font-extrabold tracking-tight mb-3">Overview</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div class="nb-stat">
+      <div class="text-xs opacity-70">Total Documents</div>
+      <div class="text-3xl font-extrabold">{{ stats.total_documents }}</div>
+      <div class="text-xs opacity-60">+{{ stats.new_documents_week }} this week</div>
+    </div>
+    <div class="nb-stat">
+      <div class="text-xs opacity-70">Text Chunks</div>
+      <div class="text-3xl font-extrabold">{{ stats.total_text_chunks }}</div>
+      <div class="text-xs opacity-60">+{{ stats.new_text_chunks_week }} this week</div>
+    </div>
+    <div class="nb-stat">
+      <div class="text-xs opacity-70">Knowledge Entities</div>
+      <div class="text-3xl font-extrabold">{{ stats.total_entities }}</div>
+      <div class="text-xs opacity-60">+{{ stats.new_entities_week }} this week</div>
+    </div>
+    <div class="nb-stat">
+      <div class="text-xs opacity-70">Conversations</div>
+      <div class="text-3xl font-extrabold">{{ stats.total_conversations }}</div>
+      <div class="text-xs opacity-60">+{{ stats.new_conversations_week }} this week</div>
+    </div>
+  </div>
+</section>

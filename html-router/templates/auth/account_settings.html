@@ -3,91 +3,86 @@
 {% block title %}Minne - Account{% endblock %}
 
 {% block main %}
-<style>
-  form.htmx-request {
-    opacity: 0.5;
-  }
-</style>
-<main class="container flex-grow flex flex-col mx-auto mt-4 space-y-1">
-  <h1 class="text-2xl font-bold mb-2">Account Settings</h1>
-  <div class="form-control">
-    <label class="label">
-      <span class="label-text">Email</span>
-    </label>
-    <input type="email" name="email" value="{{ user.email }}" class="input text-primary-content input-bordered w-full"
-      disabled />
-  </div>
+<div class="flex justify-center grow mt-2 sm:mt-4 pb-4">
+  <div class="container">
+    <section class="mb-4">
+      <div class="nb-panel p-3 flex items-center justify-between">
+        <h1 class="text-xl font-extrabold tracking-tight">Account Settings</h1>
+      </div>
+    </section>
 
-  <div class="form-control">
-    <label class="label">
-      <span class="label-text">API key</span>
-    </label>
-    {% block api_key_section %}
-    {% if user.api_key %}
-    <div class="relative">
-      <input id="api_key_input" type="text" name="api_key" value="{{ user.api_key }}"
-        class="input text-primary-content input-bordered w-full pr-12" disabled />
-      <button type="button" id="copy_api_key_btn" onclick="copy_api_key()"
-        class="absolute inset-y-0 cursor-pointer right-0 flex items-center pr-3" title="Copy API key">
-        {% include "icons/clipboard_icon.html" %}
-      </button>
-    </div>
-    <a href="https://www.icloud.com/shortcuts/66985f7b98a74aaeac6ba29c3f1f0960"
-      class="btn btn-accent mt-4 w-full">Download iOS shortcut</a>
-    {% else %}
-    <button hx-post="/set-api-key" class="btn btn-secondary w-full" hx-swap="outerHTML">
-      Create API-Key
-    </button>
-    {% endif %}
-    {% endblock %}
-  </div>
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 space-y-2">
+      <!-- Left column -->
+      <div class="nb-panel p-4 space-y-2 flex flex-col">
+        <label class="w-full">
+          <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Email</div>
+          <input type="email" name="email" value="{{ user.email }}" class="nb-input w-full" disabled />
+        </label>
 
-  <script>
-    function copy_api_key() {
-      const input = document.getElementById('api_key_input');
-      if (!input) return;
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(input.value)
-          .then(() => show_toast('API key copied!', 'success'))
-          .catch(() => show_toast('Copy failed', 'error'));
-      } else {
-        show_toast('Copy not supported', 'info');
-      }
-    }
-  </script>
+        <label class="w-full">
+          <div class="text-xs uppercase tracking-wide opacity-70 mb-1">API Key</div>
+          {% block api_key_section %}
+          {% if user.api_key %}
+          <div class="relative">
+            <input id="api_key_input" type="text" name="api_key" value="{{ user.api_key }}"
+              class="nb-input w-full pr-14" disabled />
+            <button type="button" id="copy_api_key_btn" onclick="copy_api_key()"
+              class="absolute inset-y-0 right-0 flex items-center px-2 nb-btn btn-sm" aria-label="Copy API key"
+              title="Copy API key">
+              {% include "icons/clipboard_icon.html" %}
+            </button>
+          </div>
+          <a href="https://www.icloud.com/shortcuts/66985f7b98a74aaeac6ba29c3f1f0960"
+            class="nb-btn nb-cta mt-2 w-full">Download iOS shortcut</a>
+          {% else %}
+          <button hx-post="/set-api-key" class="nb-btn nb-cta w-full" hx-swap="outerHTML">Create API-Key</button>
+          {% endif %}
+          {% endblock %}
+        </label>
 
-  <div class="form-control mt-4">
-    <label class="label">
-      <span class="label-text">Timezone</span>
-    </label>
-    {% block timezone_section %}
-    <select name="timezone" class="select w-full" hx-patch="/update-timezone" hx-swap="outerHTML">
-      {% for tz in timezones %}
-      <option value="{{ tz }}" {% if tz==user.timezone %}selected{% endif %}>{{ tz }}</option>
-      {% endfor %}
-    </select>
-    {% endblock %}
-  </div>
+        <script>
+          function copy_api_key() {
+            const input = document.getElementById('api_key_input');
+            if (!input) return;
+            if (navigator.clipboard && window.isSecureContext) {
+              navigator.clipboard.writeText(input.value)
+                .then(() => show_toast('API key copied!', 'success'))
+                .catch(() => show_toast('Copy failed', 'error'));
+            } else {
+              show_toast('Copy not supported', 'info');
+            }
+          }
+        </script>
 
-  <div class="form-control mt-4 hidden">
-    <button hx-post="/verify-email" class="btn btn-secondary w-full">
-      Verify Email
-    </button>
+        <label class="w-full">
+          <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Timezone</div>
+          {% block timezone_section %}
+          <select name="timezone" class="nb-select w-full" hx-patch="/update-timezone" hx-swap="outerHTML">
+            {% for tz in timezones %}
+            <option value="{{ tz }}" {% if tz==user.timezone %}selected{% endif %}>{{ tz }}</option>
+            {% endfor %}
+          </select>
+          {% endblock %}
+        </label>
+      </div>
+
+      <!-- Right column -->
+      <div class="nb-panel p-4 space-y-2">
+        <div>
+          {% block change_password_section %}
+          <button hx-get="/change-password" hx-swap="outerHTML" class="nb-btn w-full">Change Password</button>
+          {% endblock %}
+        </div>
+
+        <div>
+          <button hx-delete="/delete-account"
+            hx-confirm="This action will permanently delete your account and all data associated. Are you sure you want to continue?"
+            class="nb-btn btn-error w-full">Delete Account</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="account-result" class="mt-4"></div>
   </div>
-  <div class="form-control mt-4">
-    {% block change_password_section %}
-    <button hx-get="/change-password" hx-swap="outerHTML" class="btn btn-primary w-full">
-      Change Password
-    </button>
-    {% endblock %}
-  </div>
-  <div class="form-control mt-4">
-    <button hx-delete="/delete-account"
-      hx-confirm="This action will permanently delete your account and all data associated. Are you sure you want to continue?"
-      class="btn btn-error w-full">
-      Delete Account
-    </button>
-  </div>
-  <div id="account-result" class="mt-4"></div>
-</main>
+</div>
 {% endblock %}

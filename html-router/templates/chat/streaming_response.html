@@ -25,7 +25,7 @@
     e.preventDefault();
     window.markdownBuffer[msgId] = (window.markdownBuffer[msgId] || '') + (e.detail.data || '');
     el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
-    if (typeof scrollChatToBottom === "function") scrollChatToBottom();
+    if (typeof window.scrollChatToBottom === "function") window.scrollChatToBottom();
   });
   document.body.addEventListener('htmx:sseClose', function () {
     const msgId = '{{ user_message.id }}';
@@ -33,7 +33,7 @@
     if (el && window.markdownBuffer[msgId]) {
       el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
       delete window.markdownBuffer[msgId];
-      if (typeof scrollChatToBottom === "function") scrollChatToBottom();
+      if (typeof window.scrollChatToBottom === "function") window.scrollChatToBottom();
     }
   });
 </script>

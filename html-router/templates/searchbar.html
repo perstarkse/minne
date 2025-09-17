@@ -1,8 +1,14 @@
-<div class="flex items-center gap-2 min-w-[90px]">
-  <form class="w-full" hx-boost="true" method="get" action="/search"
+<div class="flex items-center gap-2 min-w-[90px] w-full">
+  <form class="w-full relative" hx-boost="true" method="get" action="/search"
     hx-trigger="keyup changed delay:500ms from:#search-input, search from:#search-input" hx-push-url="true">
-    <input id="search-input" type="search" placeholder="Search for anything..."
-      class="input input-sm input-bordered input-primary w-full" name="query" autocomplete="off"
-      value="{{ query_param | default('', true) }}" />
+    <input id="search-input" type="search" aria-label="Search" class=" nb-input w-full pl-9 ml-2" name="query"
+      autocomplete="off" value="{{ query_param | default('', true) }}" />
+    <button type="submit"
+      class="absolute right-1 top-1/2 -translate-y-1/2 nb-btn btn-xs px-3 h-7 bg-base-100 hover:bg-base-200">
+      Search
+    </button>
+    <span class="hidden md:inline absolute right-24 top-1/2 -translate-y-1/2 text-xs opacity-60">
+      press <kbd class="kbd kbd-xs">Enter</kbd>
+    </span>
   </form>
 </div>

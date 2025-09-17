@@ -1,5 +1,6 @@
 use axum_typed_multipart::FieldData;
 use mime_guess::from_path;
+use object_store::Error as ObjectStoreError;
 use sha2::{Digest, Sha256};
 use std::{
     io::{BufReader, Read},
@@ -7,7 +8,6 @@ use std::{
 };
 use tempfile::NamedTempFile;
 use thiserror::Error;
-use object_store::Error as ObjectStoreError;
 // futures imports no longer needed here after abstraction
 use tracing::info;
 use uuid::Uuid;
@@ -90,8 +90,7 @@ impl FileInfo {
             updated_at: now,
             file_name,
             sha256,
-            path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id, config)
-                .await?,
+            path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id, config).await?,
             mime_type: Self::guess_mime_type(Path::new(&sanitized_file_name)),
             user_id: user_id.to_string(),
         };
@@ -248,7 +247,10 @@ impl FileInfo {
         store::delete_prefix_at(&parent_prefix, config)
             .await
             .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
-        info!("Removed object prefix {} and its contents via object_store", parent_prefix);
+        info!(
+            "Removed object prefix {} and its contents via object_store",
+            parent_prefix
+        );
 
         // Delete the FileInfo from the database
         db_client.delete_item::<FileInfo>(id).await?;
@@ -276,9 +278,9 @@ impl FileInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::config::StorageKind;
     use axum::http::HeaderMap;
     use axum_typed_multipart::FieldMetadata;
-    use crate::utils::config::StorageKind;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -657,9 +659,22 @@ mod tests {
 
         // Create and persist a test file via FileInfo::new
         let user_id = "user123";
-        let cfg = AppConfig { data_dir: "./data".to_string(), openai_api_key: "".to_string(), surrealdb_address: "".to_string(), surrealdb_username: "".to_string(), surrealdb_password: "".to_string(), surrealdb_namespace: "".to_string(), surrealdb_database: "".to_string(), http_port: 0, openai_base_url: "".to_string(), storage: crate::utils::config::StorageKind::Local };
+        let cfg = AppConfig {
+            data_dir: "./data".to_string(),
+            openai_api_key: "".to_string(),
+            surrealdb_address: "".to_string(),
+            surrealdb_username: "".to_string(),
+            surrealdb_password: "".to_string(),
+            surrealdb_namespace: "".to_string(),
+            surrealdb_database: "".to_string(),
+            http_port: 0,
+            openai_base_url: "".to_string(),
+            storage: crate::utils::config::StorageKind::Local,
+        };
         let temp = create_test_file(b"test content", "test_file.txt");
-        let file_info = FileInfo::new(temp, &db, user_id, &cfg).await.expect("create file");
+        let file_info = FileInfo::new(temp, &db, user_id, &cfg)
+            .await
+            .expect("create file");
 
         // Delete the file
         let delete_result = FileInfo::delete_by_id(&file_info.id, &db, &cfg).await;
@@ -695,7 +710,23 @@ mod tests {
             .expect("Failed to start in-memory surrealdb");
 
         // Try to delete a file that doesn't exist
-        let result = FileInfo::delete_by_id("nonexistent_id", &db, &AppConfig { data_dir: "./data".to_string(), openai_api_key: "".to_string(), surrealdb_address: "".to_string(), surrealdb_username: "".to_string(), surrealdb_password: "".to_string(), surrealdb_namespace: "".to_string(), surrealdb_database: "".to_string(), http_port: 0, openai_base_url: "".to_string(), storage: crate::utils::config::StorageKind::Local }).await;
+        let result = FileInfo::delete_by_id(
+            "nonexistent_id",
+            &db,
+            &AppConfig {
+                data_dir: "./data".to_string(),
+                openai_api_key: "".to_string(),
+                surrealdb_address: "".to_string(),
+                surrealdb_username: "".to_string(),
+                surrealdb_password: "".to_string(),
+                surrealdb_namespace: "".to_string(),
+                surrealdb_database: "".to_string(),
+                http_port: 0,
+                openai_base_url: "".to_string(),
+                storage: crate::utils::config::StorageKind::Local,
+            },
+        )
+        .await;
 
         // Should fail with FileNotFound error
         assert!(result.is_err());

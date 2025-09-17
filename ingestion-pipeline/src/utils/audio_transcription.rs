@@ -1,10 +1,7 @@
-use async_openai::types::{CreateTranscriptionRequestArgs, AudioResponseFormat};
+use async_openai::types::{AudioResponseFormat, CreateTranscriptionRequestArgs};
 use common::{
     error::AppError,
-    storage::{
-        db::SurrealDbClient,
-        types::system_settings::SystemSettings,
-    },
+    storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
 };
 
 /// Transcribes an audio file using the configured OpenAI Whisper model.
@@ -29,4 +26,3 @@ pub async fn transcribe_audio_file(
         .map_err(|e| AppError::Processing(format!("Audio transcription failed: {}", e)))?;
     Ok(response.text)
 }
-

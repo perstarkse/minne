@@ -1,32 +1,40 @@
 {% for task in tasks %}
-<li class="list-row" hx-ext="sse" sse-connect="/task/status-stream?task_id={{task.id}}" sse-close="close_stream">
-  <div class="bg-secondary rounded-box size-10 flex justify-center items-center text-secondary-content"
-    sse-swap="stop_loading" hx-swap="innerHTML">
-    <span class="loading loading-spinner loading-xl"></span>
-  </div>
-  <div>
-    <div class="flex gap-1">
-      <div sse-swap="status" hx-swap="innerHTML">
-        Created
-      </div>
-      <div hx-get="/content/recent" hx-target="#latest_content_section" hx-swap="outerHTML"
-        hx-trigger="sse:update_latest_content"></div>
+<li class="nb-panel p-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+  hx-ext="sse" sse-connect="/task/status-stream?task_id={{task.id}}" sse-close="close_stream">
+  <div class="flex items-center gap-3 flex-1 min-w-0">
+    <div class="size-10 flex items-center justify-center border-2 border-neutral bg-transparent"
+      sse-swap="stop_loading" hx-swap="innerHTML">
+      <span class="loading loading-spinner loading-md"></span>
     </div>
-    <div class="text-xs font-semibold opacity-60">
-      {{task.created_at|datetimeformat(format="short", tz=user.timezone)}} </div>
+    <div class="space-y-1">
+      <div class="text-sm font-semibold flex gap-2 items-center">
+        <span sse-swap="status" hx-swap="innerHTML">Created</span>
+        <div hx-get="/content/recent" hx-target="#latest_content_section" hx-swap="outerHTML"
+          hx-trigger="sse:update_latest_content"></div>
+      </div>
+      <div class="text-xs font-semibold opacity-60">
+        {{task.created_at|datetimeformat(format="short", tz=user.timezone)}}
+      </div>
+    </div>
   </div>
-  <p class="list-col-wrap text-xs [&:before]:content-['Content:_']  [&:before]:opacity-60">
-    {% if task.content.Url %}
-    {{task.content.Url.url}}
-    {% elif task.content.File %}
-    {{task.content.File.file_info.file_name}}
-    {% else %}
-    {{task.content.Text.text}}
-    {% endif %}
-  </p>
-  <button hx-delete="/jobs/{{task.id}}" hx-target="#active_jobs_section" hx-swap="outerHTML"
-    class="btn btn-square btn-ghost btn-sm">
-    {% include "icons/delete_icon.html" %}
-  </button>
+
+  <div class="sm:flex-1 sm:text-right">
+    <p class="text-xs opacity-80 leading-snug break-words">
+      {% if task.content.Url %}
+      {{task.content.Url.url}}
+      {% elif task.content.File %}
+      {{task.content.File.file_info.file_name}}
+      {% else %}
+      {{task.content.Text.text}}
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="flex items-center justify-end gap-2">
+    <button hx-delete="/jobs/{{task.id}}" hx-target="#active_jobs_section" hx-swap="outerHTML"
+      class="nb-btn btn-square btn-sm" aria-label="Cancel task">
+      {% include "icons/delete_icon.html" %}
+    </button>
+  </div>
 </li>
 {% endfor %}

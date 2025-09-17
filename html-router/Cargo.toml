@@ -30,6 +30,7 @@ tower-http = { workspace = true }
 chrono-tz = { workspace = true } 
 tower-serve-static = { workspace = true } 
 tokio-util = { workspace = true } 
+chrono = { workspace = true }
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }

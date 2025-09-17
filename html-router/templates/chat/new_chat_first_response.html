@@ -1,11 +1,9 @@
 {% include "chat/streaming_response.html" %}
-
 <!-- OOB swap targeting the form element directly -->
 <form id="chat-form" hx-post="/chat/{{conversation.id}}" hx-target="#chat_container" hx-swap="beforeend"
   class="relative flex gap-2" hx-swap-oob="true">
   <textarea autofocus required name="content" placeholder="Type your message..." rows="2"
-    class="textarea textarea-ghost rounded-2xl rounded-b-none h-24 sm:rounded-b-2xl pr-8 bg-base-200 flex-grow resize-none"
-    id="chat-input"></textarea>
+    class="nb-input h-24 pr-8 pl-2 pt-2 pb-2 flex-grow resize-none" id="chat-input"></textarea>
   <button type="submit" class="absolute p-2 cursor-pointer right-0.5 btn-ghost btn-sm top-1">
     {% include "icons/send_icon.html" %}
   </button>

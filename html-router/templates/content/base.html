@@ -3,14 +3,14 @@
 {% block title %}Minne - Content{% endblock %}
 
 {% block main %}
-<main id="main_section" class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10">
+<main id="main_section" class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10 w-full">
   <div class="container">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-2xl font-bold">Content</h2>
+    <div class="nb-panel p-3 mb-4 flex items-center justify-between">
+      <h2 class="text-xl font-extrabold tracking-tight">Content</h2>
       <form hx-get="/content" hx-target="#main_section" hx-swap="outerHTML" hx-push-url="true"
         class="flex items-center gap-2 mt-2 sm:mt-0">
-        <div class="form-control">
-          <select name="category" class="select select-bordered">
+        <div>
+          <select name="category" class="nb-select">
             <option value="">All Categories</option>
             {% for category in categories %}
             <option value="{{ category }}" {% if selected_category==category %}selected{% endif %}>{{ category }}
@@ -18,13 +18,11 @@
             {% endfor %}
           </select>
         </div>
-        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        <button type="submit" class="nb-btn btn-sm">Filter</button>
       </form>
     </div>
 
-    <div id="text_content_cards">
-      {% include "content/content_list.html" %}
-    </div>
+    {% include "content/content_list.html" %}
   </div>
 </main>
 {% endblock %}

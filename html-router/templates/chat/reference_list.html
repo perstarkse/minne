@@ -1,8 +1,8 @@
 <div class="relative my-2">
   <button id="references-toggle-{{message.id}}"
-    class="text-xs text-blue-500 hover:text-blue-700 hover:underline focus:outline-none flex items-center"
+    class="nb-btn btn-xs bg-base-100 hover:bg-base-200 flex items-center"
     onclick="toggleReferences('{{message.id}}')">
-    References
+    REFERENCES
     {% include "icons/chevron_icon.html" %}
   </button>
   <div id="references-content-{{message.id}}" class="hidden max-w-full mt-1">
@@ -10,7 +10,7 @@
       {% for reference in message.references %}
       <div class="reference-badge-container" data-reference="{{reference}}" data-message-id="{{message.id}}"
         data-index="{{loop.index}}">
-        <span class="badge badge-xs badge-neutral truncate max-w-[20ch] overflow-hidden text-left block cursor-pointer">
+        <span class="nb-badge truncate max-w-[20ch] overflow-hidden text-left block cursor-pointer">
           {{reference}}
         </span>
       </div>
@@ -80,7 +80,7 @@
       function createTooltip() {
         const tooltip = document.createElement('div');
         tooltip.id = tooltipId;
-        tooltip.className = 'fixed z-[9999] bg-neutral-800 text-white p-3 rounded-md shadow-lg text-sm w-72 max-w-xs border border-neutral-700 hidden';
+        tooltip.className = 'reference-tooltip hidden';
         tooltip.innerHTML = '<div class="animate-pulse">Loading...</div>';
         document.body.appendChild(tooltip);
         return tooltip;
@@ -135,15 +135,3 @@
     });
   }
 </script>
-
-<style>
-  #references-toggle- {
-      {
-      message.id
-    }
-  }
-
-  svg {
-    transition: transform 0.2s ease;
-  }
-</style>
