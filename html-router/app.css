@@ -591,15 +591,27 @@
   }
 
   .markdown-content pre {
-    background-color: rgba(0, 0, 0, 0.05);
-    padding: 0.5em;
+    background-color: var(--color-base-200);
+    color: var(--color-base-content);
+    padding: 0.75em 1em;
     border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     overflow-x: auto;
   }
 
-  .markdown-content code {
+  .markdown-content pre code {
+    background-color: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 0;
+    display: block;
+    line-height: inherit;
+  }
+
+  .markdown-content :not(pre) > code {
     background-color: rgba(0, 0, 0, 0.05);
-    padding: 0.2em 0.4em;
+    color: var(--color-base-content);
+    padding: 0.15em 0.4em;
     border-radius: 3px;
     font-size: 0.9em;
   }
@@ -644,9 +656,15 @@
     border-top-color: rgba(255, 255, 255, 0.2);
   }
 
-  [data-theme="dark"] .markdown-content pre,
-  [data-theme="dark"] .markdown-content code {
-    background-color: rgba(255, 255, 255, 0.07);
+  [data-theme="dark"] .markdown-content pre {
+    background-color: var(--color-base-200);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--color-base-content);
+  }
+
+  [data-theme="dark"] .markdown-content :not(pre) > code {
+    background-color: rgba(255, 255, 255, 0.12);
+    color: var(--color-base-content);
   }
 
   .brand-mark {
