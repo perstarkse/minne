@@ -3,8 +3,8 @@
 DEFINE TABLE IF NOT EXISTS text_chunk SCHEMALESS;
 
 # Standard fields
-DEFINE FIELD IF NOT EXISTS created_at ON text_chunk TYPE string;
-DEFINE FIELD IF NOT EXISTS updated_at ON text_chunk TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at ON text_chunk TYPE datetime;
+DEFINE FIELD IF NOT EXISTS updated_at ON text_chunk TYPE datetime;
 
 # Custom fields from the TextChunk struct
 DEFINE FIELD IF NOT EXISTS source_id ON text_chunk TYPE string;

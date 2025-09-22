@@ -4,8 +4,8 @@
 DEFINE TABLE IF NOT EXISTS user SCHEMALESS;
 
 # Standard fields
-DEFINE FIELD IF NOT EXISTS created_at ON user TYPE string;
-DEFINE FIELD IF NOT EXISTS updated_at ON user TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at ON user TYPE datetime;
+DEFINE FIELD IF NOT EXISTS updated_at ON user TYPE datetime;
 
 # Custom fields from the User struct
 DEFINE FIELD IF NOT EXISTS email ON user TYPE string;

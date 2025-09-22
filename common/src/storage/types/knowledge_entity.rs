@@ -103,6 +103,8 @@ impl KnowledgeEntity {
         );
         let embedding = generate_embedding(ai_client, &embedding_input, db_client).await?;
 
+        let now = Utc::now();
+
         db_client
             .client
             .query(
@@ -117,7 +119,7 @@ impl KnowledgeEntity {
             .bind(("table", Self::table_name()))
             .bind(("id", id.to_string()))
             .bind(("name", name.to_string()))
-            .bind(("updated_at", Utc::now()))
+            .bind(("updated_at", surrealdb::Datetime::from(now)))
             .bind(("entity_type", entity_type.to_owned()))
             .bind(("embedding", embedding))
             .bind(("description", description.to_string()))

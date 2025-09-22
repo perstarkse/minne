@@ -67,7 +67,7 @@ impl IngestionTask {
             .patch(PatchOp::replace("/status", status))
             .patch(PatchOp::replace(
                 "/updated_at",
-                surrealdb::sql::Datetime::default(),
+                surrealdb::Datetime::from(Utc::now()),
             ))
             .await?;
 

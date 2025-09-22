@@ -3,8 +3,8 @@
 DEFINE TABLE IF NOT EXISTS ingestion_task SCHEMALESS;
 
 # Standard fields
-DEFINE FIELD IF NOT EXISTS created_at ON ingestion_task TYPE string;
-DEFINE FIELD IF NOT EXISTS updated_at ON ingestion_task TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at ON ingestion_task TYPE datetime;
+DEFINE FIELD IF NOT EXISTS updated_at ON ingestion_task TYPE datetime;
 
 DEFINE FIELD IF NOT EXISTS content ON ingestion_task TYPE object;
 DEFINE FIELD IF NOT EXISTS status ON ingestion_task TYPE object;

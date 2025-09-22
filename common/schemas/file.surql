@@ -3,8 +3,8 @@
 DEFINE TABLE IF NOT EXISTS file SCHEMALESS;
 
 # Standard fields
-DEFINE FIELD IF NOT EXISTS created_at ON file TYPE string;
-DEFINE FIELD IF NOT EXISTS updated_at ON file TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at ON file TYPE datetime;
+DEFINE FIELD IF NOT EXISTS updated_at ON file TYPE datetime;
 
 # Custom fields from the FileInfo struct
 DEFINE FIELD IF NOT EXISTS sha256 ON file TYPE string;

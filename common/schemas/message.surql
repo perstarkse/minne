@@ -3,8 +3,8 @@
 DEFINE TABLE IF NOT EXISTS message SCHEMALESS;
 
 # Standard fields
-DEFINE FIELD IF NOT EXISTS created_at ON message TYPE string;
-DEFINE FIELD IF NOT EXISTS updated_at ON message TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at ON message TYPE datetime;
+DEFINE FIELD IF NOT EXISTS updated_at ON message TYPE datetime;
 
 # Custom fields from the Message struct
 DEFINE FIELD IF NOT EXISTS conversation_id ON message TYPE string;

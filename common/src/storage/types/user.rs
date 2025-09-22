@@ -1,6 +1,7 @@
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 use async_trait::async_trait;
 use axum_session_auth::Authentication;
+use chrono_tz::Tz;
 use surrealdb::{engine::any::Any, Surreal};
 use uuid::Uuid;
 
@@ -55,9 +56,6 @@ impl Authentication<User, String, Surreal<Any>> for User {
 }
 
 fn validate_timezone(input: &str) -> String {
-    use chrono_tz::Tz;
-
-    // Check if it's a valid IANA timezone identifier
     match input.parse::<Tz>() {
         Ok(_) => input.to_owned(),
         Err(_) => {
@@ -187,8 +185,8 @@ impl User {
             .bind(("id", id))
             .bind(("email", email))
             .bind(("password", password))
-            .bind(("created_at", now))
-            .bind(("updated_at", now))
+            .bind(("created_at", surrealdb::Datetime::from(now)))
+            .bind(("updated_at", surrealdb::Datetime::from(now)))
             .bind(("timezone", validated_tz))
             .await?
             .take(1)?;
@@ -979,5 +977,57 @@ mod tests {
         // Check first conversation title matches the most recently updated
         let most_recent = conversations.iter().max_by_key(|c| c.created_at).unwrap();
         assert_eq!(retrieved[0].id, most_recent.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_text_contents_returns_last_five() {
+        let db = setup_test_db().await;
+        let user_id = "latest_text_user";
+
+        let mut inserted_ids = Vec::new();
+        let base_time = chrono::Utc::now() - chrono::Duration::minutes(60);
+
+        for i in 0..12 {
+            let mut item = TextContent::new(
+                format!("Text {}", i),
+                Some(format!("Context {}", i)),
+                "Category".to_string(),
+                None,
+                None,
+                user_id.to_string(),
+            );
+
+            let timestamp = base_time + chrono::Duration::minutes(i);
+            item.created_at = timestamp;
+            item.updated_at = timestamp;
+
+            db.store_item(item.clone())
+                .await
+                .expect("Failed to store text content");
+
+            inserted_ids.push(item.id.clone());
+        }
+
+        let latest = User::get_latest_text_contents(user_id, &db)
+            .await
+            .expect("Failed to fetch latest text contents");
+
+        assert_eq!(latest.len(), 5, "Expected exactly five items");
+
+        let mut expected_ids = inserted_ids[inserted_ids.len() - 5..].to_vec();
+        expected_ids.reverse();
+
+        let returned_ids: Vec<String> = latest.iter().map(|item| item.id.clone()).collect();
+        assert_eq!(
+            returned_ids, expected_ids,
+            "Latest items did not match expectation"
+        );
+
+        for window in latest.windows(2) {
+            assert!(
+                window[0].created_at >= window[1].created_at,
+                "Results are not ordered by created_at descending"
+            );
+        }
     }
 }

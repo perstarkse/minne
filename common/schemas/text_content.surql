@@ -3,8 +3,8 @@
 DEFINE TABLE IF NOT EXISTS text_content SCHEMALESS;
 
 # Standard fields
-DEFINE FIELD IF NOT EXISTS created_at ON text_content TYPE string;
-DEFINE FIELD IF NOT EXISTS updated_at ON text_content TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at ON text_content TYPE datetime;
+DEFINE FIELD IF NOT EXISTS updated_at ON text_content TYPE datetime;
 
 # Custom fields from the TextContent struct
 DEFINE FIELD IF NOT EXISTS text ON text_content TYPE string;

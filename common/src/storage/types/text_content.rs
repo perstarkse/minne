@@ -101,7 +101,10 @@ impl TextContent {
             .patch(PatchOp::replace("/context", context))
             .patch(PatchOp::replace("/category", category))
             .patch(PatchOp::replace("/text", text))
-            .patch(PatchOp::replace("/updated_at", now))
+            .patch(PatchOp::replace(
+                "/updated_at",
+                surrealdb::Datetime::from(now),
+            ))
             .await?;
 
         Ok(())

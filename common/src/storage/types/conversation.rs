@@ -67,7 +67,10 @@ impl Conversation {
         let _updated: Option<Self> = db
             .update((Self::table_name(), id))
             .patch(PatchOp::replace("/title", new_title.to_string()))
-            .patch(PatchOp::replace("/updated_at", Utc::now()))
+            .patch(PatchOp::replace(
+                "/updated_at",
+                surrealdb::Datetime::from(Utc::now()),
+            ))
             .await?;
 
         Ok(())

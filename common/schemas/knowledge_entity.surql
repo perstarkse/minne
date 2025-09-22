@@ -3,8 +3,8 @@
 DEFINE TABLE IF NOT EXISTS knowledge_entity SCHEMALESS;
 
 # Standard fields
-DEFINE FIELD IF NOT EXISTS created_at ON knowledge_entity TYPE string;
-DEFINE FIELD IF NOT EXISTS updated_at ON knowledge_entity TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at ON knowledge_entity TYPE datetime;
+DEFINE FIELD IF NOT EXISTS updated_at ON knowledge_entity TYPE datetime;
 
 # Custom fields from the KnowledgeEntity struct
 DEFINE FIELD IF NOT EXISTS source_id ON knowledge_entity TYPE string;
