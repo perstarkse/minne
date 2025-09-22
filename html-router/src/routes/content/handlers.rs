@@ -17,8 +17,12 @@ use crate::{
         auth_middleware::RequireUser,
         response_middleware::{HtmlError, TemplateResponse},
     },
+    utils::pagination::{paginate_items, Pagination},
     utils::text_content_preview::truncate_text_contents,
 };
+use url::form_urlencoded;
+
+const CONTENTS_PER_PAGE: usize = 12;
 
 #[derive(Serialize)]
 pub struct ContentPageData {
@@ -27,6 +31,8 @@ pub struct ContentPageData {
     categories: Vec<String>,
     selected_category: Option<String>,
     conversation_archive: Vec<Conversation>,
+    pagination: Pagination,
+    page_query: String,
 }
 
 #[derive(Serialize)]
@@ -38,6 +44,7 @@ pub struct RecentTextContentData {
 #[derive(Deserialize)]
 pub struct FilterParams {
     category: Option<String>,
+    page: Option<usize>,
 }
 
 pub async fn show_content_page(
@@ -48,18 +55,31 @@ pub async fn show_content_page(
     HxBoosted(is_boosted): HxBoosted,
 ) -> Result<impl IntoResponse, HtmlError> {
     // Normalize empty strings to None
-    let has_category_param = params.category.is_some();
-    let category_filter = params.category.as_deref().unwrap_or("").trim();
+    let category_filter = params
+        .category
+        .as_ref()
+        .map(|c| c.trim())
+        .filter(|c| !c.is_empty());
 
     // load categories and filtered/all contents
     let categories = User::get_user_categories(&user.id, &state.db).await?;
-    let text_contents = if !category_filter.is_empty() {
-        User::get_text_contents_by_category(&user.id, category_filter, &state.db).await?
-    } else {
-        User::get_text_contents(&user.id, &state.db).await?
+    let full_contents = match category_filter {
+        Some(category) => {
+            User::get_text_contents_by_category(&user.id, category, &state.db).await?
+        }
+        None => User::get_text_contents(&user.id, &state.db).await?,
     };
 
-    let text_contents = truncate_text_contents(text_contents);
+    let (page_contents, pagination) = paginate_items(full_contents, params.page, CONTENTS_PER_PAGE);
+    let text_contents = truncate_text_contents(page_contents);
+
+    let page_query = category_filter
+        .map(|category| {
+            let mut serializer = form_urlencoded::Serializer::new(String::new());
+            serializer.append_pair("category", category);
+            format!("&{}", serializer.finish())
+        })
+        .unwrap_or_default();
 
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
     let data = ContentPageData {
@@ -68,19 +88,19 @@ pub async fn show_content_page(
         categories,
         selected_category: params.category.clone(),
         conversation_archive,
+        pagination,
+        page_query,
     };
 
-    if is_htmx && !is_boosted && has_category_param {
-        // If HTMX partial request with filter applied, return partial content list update
-        return Ok(TemplateResponse::new_partial(
+    if is_htmx && !is_boosted {
+        Ok(TemplateResponse::new_partial(
             "content/base.html",
             "main",
             data,
-        ));
+        ))
+    } else {
+        Ok(TemplateResponse::new_template("content/base.html", data))
     }
-
-    // Otherwise full page response including layout
-    Ok(TemplateResponse::new_template("content/base.html", data))
 }
 
 pub async fn show_text_content_edit_form(
@@ -132,7 +152,12 @@ pub async fn patch_text_content(
         ));
     }
 
-    let text_contents = truncate_text_contents(User::get_text_contents(&user.id, &state.db).await?);
+    let (page_contents, pagination) = paginate_items(
+        User::get_text_contents(&user.id, &state.db).await?,
+        Some(1),
+        CONTENTS_PER_PAGE,
+    );
+    let text_contents = truncate_text_contents(page_contents);
     let categories = User::get_user_categories(&user.id, &state.db).await?;
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
@@ -145,6 +170,8 @@ pub async fn patch_text_content(
             categories,
             selected_category: None,
             conversation_archive,
+            pagination,
+            page_query: String::new(),
         },
     ))
 }
@@ -170,7 +197,12 @@ pub async fn delete_text_content(
     state.db.delete_item::<TextContent>(&id).await?;
 
     // Get updated content, categories and return the refreshed list
-    let text_contents = truncate_text_contents(User::get_text_contents(&user.id, &state.db).await?);
+    let (page_contents, pagination) = paginate_items(
+        User::get_text_contents(&user.id, &state.db).await?,
+        Some(1),
+        CONTENTS_PER_PAGE,
+    );
+    let text_contents = truncate_text_contents(page_contents);
     let categories = User::get_user_categories(&user.id, &state.db).await?;
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
@@ -182,6 +214,8 @@ pub async fn delete_text_content(
             categories,
             selected_category: None,
             conversation_archive,
+            pagination,
+            page_query: String::new(),
         },
     ))
 }

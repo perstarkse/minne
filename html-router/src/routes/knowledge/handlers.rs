@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::{
     extract::{Path, Query, State},
@@ -21,17 +21,23 @@ use crate::{
         auth_middleware::RequireUser,
         response_middleware::{HtmlError, TemplateResponse},
     },
+    utils::pagination::{paginate_items, Pagination},
 };
+use url::form_urlencoded;
+
+const KNOWLEDGE_ENTITIES_PER_PAGE: usize = 12;
 
 #[derive(Deserialize, Default)]
 pub struct FilterParams {
     entity_type: Option<String>,
     content_category: Option<String>,
+    page: Option<usize>,
 }
 
 #[derive(Serialize)]
 pub struct KnowledgeBaseData {
     entities: Vec<KnowledgeEntity>,
+    visible_entities: Vec<KnowledgeEntity>,
     relationships: Vec<KnowledgeRelationship>,
     user: User,
     entity_types: Vec<String>,
@@ -39,6 +45,8 @@ pub struct KnowledgeBaseData {
     selected_entity_type: Option<String>,
     selected_content_category: Option<String>,
     conversation_archive: Vec<Conversation>,
+    pagination: Pagination,
+    page_query: String,
 }
 
 pub async fn show_knowledge_page(
@@ -67,11 +75,36 @@ pub async fn show_knowledge_page(
         },
     };
 
+    let (visible_entities, pagination) =
+        paginate_items(entities.clone(), params.page, KNOWLEDGE_ENTITIES_PER_PAGE);
+
+    let page_query = {
+        let mut serializer = form_urlencoded::Serializer::new(String::new());
+        if let Some(entity_type) = params.entity_type.as_deref() {
+            serializer.append_pair("entity_type", entity_type);
+        }
+        if let Some(content_category) = params.content_category.as_deref() {
+            serializer.append_pair("content_category", content_category);
+        }
+        let encoded = serializer.finish();
+        if encoded.is_empty() {
+            String::new()
+        } else {
+            format!("&{}", encoded)
+        }
+    };
+
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
+    let entity_id_set: HashSet<String> = entities.iter().map(|e| e.id.clone()).collect();
+    let relationships: Vec<KnowledgeRelationship> = relationships
+        .into_iter()
+        .filter(|rel| entity_id_set.contains(&rel.in_) && entity_id_set.contains(&rel.out))
+        .collect();
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     let kb_data = KnowledgeBaseData {
         entities,
+        visible_entities,
         relationships,
         user,
         entity_types,
@@ -79,20 +112,20 @@ pub async fn show_knowledge_page(
         selected_entity_type: params.entity_type.clone(),
         selected_content_category: params.content_category.clone(),
         conversation_archive,
+        pagination,
+        page_query,
     };
 
     // Determine response type:
     // If it is an HTMX request but NOT a boosted navigation, send partial update (main block only)
     // Otherwise send full page including navbar/base for direct and boosted reloads
     if is_htmx && !is_boosted {
-        // Partial update (just main block)
         Ok(TemplateResponse::new_partial(
             "knowledge/base.html",
             "main",
             &kb_data,
         ))
     } else {
-        // Full page (includes navbar etc.)
         Ok(TemplateResponse::new_template(
             "knowledge/base.html",
             kb_data,
@@ -145,8 +178,7 @@ pub async fn get_knowledge_graph_json(
     let relationships: Vec<KnowledgeRelationship> =
         User::get_knowledge_relationships(&user.id, &state.db).await?;
 
-    let entity_ids: std::collections::HashSet<String> =
-        entities.iter().map(|e| e.id.clone()).collect();
+    let entity_ids: HashSet<String> = entities.iter().map(|e| e.id.clone()).collect();
 
     let mut degree_count: HashMap<String, usize> = HashMap::new();
     let mut links: Vec<GraphLink> = Vec::new();
@@ -184,10 +216,22 @@ fn normalize_filter(input: Option<String>) -> Option<String> {
             if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
                 None
             } else {
-                Some(trimmed.to_string())
+                Some(trim_matching_quotes(trimmed).to_string())
             }
         }
     }
+}
+
+fn trim_matching_quotes(value: &str) -> &str {
+    let bytes = value.as_bytes();
+    if bytes.len() >= 2 {
+        let first = bytes[0];
+        let last = bytes[bytes.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return &value[1..value.len() - 1];
+        }
+    }
+    value
 }
 
 pub async fn show_edit_knowledge_entity_form(
@@ -231,12 +275,14 @@ pub struct PatchKnowledgeEntityParams {
 
 #[derive(Serialize)]
 pub struct EntityListData {
-    entities: Vec<KnowledgeEntity>,
+    visible_entities: Vec<KnowledgeEntity>,
+    pagination: Pagination,
     user: User,
     entity_types: Vec<String>,
     content_categories: Vec<String>,
     selected_entity_type: Option<String>,
     selected_content_category: Option<String>,
+    page_query: String,
 }
 
 pub async fn patch_knowledge_entity(
@@ -261,7 +307,11 @@ pub async fn patch_knowledge_entity(
     .await?;
 
     // Get updated list of entities
-    let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
+    let (visible_entities, pagination) = paginate_items(
+        User::get_knowledge_entities(&user.id, &state.db).await?,
+        Some(1),
+        KNOWLEDGE_ENTITIES_PER_PAGE,
+    );
 
     // Get entity types
     let entity_types = User::get_entity_types(&user.id, &state.db).await?;
@@ -273,12 +323,14 @@ pub async fn patch_knowledge_entity(
     Ok(TemplateResponse::new_template(
         "knowledge/entity_list.html",
         EntityListData {
-            entities,
+            visible_entities,
+            pagination,
             user,
             entity_types,
             content_categories,
             selected_entity_type: None,
             selected_content_category: None,
+            page_query: String::new(),
         },
     ))
 }
@@ -295,7 +347,11 @@ pub async fn delete_knowledge_entity(
     state.db.delete_item::<KnowledgeEntity>(&id).await?;
 
     // Get updated list of entities
-    let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
+    let (visible_entities, pagination) = paginate_items(
+        User::get_knowledge_entities(&user.id, &state.db).await?,
+        Some(1),
+        KNOWLEDGE_ENTITIES_PER_PAGE,
+    );
 
     // Get entity types
     let entity_types = User::get_entity_types(&user.id, &state.db).await?;
@@ -306,12 +362,14 @@ pub async fn delete_knowledge_entity(
     Ok(TemplateResponse::new_template(
         "knowledge/entity_list.html",
         EntityListData {
-            entities,
+            visible_entities,
+            pagination,
             user,
             entity_types,
             content_categories,
             selected_entity_type: None,
             selected_content_category: None,
+            page_query: String::new(),
         },
     ))
 }

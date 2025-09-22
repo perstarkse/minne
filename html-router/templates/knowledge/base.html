@@ -9,6 +9,7 @@
       <h2 class="text-xl font-extrabold tracking-tight">Knowledge Entities</h2>
       <form hx-get="/knowledge" hx-target="#knowledge_pane" hx-push-url="true" hx-swap="outerHTML"
         class="flex items-center gap-2 mt-2 sm:mt-0">
+        <input type="hidden" name="page" value="1" />
         <div>
           <select name="entity_type" class="nb-select">
             <option value="">All Types</option>
@@ -30,15 +31,15 @@
       </form>
     </div>
 
-    <h2 class="text-2xl font-bold mb-2 mt-10">Graph</h2>
-    <div class="nb-card mt-4 p-2 mb-30">
+    <h2 class="text-2xl font-bold mb-2 mt-10 ">Graph</h2>
+    <div class="nb-card mt-4 p-2">
       <div id="knowledge-graph" class="w-full" style="height: 640px;"
         data-entity-type="{{ selected_entity_type | default(value='') }}"
         data-content-category="{{ selected_content_category | default(value='') }}">
       </div>
     </div>
     {% include "knowledge/entity_list.html" %}
-    <h2 class="text-2xl font-bold mb-2 mt-10">Relationships</h2>
+    <h2 class="text-2xl font-bold mb-2 mt-2">Relationships</h2>
     {% include "knowledge/relationship_table.html" %}
   </div>
 </div>

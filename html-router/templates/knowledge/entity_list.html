@@ -1,25 +1,61 @@
-<div class="grid md:grid-cols-2 2xl:grid-cols-3 gap-4 mt-6" id="entity-list">
-  {% for entity in entities %}
-  <div class="card min-w-72 bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">{{entity.name}}
-        <span class="badge badge-xs badge-primary">{{entity.entity_type}}</span>
-      </h2>
-      <div class="flex justify-between items-center">
-        <p class="text-xs opacity-60">{{entity.updated_at | datetimeformat(format="short", tz=user.timezone)}}</p>
-        <div>
-          <button hx-get="/knowledge-entity/{{entity.id}}" hx-target="#modal" hx-swap="innerHTML"
-            class="btn btn-square btn-ghost btn-sm">
-            {% include "icons/edit_icon.html" %}
-          </button>
-          <button hx-delete="/knowledge-entity/{{entity.id}}" hx-target="#entity-list" hx-swap="outerHTML"
-            class="btn btn-square btn-ghost btn-sm">
-            {% include "icons/delete_icon.html" %}
-          </button>
+{% set query_suffix = '' %}
+{% if page_query is defined and page_query %}
+{% set query_suffix = page_query %}
+{% endif %}
+
+<div id="entity-list" class="space-y-6 mt-6">
+  {% if visible_entities|length > 0 %}
+  <div class="grid md:grid-cols-2 2xl:grid-cols-3 gap-4">
+    {% for entity in visible_entities %}
+    <div class="card min-w-72 bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title">{{entity.name}}
+          <span class="badge badge-xs badge-primary">{{entity.entity_type}}</span>
+        </h2>
+        <div class="flex justify-between items-center">
+          <p class="text-xs opacity-60">{{entity.updated_at | datetimeformat(format="short", tz=user.timezone)}}</p>
+          <div>
+            <button hx-get="/knowledge-entity/{{entity.id}}" hx-target="#modal" hx-swap="innerHTML"
+              class="btn btn-square btn-ghost btn-sm">
+              {% include "icons/edit_icon.html" %}
+            </button>
+            <button hx-delete="/knowledge-entity/{{entity.id}}" hx-target="#entity-list" hx-swap="outerHTML"
+              class="btn btn-square btn-ghost btn-sm">
+              {% include "icons/delete_icon.html" %}
+            </button>
+          </div>
         </div>
+        <p>{{entity.description}}</p>
       </div>
-      <p>{{entity.description}}</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="nb-card p-8 text-center text-sm opacity-70">
+    No knowledge entities found.
+  </div>
+  {% endif %}
+
+  {% if pagination.total_items > 0 %}
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-2">
+    <span class="text-sm opacity-70">
+      Showing {{ pagination.start_index }}-{{ pagination.end_index }} of {{ pagination.total_items }} entities
+    </span>
+    <div class="flex gap-2">
+      {% set prev_enabled = pagination.previous_page is not none %}
+      <button type="button" class="nb-btn btn-outline btn-sm" {% if prev_enabled %}
+        hx-get="/knowledge?page={{ pagination.previous_page }}{{ query_suffix }}" {% else %} disabled {% endif %}
+        hx-target="#knowledge_pane" hx-swap="outerHTML" hx-push-url="true">
+        Previous
+      </button>
+
+      {% set next_enabled = pagination.next_page is not none %}
+      <button type="button" class="nb-btn btn-outline btn-sm" {% if next_enabled %}
+        hx-get="/knowledge?page={{ pagination.next_page }}{{ query_suffix }}" {% else %} disabled {% endif %}
+        hx-target="#knowledge_pane" hx-swap="outerHTML" hx-push-url="true">
+        Next
+      </button>
     </div>
   </div>
-  {% endfor %}
+  {% endif %}
 </div>

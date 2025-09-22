@@ -1,57 +1,102 @@
-<div class="nb-masonry w-full" id="text_content_cards">
-  {% for text_content in text_contents %}
-  <article class="nb-card cursor-pointer mx-auto mb-4 w-full max-w-[92vw] space-y-3 sm:max-w-none"
-    hx-get="/content/{{ text_content.id }}/read" hx-target="#modal" hx-swap="innerHTML">
-    {% if text_content.url_info %}
-    <figure class="-mx-4 -mt-4 border-b-2 border-neutral bg-base-200">
-      <img class="w-full h-auto" src="/file/{{text_content.url_info.image_id}}" alt="website screenshot" />
-    </figure>
-    {% endif %}
-    {% if text_content.file_info.mime_type == "image/png" or text_content.file_info.mime_type == "image/jpeg" %}
-    <figure class="-mx-4 -mt-4 border-b-2 border-neutral bg-base-200">
-      <img class="w-full h-auto" src="/file/{{text_content.file_info.id}}" alt="{{text_content.file_info.file_name}}" />
-    </figure>
-    {% endif %}
-    <div class="space-y-3 break-words">
-      <h2 class="text-lg font-extrabold tracking-tight truncate">
-        {% if text_content.url_info %}
-        {{text_content.url_info.title}}
-        {% elif text_content.file_info %}
-        {{text_content.file_info.file_name}}
-        {% else %}
-        {{text_content.text}}
-        {% endif %}
-      </h2>
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <p class="text-xs opacity-60 shrink-0">
-          {{ text_content.created_at | datetimeformat(format="short", tz=user.timezone) }}
-        </p>
-        <span class="nb-badge">{{ text_content.category }}</span>
-        <div class="flex gap-2" hx-on:click="event.stopPropagation()">
+{% set has_pagination = pagination is defined %}
+{% set query_suffix = '' %}
+{% if page_query is defined and page_query %}
+  {% set query_suffix = page_query %}
+{% endif %}
+
+<div id="text_content_cards" class="space-y-6">
+  {% if text_contents|length > 0 %}
+  <div class="nb-masonry w-full">
+    {% for text_content in text_contents %}
+    <article class="nb-card cursor-pointer mx-auto mb-4 w-full max-w-[92vw] space-y-3 sm:max-w-none"
+      hx-get="/content/{{ text_content.id }}/read" hx-target="#modal" hx-swap="innerHTML">
+      {% if text_content.url_info %}
+      <figure class="-mx-4 -mt-4 border-b-2 border-neutral bg-base-200">
+        <img class="w-full h-auto" src="/file/{{text_content.url_info.image_id}}" alt="website screenshot" />
+      </figure>
+      {% endif %}
+      {% if text_content.file_info.mime_type == "image/png" or text_content.file_info.mime_type == "image/jpeg" %}
+      <figure class="-mx-4 -mt-4 border-b-2 border-neutral bg-base-200">
+        <img class="w-full h-auto" src="/file/{{text_content.file_info.id}}" alt="{{text_content.file_info.file_name}}" />
+      </figure>
+      {% endif %}
+      <div class="space-y-3 break-words">
+        <h2 class="text-lg font-extrabold tracking-tight truncate">
           {% if text_content.url_info %}
-          <a href="{{text_content.url_info.url}}" target="_blank" rel="noopener noreferrer"
-            class="nb-btn btn-square btn-sm" aria-label="Open source link">
-            {% include "icons/link_icon.html" %}
-          </a>
+          {{text_content.url_info.title}}
+          {% elif text_content.file_info %}
+          {{text_content.file_info.file_name}}
+          {% else %}
+          {{text_content.text}}
           {% endif %}
-          <button hx-get="/content/{{ text_content.id }}/read" hx-target="#modal" hx-swap="innerHTML"
-            class="nb-btn btn-square btn-sm" aria-label="Read content">
-            {% include "icons/read_icon.html" %}
-          </button>
-          <button hx-get="/content/{{ text_content.id }}" hx-target="#modal" hx-swap="innerHTML"
-            class="nb-btn btn-square btn-sm" aria-label="Edit content">
-            {% include "icons/edit_icon.html" %}
-          </button>
-          <button hx-delete="/content/{{ text_content.id }}" hx-target="#text_content_cards" hx-swap="outerHTML"
-            class="nb-btn btn-square btn-sm" aria-label="Delete content">
-            {% include "icons/delete_icon.html" %}
-          </button>
+        </h2>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-xs opacity-60 shrink-0">
+            {{ text_content.created_at | datetimeformat(format="short", tz=user.timezone) }}
+          </p>
+          <span class="nb-badge">{{ text_content.category }}</span>
+          <div class="flex gap-2" hx-on:click="event.stopPropagation()">
+            {% if text_content.url_info %}
+            <a href="{{text_content.url_info.url}}" target="_blank" rel="noopener noreferrer"
+              class="nb-btn btn-square btn-sm" aria-label="Open source link">
+              {% include "icons/link_icon.html" %}
+            </a>
+            {% endif %}
+            <button hx-get="/content/{{ text_content.id }}/read" hx-target="#modal" hx-swap="innerHTML"
+              class="nb-btn btn-square btn-sm" aria-label="Read content">
+              {% include "icons/read_icon.html" %}
+            </button>
+            <button hx-get="/content/{{ text_content.id }}" hx-target="#modal" hx-swap="innerHTML"
+              class="nb-btn btn-square btn-sm" aria-label="Edit content">
+              {% include "icons/edit_icon.html" %}
+            </button>
+            <button hx-delete="/content/{{ text_content.id }}" hx-target="#text_content_cards" hx-swap="outerHTML"
+              class="nb-btn btn-square btn-sm" aria-label="Delete content">
+              {% include "icons/delete_icon.html" %}
+            </button>
+          </div>
         </div>
+        <p class="text-sm leading-relaxed">
+          {{ text_content.instructions }}
+        </p>
       </div>
-      <p class="text-sm leading-relaxed">
-        {{ text_content.instructions }}
-      </p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="nb-card p-8 text-center text-sm opacity-70">
+    No content found.
+  </div>
+  {% endif %}
+
+  {% if has_pagination and pagination.total_items > 0 %}
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <span class="text-sm opacity-70">
+      Showing {{ pagination.start_index }}-{{ pagination.end_index }} of {{ pagination.total_items }} items
+    </span>
+    <div class="flex gap-2">
+      {% set prev_enabled = pagination.previous_page is not none %}
+      <button type="button" class="nb-btn btn-outline btn-sm"
+        {% if prev_enabled %}
+        hx-get="/content?page={{ pagination.previous_page }}{{ query_suffix }}"
+        {% else %}
+        disabled
+        {% endif %}
+        hx-target="#main_section" hx-swap="outerHTML" hx-push-url="true">
+        Previous
+      </button>
+
+      {% set next_enabled = pagination.next_page is not none %}
+      <button type="button" class="nb-btn btn-outline btn-sm"
+        {% if next_enabled %}
+        hx-get="/content?page={{ pagination.next_page }}{{ query_suffix }}"
+        {% else %}
+        disabled
+        {% endif %}
+        hx-target="#main_section" hx-swap="outerHTML" hx-push-url="true">
+        Next
+      </button>
     </div>
-  </article>
-  {% endfor %}
+  </div>
+  {% endif %}
 </div>

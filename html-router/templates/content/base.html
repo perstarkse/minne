@@ -9,6 +9,7 @@
       <h2 class="text-xl font-extrabold tracking-tight">Content</h2>
       <form hx-get="/content" hx-target="#main_section" hx-swap="outerHTML" hx-push-url="true"
         class="flex items-center gap-2 mt-2 sm:mt-0">
+        <input type="hidden" name="page" value="1" />
         <div>
           <select name="category" class="nb-select">
             <option value="">All Categories</option>
