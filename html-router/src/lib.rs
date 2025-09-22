@@ -2,6 +2,7 @@ pub mod html_state;
 pub mod middlewares;
 pub mod router_factory;
 pub mod routes;
+pub mod utils;
 
 use axum::{extract::FromRef, Router};
 use axum_session::{Session, SessionStore};

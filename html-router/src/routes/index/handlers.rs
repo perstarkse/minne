@@ -9,10 +9,12 @@ use serde::Serialize;
 use tokio::join;
 
 use crate::{
+    html_state::HtmlState,
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{HtmlError, TemplateResponse},
     },
+    utils::text_content_preview::truncate_text_contents,
     AuthSessionType,
 };
 use common::storage::store;
@@ -25,8 +27,6 @@ use common::{
         text_chunk::TextChunk, text_content::TextContent, user::User,
     },
 };
-
-use crate::html_state::HtmlState;
 
 #[derive(Serialize)]
 pub struct IndexPageData {
@@ -51,6 +51,8 @@ pub async fn index_handler(
         User::get_dashboard_stats(&user.id, &state.db),
         User::get_unfinished_ingestion_tasks(&user.id, &state.db)
     )?;
+
+    let text_contents = truncate_text_contents(text_contents);
 
     Ok(TemplateResponse::new_template(
         "dashboard/base.html",
@@ -94,7 +96,8 @@ pub async fn delete_text_content(
     );
 
     // Render updated content
-    let latest_text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
+    let latest_text_contents =
+        truncate_text_contents(User::get_latest_text_contents(&user.id, &state.db).await?);
 
     Ok(TemplateResponse::new_partial(
         "index/signed_in/recent_content.html",

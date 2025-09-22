@@ -17,6 +17,7 @@ use crate::{
         auth_middleware::RequireUser,
         response_middleware::{HtmlError, TemplateResponse},
     },
+    utils::text_content_preview::truncate_text_contents,
 };
 
 #[derive(Serialize)]
@@ -57,6 +58,8 @@ pub async fn show_content_page(
     } else {
         User::get_text_contents(&user.id, &state.db).await?
     };
+
+    let text_contents = truncate_text_contents(text_contents);
 
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
     let data = ContentPageData {
@@ -117,7 +120,8 @@ pub async fn patch_text_content(
     TextContent::patch(&id, &form.context, &form.category, &form.text, &state.db).await?;
 
     if target.as_deref() == Some("latest_content_section") {
-        let text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
+        let text_contents =
+            truncate_text_contents(User::get_latest_text_contents(&user.id, &state.db).await?);
 
         return Ok(TemplateResponse::new_template(
             "dashboard/recent_content.html",
@@ -128,7 +132,7 @@ pub async fn patch_text_content(
         ));
     }
 
-    let text_contents = User::get_text_contents(&user.id, &state.db).await?;
+    let text_contents = truncate_text_contents(User::get_text_contents(&user.id, &state.db).await?);
     let categories = User::get_user_categories(&user.id, &state.db).await?;
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
@@ -166,7 +170,7 @@ pub async fn delete_text_content(
     state.db.delete_item::<TextContent>(&id).await?;
 
     // Get updated content, categories and return the refreshed list
-    let text_contents = User::get_text_contents(&user.id, &state.db).await?;
+    let text_contents = truncate_text_contents(User::get_text_contents(&user.id, &state.db).await?);
     let categories = User::get_user_categories(&user.id, &state.db).await?;
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
@@ -205,7 +209,8 @@ pub async fn show_recent_content(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let text_contents = User::get_latest_text_contents(&user.id, &state.db).await?;
+    let text_contents =
+        truncate_text_contents(User::get_latest_text_contents(&user.id, &state.db).await?);
 
     Ok(TemplateResponse::new_template(
         "dashboard/recent_content.html",
