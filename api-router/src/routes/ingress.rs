@@ -1,4 +1,4 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension, Json};
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use common::{
     error::AppError,
@@ -8,6 +8,7 @@ use common::{
     },
 };
 use futures::{future::try_join_all, TryFutureExt};
+use serde_json::json;
 use tempfile::NamedTempFile;
 use tracing::info;
 
@@ -52,5 +53,5 @@ pub async fn ingest_data(
 
     try_join_all(futures).await?;
 
-    Ok(StatusCode::OK)
+    Ok((StatusCode::OK, Json(json!({ "status": "success" }))))
 }
