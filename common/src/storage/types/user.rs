@@ -9,7 +9,7 @@ use super::text_chunk::TextChunk;
 use super::{
     conversation::Conversation,
     ingestion_task::{IngestionTask, MAX_ATTEMPTS},
-    knowledge_entity::KnowledgeEntity,
+    knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
     knowledge_relationship::KnowledgeRelationship,
     system_settings::SystemSettings,
     text_content::TextContent,
@@ -356,7 +356,10 @@ impl User {
         // Extract the entity types from the response
         let entity_types: Vec<String> = response
             .into_iter()
-            .map(|item| format!("{:?}", item.entity_type))
+            .map(|item| {
+                let normalized = KnowledgeEntityType::from(item.entity_type.clone());
+                format!("{:?}", normalized)
+            })
             .collect();
 
         Ok(entity_types)
