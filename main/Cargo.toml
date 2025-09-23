@@ -1,6 +1,6 @@
 [package]
 name = "main"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/perstarkse/minne"
 license = "AGPL-3.0-or-later"
@@ -34,3 +34,4 @@ path = "src/worker.rs"
 [[bin]]
 name = "main"
 path = "src/main.rs"
+

@@ -6,7 +6,8 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Latest Release](https://img.shields.io/github/v/release/perstarkse/minne?sort=semver)](https://github.com/perstarkse/minne/releases/latest)
 
-![Screenshot](screenshot.png)
+![Screenshot](screenshot-dashboard.webp)
+![Graph screenshot](screenshot-graph.webp)
 
 ## Demo deployment
 
