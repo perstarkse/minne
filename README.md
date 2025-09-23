@@ -7,7 +7,6 @@
 [![Latest Release](https://img.shields.io/github/v/release/perstarkse/minne?sort=semver)](https://github.com/perstarkse/minne/releases/latest)
 
 ![Screenshot](screenshot-dashboard.webp)
-![Graph screenshot](screenshot-graph.webp)
 
 ## Demo deployment
 
