@@ -3186,19 +3186,15 @@ dependencies = [
  "axum",
  "common",
  "futures",
- "headless_chrome",
  "html-router",
  "ingestion-pipeline",
- "reqwest",
  "serde",
  "serde_json",
  "surrealdb",
- "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

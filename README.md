@@ -22,11 +22,11 @@ While developing Minne, I discovered [KaraKeep](https://karakeep.com/) (formerly
 
 Minne is designed to make it incredibly easy to save snippets of text, URLs, and other content (limited, pending demand). Simply send content along with a category tag. Minne then ingests this, leveraging AI to create relevant nodes and relationships within its graph database, alongside your manual categorization. This graph backend allows for discoverable connections between your pieces of knowledge.
 
-You can converse with your knowledge base through an LLM-powered chat interface (via OpenAI compatible API, like Ollama or others). For those who like to see the bigger picture, Minne also includes an **experimental feature to visually explore your knowledge graph.**
+You can converse with your knowledge base through an LLM-powered chat interface (via OpenAI compatible API, like Ollama or others). For those who like to see the bigger picture, Minne also includes an feature to visually explore your knowledge graph.
 
-You may switch and choose between models used, and have the possiblity to change the prompts to your liking. There is since release **0.1.3** the option to change embeddings length, making it easy to test another embedding model.
+You may switch and choose between models used, and have the possiblity to change the prompts to your liking. There is the option to change embeddings length, making it easy to test another embedding model.
 
-The application is built for speed and efficiency using Rust with a Server-Side Rendered (SSR) frontend (HTMX and minimal JavaScript). It's fully responsive, offering a complete mobile interface for reading, editing, and managing your content, including the graph database itself. **PWA (Progressive Web App) support** means you can "install" Minne to your device for a native-like experience. For quick capture on the go on iOS, a [**Shortcut**](https://www.icloud.com/shortcuts/9aa960600ec14329837ba4169f57a166) makes sending content to your Minne instance a breeze.
+The application is built for speed and efficiency using Rust with a Server-Side Rendered (SSR) frontend (HTMX and minimal JavaScript). It's fully responsive, offering a complete mobile interface for reading, editing, and managing your content, including the graph database itself. **PWA (Progressive Web App) support** means you can "install" Minne to your device for a native-like experience. For quick capture on the go on iOS, a [**Shortcut**](https://www.icloud.com/shortcuts/e433fbd7602f4e2eaa70dca162323477) makes sending content to your Minne instance a breeze.
 
 Minne is open source (AGPL), self-hostable, and can be deployed flexibly: via Nix, Docker Compose, pre-built binaries, or by building from source. It can run as a single `main` binary or as separate `server` and `worker` processes for optimized resource allocation.
 
@@ -190,7 +190,7 @@ Minne can be configured using environment variables or a `config.yaml` file plac
 - `SURREALDB_PASSWORD`: Password for SurrealDB (e.g., `root_password`).
 - `SURREALDB_DATABASE`: Database name in SurrealDB (e.g., `minne_db`).
 - `SURREALDB_NAMESPACE`: Namespace in SurrealDB (e.g., `minne_ns`).
-- `OPENAI_API_KEY`: Your API key for OpenAI (e.g., `sk-YourActualOpenAIKeyGoesHere`).
+- `OPENAI_API_KEY`: Your API key for OpenAI compatible endpoint (e.g., `sk-YourActualOpenAIKeyGoesHere`).
 - `HTTP_PORT`: Port for the Minne server to listen on (Default: `3000`).
 
 **Optional Configuration:**
@@ -209,8 +209,8 @@ surrealdb_database: "minne_db"
 surrealdb_namespace: "minne_ns"
 openai_api_key: "sk-YourActualOpenAIKeyGoesHere"
 data_dir: "./minne_app_data"
+http_port: 3000
 # rust_log: "info"
-# http_port: 3000
 ```
 
 ## Application Architecture (Binaries)
@@ -257,8 +257,8 @@ Once you have configured the `OPENAI_BASE_URL` to point to your desired provider
 I've developed Minne primarily for my own use, but having been in the selfhosted space for a long time, and using the efforts by others, I thought I'd share with the community. Feature requests are welcome.
 The roadmap as of now is:
 
-- Handle uploaded images wisely.
-- An updated explorer of the graph database.
+~~- Handle uploaded images wisely.~~
+~~- An updated explorer of the graph database.~~
 - A TUI frontend which opens your system default editor for improved writing and document management.
 
 ## Contributing
