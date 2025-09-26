@@ -213,6 +213,7 @@ mod tests {
             http_port: 0,
             openai_base_url: "..".into(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: crate::utils::config::PdfIngestMode::LlmFirst,
         }
     }
 

@@ -11,6 +11,20 @@ fn default_storage_kind() -> StorageKind {
     StorageKind::Local
 }
 
+/// Selects the strategy used for PDF ingestion.
+#[derive(Clone, Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
+pub enum PdfIngestMode {
+    /// Only rely on classic text extraction (no LLM fallbacks).
+    Classic,
+    /// Prefer fast text extraction, but fall back to the LLM rendering path when needed.
+    LlmFirst,
+}
+
+fn default_pdf_ingest_mode() -> PdfIngestMode {
+    PdfIngestMode::LlmFirst
+}
+
 #[derive(Clone, Deserialize, Debug)]
 pub struct AppConfig {
     pub openai_api_key: String,
@@ -26,6 +40,8 @@ pub struct AppConfig {
     pub openai_base_url: String,
     #[serde(default = "default_storage_kind")]
     pub storage: StorageKind,
+    #[serde(default = "default_pdf_ingest_mode")]
+    pub pdf_ingest_mode: PdfIngestMode,
 }
 
 fn default_data_dir() -> String {

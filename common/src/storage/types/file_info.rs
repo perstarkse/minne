@@ -332,6 +332,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: crate::utils::config::PdfIngestMode::LlmFirst,
         };
 
         // Test file creation
@@ -392,6 +393,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: crate::utils::config::PdfIngestMode::LlmFirst,
         };
 
         // Store the original file
@@ -448,6 +450,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: crate::utils::config::PdfIngestMode::LlmFirst,
         };
         let file_info = FileInfo::new(field_data, &db, user_id, &config).await;
 
@@ -505,6 +508,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: crate::utils::config::PdfIngestMode::LlmFirst,
         };
 
         let field_data1 = create_test_file(content, file_name);
@@ -669,6 +673,7 @@ mod tests {
             http_port: 0,
             openai_base_url: "".to_string(),
             storage: crate::utils::config::StorageKind::Local,
+            pdf_ingest_mode: crate::utils::config::PdfIngestMode::LlmFirst,
         };
         let temp = create_test_file(b"test content", "test_file.txt");
         let file_info = FileInfo::new(temp, &db, user_id, &cfg)
@@ -723,6 +728,7 @@ mod tests {
                 http_port: 0,
                 openai_base_url: "".to_string(),
                 storage: crate::utils::config::StorageKind::Local,
+                pdf_ingest_mode: crate::utils::config::PdfIngestMode::LlmFirst,
             },
         )
         .await;
@@ -831,6 +837,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: crate::utils::config::PdfIngestMode::LlmFirst,
         };
 
         // Test file creation
