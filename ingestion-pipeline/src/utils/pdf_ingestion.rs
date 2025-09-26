@@ -14,6 +14,7 @@ use headless_chrome::{
     Browser,
 };
 use lopdf::Document;
+use serde_json::Value;
 use tokio::time::sleep;
 use tracing::{debug, warn};
 
@@ -28,12 +29,17 @@ const FAST_PATH_MIN_ASCII_RATIO: f64 = 0.7;
 const MAX_VISION_PAGES: usize = 50;
 const PAGES_PER_VISION_CHUNK: usize = 4;
 const MAX_VISION_ATTEMPTS: usize = 2;
-const PDF_MARKDOWN_PROMPT: &str = "Convert these PDF pages to clean Markdown. Preserve headings, lists, tables, blockquotes, code fences, and inline formatting. Keep the original reading order and avoid adding commentary.";
-const PDF_MARKDOWN_PROMPT_RETRY: &str = "You must transcribe the provided PDF page images into accurate Markdown. The images are already supplied, so do not respond that you cannot view them. Extract all visible text, tables, and structure.";
+const PDF_MARKDOWN_PROMPT: &str = "Convert these PDF pages to clean Markdown. Preserve headings, lists, tables, blockquotes, code fences, and inline formatting. Keep the original reading order, avoid commentary, and do NOT wrap the entire response in a Markdown code block.";
+const PDF_MARKDOWN_PROMPT_RETRY: &str = "You must transcribe the provided PDF page images into accurate Markdown. The images are already supplied, so do not respond that you cannot view them. Extract all visible text, tables, and structure, and do NOT wrap the overall response in a Markdown code block.";
 const PDF_VISION_SYSTEM_PROMPT: &str = "You are a PDF transcription assistant. You can always see the provided page images. Always produce faithful Markdown and never claim you cannot view the document.";
 const NAVIGATION_RETRY_INTERVAL_MS: u64 = 120;
 const NAVIGATION_RETRY_ATTEMPTS: usize = 10;
 const MIN_PAGE_IMAGE_BYTES: usize = 1_024;
+const DEFAULT_VIEWPORT_WIDTH: u32 = 1_248; // generous width to reduce horizontal clipping
+const DEFAULT_VIEWPORT_HEIGHT: u32 = 1_800; // tall enough to capture full page at fit-to-width scale
+const DEFAULT_DEVICE_SCALE_FACTOR: f64 = 1.0;
+const CANVAS_VIEWPORT_ATTEMPTS: usize = 12;
+const CANVAS_VIEWPORT_WAIT_MS: u64 = 200;
 const DEBUG_IMAGE_ENV_VAR: &str = "MINNE_PDF_DEBUG_DIR";
 
 /// Attempts to extract PDF content, using a fast text layer first and falling back to
@@ -122,6 +128,7 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
 
     tab.set_default_timeout(Duration::from_secs(10));
     configure_tab(&tab)?;
+    set_pdf_viewport(&tab)?;
 
     let mut captures = Vec::with_capacity(pages.len());
 
@@ -156,40 +163,63 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
             ));
         }
 
-        let viewer_element = wait_for_pdf_ready(&tab)?;
+        wait_for_pdf_ready(&tab, *page)?;
         tokio::time::sleep(Duration::from_millis(350)).await;
 
-        let png = match viewer_element.capture_screenshot(Page::CaptureScreenshotFormatOption::Png)
-        {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                warn!(error = %err, page = *page, "Element screenshot failed; falling back to full page capture");
-                let screenshot = tab
-                    .call_method(Page::CaptureScreenshot {
-                        format: Some(Page::CaptureScreenshotFormatOption::Png),
-                        quality: None,
-                        clip: None,
-                        from_surface: Some(true),
-                        capture_beyond_viewport: Some(true),
-                        optimize_for_speed: Some(false),
-                    })
-                    .map_err(|inner_err| {
-                        AppError::Processing(format!(
-                            "Failed to capture PDF page (fallback): {inner_err}"
-                        ))
-                    })?;
-                STANDARD.decode(screenshot.data).map_err(|decode_err| {
-                    AppError::Processing(format!(
-                        "Failed to decode PDF screenshot (fallback): {decode_err}"
-                    ))
-                })?
+        prepare_pdf_viewer(&tab, *page);
+
+        let mut viewport: Option<Page::Viewport> = None;
+        for attempt in 0..CANVAS_VIEWPORT_ATTEMPTS {
+            match canvas_viewport_for_page(&tab, *page) {
+                Ok(Some(vp)) => {
+                    viewport = Some(vp);
+                    break;
+                }
+                Ok(None) => {
+                    if attempt + 1 < CANVAS_VIEWPORT_ATTEMPTS {
+                        tokio::time::sleep(Duration::from_millis(CANVAS_VIEWPORT_WAIT_MS)).await;
+                    }
+                }
+                Err(err) => {
+                    warn!(page = *page, error = %err, "Failed to derive canvas viewport");
+                    break;
+                }
             }
+        }
+
+        let png = if let Some(clip) = viewport {
+            match tab.call_method(Page::CaptureScreenshot {
+                format: Some(Page::CaptureScreenshotFormatOption::Png),
+                quality: None,
+                clip: Some(clip),
+                from_surface: Some(true),
+                capture_beyond_viewport: Some(true),
+                optimize_for_speed: Some(false),
+            }) {
+                Ok(data) => match STANDARD.decode(data.data) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        warn!(error = %err, page = *page, "Failed to decode clipped screenshot; falling back to full page capture");
+                        capture_full_page_png(&tab)?
+                    }
+                },
+                Err(err) => {
+                    warn!(error = %err, page = *page, "Clipped screenshot failed; falling back to full page capture");
+                    capture_full_page_png(&tab)?
+                }
+            }
+        } else {
+            warn!(
+                page = *page,
+                "Unable to determine canvas viewport; capturing full page"
+            );
+            capture_full_page_png(&tab)?
         };
 
         debug!(
             page = *page,
             bytes = png.len(),
-            plan_index = idx,
+            page_index = idx,
             "Captured PDF page screenshot"
         );
 
@@ -554,25 +584,174 @@ fn configure_tab(tab: &headless_chrome::Tab) -> Result<(), AppError> {
     Ok(())
 }
 
+fn set_pdf_viewport(tab: &headless_chrome::Tab) -> Result<(), AppError> {
+    tab.call_method(Emulation::SetDeviceMetricsOverride {
+        width: DEFAULT_VIEWPORT_WIDTH,
+        height: DEFAULT_VIEWPORT_HEIGHT,
+        device_scale_factor: DEFAULT_DEVICE_SCALE_FACTOR,
+        mobile: false,
+        scale: None,
+        screen_width: Some(DEFAULT_VIEWPORT_WIDTH),
+        screen_height: Some(DEFAULT_VIEWPORT_HEIGHT),
+        position_x: None,
+        position_y: None,
+        dont_set_visible_size: Some(false),
+        screen_orientation: None,
+        viewport: None,
+        display_feature: None,
+        device_posture: None,
+    })
+    .map_err(|err| AppError::Processing(format!("Failed to configure Chrome viewport: {err}")))?;
+
+    tab.call_method(Emulation::SetVisibleSize {
+        width: DEFAULT_VIEWPORT_WIDTH,
+        height: DEFAULT_VIEWPORT_HEIGHT,
+    })
+    .map_err(|err| AppError::Processing(format!("Failed to apply Chrome visible size: {err}")))?;
+
+    Ok(())
+}
+
 fn wait_for_pdf_ready<'a>(
     tab: &'a headless_chrome::Tab,
+    page_number: u32,
 ) -> Result<headless_chrome::Element<'a>, AppError> {
+    let embed_selector = "embed[type='application/pdf']";
     let element = tab
-        .wait_for_element_with_custom_timeout("canvas", Duration::from_secs(6))
-        .or_else(|_| {
-            tab.wait_for_element_with_custom_timeout(
-                "embed[type='application/pdf']",
-                Duration::from_secs(6),
-            )
-        })
-        .or_else(|_| tab.wait_for_element_with_custom_timeout("embed", Duration::from_secs(6)))
+        .wait_for_element_with_custom_timeout(embed_selector, Duration::from_secs(8))
+        .or_else(|_| tab.wait_for_element_with_custom_timeout("embed", Duration::from_secs(8)))
         .map_err(|err| AppError::Processing(format!("Timed out waiting for PDF content: {err}")))?;
 
     if let Err(err) = element.scroll_into_view() {
         debug!("Failed to scroll PDF element into view: {err}");
     }
 
+    debug!(page = page_number, "PDF viewer element located");
+
     Ok(element)
+}
+
+fn prepare_pdf_viewer(tab: &headless_chrome::Tab, page_number: u32) {
+    let script = format!(
+        r#"(function() {{
+            const embed = document.querySelector('embed[type="application/pdf"]') || document.querySelector('embed');
+            if (!embed || !embed.shadowRoot) return false;
+            const viewer = embed.shadowRoot.querySelector('pdf-viewer');
+            if (!viewer || !viewer.shadowRoot) return false;
+            const app = viewer.shadowRoot.querySelector('viewer-app');
+            if (app && app.shadowRoot) {{
+                const toolbar = app.shadowRoot.querySelector('#toolbar');
+                if (toolbar) {{ toolbar.style.display = 'none'; }}
+            }}
+            const page = viewer.shadowRoot.querySelector('viewer-page:nth-of-type({page})');
+            if (page && page.scrollIntoView) {{
+                page.scrollIntoView({{ block: 'start', inline: 'center' }});
+            }}
+            const canvas = viewer.shadowRoot.querySelector('canvas[aria-label="Page {page}"]');
+            return !!canvas;
+        }})()"#,
+        page = page_number
+    );
+
+    match tab.evaluate(&script, false) {
+        Ok(result) => {
+            let ready = result
+                .value
+                .as_ref()
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            debug!(page = page_number, ready, "Prepared PDF viewer page");
+        }
+        Err(err) => {
+            debug!(page = page_number, error = %err, "Unable to run PDF viewer preparation script");
+        }
+    }
+}
+
+fn canvas_viewport_for_page(
+    tab: &headless_chrome::Tab,
+    page_number: u32,
+) -> Result<Option<Page::Viewport>, AppError> {
+    let script = format!(
+        r#"(function() {{
+            const embed = document.querySelector('embed[type="application/pdf"]') || document.querySelector('embed');
+            if (!embed || !embed.shadowRoot) return null;
+            const viewer = embed.shadowRoot.querySelector('pdf-viewer');
+            if (!viewer || !viewer.shadowRoot) return null;
+            const canvas = viewer.shadowRoot.querySelector('canvas[aria-label="Page {page}"]');
+            if (!canvas) return null;
+            const rect = canvas.getBoundingClientRect();
+            return {{ x: rect.x, y: rect.y, width: rect.width, height: rect.height }};
+        }})()"#,
+        page = page_number
+    );
+
+    let result = tab
+        .evaluate(&script, false)
+        .map_err(|err| AppError::Processing(format!("Failed to inspect PDF canvas: {err}")))?;
+
+    let Some(value) = result.value else {
+        return Ok(None);
+    };
+
+    if value.is_null() {
+        return Ok(None);
+    }
+
+    let x = value
+        .get("x")
+        .and_then(Value::as_f64)
+        .unwrap_or_default()
+        .max(0.0);
+    let y = value
+        .get("y")
+        .and_then(Value::as_f64)
+        .unwrap_or_default()
+        .max(0.0);
+    let width = value
+        .get("width")
+        .and_then(Value::as_f64)
+        .unwrap_or_default();
+    let height = value
+        .get("height")
+        .and_then(Value::as_f64)
+        .unwrap_or_default();
+
+    if width <= 0.0 || height <= 0.0 {
+        return Ok(None);
+    }
+
+    debug!(
+        page = page_number,
+        x, y, width, height, "Derived canvas viewport"
+    );
+
+    Ok(Some(Page::Viewport {
+        x,
+        y,
+        width,
+        height,
+        scale: 1.0,
+    }))
+}
+
+fn capture_full_page_png(tab: &headless_chrome::Tab) -> Result<Vec<u8>, AppError> {
+    let screenshot = tab
+        .call_method(Page::CaptureScreenshot {
+            format: Some(Page::CaptureScreenshotFormatOption::Png),
+            quality: None,
+            clip: None,
+            from_surface: Some(true),
+            capture_beyond_viewport: Some(true),
+            optimize_for_speed: Some(false),
+        })
+        .map_err(|err| {
+            AppError::Processing(format!("Failed to capture PDF page (fallback): {err}"))
+        })?;
+
+    STANDARD.decode(screenshot.data).map_err(|err| {
+        AppError::Processing(format!("Failed to decode PDF screenshot (fallback): {err}"))
+    })
 }
 
 fn is_suspicious_image(len: usize) -> bool {
