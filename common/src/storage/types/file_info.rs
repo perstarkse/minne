@@ -277,7 +277,7 @@ impl FileInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::config::StorageKind;
+    use crate::utils::config::{PdfIngestMode::LlmFirst, StorageKind};
     use axum::http::HeaderMap;
     use axum_typed_multipart::FieldMetadata;
     use std::io::Write;
@@ -332,6 +332,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: LlmFirst,
         };
 
         // Test file creation
@@ -392,6 +393,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: LlmFirst,
         };
 
         // Store the original file
@@ -448,6 +450,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: LlmFirst,
         };
         let file_info = FileInfo::new(field_data, &db, user_id, &config).await;
 
@@ -505,6 +508,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: LlmFirst,
         };
 
         let field_data1 = create_test_file(content, file_name);
@@ -669,6 +673,7 @@ mod tests {
             http_port: 0,
             openai_base_url: "".to_string(),
             storage: crate::utils::config::StorageKind::Local,
+            pdf_ingest_mode: LlmFirst,
         };
         let temp = create_test_file(b"test content", "test_file.txt");
         let file_info = FileInfo::new(temp, &db, user_id, &cfg)
@@ -723,6 +728,7 @@ mod tests {
                 http_port: 0,
                 openai_base_url: "".to_string(),
                 storage: crate::utils::config::StorageKind::Local,
+                pdf_ingest_mode: LlmFirst,
             },
         )
         .await;
@@ -831,6 +837,7 @@ mod tests {
             http_port: 3000,
             openai_base_url: "..".to_string(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: LlmFirst,
         };
 
         // Test file creation

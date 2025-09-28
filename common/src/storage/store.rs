@@ -196,7 +196,7 @@ pub fn split_object_path(path: &str) -> AnyResult<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::config::StorageKind;
+    use crate::utils::config::{PdfIngestMode::LlmFirst, StorageKind};
     use bytes::Bytes;
     use futures::TryStreamExt;
     use uuid::Uuid;
@@ -213,6 +213,7 @@ mod tests {
             http_port: 0,
             openai_base_url: "..".into(),
             storage: StorageKind::Local,
+            pdf_ingest_mode: LlmFirst,
         }
     }
 

@@ -9,10 +9,13 @@ use chrono::Utc;
 use common::storage::db::SurrealDbClient;
 use common::{
     error::AppError,
-    storage::types::{
-        file_info::FileInfo,
-        ingestion_payload::IngestionPayload,
-        text_content::{TextContent, UrlInfo},
+    storage::{
+        store,
+        types::{
+            file_info::FileInfo,
+            ingestion_payload::IngestionPayload,
+            text_content::{TextContent, UrlInfo},
+        },
     },
     utils::config::AppConfig,
 };
@@ -24,6 +27,7 @@ use tracing::{error, info};
 
 use crate::utils::{
     audio_transcription::transcribe_audio_file, image_parsing::extract_text_from_image,
+    pdf_ingestion::extract_pdf_content,
 };
 
 pub async fn to_text_content(
@@ -72,7 +76,7 @@ pub async fn to_text_content(
             category,
             user_id,
         } => {
-            let text = extract_text_from_file(&file_info, db, openai_client).await?;
+            let text = extract_text_from_file(&file_info, db, openai_client, config).await?;
             Ok(TextContent::new(
                 text,
                 Some(context),
@@ -199,43 +203,55 @@ async fn fetch_article_from_url(
     Ok((article, file_info))
 }
 
-/// Extracts text from a file based on its MIME type.
+/// Extracts text from a stored file by MIME type.
 async fn extract_text_from_file(
     file_info: &FileInfo,
     db_client: &SurrealDbClient,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+    config: &AppConfig,
 ) -> Result<String, AppError> {
+    let base_path = store::resolve_base_dir(config);
+    let absolute_path = base_path.join(&file_info.path);
+
     match file_info.mime_type.as_str() {
-        "text/plain" => {
-            // Read the file and return its content
-            let content = tokio::fs::read_to_string(&file_info.path).await?;
-            Ok(content)
-        }
-        "text/markdown" => {
-            // Read the file and return its content
-            let content = tokio::fs::read_to_string(&file_info.path).await?;
+        "text/plain" | "text/markdown" | "application/octet-stream" | "text/x-rust" => {
+            let content = tokio::fs::read_to_string(&absolute_path).await?;
             Ok(content)
         }
         "application/pdf" => {
-            // TODO: Implement PDF text extraction using a crate like `pdf-extract` or `lopdf`
-            Err(AppError::NotFound(file_info.mime_type.clone()))
+            extract_pdf_content(
+                &absolute_path,
+                db_client,
+                openai_client,
+                &config.pdf_ingest_mode,
+            )
+            .await
         }
         "image/png" | "image/jpeg" => {
-            let content =
-                extract_text_from_image(&file_info.path, db_client, openai_client).await?;
-            Ok(content)
-        }
-        "application/octet-stream" => {
-            let content = tokio::fs::read_to_string(&file_info.path).await?;
-            Ok(content)
-        }
-        "text/x-rust" => {
-            let content = tokio::fs::read_to_string(&file_info.path).await?;
+            let path_str = absolute_path
+                .to_str()
+                .ok_or_else(|| {
+                    AppError::Processing(format!(
+                        "Encountered a non-UTF8 path while reading image {}",
+                        file_info.id
+                    ))
+                })?
+                .to_string();
+            let content = extract_text_from_image(&path_str, db_client, openai_client).await?;
             Ok(content)
         }
         "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav" | "audio/webm" | "audio/mp4"
         | "audio/ogg" | "audio/flac" => {
-            transcribe_audio_file(&file_info.path, db_client, openai_client).await
+            let path_str = absolute_path
+                .to_str()
+                .ok_or_else(|| {
+                    AppError::Processing(format!(
+                        "Encountered a non-UTF8 path while reading audio {}",
+                        file_info.id
+                    ))
+                })?
+                .to_string();
+            transcribe_audio_file(&path_str, db_client, openai_client).await
         }
         // Handle other MIME types as needed
         _ => Err(AppError::NotFound(file_info.mime_type.clone())),

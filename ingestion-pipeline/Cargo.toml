@@ -23,6 +23,8 @@ url = { workspace = true }
 uuid = { workspace = true }
 headless_chrome = { workspace = true }
 base64 = { workspace = true }
+pdf-extract = "0.9"
+lopdf = "0.32"
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }
