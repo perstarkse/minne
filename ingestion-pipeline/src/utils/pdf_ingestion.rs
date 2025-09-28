@@ -31,7 +31,6 @@ const PAGES_PER_VISION_CHUNK: usize = 4;
 const MAX_VISION_ATTEMPTS: usize = 2;
 const PDF_MARKDOWN_PROMPT: &str = "Convert these PDF pages to clean Markdown. Preserve headings, lists, tables, blockquotes, code fences, and inline formatting. Keep the original reading order, avoid commentary, and do NOT wrap the entire response in a Markdown code block.";
 const PDF_MARKDOWN_PROMPT_RETRY: &str = "You must transcribe the provided PDF page images into accurate Markdown. The images are already supplied, so do not respond that you cannot view them. Extract all visible text, tables, and structure, and do NOT wrap the overall response in a Markdown code block.";
-const PDF_VISION_SYSTEM_PROMPT: &str = "You are a PDF transcription assistant. You can always see the provided page images. Always produce faithful Markdown and never claim you cannot view the document.";
 const NAVIGATION_RETRY_INTERVAL_MS: u64 = 120;
 const NAVIGATION_RETRY_ATTEMPTS: usize = 10;
 const MIN_PAGE_IMAGE_BYTES: usize = 1_024;
@@ -313,7 +312,7 @@ async fn vision_markdown(
             let mut content_parts = Vec::with_capacity(encoded_images.len() + 1);
             content_parts.push(
                 ChatCompletionRequestMessageContentPartTextArgs::default()
-                    .text(format!("{}\n\n{}", PDF_VISION_SYSTEM_PROMPT, prompt_text))
+                    .text(prompt_text)
                     .build()?
                     .into(),
             );
@@ -340,7 +339,7 @@ async fn vision_markdown(
                     .content(content_parts)
                     .build()?
                     .into()])
-                .max_tokens(6400_u32)
+                .max_tokens(16400_u32)
                 .build()?;
 
             let response = client.chat().create(request).await?;
@@ -369,7 +368,7 @@ async fn vision_markdown(
 
             let preview: String = if content.len() > 500 {
                 let mut snippet = content.chars().take(500).collect::<String>();
-                snippet.push_str("…");
+                snippet.push('…');
                 snippet
             } else {
                 content.clone()
@@ -492,74 +491,6 @@ fn is_structural_line(line: &str) -> bool {
             && lowered.contains('.')
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_looks_good_enough_short_text() {
-        assert!(!looks_good_enough("too short"));
-    }
-
-    #[test]
-    fn test_looks_good_enough_ascii_text() {
-        let text = "This is a reasonably long ASCII text that should pass the heuristic. \
-        It contains multiple sentences and a decent amount of letters to satisfy the threshold.";
-        assert!(looks_good_enough(text));
-    }
-
-    #[test]
-    fn test_reflow_markdown_preserves_lists() {
-        let input = "Item one\nItem two\n\n- Bullet\n- Another";
-        let output = reflow_markdown(input);
-        assert!(output.contains("Item one Item two"));
-        assert!(output.contains("- Bullet"));
-    }
-
-    #[test]
-    fn test_debug_dump_directory_env_var() {
-        std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
-        assert!(debug_dump_directory().is_none());
-
-        std::env::set_var(DEBUG_IMAGE_ENV_VAR, "/tmp/minne_pdf_debug");
-        let dir = debug_dump_directory().expect("expected debug directory");
-        assert_eq!(dir, PathBuf::from("/tmp/minne_pdf_debug"));
-
-        std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
-    }
-
-    #[test]
-    fn test_is_suspicious_image_threshold() {
-        assert!(is_suspicious_image(0));
-        assert!(is_suspicious_image(MIN_PAGE_IMAGE_BYTES - 1));
-        assert!(!is_suspicious_image(MIN_PAGE_IMAGE_BYTES + 1));
-    }
-
-    #[test]
-    fn test_is_low_quality_response_detection() {
-        assert!(is_low_quality_response(""));
-        assert!(is_low_quality_response("I'm unable to help."));
-        assert!(is_low_quality_response("I cannot read this."));
-        assert!(!is_low_quality_response("# Heading\nValid content"));
-    }
-
-    #[test]
-    fn test_prompt_for_attempt_variants() {
-        assert_eq!(
-            prompt_for_attempt(0, PDF_MARKDOWN_PROMPT),
-            PDF_MARKDOWN_PROMPT
-        );
-        assert_eq!(
-            prompt_for_attempt(1, PDF_MARKDOWN_PROMPT),
-            PDF_MARKDOWN_PROMPT_RETRY
-        );
-        assert_eq!(
-            prompt_for_attempt(5, PDF_MARKDOWN_PROMPT),
-            PDF_MARKDOWN_PROMPT_RETRY
-        );
-    }
-}
-
 fn debug_dump_directory() -> Option<PathBuf> {
     std::env::var(DEBUG_IMAGE_ENV_VAR)
         .ok()
@@ -612,10 +543,10 @@ fn set_pdf_viewport(tab: &headless_chrome::Tab) -> Result<(), AppError> {
     Ok(())
 }
 
-fn wait_for_pdf_ready<'a>(
-    tab: &'a headless_chrome::Tab,
+fn wait_for_pdf_ready(
+    tab: &headless_chrome::Tab,
     page_number: u32,
-) -> Result<headless_chrome::Element<'a>, AppError> {
+) -> Result<headless_chrome::Element<'_>, AppError> {
     let embed_selector = "embed[type='application/pdf']";
     let element = tab
         .wait_for_element_with_custom_timeout(embed_selector, Duration::from_secs(8))
@@ -786,5 +717,79 @@ fn prompt_for_attempt(attempt: usize, base_prompt: &str) -> &str {
         base_prompt
     } else {
         PDF_MARKDOWN_PROMPT_RETRY
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_looks_good_enough_short_text() {
+        assert!(!looks_good_enough("too short"));
+    }
+
+    #[test]
+    fn test_looks_good_enough_ascii_text() {
+        let text = "This is a reasonably long ASCII text that should pass the heuristic. \
+        It contains multiple sentences and a decent amount of letters to satisfy the threshold.";
+        assert!(looks_good_enough(text));
+    }
+
+    #[test]
+    fn test_reflow_markdown_preserves_lists() {
+        let input = "Item one\nItem two\n\n- Bullet\n- Another";
+        let output = reflow_markdown(input);
+        assert!(output.contains("Item one Item two"));
+        assert!(output.contains("- Bullet"));
+    }
+
+    #[test]
+    fn test_debug_dump_directory_env_var() {
+        std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
+        assert!(debug_dump_directory().is_none());
+
+        std::env::set_var(DEBUG_IMAGE_ENV_VAR, "/tmp/minne_pdf_debug");
+        let dir = debug_dump_directory().expect("expected debug directory");
+        assert_eq!(dir, PathBuf::from("/tmp/minne_pdf_debug"));
+
+        std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
+    }
+
+    #[test]
+    fn test_is_suspicious_image_threshold() {
+        assert!(is_suspicious_image(0));
+        assert!(is_suspicious_image(MIN_PAGE_IMAGE_BYTES - 1));
+        assert!(!is_suspicious_image(MIN_PAGE_IMAGE_BYTES + 1));
+    }
+
+    #[test]
+    fn test_is_low_quality_response_detection() {
+        assert!(is_low_quality_response(""));
+        assert!(is_low_quality_response("I'm unable to help."));
+        assert!(is_low_quality_response("I cannot read this."));
+        assert!(!is_low_quality_response("# Heading\nValid content"));
+    }
+
+    #[test]
+    fn test_prompt_for_attempt_variants() {
+        assert_eq!(
+            prompt_for_attempt(0, PDF_MARKDOWN_PROMPT),
+            PDF_MARKDOWN_PROMPT
+        );
+        assert_eq!(
+            prompt_for_attempt(1, PDF_MARKDOWN_PROMPT),
+            PDF_MARKDOWN_PROMPT_RETRY
+        );
+        assert_eq!(
+            prompt_for_attempt(5, PDF_MARKDOWN_PROMPT),
+            PDF_MARKDOWN_PROMPT_RETRY
+        );
+    }
+
+    #[test]
+    fn test_markdown_prompts_discourage_code_blocks() {
+        assert!(!PDF_MARKDOWN_PROMPT.contains("```"));
+        assert!(!PDF_MARKDOWN_PROMPT_RETRY.contains("```"));
     }
 }
