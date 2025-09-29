@@ -129,3 +129,98 @@ struct AppState {
     api_state: ApiState,
     html_state: HtmlState,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::Body, http::Request, http::StatusCode, Router};
+    use common::utils::config::{AppConfig, PdfIngestMode, StorageKind};
+    use std::{path::Path, sync::Arc};
+    use tower::ServiceExt;
+    use uuid::Uuid;
+
+    fn smoke_test_config(namespace: &str, database: &str, data_dir: &Path) -> AppConfig {
+        AppConfig {
+            openai_api_key: "test-key".into(),
+            surrealdb_address: "mem://".into(),
+            surrealdb_username: "root".into(),
+            surrealdb_password: "root".into(),
+            surrealdb_namespace: namespace.into(),
+            surrealdb_database: database.into(),
+            data_dir: data_dir.to_string_lossy().into_owned(),
+            http_port: 0,
+            openai_base_url: "https://example.com".into(),
+            storage: StorageKind::Local,
+            pdf_ingest_mode: PdfIngestMode::LlmFirst,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn smoke_startup_with_in_memory_surrealdb() {
+        let namespace = "test_ns";
+        let database = format!("test_db_{}", Uuid::new_v4());
+        let data_dir = std::env::temp_dir().join(format!("minne_smoke_{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&data_dir)
+            .await
+            .expect("failed to create temp data directory");
+
+        let config = smoke_test_config(namespace, &database, &data_dir);
+        let db = Arc::new(
+            SurrealDbClient::memory(namespace, &database)
+                .await
+                .expect("failed to start in-memory surrealdb"),
+        );
+        db.apply_migrations()
+            .await
+            .expect("failed to apply migrations");
+
+        let session_store = Arc::new(db.create_session_store().await.expect("session store"));
+        let openai_client = Arc::new(async_openai::Client::with_config(
+            async_openai::config::OpenAIConfig::new()
+                .with_api_key(&config.openai_api_key)
+                .with_api_base(&config.openai_base_url),
+        ));
+
+        let html_state =
+            HtmlState::new_with_resources(db.clone(), openai_client, session_store, config.clone())
+                .expect("failed to build html state");
+
+        let api_state = ApiState {
+            db: html_state.db.clone(),
+            config: config.clone(),
+        };
+
+        let app = Router::new()
+            .nest("/api/v1", api_routes_v1(&api_state))
+            .merge(html_routes(&html_state))
+            .with_state(AppState {
+                api_state,
+                html_state,
+            });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/live")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("router response");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let ready_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/ready")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("ready response");
+        assert_eq!(ready_response.status(), StatusCode::OK);
+
+        tokio::fs::remove_dir_all(&data_dir).await.ok();
+    }
+}

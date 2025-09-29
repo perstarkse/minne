@@ -23,6 +23,10 @@ api-router = { path = "../api-router" }
 html-router = { path = "../html-router" }
 common = { path = "../common" }
 
+[dev-dependencies]
+tower = "0.5"
+uuid = { workspace = true }
+
 [[bin]]
 name = "server"
 path = "src/server.rs"
@@ -34,4 +38,3 @@ path = "src/worker.rs"
 [[bin]]
 name = "main"
 path = "src/main.rs"
-
