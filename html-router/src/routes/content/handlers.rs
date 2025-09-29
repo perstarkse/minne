@@ -185,8 +185,13 @@ pub async fn delete_text_content(
     let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
 
     // If it has file info, delete that too
-    if let Some(file_info) = &text_content.file_info {
-        FileInfo::delete_by_id(&file_info.id, &state.db, &state.config).await?;
+    if let Some(file_info) = text_content.file_info.as_ref() {
+        let file_in_use =
+            TextContent::has_other_with_file(&file_info.id, &text_content.id, &state.db).await?;
+
+        if !file_in_use {
+            FileInfo::delete_by_id(&file_info.id, &state.db, &state.config).await?;
+        }
     }
 
     // Delete related knowledge entities and text chunks

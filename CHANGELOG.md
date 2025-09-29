@@ -1,4 +1,8 @@
 # Changelog
+## Staging
+- Support for ingestion of PDF files
+- Improved ingestion speed
+- Fix deletion of items work as expected
 
 ## Version 0.2.1 (2025-09-24)
 - Fixed API JSON responses so iOS Shortcuts integrations keep working.

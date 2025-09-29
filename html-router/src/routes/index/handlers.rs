@@ -6,7 +6,6 @@ use axum::{
 };
 use futures::try_join;
 use serde::Serialize;
-use tokio::join;
 
 use crate::{
     html_state::HtmlState,
@@ -68,7 +67,7 @@ pub async fn index_handler(
 
 #[derive(Serialize)]
 pub struct LatestTextContentData {
-    latest_text_contents: Vec<TextContent>,
+    text_contents: Vec<TextContent>,
     user: User,
 }
 
@@ -80,31 +79,35 @@ pub async fn delete_text_content(
     // Get and validate TextContent
     let text_content = get_and_validate_text_content(&state, &id, &user).await?;
 
-    // Perform concurrent deletions
-    let (_res1, _res2, _res3, _res4, _res5) = join!(
-        async {
-            if let Some(file_info) = text_content.file_info {
-                FileInfo::delete_by_id(&file_info.id, &state.db, &state.config).await
-            } else {
-                Ok(())
-            }
-        },
-        state.db.delete_item::<TextContent>(&text_content.id),
-        TextChunk::delete_by_source_id(&text_content.id, &state.db),
-        KnowledgeEntity::delete_by_source_id(&text_content.id, &state.db),
-        KnowledgeRelationship::delete_relationships_by_source_id(&text_content.id, &state.db)
-    );
+    // Remove stored assets before deleting the text content record
+    if let Some(file_info) = text_content.file_info.as_ref() {
+        let file_in_use =
+            TextContent::has_other_with_file(&file_info.id, &text_content.id, &state.db).await?;
+
+        if !file_in_use {
+            FileInfo::delete_by_id(&file_info.id, &state.db, &state.config).await?;
+        }
+    }
+
+    // Delete the text content and any related data
+    TextChunk::delete_by_source_id(&text_content.id, &state.db).await?;
+    KnowledgeEntity::delete_by_source_id(&text_content.id, &state.db).await?;
+    KnowledgeRelationship::delete_relationships_by_source_id(&text_content.id, &state.db).await?;
+    state
+        .db
+        .delete_item::<TextContent>(&text_content.id)
+        .await?;
 
     // Render updated content
-    let latest_text_contents =
+    let text_contents =
         truncate_text_contents(User::get_latest_text_contents(&user.id, &state.db).await?);
 
     Ok(TemplateResponse::new_partial(
-        "index/signed_in/recent_content.html",
+        "dashboard/recent_content.html",
         "latest_content_section",
         LatestTextContentData {
             user: user.to_owned(),
-            latest_text_contents,
+            text_contents,
         },
     ))
 }

@@ -110,6 +110,26 @@ impl TextContent {
         Ok(())
     }
 
+    pub async fn has_other_with_file(
+        file_id: &str,
+        exclude_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<bool, AppError> {
+        let mut response = db
+            .client
+            .query(
+                "SELECT VALUE id FROM type::table($table_name) WHERE file_info.id = $file_id AND id != type::thing($table_name, $exclude_id) LIMIT 1",
+            )
+            .bind(("table_name", TextContent::table_name()))
+            .bind(("file_id", file_id.to_owned()))
+            .bind(("exclude_id", exclude_id.to_owned()))
+            .await?;
+
+        let existing: Option<surrealdb::sql::Thing> = response.take(0)?;
+
+        Ok(existing.is_some())
+    }
+
     pub async fn search(
         db: &SurrealDbClient,
         search_terms: &str,
@@ -275,5 +295,65 @@ mod tests {
         assert_eq!(updated_content.category, new_category);
         assert_eq!(updated_content.text, new_text);
         assert!(updated_content.updated_at > text_content.updated_at);
+    }
+
+    #[tokio::test]
+    async fn test_has_other_with_file_detects_shared_usage() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        let user_id = "user123".to_string();
+        let file_info = FileInfo {
+            id: "file-1".to_string(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            sha256: "sha-test".to_string(),
+            path: "user123/file-1/test.txt".to_string(),
+            file_name: "test.txt".to_string(),
+            mime_type: "text/plain".to_string(),
+            user_id: user_id.clone(),
+        };
+
+        let content_a = TextContent::new(
+            "First".to_string(),
+            Some("ctx-a".to_string()),
+            "category".to_string(),
+            Some(file_info.clone()),
+            None,
+            user_id.clone(),
+        );
+        let content_b = TextContent::new(
+            "Second".to_string(),
+            Some("ctx-b".to_string()),
+            "category".to_string(),
+            Some(file_info.clone()),
+            None,
+            user_id.clone(),
+        );
+
+        db.store_item(content_a.clone())
+            .await
+            .expect("Failed to store first content");
+        db.store_item(content_b.clone())
+            .await
+            .expect("Failed to store second content");
+
+        let has_other = TextContent::has_other_with_file(&file_info.id, &content_a.id, &db)
+            .await
+            .expect("Failed to check for shared file usage");
+        assert!(has_other);
+
+        let _removed: Option<TextContent> = db
+            .delete_item(&content_b.id)
+            .await
+            .expect("Failed to delete second content");
+
+        let has_other_after = TextContent::has_other_with_file(&file_info.id, &content_a.id, &db)
+            .await
+            .expect("Failed to check shared usage after delete");
+        assert!(!has_other_after);
     }
 }

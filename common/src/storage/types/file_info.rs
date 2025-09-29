@@ -230,14 +230,8 @@ impl FileInfo {
         config: &AppConfig,
     ) -> Result<(), AppError> {
         // Get the FileInfo from the database
-        let file_info = match db_client.get_item::<FileInfo>(id).await? {
-            Some(info) => info,
-            None => {
-                return Err(AppError::from(FileError::FileNotFound(format!(
-                    "File with id {} was not found",
-                    id
-                ))))
-            }
+        let Some(file_info) = db_client.get_item::<FileInfo>(id).await? else {
+            return Ok(());
         };
 
         // Remove the object's parent prefix in the object store
@@ -733,14 +727,8 @@ mod tests {
         )
         .await;
 
-        // Should fail with FileNotFound error
-        assert!(result.is_err());
-        match result {
-            Err(AppError::File(_)) => {
-                // Expected error
-            }
-            _ => panic!("Expected FileNotFound error"),
-        }
+        // Should succeed even if the file record does not exist
+        assert!(result.is_ok());
     }
     #[tokio::test]
     async fn test_get_by_id() {
