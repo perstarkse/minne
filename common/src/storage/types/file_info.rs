@@ -57,7 +57,6 @@ impl FileInfo {
         user_id: &str,
         config: &AppConfig,
     ) -> Result<Self, FileError> {
-        info!("Data_dir: {:?}", config);
         let file = field_data.contents;
         let file_name = field_data
             .metadata
