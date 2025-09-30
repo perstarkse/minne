@@ -385,9 +385,7 @@ pub async fn delete_knowledge_relationship(
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // GOTTA ADD AUTH VALIDATION
-
-    KnowledgeRelationship::delete_relationship_by_id(&id, &state.db).await?;
+    KnowledgeRelationship::delete_relationship_by_id(&id, &user.id, &state.db).await?;
 
     let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 

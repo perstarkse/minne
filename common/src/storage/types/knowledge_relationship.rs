@@ -75,13 +75,36 @@ impl KnowledgeRelationship {
 
     pub async fn delete_relationship_by_id(
         id: &str,
+        user_id: &str,
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        let query = format!("DELETE relates_to:`{}`", id);
+        let mut authorized_result = db_client
+            .query(format!(
+                "SELECT * FROM relates_to WHERE id = relates_to:`{}` AND metadata.user_id = '{}'",
+                id, user_id
+            ))
+            .await?;
+        let authorized: Vec<KnowledgeRelationship> = authorized_result.take(0).unwrap_or_default();
 
-        db_client.query(query).await?;
+        if authorized.is_empty() {
+            let mut exists_result = db_client
+                .query(format!("SELECT * FROM relates_to:`{}`", id))
+                .await?;
+            let existing: Option<KnowledgeRelationship> = exists_result.take(0)?;
 
-        Ok(())
+            if existing.is_some() {
+                Err(AppError::Auth(
+                    "Not authorized to delete relationship".into(),
+                ))
+            } else {
+                Err(AppError::NotFound(format!("Relationship {} not found", id)))
+            }
+        } else {
+            db_client
+                .query(format!("DELETE relates_to:`{}`", id))
+                .await?;
+            Ok(())
+        }
     }
 }
 
@@ -161,7 +184,7 @@ mod tests {
         let relationship = KnowledgeRelationship::new(
             entity1_id.clone(),
             entity2_id.clone(),
-            user_id,
+            user_id.clone(),
             source_id.clone(),
             relationship_type,
         );
@@ -209,7 +232,7 @@ mod tests {
         let relationship = KnowledgeRelationship::new(
             entity1_id.clone(),
             entity2_id.clone(),
-            user_id,
+            user_id.clone(),
             source_id.clone(),
             relationship_type,
         );
@@ -220,18 +243,105 @@ mod tests {
             .await
             .expect("Failed to store relationship");
 
+        // Ensure relationship exists before deletion attempt
+        let mut existing_before_delete = db
+            .query(format!(
+                "SELECT * FROM relates_to WHERE metadata.user_id = '{}' AND metadata.source_id = '{}'",
+                user_id, source_id
+            ))
+            .await
+            .expect("Query failed");
+        let before_results: Vec<KnowledgeRelationship> =
+            existing_before_delete.take(0).unwrap_or_default();
+        assert!(
+            !before_results.is_empty(),
+            "Relationship should exist before deletion"
+        );
+
         // Delete the relationship by ID
-        KnowledgeRelationship::delete_relationship_by_id(&relationship.id, &db)
+        KnowledgeRelationship::delete_relationship_by_id(&relationship.id, &user_id, &db)
             .await
             .expect("Failed to delete relationship by ID");
 
         // Query to verify the relationship was deleted
-        let query = format!("SELECT * FROM relates_to WHERE id = '{}'", relationship.id);
-        let mut result = db.query(query).await.expect("Query failed");
+        let mut result = db
+            .query(format!(
+                "SELECT * FROM relates_to WHERE metadata.user_id = '{}' AND metadata.source_id = '{}'",
+                user_id, source_id
+            ))
+            .await
+            .expect("Query failed");
         let results: Vec<KnowledgeRelationship> = result.take(0).unwrap_or_default();
 
         // Verify the relationship no longer exists
         assert!(results.is_empty(), "Relationship should be deleted");
+    }
+
+    #[tokio::test]
+    async fn test_delete_relationship_by_id_unauthorized() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        let entity1_id = create_test_entity("Entity 1", &db).await;
+        let entity2_id = create_test_entity("Entity 2", &db).await;
+
+        let owner_user_id = "owner-user".to_string();
+        let source_id = "source123".to_string();
+
+        let relationship = KnowledgeRelationship::new(
+            entity1_id.clone(),
+            entity2_id.clone(),
+            owner_user_id.clone(),
+            source_id,
+            "references".to_string(),
+        );
+
+        relationship
+            .store_relationship(&db)
+            .await
+            .expect("Failed to store relationship");
+
+        let mut before_attempt = db
+            .query(format!(
+                "SELECT * FROM relates_to WHERE metadata.user_id = '{}'",
+                owner_user_id
+            ))
+            .await
+            .expect("Query failed");
+        let before_results: Vec<KnowledgeRelationship> = before_attempt.take(0).unwrap_or_default();
+        assert!(
+            !before_results.is_empty(),
+            "Relationship should exist before unauthorized delete attempt"
+        );
+
+        let result = KnowledgeRelationship::delete_relationship_by_id(
+            &relationship.id,
+            "different-user",
+            &db,
+        )
+        .await;
+
+        match result {
+            Err(AppError::Auth(_)) => {}
+            _ => panic!("Expected authorization error when deleting someone else's relationship"),
+        }
+
+        let mut after_attempt = db
+            .query(format!(
+                "SELECT * FROM relates_to WHERE metadata.user_id = '{}'",
+                owner_user_id
+            ))
+            .await
+            .expect("Query failed");
+        let results: Vec<KnowledgeRelationship> = after_attempt.take(0).unwrap_or_default();
+
+        assert!(
+            !results.is_empty(),
+            "Relationship should still exist after unauthorized delete attempt"
+        );
     }
 
     #[tokio::test]
