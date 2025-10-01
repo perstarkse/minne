@@ -12,7 +12,7 @@ resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1.0.94"
-async-openai = "0.24.1"
+async-openai = "0.29.3"
 async-stream = "0.3.6"
 async-trait = "0.1.88"
 axum-htmx = "0.7.0"

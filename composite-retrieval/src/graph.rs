@@ -1,5 +1,4 @@
 use surrealdb::Error;
-use tracing::debug;
 
 use common::storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity};
 
@@ -56,8 +55,6 @@ pub async fn find_entities_by_relationship_by_id(
         "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM knowledge_entity:`{}`",
         entity_id
     );
-
-    debug!("{}", query);
 
     db.query(query).await?.take(0)
 }

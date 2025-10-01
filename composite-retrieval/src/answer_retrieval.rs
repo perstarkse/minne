@@ -154,8 +154,6 @@ pub fn create_chat_request(
 
     CreateChatCompletionRequestArgs::default()
         .model(&settings.query_model)
-        .temperature(0.2)
-        .max_tokens(3048u32)
         .messages([
             ChatCompletionRequestSystemMessage::from(settings.query_system_prompt.clone()).into(),
             ChatCompletionRequestUserMessage::from(user_message).into(),

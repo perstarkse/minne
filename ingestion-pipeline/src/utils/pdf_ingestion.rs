@@ -334,12 +334,10 @@ async fn vision_markdown(
 
             let request = CreateChatCompletionRequestArgs::default()
                 .model(settings.image_processing_model.clone())
-                .temperature(0.0)
                 .messages([ChatCompletionRequestUserMessageArgs::default()
                     .content(content_parts)
                     .build()?
                     .into()])
-                .max_tokens(16400_u32)
                 .build()?;
 
             let response = client.chat().create(request).await?;

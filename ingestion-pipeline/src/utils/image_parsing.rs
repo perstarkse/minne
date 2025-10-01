@@ -23,7 +23,6 @@ pub async fn extract_text_from_image(
 
     let request = CreateChatCompletionRequestArgs::default()
         .model(system_settings.image_processing_model)
-        .max_tokens(6400_u32)
         .messages([ChatCompletionRequestUserMessageArgs::default()
             .content(vec![
                 ChatCompletionRequestMessageContentPartTextArgs::default()
