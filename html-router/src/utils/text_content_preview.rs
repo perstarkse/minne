@@ -3,14 +3,10 @@ use common::storage::types::text_content::TextContent;
 const TEXT_PREVIEW_LENGTH: usize = 50;
 
 fn maybe_truncate(value: &str) -> Option<String> {
-    let mut char_count = 0;
-
-    for (idx, _) in value.char_indices() {
+    for (char_count, (idx, _)) in value.char_indices().enumerate() {
         if char_count == TEXT_PREVIEW_LENGTH {
             return Some(value[..idx].to_string());
         }
-
-        char_count += 1;
     }
 
     None
