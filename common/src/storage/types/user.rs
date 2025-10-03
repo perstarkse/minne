@@ -109,7 +109,7 @@ impl User {
             )
             .bind(("table", T::table_name()))
             .bind(("user_id", user_id.to_string()))
-            .bind(("since", since))
+            .bind(("since", surrealdb::Datetime::from(since)))
             .await?
             .take(0)?;
         Ok(result.map(|r| r.count).unwrap_or(0))
