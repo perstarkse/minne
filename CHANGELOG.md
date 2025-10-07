@@ -1,8 +1,11 @@
 # Changelog
-## Staging
+## Unreleased
+
+## Version 0.2.2 (2025-10-07)
 - Support for ingestion of PDF files
 - Improved ingestion speed
 - Fix deletion of items work as expected
+- Fix enabling GPT-5 use via OpenAI API
 
 ## Version 0.2.1 (2025-09-24)
 - Fixed API JSON responses so iOS Shortcuts integrations keep working.
