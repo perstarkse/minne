@@ -1,6 +1,9 @@
 # Changelog
 ## Unreleased
 
+## Version 0.2.3 (2025-10-12)
+- Fix changing vector dimensions on a fresh database (#3)
+
 ## Version 0.2.2 (2025-10-07)
 - Support for ingestion of PDF files
 - Improved ingestion speed
