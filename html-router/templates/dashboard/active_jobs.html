@@ -23,12 +23,18 @@
         </div>
         <div class="space-y-1">
           <div class="text-sm font-semibold">
-            {% if item.status.name == "InProgress" %}
-            In progress, attempt {{ item.status.attempts }}
-            {% elif item.status.name == "Error" %}
-            Error: {{ item.status.message }}
+            {% if item.state == "Processing" %}
+            Processing, attempt {{ item.attempts }} of {{ item.max_attempts }}
+            {% elif item.state == "Reserved" %}
+            Reserved, attempt {{ item.attempts }} of {{ item.max_attempts }}
+            {% elif item.state == "Failed" %}
+            Retry scheduled (attempt {{ item.attempts }} of {{ item.max_attempts }}){% if item.error_message %}: {{ item.error_message }}{% endif %}
+            {% elif item.state == "DeadLetter" %}
+            Failed permanently{% if item.error_message %}: {{ item.error_message }}{% endif %}
+            {% elif item.state == "Succeeded" %}
+            Completed
             {% else %}
-            {{ item.status.name }}
+            {{ item.state }}
             {% endif %}
           </div>
           <div class="text-xs font-semibold opacity-60">

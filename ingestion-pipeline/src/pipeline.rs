@@ -1,16 +1,15 @@
 use std::{sync::Arc, time::Instant};
 
-use chrono::Utc;
 use text_splitter::TextSplitter;
 use tokio::time::{sleep, Duration};
-use tracing::{info, warn};
+use tracing::{info, info_span, warn};
 
 use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
         types::{
-            ingestion_task::{IngestionTask, IngestionTaskStatus, MAX_ATTEMPTS},
+            ingestion_task::{IngestionTask, TaskErrorInfo},
             knowledge_entity::KnowledgeEntity,
             knowledge_relationship::KnowledgeRelationship,
             text_chunk::TextChunk,
@@ -44,45 +43,79 @@ impl IngestionPipeline {
         })
     }
     pub async fn process_task(&self, task: IngestionTask) -> Result<(), AppError> {
-        let current_attempts = match task.status {
-            IngestionTaskStatus::InProgress { attempts, .. } => attempts + 1,
-            _ => 1,
-        };
+        let task_id = task.id.clone();
+        let attempt = task.attempts;
+        let worker_label = task
+            .worker_id
+            .clone()
+            .unwrap_or_else(|| "unknown-worker".to_string());
+        let span = info_span!(
+            "ingestion_task",
+            %task_id,
+            attempt,
+            worker_id = %worker_label,
+            state = %task.state.as_str()
+        );
+        let _enter = span.enter();
+        let processing_task = task.mark_processing(&self.db).await?;
 
-        // Update status to InProgress with attempt count
-        IngestionTask::update_status(
-            &task.id,
-            IngestionTaskStatus::InProgress {
-                attempts: current_attempts,
-                last_attempt: Utc::now(),
-            },
+        let text_content = to_text_content(
+            processing_task.content.clone(),
             &self.db,
+            &self.config,
+            &self.openai_client,
         )
         .await?;
 
-        let text_content =
-            to_text_content(task.content, &self.db, &self.config, &self.openai_client).await?;
-
         match self.process(&text_content).await {
             Ok(_) => {
-                IngestionTask::update_status(&task.id, IngestionTaskStatus::Completed, &self.db)
-                    .await?;
+                processing_task.mark_succeeded(&self.db).await?;
+                info!(%task_id, attempt, "ingestion task succeeded");
                 Ok(())
             }
-            Err(e) => {
-                if current_attempts >= MAX_ATTEMPTS {
-                    IngestionTask::update_status(
-                        &task.id,
-                        IngestionTaskStatus::Error {
-                            message: format!("Max attempts reached: {}", e),
-                        },
-                        &self.db,
-                    )
-                    .await?;
+            Err(err) => {
+                let reason = err.to_string();
+                let error_info = TaskErrorInfo {
+                    code: None,
+                    message: reason.clone(),
+                };
+
+                if processing_task.can_retry() {
+                    let delay = Self::retry_delay(processing_task.attempts);
+                    processing_task
+                        .mark_failed(error_info, delay, &self.db)
+                        .await?;
+                    warn!(
+                        %task_id,
+                        attempt = processing_task.attempts,
+                        retry_in_secs = delay.as_secs(),
+                        "ingestion task failed; scheduled retry"
+                    );
+                } else {
+                    processing_task
+                        .mark_dead_letter(error_info, &self.db)
+                        .await?;
+                    warn!(
+                        %task_id,
+                        attempt = processing_task.attempts,
+                        "ingestion task failed; moved to dead letter queue"
+                    );
                 }
-                Err(AppError::Processing(e.to_string()))
+
+                Err(AppError::Processing(reason))
             }
         }
+    }
+
+    fn retry_delay(attempt: u32) -> Duration {
+        const BASE_SECONDS: u64 = 30;
+        const MAX_SECONDS: u64 = 15 * 60;
+
+        let capped_attempt = attempt.saturating_sub(1).min(5) as u32;
+        let multiplier = 2_u64.pow(capped_attempt);
+        let delay = BASE_SECONDS * multiplier;
+
+        Duration::from_secs(delay.min(MAX_SECONDS))
     }
 
     pub async fn process(&self, content: &TextContent) -> Result<(), AppError> {

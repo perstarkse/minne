@@ -20,7 +20,7 @@ use common::{
     storage::types::{
         file_info::FileInfo,
         ingestion_payload::IngestionPayload,
-        ingestion_task::{IngestionTask, IngestionTaskStatus},
+        ingestion_task::{IngestionTask, TaskState},
         user::User,
     },
 };
@@ -178,40 +178,54 @@ pub async fn get_task_updates_stream(
                         Ok(Some(updated_task)) => {
                             consecutive_db_errors = 0; // Reset error count on success
 
-                            // Format the status message based on IngestionTaskStatus
-                            let status_message = match &updated_task.status {
-                                IngestionTaskStatus::Created => "Created".to_string(),
-                                IngestionTaskStatus::InProgress { attempts, .. } => {
-                                    // Following your template's current display
-                                    format!("In progress, attempt {}", attempts)
+                            let status_message = match updated_task.state {
+                                TaskState::Pending => "Pending".to_string(),
+                                TaskState::Reserved => format!(
+                                    "Reserved (attempt {} of {})",
+                                    updated_task.attempts,
+                                    updated_task.max_attempts
+                                ),
+                                TaskState::Processing => format!(
+                                    "Processing (attempt {} of {})",
+                                    updated_task.attempts,
+                                    updated_task.max_attempts
+                                ),
+                                TaskState::Succeeded => "Completed".to_string(),
+                                TaskState::Failed => {
+                                    let mut base = format!(
+                                        "Retry scheduled (attempt {} of {})",
+                                        updated_task.attempts,
+                                        updated_task.max_attempts
+                                    );
+                                    if let Some(message) = updated_task.error_message.as_ref() {
+                                        base.push_str(": ");
+                                        base.push_str(message);
+                                    }
+                                    base
                                 }
-                                IngestionTaskStatus::Completed => "Completed".to_string(),
-                                IngestionTaskStatus::Error { message } => {
-                                    // Providing a user-friendly error message from the status
-                                    format!("Error: {}", message)
+                                TaskState::Cancelled => "Cancelled".to_string(),
+                                TaskState::DeadLetter => {
+                                    let mut base = "Failed permanently".to_string();
+                                    if let Some(message) = updated_task.error_message.as_ref() {
+                                        base.push_str(": ");
+                                        base.push_str(message);
+                                    }
+                                    base
                                 }
-                                IngestionTaskStatus::Cancelled => "Cancelled".to_string(),
                             };
 
                             yield Ok(Event::default().event("status").data(status_message));
 
                             // Check for terminal states to close the stream
-                            match updated_task.status {
-                                IngestionTaskStatus::Completed
-                                | IngestionTaskStatus::Error { .. }
-                                | IngestionTaskStatus::Cancelled => {
-                                    // Send a specific event that HTMX uses to close the connection
-                                    // Send a event to reload the recent content
-                                    // Send a event to remove the loading indicatior
-                                    let check_icon = state.templates.render("icons/check_icon.html", &context!{}).unwrap_or("Ok".to_string());
-                                    yield Ok(Event::default().event("stop_loading").data(check_icon));
-                                    yield Ok(Event::default().event("update_latest_content").data("Update latest content"));
-                                    yield Ok(Event::default().event("close_stream").data("Stream complete"));
-                                    break; // Exit loop on terminal states
-                                }
-                                _ => {
-                                    // Not a terminal state, continue polling
-                                }
+                            if updated_task.state.is_terminal() {
+                                // Send a specific event that HTMX uses to close the connection
+                                // Send a event to reload the recent content
+                                // Send a event to remove the loading indicatior
+                                let check_icon = state.templates.render("icons/check_icon.html", &context!{}).unwrap_or("Ok".to_string());
+                                yield Ok(Event::default().event("stop_loading").data(check_icon));
+                                yield Ok(Event::default().event("update_latest_content").data("Update latest content"));
+                                yield Ok(Event::default().event("close_stream").data("Stream complete"));
+                                break; // Exit loop on terminal states
                             }
                         },
                         Ok(None) => {

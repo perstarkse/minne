@@ -1322,6 +1322,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "state-machines",
  "surrealdb",
  "surrealdb-migrations",
  "tempfile",
@@ -3291,7 +3292,7 @@ checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
 name = "main"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "api-router",
@@ -5398,6 +5399,34 @@ dependencies = [
  "libc",
  "psm",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "state-machines"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "806ba0bf43ae158b229036d8a84601649a58d9761e718b5e0e07c2953803f4c1"
+dependencies = [
+ "state-machines-core",
+ "state-machines-macro",
+]
+
+[[package]]
+name = "state-machines-core"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "949cc50e84bed6234117f28a0ba2980dc35e9c17984ffe4e0a3364fba3e77540"
+
+[[package]]
+name = "state-machines-macro"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8322f5aa92d31b3c05faa1ec3231b82da479a20706836867d67ae89ce74927bd"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "state-machines-core",
+ "syn 2.0.101",
 ]
 
 [[package]]

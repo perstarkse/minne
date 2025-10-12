@@ -83,6 +83,32 @@ macro_rules! stored_object {
             Ok(DateTime::<Utc>::from(dt))
         }
 
+        #[allow(dead_code)]
+        fn serialize_option_datetime<S>(
+            date: &Option<DateTime<Utc>>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            match date {
+                Some(dt) => serializer
+                    .serialize_some(&Into::<surrealdb::sql::Datetime>::into(*dt)),
+                None => serializer.serialize_none(),
+            }
+        }
+
+        #[allow(dead_code)]
+        fn deserialize_option_datetime<'de, D>(
+            deserializer: D,
+        ) -> Result<Option<DateTime<Utc>>, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let value = Option::<surrealdb::sql::Datetime>::deserialize(deserializer)?;
+            Ok(value.map(DateTime::<Utc>::from))
+        }
+
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
         pub struct $name {
@@ -92,7 +118,7 @@ macro_rules! stored_object {
             pub created_at: DateTime<Utc>,
             #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime", default)]
             pub updated_at: DateTime<Utc>,
-            $(pub $field: $ty),*
+            $( $(#[$attr])* pub $field: $ty),*
         }
 
         impl StoredObject for $name {

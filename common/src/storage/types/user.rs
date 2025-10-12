@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::text_chunk::TextChunk;
 use super::{
     conversation::Conversation,
-    ingestion_task::{IngestionTask, MAX_ATTEMPTS},
+    ingestion_task::{IngestionTask, TaskState},
     knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
     knowledge_relationship::KnowledgeRelationship,
     system_settings::SystemSettings,
@@ -535,19 +535,24 @@ impl User {
         let jobs: Vec<IngestionTask> = db
             .query(
                 "SELECT * FROM type::table($table) 
-             WHERE user_id = $user_id 
-             AND (
-                status.name = 'Created' 
-                OR (
-                    status.name = 'InProgress'
-                    AND status.attempts < $max_attempts
-                )
-             )
-             ORDER BY created_at DESC",
+                 WHERE user_id = $user_id 
+                   AND (
+                       state IN $active_states
+                       OR (state = $failed_state AND attempts < max_attempts)
+                   )
+                 ORDER BY scheduled_at ASC, created_at DESC",
             )
             .bind(("table", IngestionTask::table_name()))
             .bind(("user_id", user_id.to_owned()))
-            .bind(("max_attempts", MAX_ATTEMPTS))
+            .bind((
+                "active_states",
+                vec![
+                    TaskState::Pending.as_str(),
+                    TaskState::Reserved.as_str(),
+                    TaskState::Processing.as_str(),
+                ],
+            ))
+            .bind(("failed_state", TaskState::Failed.as_str()))
             .await?
             .take(0)?;
 
@@ -605,7 +610,7 @@ impl User {
 mod tests {
     use super::*;
     use crate::storage::types::ingestion_payload::IngestionPayload;
-    use crate::storage::types::ingestion_task::{IngestionTask, IngestionTaskStatus, MAX_ATTEMPTS};
+    use crate::storage::types::ingestion_task::{IngestionTask, TaskState, MAX_ATTEMPTS};
     use std::collections::HashSet;
 
     // Helper function to set up a test database with SystemSettings
@@ -710,28 +715,32 @@ mod tests {
             .await
             .expect("Failed to store created task");
 
-        let mut in_progress_allowed =
-            IngestionTask::new(payload.clone(), user_id.to_string()).await;
-        in_progress_allowed.status = IngestionTaskStatus::InProgress {
-            attempts: 1,
-            last_attempt: chrono::Utc::now(),
-        };
-        db.store_item(in_progress_allowed.clone())
+        let mut processing_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        processing_task.state = TaskState::Processing;
+        processing_task.attempts = 1;
+        db.store_item(processing_task.clone())
             .await
-            .expect("Failed to store in-progress task");
+            .expect("Failed to store processing task");
 
-        let mut in_progress_blocked =
+        let mut failed_retry_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        failed_retry_task.state = TaskState::Failed;
+        failed_retry_task.attempts = 1;
+        failed_retry_task.scheduled_at = chrono::Utc::now() - chrono::Duration::minutes(5);
+        db.store_item(failed_retry_task.clone())
+            .await
+            .expect("Failed to store retryable failed task");
+
+        let mut failed_blocked_task =
             IngestionTask::new(payload.clone(), user_id.to_string()).await;
-        in_progress_blocked.status = IngestionTaskStatus::InProgress {
-            attempts: MAX_ATTEMPTS,
-            last_attempt: chrono::Utc::now(),
-        };
-        db.store_item(in_progress_blocked.clone())
+        failed_blocked_task.state = TaskState::Failed;
+        failed_blocked_task.attempts = MAX_ATTEMPTS;
+        failed_blocked_task.error_message = Some("Too many failures".into());
+        db.store_item(failed_blocked_task.clone())
             .await
             .expect("Failed to store blocked task");
 
         let mut completed_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
-        completed_task.status = IngestionTaskStatus::Completed;
+        completed_task.state = TaskState::Succeeded;
         db.store_item(completed_task.clone())
             .await
             .expect("Failed to store completed task");
@@ -755,10 +764,11 @@ mod tests {
             unfinished.iter().map(|task| task.id.clone()).collect();
 
         assert!(unfinished_ids.contains(&created_task.id));
-        assert!(unfinished_ids.contains(&in_progress_allowed.id));
-        assert!(!unfinished_ids.contains(&in_progress_blocked.id));
+        assert!(unfinished_ids.contains(&processing_task.id));
+        assert!(unfinished_ids.contains(&failed_retry_task.id));
+        assert!(!unfinished_ids.contains(&failed_blocked_task.id));
         assert!(!unfinished_ids.contains(&completed_task.id));
-        assert_eq!(unfinished_ids.len(), 2);
+        assert_eq!(unfinished_ids.len(), 3);
     }
 
     #[tokio::test]
