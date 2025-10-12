@@ -68,7 +68,17 @@ impl TextChunk {
         let all_chunks: Vec<TextChunk> = db.select(Self::table_name()).await?;
         let total_chunks = all_chunks.len();
         if total_chunks == 0 {
-            info!("No text chunks to update. Skipping.");
+            info!("No text chunks to update. Just updating the idx");
+
+            let mut transaction_query = String::from("BEGIN TRANSACTION;");
+            transaction_query.push_str("REMOVE INDEX idx_embedding_chunks ON TABLE text_chunk;");
+            transaction_query.push_str(&format!(
+            "DEFINE INDEX idx_embedding_chunks ON TABLE text_chunk FIELDS embedding HNSW DIMENSION {};",
+            new_dimensions));
+            transaction_query.push_str("COMMIT TRANSACTION;");
+
+            db.query(transaction_query).await?;
+
             return Ok(());
         }
         info!("Found {} chunks to process.", total_chunks);

@@ -53,10 +53,59 @@ impl SystemSettings {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::types::text_chunk::TextChunk;
+    use crate::storage::types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk};
+    use async_openai::Client;
 
     use super::*;
     use uuid::Uuid;
+
+    async fn get_hnsw_index_dimension(
+        db: &SurrealDbClient,
+        table_name: &str,
+        index_name: &str,
+    ) -> u32 {
+        let query = format!("INFO FOR TABLE {table_name};");
+        let mut response = db
+            .client
+            .query(query)
+            .await
+            .expect("Failed to fetch table info");
+
+        let info: Option<serde_json::Value> = response
+            .take(0)
+            .expect("Failed to extract table info response");
+
+        let info = info.expect("Table info result missing");
+
+        let indexes = info
+            .get("indexes")
+            .or_else(|| {
+                info.get("tables")
+                    .and_then(|tables| tables.get(table_name))
+                    .and_then(|table| table.get("indexes"))
+            })
+            .unwrap_or_else(|| panic!("Indexes collection missing in table info: {info:#?}"));
+
+        let definition = indexes
+            .get(index_name)
+            .and_then(|definition| definition.as_str())
+            .unwrap_or_else(|| panic!("Index definition not found in table info: {info:#?}"));
+
+        let dimension_part = definition
+            .split("DIMENSION")
+            .nth(1)
+            .expect("Index definition missing DIMENSION clause");
+
+        let dimension_token = dimension_part
+            .split_whitespace()
+            .next()
+            .expect("Dimension value missing in definition")
+            .trim_end_matches(';');
+
+        dimension_token
+            .parse::<u32>()
+            .expect("Dimension value is not a valid number")
+    }
 
     #[tokio::test]
     async fn test_settings_initialization() {
@@ -254,5 +303,75 @@ mod tests {
         let migration_result = db.apply_migrations().await;
 
         assert!(migration_result.is_ok(), "Migrations should not fail");
+    }
+
+    #[tokio::test]
+    async fn test_should_change_embedding_length_on_indexes_when_switching_length() {
+        let db = SurrealDbClient::memory("test", &Uuid::new_v4().to_string())
+            .await
+            .expect("Failed to start DB");
+
+        // Apply initial migrations. This sets up the text_chunk index with DIMENSION 1536.
+        db.apply_migrations()
+            .await
+            .expect("Initial migration failed");
+
+        let mut current_settings = SystemSettings::get_current(&db)
+            .await
+            .expect("Failed to load current settings");
+
+        let initial_chunk_dimension =
+            get_hnsw_index_dimension(&db, "text_chunk", "idx_embedding_chunks").await;
+
+        assert_eq!(
+            initial_chunk_dimension, current_settings.embedding_dimensions,
+            "embedding size should match initial system settings"
+        );
+
+        let new_dimension = 768;
+        let new_model = "new-test-embedding-model".to_string();
+
+        current_settings.embedding_dimensions = new_dimension;
+        current_settings.embedding_model = new_model.clone();
+
+        let updated_settings = SystemSettings::update(&db, current_settings)
+            .await
+            .expect("Failed to update settings");
+
+        assert_eq!(
+            updated_settings.embedding_dimensions, new_dimension,
+            "Settings should reflect the new embedding dimension"
+        );
+
+        let openai_client = Client::new();
+
+        TextChunk::update_all_embeddings(&db, &openai_client, &new_model, new_dimension)
+            .await
+            .expect("TextChunk re-embedding should succeed on fresh DB");
+        KnowledgeEntity::update_all_embeddings(&db, &openai_client, &new_model, new_dimension)
+            .await
+            .expect("KnowledgeEntity re-embedding should succeed on fresh DB");
+
+        let text_chunk_dimension =
+            get_hnsw_index_dimension(&db, "text_chunk", "idx_embedding_chunks").await;
+        let knowledge_dimension =
+            get_hnsw_index_dimension(&db, "knowledge_entity", "idx_embedding_entities").await;
+
+        assert_eq!(
+            text_chunk_dimension, new_dimension,
+            "text_chunk index dimension should update"
+        );
+        assert_eq!(
+            knowledge_dimension, new_dimension,
+            "knowledge_entity index dimension should update"
+        );
+
+        let persisted_settings = SystemSettings::get_current(&db)
+            .await
+            .expect("Failed to reload updated settings");
+        assert_eq!(
+            persisted_settings.embedding_dimensions, new_dimension,
+            "Settings should persist new embedding dimension"
+        );
     }
 }

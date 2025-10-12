@@ -150,7 +150,18 @@ impl KnowledgeEntity {
         let all_entities: Vec<KnowledgeEntity> = db.select(Self::table_name()).await?;
         let total_entities = all_entities.len();
         if total_entities == 0 {
-            info!("No knowledge entities to update. Skipping.");
+            info!("No knowledge entities to update. Just updating the idx");
+
+            let mut transaction_query = String::from("BEGIN TRANSACTION;");
+            transaction_query
+                .push_str("REMOVE INDEX idx_embedding_entities ON TABLE knowledge_entity;");
+            transaction_query.push_str(&format!(
+                "DEFINE INDEX idx_embedding_entities ON TABLE knowledge_entity FIELDS embedding HNSW DIMENSION {};",
+                new_dimensions
+            ));
+            transaction_query.push_str("COMMIT TRANSACTION;");
+
+            db.query(transaction_query).await?;
             return Ok(());
         }
         info!("Found {} entities to process.", total_entities);
