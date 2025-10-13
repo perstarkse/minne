@@ -1,0 +1,152 @@
+{% extends "modal_base.html" %}
+
+{% block modal_class %}w-11/12 max-w-[90ch] max-h-[95%] overflow-y-auto{% endblock %}
+
+{% block form_attributes %}onsubmit="event.preventDefault();"{% endblock %}
+
+{% block modal_content %}
+<h3 class="text-xl font-extrabold tracking-tight flex items-center gap-2">
+  Ingestion Task Archive
+  <span class="badge badge-neutral text-xs font-normal">{{ tasks|length }} total</span>
+</h3>
+<p class="text-sm opacity-70">A history of all ingestion tasks for {{ user.email }}.</p>
+
+{% if tasks %}
+<div class="hidden lg:block overflow-x-auto nb-card mt-4">
+  <table class="nb-table">
+    <thead>
+      <tr>
+        <th class="text-left">Content</th>
+        <th class="text-left">State</th>
+        <th class="text-left">Attempts</th>
+        <th class="text-left">Scheduled</th>
+        <th class="text-left">Updated</th>
+        <th class="text-left">Worker</th>
+        <th class="text-left">Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for task in tasks %}
+      <tr>
+        <td>
+          <div class="flex flex-col gap-1">
+            <div class="text-sm font-semibold">{{ task.content_kind }}</div>
+            <div class="text-xs opacity-70 break-words">{{ task.content_summary }}</div>
+            <div class="text-[11px] opacity-60 lowercase tracking-wider">{{ task.id }}</div>
+          </div>
+        </td>
+        <td>
+          <span class="badge badge-primary badge-outline tracking-wide">{{ task.state_label }}</span>
+        </td>
+        <td>
+          <div class="text-sm font-semibold">{{ task.attempts }} / {{ task.max_attempts }}</div>
+          <div class="text-xs opacity-60">Priority {{ task.priority }}</div>
+        </td>
+        <td>
+          <div class="text-sm">
+            {{ task.scheduled_at|datetimeformat(format="short", tz=user.timezone) }}
+          </div>
+          {% if task.locked_at %}
+          <div class="text-xs opacity-60">Locked {{ task.locked_at|datetimeformat(format="short", tz=user.timezone) }}
+          </div>
+          {% endif %}
+        </td>
+        <td>
+          <div class="text-sm">
+            {{ task.updated_at|datetimeformat(format="short", tz=user.timezone) }}
+          </div>
+          <div class="text-xs opacity-60">Created {{ task.created_at|datetimeformat(format="short", tz=user.timezone) }}
+          </div>
+        </td>
+        <td>
+          {% if task.worker_id %}
+          <span class="text-sm font-semibold">{{ task.worker_id }}</span>
+          <div class="text-xs opacity-60">Lease {{ task.lease_duration_secs }}s</div>
+          {% else %}
+          <span class="text-xs opacity-60">Not assigned</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if task.error_message %}
+          <div class="text-sm text-error font-semibold">{{ task.error_message }}</div>
+          {% if task.last_error_at %}
+          <div class="text-xs opacity-60">{{ task.last_error_at|datetimeformat(format="short", tz=user.timezone) }}
+          </div>
+          {% endif %}
+          {% else %}
+          <span class="text-xs opacity-60">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="lg:hidden flex flex-col gap-3 mt-4">
+  {% for task in tasks %}
+  <details class="nb-panel p-3 space-y-3">
+    <summary class="flex items-center justify-between gap-2 text-sm font-semibold cursor-pointer">
+      <span>{{ task.content_kind }}</span>
+      <span class="badge badge-primary badge-outline tracking-wide">{{ task.state_label }}</span>
+    </summary>
+    <div class="text-xs opacity-70 break-words">{{ task.content_summary }}</div>
+    <div class="text-[11px] opacity-60 lowercase tracking-wider">{{ task.id }}</div>
+    <div class="grid grid-cols-1 gap-2 text-xs">
+      <div class="flex justify-between">
+        <span class="opacity-60 uppercase tracking-wide">Attempts</span>
+        <span class="text-sm font-semibold">{{ task.attempts }} / {{ task.max_attempts }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="opacity-60 uppercase tracking-wide">Priority</span>
+        <span class="text-sm font-semibold">{{ task.priority }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="opacity-60 uppercase tracking-wide">Scheduled</span>
+        <span>{{ task.scheduled_at|datetimeformat(format="short", tz=user.timezone) }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="opacity-60 uppercase tracking-wide">Updated</span>
+        <span>{{ task.updated_at|datetimeformat(format="short", tz=user.timezone) }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="opacity-60 uppercase tracking-wide">Created</span>
+        <span>{{ task.created_at|datetimeformat(format="short", tz=user.timezone) }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="opacity-60 uppercase tracking-wide">Worker</span>
+        {% if task.worker_id %}
+        <span class="text-sm font-semibold">{{ task.worker_id }}</span>
+        {% else %}
+        <span class="opacity-60">Unassigned</span>
+        {% endif %}
+      </div>
+      <div class="flex justify-between">
+        <span class="opacity-60 uppercase tracking-wide">Lease</span>
+        <span>{{ task.lease_duration_secs }}s</span>
+      </div>
+      {% if task.locked_at %}
+      <div class="flex justify-between">
+        <span class="opacity-60 uppercase tracking-wide">Locked</span>
+        <span>{{ task.locked_at|datetimeformat(format="short", tz=user.timezone) }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% if task.error_message or task.last_error_at %}
+    <div class="border-t border-base-200 pt-2 text-xs space-y-1">
+      {% if task.error_message %}
+      <div class="text-sm text-error font-semibold">{{ task.error_message }}</div>
+      {% endif %}
+      {% if task.last_error_at %}
+      <div class="opacity-60">Last error {{ task.last_error_at|datetimeformat(format="short", tz=user.timezone) }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </details>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-sm opacity-70 mt-4">No tasks yet. Start an ingestion to populate the archive.</p>
+{% endif %}
+{% endblock %}
+
+{% block primary_actions %}{% endblock %}

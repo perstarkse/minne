@@ -73,7 +73,6 @@ pub struct TaskErrorInfo {
 
 #[derive(Debug, Clone, Copy)]
 enum TaskTransition {
-    Reserve,
     StartProcessing,
     Succeed,
     Fail,
@@ -85,7 +84,6 @@ enum TaskTransition {
 impl TaskTransition {
     fn as_str(&self) -> &'static str {
         match self {
-            TaskTransition::Reserve => "reserve",
             TaskTransition::StartProcessing => "start_processing",
             TaskTransition::Succeed => "succeed",
             TaskTransition::Fail => "fail",
@@ -160,53 +158,6 @@ fn invalid_transition(state: &TaskState, event: TaskTransition) -> AppError {
         state.as_str(),
         event.as_str()
     ))
-}
-
-fn compute_next_state(state: &TaskState, event: TaskTransition) -> Result<TaskState, AppError> {
-    use lifecycle::*;
-    match (state, event) {
-        (TaskState::Pending, TaskTransition::Reserve) => pending()
-            .reserve()
-            .map(|_| TaskState::Reserved)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Failed, TaskTransition::Reserve) => failed()
-            .reserve()
-            .map(|_| TaskState::Reserved)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Reserved, TaskTransition::StartProcessing) => reserved()
-            .start_processing()
-            .map(|_| TaskState::Processing)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Processing, TaskTransition::Succeed) => processing()
-            .succeed()
-            .map(|_| TaskState::Succeeded)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Processing, TaskTransition::Fail) => processing()
-            .fail()
-            .map(|_| TaskState::Failed)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Pending, TaskTransition::Cancel) => pending()
-            .cancel()
-            .map(|_| TaskState::Cancelled)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Reserved, TaskTransition::Cancel) => reserved()
-            .cancel()
-            .map(|_| TaskState::Cancelled)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Processing, TaskTransition::Cancel) => processing()
-            .cancel()
-            .map(|_| TaskState::Cancelled)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Failed, TaskTransition::DeadLetter) => failed()
-            .deadletter()
-            .map(|_| TaskState::DeadLetter)
-            .map_err(|_| invalid_transition(state, event)),
-        (TaskState::Reserved, TaskTransition::Release) => reserved()
-            .release()
-            .map(|_| TaskState::Pending)
-            .map_err(|_| invalid_transition(state, event)),
-        _ => Err(invalid_transition(state, event)),
-    }
 }
 
 stored_object!(IngestionTask, "ingestion_task", {
@@ -284,8 +235,8 @@ impl IngestionTask {
         now: chrono::DateTime<chrono::Utc>,
         lease_duration: Duration,
     ) -> Result<Option<IngestionTask>, AppError> {
-        debug_assert!(compute_next_state(&TaskState::Pending, TaskTransition::Reserve).is_ok());
-        debug_assert!(compute_next_state(&TaskState::Failed, TaskTransition::Reserve).is_ok());
+        debug_assert!(lifecycle::pending().reserve().is_ok());
+        debug_assert!(lifecycle::failed().reserve().is_ok());
 
         const CLAIM_QUERY: &str = r#"
             UPDATE (
@@ -348,9 +299,6 @@ impl IngestionTask {
     }
 
     pub async fn mark_processing(&self, db: &SurrealDbClient) -> Result<IngestionTask, AppError> {
-        let next = compute_next_state(&self.state, TaskTransition::StartProcessing)?;
-        debug_assert_eq!(next, TaskState::Processing);
-
         const START_PROCESSING_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
             SET state = $processing,
@@ -377,9 +325,6 @@ impl IngestionTask {
     }
 
     pub async fn mark_succeeded(&self, db: &SurrealDbClient) -> Result<IngestionTask, AppError> {
-        let next = compute_next_state(&self.state, TaskTransition::Succeed)?;
-        debug_assert_eq!(next, TaskState::Succeeded);
-
         const COMPLETE_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
             SET state = $succeeded,
@@ -416,9 +361,6 @@ impl IngestionTask {
         retry_delay: Duration,
         db: &SurrealDbClient,
     ) -> Result<IngestionTask, AppError> {
-        let next = compute_next_state(&self.state, TaskTransition::Fail)?;
-        debug_assert_eq!(next, TaskState::Failed);
-
         let now = chrono::Utc::now();
         let retry_at = now
             + ChronoDuration::from_std(retry_delay).unwrap_or_else(|_| ChronoDuration::seconds(30));
@@ -460,9 +402,6 @@ impl IngestionTask {
         error: TaskErrorInfo,
         db: &SurrealDbClient,
     ) -> Result<IngestionTask, AppError> {
-        let next = compute_next_state(&self.state, TaskTransition::DeadLetter)?;
-        debug_assert_eq!(next, TaskState::DeadLetter);
-
         const DEAD_LETTER_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
             SET state = $dead,
@@ -495,8 +434,6 @@ impl IngestionTask {
     }
 
     pub async fn mark_cancelled(&self, db: &SurrealDbClient) -> Result<IngestionTask, AppError> {
-        compute_next_state(&self.state, TaskTransition::Cancel)?;
-
         const CANCEL_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
             SET state = $cancelled,
@@ -530,8 +467,6 @@ impl IngestionTask {
     }
 
     pub async fn release(&self, db: &SurrealDbClient) -> Result<IngestionTask, AppError> {
-        compute_next_state(&self.state, TaskTransition::Release)?;
-
         const RELEASE_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
             SET state = $pending,
@@ -707,5 +642,87 @@ mod tests {
             .expect("dead letter");
         assert_eq!(dead.state, TaskState::DeadLetter);
         assert_eq!(dead.error_message.as_deref(), Some("failed"));
+    }
+
+    #[tokio::test]
+    async fn test_mark_processing_requires_reservation() {
+        let db = memory_db().await;
+        let user_id = "user123";
+        let payload = create_payload(user_id);
+
+        let task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        db.store_item(task.clone()).await.expect("store");
+
+        let err = task
+            .mark_processing(&db)
+            .await
+            .expect_err("processing should fail without reservation");
+
+        match err {
+            AppError::Validation(message) => {
+                assert!(
+                    message.contains("Pending -> start_processing"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("expected validation error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mark_failed_requires_processing() {
+        let db = memory_db().await;
+        let user_id = "user123";
+        let payload = create_payload(user_id);
+
+        let task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        db.store_item(task.clone()).await.expect("store");
+
+        let err = task
+            .mark_failed(
+                TaskErrorInfo {
+                    code: None,
+                    message: "boom".into(),
+                },
+                Duration::from_secs(30),
+                &db,
+            )
+            .await
+            .expect_err("failing should require processing state");
+
+        match err {
+            AppError::Validation(message) => {
+                assert!(
+                    message.contains("Pending -> fail"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("expected validation error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_release_requires_reservation() {
+        let db = memory_db().await;
+        let user_id = "user123";
+        let payload = create_payload(user_id);
+
+        let task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        db.store_item(task.clone()).await.expect("store");
+
+        let err = task
+            .release(&db)
+            .await
+            .expect_err("release should require reserved state");
+
+        match err {
+            AppError::Validation(message) => {
+                assert!(
+                    message.contains("Pending -> release"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("expected validation error, got {other:?}"),
+        }
     }
 }

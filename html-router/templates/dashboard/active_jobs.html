@@ -2,10 +2,16 @@
 <section id="active_jobs_section" class="nb-panel p-4 space-y-4 mt-6 sm:mt-8">
   <header class="flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-xl font-extrabold tracking-tight">Active Tasks</h2>
-    <button class="nb-btn btn-square btn-sm" hx-get="/active-jobs" hx-target="#active_jobs_section" hx-swap="outerHTML"
-      aria-label="Refresh active tasks">
-      {% include "icons/refresh_icon.html" %}
-    </button>
+    <div class="flex gap-2">
+      <button class="nb-btn btn-square btn-sm" hx-get="/active-jobs" hx-target="#active_jobs_section" hx-swap="outerHTML"
+        aria-label="Refresh active tasks">
+        {% include "icons/refresh_icon.html" %}
+      </button>
+      <button class="nb-btn btn-sm" hx-get="/jobs/archive" hx-target="#modal" hx-swap="innerHTML"
+        aria-label="View task archive">
+        View Archive
+      </button>
+    </div>
   </header>
   {% if active_jobs %}
   <ul class="flex flex-col gap-3 list-none p-0 m-0">

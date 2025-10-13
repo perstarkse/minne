@@ -559,6 +559,25 @@ impl User {
         Ok(jobs)
     }
 
+    /// Gets all ingestion tasks for the specified user ordered by newest first
+    pub async fn get_all_ingestion_tasks(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<IngestionTask>, AppError> {
+        let jobs: Vec<IngestionTask> = db
+            .query(
+                "SELECT * FROM type::table($table)
+                 WHERE user_id = $user_id
+                 ORDER BY created_at DESC",
+            )
+            .bind(("table", IngestionTask::table_name()))
+            .bind(("user_id", user_id.to_owned()))
+            .await?
+            .take(0)?;
+
+        Ok(jobs)
+    }
+
     /// Validate and delete job
     pub async fn validate_and_delete_job(
         id: &str,
@@ -769,6 +788,49 @@ mod tests {
         assert!(!unfinished_ids.contains(&failed_blocked_task.id));
         assert!(!unfinished_ids.contains(&completed_task.id));
         assert_eq!(unfinished_ids.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_ingestion_tasks_returns_sorted() {
+        let db = setup_test_db().await;
+        let user_id = "archive_user";
+        let other_user_id = "other_user";
+
+        let payload = IngestionPayload::Text {
+            text: "One".to_string(),
+            context: "Context".to_string(),
+            category: "Category".to_string(),
+            user_id: user_id.to_string(),
+        };
+
+        // Oldest task
+        let mut first = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        first.created_at = first.created_at - chrono::Duration::minutes(1);
+        first.updated_at = first.created_at;
+        first.state = TaskState::Succeeded;
+        db.store_item(first.clone()).await.expect("store first");
+
+        // Latest task
+        let mut second = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        second.state = TaskState::Processing;
+        db.store_item(second.clone()).await.expect("store second");
+
+        let other_payload = IngestionPayload::Text {
+            text: "Other".to_string(),
+            context: "Context".to_string(),
+            category: "Category".to_string(),
+            user_id: other_user_id.to_string(),
+        };
+        let other_task = IngestionTask::new(other_payload, other_user_id.to_string()).await;
+        db.store_item(other_task).await.expect("store other");
+
+        let tasks = User::get_all_ingestion_tasks(user_id, &db)
+            .await
+            .expect("fetch all tasks");
+
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].id, second.id); // newest first
+        assert_eq!(tasks[1].id, first.id);
     }
 
     #[tokio::test]

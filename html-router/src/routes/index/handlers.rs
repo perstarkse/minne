@@ -4,6 +4,7 @@ use axum::{
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
 };
+use chrono::{DateTime, Utc};
 use futures::try_join;
 use serde::Serialize;
 
@@ -139,6 +140,32 @@ pub struct ActiveJobsData {
     pub user: User,
 }
 
+#[derive(Serialize)]
+struct TaskArchiveEntry {
+    id: String,
+    state_label: String,
+    state_raw: String,
+    attempts: u32,
+    max_attempts: u32,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    scheduled_at: DateTime<Utc>,
+    locked_at: Option<DateTime<Utc>>,
+    last_error_at: Option<DateTime<Utc>>,
+    error_message: Option<String>,
+    worker_id: Option<String>,
+    priority: i32,
+    lease_duration_secs: i64,
+    content_kind: String,
+    content_summary: String,
+}
+
+#[derive(Serialize)]
+struct TaskArchiveData {
+    user: User,
+    tasks: Vec<TaskArchiveEntry>,
+}
+
 pub async fn delete_job(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
@@ -171,6 +198,70 @@ pub async fn show_active_jobs(
             active_jobs,
         },
     ))
+}
+
+pub async fn show_task_archive(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+) -> Result<impl IntoResponse, HtmlError> {
+    let tasks = User::get_all_ingestion_tasks(&user.id, &state.db).await?;
+
+    let entries: Vec<TaskArchiveEntry> = tasks
+        .into_iter()
+        .map(|task| {
+            let (content_kind, content_summary) = summarize_task_content(&task);
+
+            TaskArchiveEntry {
+                id: task.id.clone(),
+                state_label: task.state.display_label().to_string(),
+                state_raw: task.state.as_str().to_string(),
+                attempts: task.attempts,
+                max_attempts: task.max_attempts,
+                created_at: task.created_at,
+                updated_at: task.updated_at,
+                scheduled_at: task.scheduled_at,
+                locked_at: task.locked_at,
+                last_error_at: task.last_error_at,
+                error_message: task.error_message.clone(),
+                worker_id: task.worker_id.clone(),
+                priority: task.priority,
+                lease_duration_secs: task.lease_duration_secs,
+                content_kind,
+                content_summary,
+            }
+        })
+        .collect();
+
+    Ok(TemplateResponse::new_template(
+        "dashboard/task_archive_modal.html",
+        TaskArchiveData {
+            user,
+            tasks: entries,
+        },
+    ))
+}
+
+fn summarize_task_content(task: &IngestionTask) -> (String, String) {
+    match &task.content {
+        common::storage::types::ingestion_payload::IngestionPayload::Text { text, .. } => {
+            ("Text".to_string(), truncate_summary(text, 80))
+        }
+        common::storage::types::ingestion_payload::IngestionPayload::Url { url, .. } => {
+            ("URL".to_string(), url.to_string())
+        }
+        common::storage::types::ingestion_payload::IngestionPayload::File { file_info, .. } => {
+            ("File".to_string(), file_info.file_name.clone())
+        }
+    }
+}
+
+fn truncate_summary(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        input.to_string()
+    } else {
+        let truncated: String = input.chars().take(max_chars).collect();
+        format!("{truncated}…")
+    }
 }
 
 pub async fn serve_file(
