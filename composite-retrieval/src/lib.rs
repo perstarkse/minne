@@ -41,12 +41,14 @@ const GRAPH_SCORE_DECAY: f32 = 0.75;
 const GRAPH_SEED_MIN_SCORE: f32 = 0.4;
 const GRAPH_VECTOR_INHERITANCE: f32 = 0.6;
 
+// Captures a supporting chunk plus its fused retrieval score for downstream prompts.
 #[derive(Debug, Clone)]
 pub struct RetrievedChunk {
     pub chunk: TextChunk,
     pub score: f32,
 }
 
+// Final entity representation returned to callers, enriched with ranked chunks.
 #[derive(Debug, Clone)]
 pub struct RetrievedEntity {
     pub entity: KnowledgeEntity,
@@ -114,6 +116,7 @@ pub(crate) async fn retrieve_entities_with_embedding(
     let mut entity_candidates: HashMap<String, Scored<KnowledgeEntity>> = HashMap::new();
     let mut chunk_candidates: HashMap<String, Scored<TextChunk>> = HashMap::new();
 
+    // Collate raw retrieval results so each ID accumulates all available signals.
     merge_scored_by_id(&mut entity_candidates, vector_entities);
     merge_scored_by_id(&mut entity_candidates, fts_entities);
     merge_scored_by_id(&mut chunk_candidates, vector_chunks);
@@ -190,6 +193,7 @@ pub(crate) async fn retrieve_entities_with_embedding(
         .collect();
 
     if filtered_entities.len() < FALLBACK_MIN_RESULTS {
+        // Low recall scenarios still benefit from some context; take the top N regardless of score.
         filtered_entities = entity_results
             .into_iter()
             .take(FALLBACK_MIN_RESULTS)
@@ -220,6 +224,7 @@ pub(crate) async fn retrieve_entities_with_embedding(
     Ok(assemble_results(filtered_entities, chunk_values))
 }
 
+// Minimal record used while seeding graph expansion so we can retain the original fused score.
 #[derive(Clone)]
 struct GraphSeed {
     id: String,
@@ -250,6 +255,7 @@ async fn enrich_entities_from_graph(
         return Ok(());
     }
 
+    // Prioritise the strongest seeds so we explore the most grounded context first.
     seeds.sort_by(|a, b| {
         b.fused
             .partial_cmp(&a.fused)
@@ -279,6 +285,7 @@ async fn enrich_entities_from_graph(
             continue;
         }
 
+        // Fold neighbors back into the candidate map and let them inherit attenuated signal.
         for neighbor in neighbors {
             if neighbor.id == seed.id {
                 continue;

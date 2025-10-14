@@ -9,7 +9,7 @@ use common::{
 use serde::Deserialize;
 use surrealdb::sql::Thing;
 
-use crate::scoring::{distance_to_similarity, Scored};
+use crate::scoring::{clamp_unit, distance_to_similarity, Scored};
 
 /// Compares vectors and retrieves a number of items from the specified table.
 ///
@@ -110,10 +110,45 @@ where
         .map(|item| (item.get_id().to_owned(), item))
         .collect();
 
+    let mut min_distance = f32::MAX;
+    let mut max_distance = f32::MIN;
+
+    for row in &distance_rows {
+        if let Some(distance) = row.distance {
+            if distance.is_finite() {
+                if distance < min_distance {
+                    min_distance = distance;
+                }
+                if distance > max_distance {
+                    max_distance = distance;
+                }
+            }
+        }
+    }
+
+    let normalize = min_distance.is_finite()
+        && max_distance.is_finite()
+        && (max_distance - min_distance).abs() > f32::EPSILON;
+
     let mut scored = Vec::with_capacity(distance_rows.len());
     for row in distance_rows {
         if let Some(item) = item_map.remove(&row.id) {
-            let similarity = row.distance.map(distance_to_similarity).unwrap_or_default();
+            let similarity = row
+                .distance
+                .map(|distance| {
+                    if normalize {
+                        let span = max_distance - min_distance;
+                        if span.abs() < f32::EPSILON {
+                            1.0
+                        } else {
+                            let normalized = 1.0 - ((distance - min_distance) / span);
+                            clamp_unit(normalized)
+                        }
+                    } else {
+                        distance_to_similarity(distance)
+                    }
+                })
+                .unwrap_or_default();
             scored.push(Scored::new(item).with_vector_score(similarity));
         }
     }
