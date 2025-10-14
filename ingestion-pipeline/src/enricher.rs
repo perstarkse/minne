@@ -7,13 +7,11 @@ use async_openai::types::{
 };
 use common::{
     error::AppError,
-    storage::{
-        db::SurrealDbClient,
-        types::{knowledge_entity::KnowledgeEntity, system_settings::SystemSettings},
-    },
+    storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
 };
-use composite_retrieval::retrieve_entities;
-use serde_json::json;
+use composite_retrieval::{
+    answer_retrieval::format_entities_json, retrieve_entities, RetrievedEntity,
+};
 use tracing::{debug, info};
 
 use crate::{
@@ -61,7 +59,7 @@ impl IngestionEnricher {
         context: Option<&str>,
         text: &str,
         user_id: &str,
-    ) -> Result<Vec<KnowledgeEntity>, AppError> {
+    ) -> Result<Vec<RetrievedEntity>, AppError> {
         let input_text = format!(
             "content: {}, category: {}, user_context: {:?}",
             text, category, context
@@ -75,22 +73,11 @@ impl IngestionEnricher {
         category: &str,
         context: Option<&str>,
         text: &str,
-        similar_entities: &[KnowledgeEntity],
+        similar_entities: &[RetrievedEntity],
     ) -> Result<CreateChatCompletionRequest, AppError> {
         let settings = SystemSettings::get_current(&self.db_client).await?;
 
-        let entities_json = json!(similar_entities
-            .iter()
-            .map(|entity| {
-                json!({
-                    "KnowledgeEntity": {
-                        "id": entity.id,
-                        "name": entity.name,
-                        "description": entity.description
-                    }
-                })
-            })
-            .collect::<Vec<_>>());
+        let entities_json = format_entities_json(similar_entities);
 
         let user_message = format!(
             "Category:\n{}\ncontext:\n{:?}\nContent:\n{}\nExisting KnowledgeEntities in database:\n{}",

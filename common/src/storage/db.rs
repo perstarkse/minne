@@ -80,15 +80,18 @@ impl SurrealDbClient {
     /// Operation to rebuild indexes
     pub async fn rebuild_indexes(&self) -> Result<(), Error> {
         debug!("Rebuilding indexes");
-        self.client
-            .query("REBUILD INDEX IF EXISTS idx_embedding_chunks ON text_chunk")
-            .await?;
-        self.client
-            .query("REBUILD INDEX IF EXISTS idx_embedding_entities ON knowledge_entity")
-            .await?;
-        self.client
-            .query("REBUILD INDEX IF EXISTS text_content_fts_idx ON text_content")
-            .await?;
+        let rebuild_sql = r#"
+            BEGIN TRANSACTION;
+            REBUILD INDEX IF EXISTS idx_embedding_chunks ON text_chunk;
+            REBUILD INDEX IF EXISTS idx_embedding_entities ON knowledge_entity;
+            REBUILD INDEX IF EXISTS text_content_fts_idx ON text_content;
+            REBUILD INDEX IF EXISTS knowledge_entity_fts_name_idx ON knowledge_entity;
+            REBUILD INDEX IF EXISTS knowledge_entity_fts_description_idx ON knowledge_entity;
+            REBUILD INDEX IF EXISTS text_chunk_fts_chunk_idx ON text_chunk;
+            COMMIT TRANSACTION;
+        "#;
+
+        self.client.query(rebuild_sql).await?;
         Ok(())
     }
 

@@ -11,7 +11,6 @@ use common::{
     storage::{
         db::SurrealDbClient,
         types::{
-            knowledge_entity::KnowledgeEntity,
             message::{format_history, Message},
             system_settings::SystemSettings,
         },
@@ -20,7 +19,7 @@ use common::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::retrieve_entities;
+use crate::{retrieve_entities, RetrievedEntity};
 
 use super::answer_retrieval_helper::get_query_response_schema;
 
@@ -84,21 +83,31 @@ pub async fn get_answer_with_references(
     })
 }
 
-pub fn format_entities_json(entities: &[KnowledgeEntity]) -> Value {
+pub fn format_entities_json(entities: &[RetrievedEntity]) -> Value {
     json!(entities
         .iter()
-        .map(|entity| {
+        .map(|entry| {
             json!({
                 "KnowledgeEntity": {
-                    "id": entity.id,
-                    "name": entity.name,
-                    "description": entity.description
+                    "id": entry.entity.id,
+                    "name": entry.entity.name,
+                    "description": entry.entity.description,
+                    "score": round_score(entry.score),
+                    "chunks": entry.chunks.iter().map(|chunk| {
+                        json!({
+                            "score": round_score(chunk.score),
+                            "content": chunk.chunk.chunk
+                        })
+                    }).collect::<Vec<_>>()
                 }
             })
         })
         .collect::<Vec<_>>())
 }
 
+fn round_score(value: f32) -> f64 {
+    ((value as f64) * 1000.0).round() / 1000.0
+}
 pub fn create_user_message(entities_json: &Value, query: &str) -> String {
     format!(
         r#"

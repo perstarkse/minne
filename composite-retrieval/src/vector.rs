@@ -1,4 +1,15 @@
-use common::{error::AppError, storage::db::SurrealDbClient, utils::embedding::generate_embedding};
+use std::collections::HashMap;
+
+use common::storage::types::file_info::deserialize_flexible_id;
+use common::{
+    error::AppError,
+    storage::{db::SurrealDbClient, types::StoredObject},
+    utils::embedding::generate_embedding,
+};
+use serde::Deserialize;
+use surrealdb::sql::Thing;
+
+use crate::scoring::{distance_to_similarity, Scored};
 
 /// Compares vectors and retrieves a number of items from the specified table.
 ///
@@ -22,24 +33,90 @@ use common::{error::AppError, storage::db::SurrealDbClient, utils::embedding::ge
 ///
 /// * `T` - The type to deserialize the query results into. Must implement `serde::Deserialize`.
 pub async fn find_items_by_vector_similarity<T>(
-    take: u8,
+    take: usize,
     input_text: &str,
     db_client: &SurrealDbClient,
     table: &str,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     user_id: &str,
-) -> Result<Vec<T>, AppError>
+) -> Result<Vec<Scored<T>>, AppError>
 where
-    T: for<'de> serde::Deserialize<'de>,
+    T: for<'de> serde::Deserialize<'de> + StoredObject,
 {
     // Generate embeddings
     let input_embedding = generate_embedding(openai_client, input_text, db_client).await?;
+    find_items_by_vector_similarity_with_embedding(take, input_embedding, db_client, table, user_id)
+        .await
+}
 
-    // Construct the query
-    let closest_query = format!("SELECT *, vector::distance::knn() AS distance FROM {} WHERE user_id = '{}' AND embedding <|{},40|> {:?} ORDER BY distance", table, user_id, take, input_embedding);
+#[derive(Debug, Deserialize)]
+struct DistanceRow {
+    #[serde(deserialize_with = "deserialize_flexible_id")]
+    id: String,
+    distance: Option<f32>,
+}
 
-    // Perform query and deserialize to struct
-    let closest_entities: Vec<T> = db_client.query(closest_query).await?.take(0)?;
+pub async fn find_items_by_vector_similarity_with_embedding<T>(
+    take: usize,
+    query_embedding: Vec<f32>,
+    db_client: &SurrealDbClient,
+    table: &str,
+    user_id: &str,
+) -> Result<Vec<Scored<T>>, AppError>
+where
+    T: for<'de> serde::Deserialize<'de> + StoredObject,
+{
+    let embedding_literal = serde_json::to_string(&query_embedding)
+        .map_err(|err| AppError::InternalError(format!("Failed to serialize embedding: {err}")))?;
+    let closest_query = format!(
+        "SELECT id, vector::distance::knn() AS distance \
+         FROM {table} \
+         WHERE user_id = $user_id AND embedding <|{take},40|> {embedding} \
+         LIMIT $limit",
+        table = table,
+        take = take,
+        embedding = embedding_literal
+    );
 
-    Ok(closest_entities)
+    let mut response = db_client
+        .query(closest_query)
+        .bind(("user_id", user_id.to_owned()))
+        .bind(("limit", take as i64))
+        .await?;
+
+    let distance_rows: Vec<DistanceRow> = response.take(0)?;
+
+    if distance_rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let ids: Vec<String> = distance_rows.iter().map(|row| row.id.clone()).collect();
+    let thing_ids: Vec<Thing> = ids
+        .iter()
+        .map(|id| Thing::from((table, id.as_str())))
+        .collect();
+
+    let mut items_response = db_client
+        .query("SELECT * FROM type::table($table) WHERE id IN $things AND user_id = $user_id")
+        .bind(("table", table.to_owned()))
+        .bind(("things", thing_ids.clone()))
+        .bind(("user_id", user_id.to_owned()))
+        .await?;
+
+    let items: Vec<T> = items_response.take(0)?;
+
+    let mut item_map: HashMap<String, T> = items
+        .into_iter()
+        .map(|item| (item.get_id().to_owned(), item))
+        .collect();
+
+    let mut scored = Vec::with_capacity(distance_rows.len());
+    for row in distance_rows {
+        if let Some(item) = item_map.remove(&row.id) {
+            let similarity = row.distance.map(distance_to_similarity).unwrap_or_default();
+            scored.push(Scored::new(item).with_vector_score(similarity));
+        }
+    }
+
+    Ok(scored)
 }

@@ -1,6 +1,14 @@
-use surrealdb::Error;
+use std::collections::{HashMap, HashSet};
 
-use common::storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEntity};
+use surrealdb::{sql::Thing, Error};
+
+use common::storage::{
+    db::SurrealDbClient,
+    types::{
+        knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
+        StoredObject,
+    },
+};
 
 /// Retrieves database entries that match a specific source identifier.
 ///
@@ -30,18 +38,21 @@ use common::storage::{db::SurrealDbClient, types::knowledge_entity::KnowledgeEnt
 /// * The database query fails to execute
 /// * The results cannot be deserialized into type `T`
 pub async fn find_entities_by_source_ids<T>(
-    source_id: Vec<String>,
-    table_name: String,
+    source_ids: Vec<String>,
+    table_name: &str,
+    user_id: &str,
     db: &SurrealDbClient,
 ) -> Result<Vec<T>, Error>
 where
     T: for<'de> serde::Deserialize<'de>,
 {
-    let query = "SELECT * FROM type::table($table) WHERE source_id IN $source_ids";
+    let query =
+        "SELECT * FROM type::table($table) WHERE source_id IN $source_ids AND user_id = $user_id";
 
     db.query(query)
-        .bind(("table", table_name))
-        .bind(("source_ids", source_id))
+        .bind(("table", table_name.to_owned()))
+        .bind(("source_ids", source_ids))
+        .bind(("user_id", user_id.to_owned()))
         .await?
         .take(0)
 }
@@ -49,14 +60,92 @@ where
 /// Find entities by their relationship to the id
 pub async fn find_entities_by_relationship_by_id(
     db: &SurrealDbClient,
-    entity_id: String,
+    entity_id: &str,
+    user_id: &str,
+    limit: usize,
 ) -> Result<Vec<KnowledgeEntity>, Error> {
-    let query = format!(
-        "SELECT *, <-> relates_to <-> knowledge_entity AS related FROM knowledge_entity:`{}`",
-        entity_id
-    );
+    let mut relationships_response = db
+        .query(
+            "
+            SELECT * FROM relates_to
+            WHERE metadata.user_id = $user_id
+              AND (in = type::thing('knowledge_entity', $entity_id)
+                   OR out = type::thing('knowledge_entity', $entity_id))
+            ",
+        )
+        .bind(("entity_id", entity_id.to_owned()))
+        .bind(("user_id", user_id.to_owned()))
+        .await?;
 
-    db.query(query).await?.take(0)
+    let relationships: Vec<KnowledgeRelationship> = relationships_response.take(0)?;
+    if relationships.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut neighbor_ids: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for rel in relationships {
+        if rel.in_ == entity_id {
+            if seen.insert(rel.out.clone()) {
+                neighbor_ids.push(rel.out);
+            }
+        } else if rel.out == entity_id {
+            if seen.insert(rel.in_.clone()) {
+                neighbor_ids.push(rel.in_);
+            }
+        } else {
+            if seen.insert(rel.in_.clone()) {
+                neighbor_ids.push(rel.in_.clone());
+            }
+            if seen.insert(rel.out.clone()) {
+                neighbor_ids.push(rel.out);
+            }
+        }
+    }
+
+    neighbor_ids.retain(|id| id != entity_id);
+
+    if neighbor_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    if limit > 0 && neighbor_ids.len() > limit {
+        neighbor_ids.truncate(limit);
+    }
+
+    let thing_ids: Vec<Thing> = neighbor_ids
+        .iter()
+        .map(|id| Thing::from((KnowledgeEntity::table_name(), id.as_str())))
+        .collect();
+
+    let mut neighbors_response = db
+        .query("SELECT * FROM type::table($table) WHERE id IN $things AND user_id = $user_id")
+        .bind(("table", KnowledgeEntity::table_name().to_owned()))
+        .bind(("things", thing_ids))
+        .bind(("user_id", user_id.to_owned()))
+        .await?;
+
+    let neighbors: Vec<KnowledgeEntity> = neighbors_response.take(0)?;
+    if neighbors.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut neighbor_map: HashMap<String, KnowledgeEntity> = neighbors
+        .into_iter()
+        .map(|entity| (entity.id.clone(), entity))
+        .collect();
+
+    let mut ordered = Vec::new();
+    for id in neighbor_ids {
+        if let Some(entity) = neighbor_map.remove(&id) {
+            ordered.push(entity);
+        }
+        if limit > 0 && ordered.len() >= limit {
+            break;
+        }
+    }
+
+    Ok(ordered)
 }
 
 #[cfg(test)]
@@ -146,7 +235,7 @@ mod tests {
         // Test finding entities by multiple source_ids
         let source_ids = vec![source_id1.clone(), source_id2.clone()];
         let found_entities: Vec<KnowledgeEntity> =
-            find_entities_by_source_ids(source_ids, KnowledgeEntity::table_name().to_string(), &db)
+            find_entities_by_source_ids(source_ids, KnowledgeEntity::table_name(), &user_id, &db)
                 .await
                 .expect("Failed to find entities by source_ids");
 
@@ -177,7 +266,8 @@ mod tests {
         let single_source_id = vec![source_id1.clone()];
         let found_entities: Vec<KnowledgeEntity> = find_entities_by_source_ids(
             single_source_id,
-            KnowledgeEntity::table_name().to_string(),
+            KnowledgeEntity::table_name(),
+            &user_id,
             &db,
         )
         .await
@@ -202,7 +292,8 @@ mod tests {
         let non_existent_source_id = vec!["non_existent_source".to_string()];
         let found_entities: Vec<KnowledgeEntity> = find_entities_by_source_ids(
             non_existent_source_id,
-            KnowledgeEntity::table_name().to_string(),
+            KnowledgeEntity::table_name(),
+            &user_id,
             &db,
         )
         .await
@@ -327,11 +418,15 @@ mod tests {
             .expect("Failed to store relationship 2");
 
         // Test finding entities related to the central entity
-        let related_entities = find_entities_by_relationship_by_id(&db, central_entity.id.clone())
-            .await
-            .expect("Failed to find entities by relationship");
+        let related_entities =
+            find_entities_by_relationship_by_id(&db, &central_entity.id, &user_id, usize::MAX)
+                .await
+                .expect("Failed to find entities by relationship");
 
         // Check that we found relationships
-        assert!(related_entities.len() > 0, "Should find related entities");
+        assert!(
+            related_entities.len() >= 2,
+            "Should find related entities in both directions"
+        );
     }
 }
