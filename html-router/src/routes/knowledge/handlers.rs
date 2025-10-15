@@ -1,4 +1,6 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 use axum::{
     extract::{Path, Query, State},
@@ -6,14 +8,24 @@ use axum::{
     Form, Json,
 };
 use axum_htmx::{HxBoosted, HxRequest};
-use serde::{Deserialize, Serialize};
-
-use common::storage::types::{
-    conversation::Conversation,
-    knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
-    knowledge_relationship::KnowledgeRelationship,
-    user::User,
+use serde::{
+    de::{self, Deserializer, MapAccess, Visitor},
+    Deserialize, Serialize,
 };
+
+use common::{
+    error::AppError,
+    storage::types::{
+        conversation::Conversation,
+        knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
+        knowledge_relationship::KnowledgeRelationship,
+        user::User,
+    },
+    utils::embedding::generate_embedding,
+};
+use composite_retrieval::{retrieve_entities, RetrievedEntity};
+use tracing::debug;
+use uuid::Uuid;
 
 use crate::{
     html_state::HtmlState,
@@ -26,12 +38,204 @@ use crate::{
 use url::form_urlencoded;
 
 const KNOWLEDGE_ENTITIES_PER_PAGE: usize = 12;
+const DEFAULT_RELATIONSHIP_TYPE: &str = "relates_to";
+const MAX_RELATIONSHIP_SUGGESTIONS: usize = 10;
+const SUGGESTION_MIN_SCORE: f32 = 0.5;
 
 #[derive(Deserialize, Default)]
 pub struct FilterParams {
     entity_type: Option<String>,
     content_category: Option<String>,
     page: Option<usize>,
+}
+
+pub async fn show_new_knowledge_entity_form(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+) -> Result<impl IntoResponse, HtmlError> {
+    let entity_types: Vec<String> = KnowledgeEntityType::variants()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    let existing_entities = User::get_knowledge_entities(&user.id, &state.db).await?;
+    let empty_selected: HashSet<String> = HashSet::new();
+    let empty_scores: HashMap<String, f32> = HashMap::new();
+    let relationship_options =
+        build_relationship_options(existing_entities, &empty_selected, &empty_scores);
+
+    Ok(TemplateResponse::new_template(
+        "knowledge/new_knowledge_entity_modal.html",
+        NewEntityModalData {
+            entity_types,
+            relationship_list: RelationshipListData {
+                relationship_options,
+                relationship_type: DEFAULT_RELATIONSHIP_TYPE.to_string(),
+                suggestion_count: 0,
+            },
+        },
+    ))
+}
+
+pub async fn create_knowledge_entity(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    Form(form): Form<CreateKnowledgeEntityParams>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let name = form.name.trim().to_string();
+    if name.is_empty() {
+        return Err(AppError::Validation("Name is required".into()).into());
+    }
+
+    let description = form.description.trim().to_string();
+    let entity_type = KnowledgeEntityType::from(form.entity_type.trim().to_string());
+
+    let embedding_input = format!(
+        "name: {}, description: {}, type: {:?}",
+        name, description, entity_type
+    );
+    let embedding = generate_embedding(&state.openai_client, &embedding_input, &state.db).await?;
+
+    let source_id = format!("manual::{}", Uuid::new_v4());
+    let new_entity = KnowledgeEntity::new(
+        source_id,
+        name.clone(),
+        description.clone(),
+        entity_type,
+        None,
+        embedding,
+        user.id.clone(),
+    );
+
+    state.db.store_item(new_entity.clone()).await?;
+
+    let relationship_type = form
+        .relationship_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_RELATIONSHIP_TYPE)
+        .to_string();
+
+    debug!("form: {:?}", form);
+    if !form.relationship_ids.is_empty() {
+        let existing_entities = User::get_knowledge_entities(&user.id, &state.db).await?;
+        let valid_ids: HashSet<String> = existing_entities
+            .into_iter()
+            .map(|entity| entity.id)
+            .collect();
+        let mut unique_ids: HashSet<String> = HashSet::new();
+
+        for target_id in form.relationship_ids.into_iter() {
+            if target_id == new_entity.id {
+                continue;
+            }
+            if !valid_ids.contains(&target_id) {
+                continue;
+            }
+            if !unique_ids.insert(target_id.clone()) {
+                continue;
+            }
+
+            let relationship = KnowledgeRelationship::new(
+                new_entity.id.clone(),
+                target_id,
+                user.id.clone(),
+                format!("manual::{}", new_entity.id),
+                relationship_type.clone(),
+            );
+            relationship.store_relationship(&state.db).await?;
+        }
+    }
+
+    let default_params = FilterParams::default();
+    let kb_data = build_knowledge_base_data(&state, &user, &default_params).await?;
+    Ok(TemplateResponse::new_partial(
+        "knowledge/base.html",
+        "main",
+        kb_data,
+    ))
+}
+
+pub async fn suggest_knowledge_relationships(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    Form(form): Form<SuggestRelationshipsParams>,
+) -> Result<impl IntoResponse, HtmlError> {
+    let entity_lookup: HashMap<String, KnowledgeEntity> =
+        User::get_knowledge_entities(&user.id, &state.db)
+            .await?
+            .into_iter()
+            .map(|entity| (entity.id.clone(), entity))
+            .collect();
+
+    let mut selected_ids: HashSet<String> = form
+        .relationship_ids
+        .into_iter()
+        .filter(|id| entity_lookup.contains_key(id))
+        .collect();
+
+    let mut suggestion_scores: HashMap<String, f32> = HashMap::new();
+
+    let mut query_parts = Vec::new();
+    if let Some(name) = form
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        query_parts.push(name.to_string());
+    }
+    if let Some(description) = form
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        query_parts.push(description.to_string());
+    }
+
+    if !query_parts.is_empty() {
+        let query = query_parts.join(" ");
+        if let Ok(results) =
+            retrieve_entities(&state.db, &state.openai_client, &query, &user.id).await
+        {
+            for RetrievedEntity { entity, score, .. } in results {
+                if suggestion_scores.len() >= MAX_RELATIONSHIP_SUGGESTIONS {
+                    break;
+                }
+                if score.is_nan() || score < SUGGESTION_MIN_SCORE {
+                    continue;
+                }
+                if !entity_lookup.contains_key(&entity.id) {
+                    continue;
+                }
+                suggestion_scores.insert(entity.id.clone(), score);
+                selected_ids.insert(entity.id.clone());
+            }
+        }
+    }
+
+    let relationship_type = form
+        .relationship_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_RELATIONSHIP_TYPE)
+        .to_string();
+
+    let entities: Vec<KnowledgeEntity> = entity_lookup.into_values().collect();
+    let relationship_options =
+        build_relationship_options(entities, &selected_ids, &suggestion_scores);
+
+    Ok(TemplateResponse::new_template(
+        "knowledge/relationship_selector.html",
+        RelationshipListData {
+            relationship_options,
+            relationship_type,
+            suggestion_count: suggestion_scores.len(),
+        },
+    ))
 }
 
 #[derive(Serialize)]
@@ -49,22 +253,61 @@ pub struct KnowledgeBaseData {
     page_query: String,
 }
 
-pub async fn show_knowledge_page(
-    State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
-    HxRequest(is_htmx): HxRequest,
-    HxBoosted(is_boosted): HxBoosted,
-    Query(mut params): Query<FilterParams>,
-) -> Result<impl IntoResponse, HtmlError> {
-    // Normalize filters: treat empty or "none" as no filter
-    params.entity_type = normalize_filter(params.entity_type.take());
-    params.content_category = normalize_filter(params.content_category.take());
+#[derive(Serialize)]
+pub struct RelationshipOption {
+    entity: KnowledgeEntity,
+    is_selected: bool,
+    is_suggested: bool,
+    score: Option<f32>,
+}
 
-    // Load relevant data
+fn build_relationship_options(
+    entities: Vec<KnowledgeEntity>,
+    selected_ids: &HashSet<String>,
+    suggestion_scores: &HashMap<String, f32>,
+) -> Vec<RelationshipOption> {
+    let mut options: Vec<RelationshipOption> = entities
+        .into_iter()
+        .map(|entity| {
+            let id = entity.id.clone();
+            let score = suggestion_scores.get(&id).copied();
+            RelationshipOption {
+                entity,
+                is_selected: selected_ids.contains(&id),
+                is_suggested: score.is_some(),
+                score,
+            }
+        })
+        .collect();
+
+    options.sort_by(|a, b| match (a.is_suggested, b.is_suggested) {
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        _ => match (a.score, b.score) {
+            (Some(a_score), Some(b_score)) => {
+                b_score.partial_cmp(&a_score).unwrap_or(Ordering::Equal)
+            }
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            _ => a
+                .entity
+                .name
+                .to_lowercase()
+                .cmp(&b.entity.name.to_lowercase()),
+        },
+    });
+
+    options
+}
+
+async fn build_knowledge_base_data(
+    state: &HtmlState,
+    user: &User,
+    params: &FilterParams,
+) -> Result<KnowledgeBaseData, AppError> {
     let entity_types = User::get_entity_types(&user.id, &state.db).await?;
     let content_categories = User::get_user_categories(&user.id, &state.db).await?;
 
-    // Load entities based on filters
     let entities = match &params.content_category {
         Some(cat) => {
             User::get_knowledge_entities_by_content_category(&user.id, cat, &state.db).await?
@@ -102,11 +345,11 @@ pub async fn show_knowledge_page(
         .collect();
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
-    let kb_data = KnowledgeBaseData {
+    Ok(KnowledgeBaseData {
         entities,
         visible_entities,
         relationships,
-        user,
+        user: user.clone(),
         entity_types,
         content_categories,
         selected_entity_type: params.entity_type.clone(),
@@ -114,7 +357,244 @@ pub async fn show_knowledge_page(
         conversation_archive,
         pagination,
         page_query,
-    };
+    })
+}
+
+#[derive(Serialize)]
+pub struct RelationshipListData {
+    relationship_options: Vec<RelationshipOption>,
+    relationship_type: String,
+    suggestion_count: usize,
+}
+
+#[derive(Serialize)]
+pub struct NewEntityModalData {
+    entity_types: Vec<String>,
+    relationship_list: RelationshipListData,
+}
+
+#[derive(Debug)]
+pub struct CreateKnowledgeEntityParams {
+    pub name: String,
+    pub entity_type: String,
+    pub description: String,
+    pub relationship_type: Option<String>,
+    pub relationship_ids: Vec<String>,
+}
+
+impl<'de> Deserialize<'de> for CreateKnowledgeEntityParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            Name,
+            EntityType,
+            Description,
+            RelationshipType,
+            #[serde(alias = "relationship_ids[]")]
+            RelationshipIds,
+        }
+
+        struct ParamsVisitor;
+
+        impl<'de> Visitor<'de> for ParamsVisitor {
+            type Value = CreateKnowledgeEntityParams;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct CreateKnowledgeEntityParams")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut name: Option<String> = None;
+                let mut entity_type: Option<String> = None;
+                let mut description: Option<String> = None;
+                let mut relationship_type: Option<String> = None;
+                let mut relationship_ids: Vec<String> = Vec::new();
+
+                while let Some(key) = map.next_key::<Field>()? {
+                    match key {
+                        Field::Name => {
+                            if name.is_some() {
+                                return Err(de::Error::duplicate_field("name"));
+                            }
+                            name = Some(map.next_value()?);
+                        }
+                        Field::EntityType => {
+                            if entity_type.is_some() {
+                                return Err(de::Error::duplicate_field("entity_type"));
+                            }
+                            entity_type = Some(map.next_value()?);
+                        }
+                        Field::Description => {
+                            description = Some(map.next_value()?);
+                        }
+                        Field::RelationshipType => {
+                            relationship_type = Some(map.next_value()?);
+                        }
+                        Field::RelationshipIds => {
+                            let value: String = map.next_value()?;
+                            let trimmed = value.trim();
+                            if !trimmed.is_empty() {
+                                relationship_ids.push(trimmed.to_owned());
+                            }
+                        }
+                    }
+                }
+
+                let name = name.ok_or_else(|| de::Error::missing_field("name"))?;
+                let entity_type =
+                    entity_type.ok_or_else(|| de::Error::missing_field("entity_type"))?;
+                let description = description.unwrap_or_default();
+                let relationship_type = relationship_type
+                    .map(|value: String| value.trim().to_owned())
+                    .filter(|value| !value.is_empty());
+
+                Ok(CreateKnowledgeEntityParams {
+                    name,
+                    entity_type,
+                    description,
+                    relationship_type,
+                    relationship_ids,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "name",
+            "entity_type",
+            "description",
+            "relationship_type",
+            "relationship_ids",
+        ];
+
+        deserializer.deserialize_struct("CreateKnowledgeEntityParams", FIELDS, ParamsVisitor)
+    }
+}
+
+#[derive(Debug)]
+pub struct SuggestRelationshipsParams {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub relationship_type: Option<String>,
+    pub relationship_ids: Vec<String>,
+}
+
+impl<'de> Deserialize<'de> for SuggestRelationshipsParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            Name,
+            Description,
+            RelationshipType,
+            EntityType,
+            #[serde(alias = "relationship_ids[]")]
+            RelationshipIds,
+        }
+
+        struct ParamsVisitor;
+
+        impl<'de> Visitor<'de> for ParamsVisitor {
+            type Value = SuggestRelationshipsParams;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct SuggestRelationshipsParams")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut name: Option<String> = None;
+                let mut description: Option<String> = None;
+                let mut relationship_type: Option<String> = None;
+                let mut relationship_ids: Vec<String> = Vec::new();
+
+                while let Some(key) = map.next_key::<Field>()? {
+                    match key {
+                        Field::Name => {
+                            if name.is_some() {
+                                return Err(de::Error::duplicate_field("name"));
+                            }
+                            let value: String = map.next_value()?;
+                            let trimmed = value.trim();
+                            if !trimmed.is_empty() {
+                                name = Some(trimmed.to_owned());
+                            }
+                        }
+                        Field::Description => {
+                            let value: String = map.next_value()?;
+                            let trimmed = value.trim();
+                            if trimmed.is_empty() {
+                                description = None;
+                            } else {
+                                description = Some(trimmed.to_owned());
+                            }
+                        }
+                        Field::RelationshipType => {
+                            let value: String = map.next_value()?;
+                            let trimmed = value.trim();
+                            if trimmed.is_empty() {
+                                relationship_type = None;
+                            } else {
+                                relationship_type = Some(trimmed.to_owned());
+                            }
+                        }
+                        Field::EntityType => {
+                            map.next_value::<de::IgnoredAny>()?;
+                        }
+                        Field::RelationshipIds => {
+                            let value: String = map.next_value()?;
+                            let trimmed = value.trim();
+                            if !trimmed.is_empty() {
+                                relationship_ids.push(trimmed.to_owned());
+                            }
+                        }
+                    }
+                }
+
+                Ok(SuggestRelationshipsParams {
+                    name,
+                    description,
+                    relationship_type,
+                    relationship_ids,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "name",
+            "description",
+            "relationship_type",
+            "entity_type",
+            "relationship_ids",
+        ];
+
+        deserializer.deserialize_struct("SuggestRelationshipsParams", FIELDS, ParamsVisitor)
+    }
+}
+
+pub async fn show_knowledge_page(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    HxRequest(is_htmx): HxRequest,
+    HxBoosted(is_boosted): HxBoosted,
+    Query(mut params): Query<FilterParams>,
+) -> Result<impl IntoResponse, HtmlError> {
+    // Normalize filters: treat empty or "none" as no filter
+    params.entity_type = normalize_filter(params.entity_type.take());
+    params.content_category = normalize_filter(params.content_category.take());
+
+    let kb_data = build_knowledge_base_data(&state, &user, &params).await?;
 
     // Determine response type:
     // If it is an HTMX request but NOT a boosted navigation, send partial update (main block only)

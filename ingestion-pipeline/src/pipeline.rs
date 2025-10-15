@@ -111,7 +111,7 @@ impl IngestionPipeline {
         const BASE_SECONDS: u64 = 30;
         const MAX_SECONDS: u64 = 15 * 60;
 
-        let capped_attempt = attempt.saturating_sub(1).min(5) as u32;
+        let capped_attempt = attempt.saturating_sub(1).min(5);
         let multiplier = 2_u64.pow(capped_attempt);
         let delay = BASE_SECONDS * multiplier;
 

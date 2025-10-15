@@ -1,5 +1,6 @@
 <dialog id="body_modal" class="modal">
-  <div class="modal-box rounded-none border-2 border-neutral bg-base-100 shadow-[8px_8px_0_0_#000] {% block modal_class %}{% endblock %}">
+  <div
+    class="modal-box rounded-none border-2 border-neutral bg-base-100 shadow-[8px_8px_0_0_#000] {% block modal_class %}{% endblock %}">
     <form id="modal_form" {% block form_attributes %}{% endblock %}>
       <div class="flex flex-col flex-1 gap-4">
         {% block modal_content %}{% endblock %}
@@ -21,11 +22,11 @@
     document.getElementById('body_modal').showModal();
 
     // Close modal on successful form submission
-    document.getElementById('modal_form').addEventListener('htmx:afterRequest', (evt) => {
-      if (evt.detail.successful) {
-        document.getElementById('body_modal').close();
-      }
-    });
+    document.getElementById('modal_form')
+      .addEventListener('htmx:afterRequest', (evt) => {
+        if (evt.detail.elt !== evt.currentTarget) return; // ignore inner htmx requests
+        if (evt.detail.successful) document.getElementById('body_modal').close();
+      });
 
     // Clear modal content on close to prevent browser back from reopening it
     document.getElementById('body_modal').addEventListener('close', (evt) => {

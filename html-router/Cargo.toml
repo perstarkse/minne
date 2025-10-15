@@ -32,6 +32,7 @@ tower-serve-static = { workspace = true }
 tokio-util = { workspace = true } 
 chrono = { workspace = true }
 url = { workspace = true }
+uuid = { workspace = true }
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }

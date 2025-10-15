@@ -2536,6 +2536,7 @@ dependencies = [
  "tower-serve-static",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]

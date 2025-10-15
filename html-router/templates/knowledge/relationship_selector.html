@@ -1,0 +1,39 @@
+<div id="relationship-list" class="space-y-3">
+  {% if suggestion_count > 0 %}
+  <div class="text-xs opacity-70">
+    Applied {{ suggestion_count }} suggestion{% if suggestion_count != 1 %}s{% endif %}. Toggle any you don't need.
+  </div>
+  {% endif %}
+
+  {% if relationship_options|length == 0 %}
+  <div class="nb-card p-4 text-sm opacity-70">
+    No entities available to relate yet.
+  </div>
+  {% else %}
+  <div class="nb-card max-h-56 overflow-y-auto divide-y">
+    {% for option in relationship_options %}
+    <label class="flex items-start gap-3 p-3 hover:bg-base-200 transition-colors cursor-pointer">
+      <input type="checkbox" name="relationship_ids" value="{{ option.entity.id }}" class="nb-checkbox mt-1" {% if
+        option.is_selected %}checked{% endif %}>
+      <div class="flex-1 min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-medium truncate">{{ option.entity.name }}</span>
+          <span class="badge badge-xs badge-outline">{{ option.entity.entity_type }}</span>
+          {% if option.is_suggested %}
+          <span class="badge badge-xs badge-primary uppercase tracking-wide">Suggested</span>
+          {% endif %}
+        </div>
+        {% if option.entity.description %}
+        <p class="text-xs opacity-70 mt-1 truncate">{{ option.entity.description }}</p>
+        {% endif %}
+        {% if option.is_suggested and option.score is not none %}
+        <div class="text-[0.65rem] opacity-60 mt-1">
+          Match score {{ option.score | round(2) }}
+        </div>
+        {% endif %}
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

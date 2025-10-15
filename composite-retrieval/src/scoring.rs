@@ -68,7 +68,7 @@ impl Default for FusionWeights {
 }
 
 pub fn clamp_unit(value: f32) -> f32 {
-    value.max(0.0).min(1.0)
+    value.clamp(0.0, 1.0)
 }
 
 pub fn distance_to_similarity(distance: f32) -> f32 {

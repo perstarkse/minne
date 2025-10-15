@@ -305,9 +305,7 @@ async fn enrich_entities_from_graph(
             }
 
             let existing_graph = entry.scores.graph.unwrap_or(f32::MIN);
-            if graph_score > existing_graph {
-                entry.scores.graph = Some(graph_score);
-            } else if entry.scores.graph.is_none() {
+            if graph_score > existing_graph || entry.scores.graph.is_none() {
                 entry.scores.graph = Some(graph_score);
             }
 

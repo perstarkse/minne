@@ -28,7 +28,7 @@ You may switch and choose between models used, and have the possiblity to change
 
 The application is built for speed and efficiency using Rust with a Server-Side Rendered (SSR) frontend (HTMX and minimal JavaScript). It's fully responsive, offering a complete mobile interface for reading, editing, and managing your content, including the graph database itself. **PWA (Progressive Web App) support** means you can "install" Minne to your device for a native-like experience. For quick capture on the go on iOS, a [**Shortcut**](https://www.icloud.com/shortcuts/e433fbd7602f4e2eaa70dca162323477) makes sending content to your Minne instance a breeze.
 
-A hybrid retrieval layer blends embeddings, full-text search, and graph signals to surface the best context when augmenting chat responses and when building new relationships during ingestion.
+A hybrid retrieval layer blends embeddings, full-text search, and graph signals to surface the best context when augmenting chat responses and when analyzing new content during ingestion.
 
 Minne is open source (AGPL), self-hostable, and can be deployed flexibly: via Nix, Docker Compose, pre-built binaries, or by building from source. It can run as a single `main` binary or as separate `server` and `worker` processes for optimized resource allocation.
 

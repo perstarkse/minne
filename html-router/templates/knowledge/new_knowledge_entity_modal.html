@@ -1,0 +1,74 @@
+{% extends "modal_base.html" %}
+
+{% block modal_class %}max-w-4xl w-full{% endblock %}
+
+{% block form_attributes %}
+hx-post="/knowledge-entity"
+hx-target="#knowledge_pane"
+hx-swap="outerHTML"
+{% endblock %}
+
+{% block modal_content %}
+<h3 class="text-xl font-extrabold tracking-tight">Create Knowledge Entity</h3>
+
+<div class="flex flex-col gap-3">
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Name</div>
+    <input type="text" name="name" class="nb-input w-full" placeholder="Entity title" required>
+  </label>
+
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Type</div>
+    <select name="entity_type" class="nb-select w-full">
+      {% for et in entity_types %}
+      <option value="{{ et }}">{{ et }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Description</div>
+    <textarea name="description" class="nb-input w-full h-32"
+      placeholder="Describe this entity so it can be found later"></textarea>
+  </label>
+</div>
+
+<div class="u-hairline pt-3 mt-4 space-y-3">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <div class="text-xs uppercase tracking-wide opacity-70">Relationships</div>
+      <p class="text-xs opacity-70 max-w-md">
+        Select existing entities to link. Suggestions will pre-select likely matches.
+      </p>
+    </div>
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <label class="flex items-center gap-2">
+        <span class="text-xs uppercase tracking-wide opacity-70">Type</span>
+        <input type="text" name="relationship_type" value="{{ relationship_list.relationship_type }}"
+          class="nb-input w-28" placeholder="relates_to">
+      </label>
+      <button type="button" class="nb-btn btn-sm nb-cta sm:ml-2" hx-post="/knowledge-entity/suggestions"
+        hx-target="#relationship-list" hx-swap="outerHTML" hx-include="#modal_form">
+        Suggest Relationships
+      </button>
+    </div>
+  </div>
+
+  {% if relationship_list.relationship_options|length == 0 %}
+  <div id="relationship-list" class="nb-card p-4 text-sm opacity-70">
+    You need at least one existing entity before creating relationships.
+  </div>
+  {% else %}
+  {% set relationship_options = relationship_list.relationship_options %}
+  {% set relationship_type = relationship_list.relationship_type %}
+  {% set suggestion_count = relationship_list.suggestion_count %}
+  {% include "knowledge/relationship_selector.html" %}
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block primary_actions %}
+<button type="submit" class="nb-btn nb-cta">
+  Create Entity
+</button>
+{% endblock %}
