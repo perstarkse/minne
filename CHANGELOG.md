@@ -1,6 +1,10 @@
 # Changelog
 ## Unreleased
 
+## Version 0.2.4 (2025-10-15)
+- Improved retrieval performance. Ingestion and chat now utilizes full text search, vector comparison and graph traversal.
+- Ingestion task archive
+
 ## Version 0.2.3 (2025-10-12)
 - Fix changing vector dimensions on a fresh database (#3)
 
