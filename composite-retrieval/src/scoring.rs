@@ -123,7 +123,10 @@ pub fn fuse_scores(scores: &Scores, weights: FusionWeights) -> f32 {
     let fts = scores.fts.unwrap_or(0.0);
     let graph = scores.graph.unwrap_or(0.0);
 
-    let mut fused = vector * weights.vector + fts * weights.fts + graph * weights.graph;
+    let mut fused = graph.mul_add(
+        weights.graph,
+        vector.mul_add(weights.vector, fts * weights.fts),
+    );
 
     let signals_present = scores
         .vector

@@ -188,7 +188,7 @@ stored_object!(IngestionTask, "ingestion_task", {
 });
 
 impl IngestionTask {
-    pub async fn new(content: IngestionPayload, user_id: String) -> Self {
+    pub fn new(content: IngestionPayload, user_id: String) -> Self {
         let now = chrono::Utc::now();
 
         Self {
@@ -224,7 +224,7 @@ impl IngestionTask {
         user_id: String,
         db: &SurrealDbClient,
     ) -> Result<IngestionTask, AppError> {
-        let task = Self::new(content, user_id).await;
+        let task = Self::new(content, user_id);
         db.store_item(task.clone()).await?;
         Ok(task)
     }
@@ -544,7 +544,7 @@ mod tests {
     async fn test_new_task_defaults() {
         let user_id = "user123";
         let payload = create_payload(user_id);
-        let task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let task = IngestionTask::new(payload.clone(), user_id.to_string());
 
         assert_eq!(task.user_id, user_id);
         assert_eq!(task.content, payload);
@@ -582,7 +582,7 @@ mod tests {
         let db = memory_db().await;
         let user_id = "user123";
         let payload = create_payload(user_id);
-        let task = IngestionTask::new(payload, user_id.to_string()).await;
+        let task = IngestionTask::new(payload, user_id.to_string());
         db.store_item(task.clone()).await.expect("store");
 
         let worker_id = "worker-1";
@@ -609,7 +609,7 @@ mod tests {
         let db = memory_db().await;
         let user_id = "user123";
         let payload = create_payload(user_id);
-        let task = IngestionTask::new(payload, user_id.to_string()).await;
+        let task = IngestionTask::new(payload, user_id.to_string());
         db.store_item(task.clone()).await.expect("store");
 
         let worker_id = "worker-dead";
@@ -650,7 +650,7 @@ mod tests {
         let user_id = "user123";
         let payload = create_payload(user_id);
 
-        let task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let task = IngestionTask::new(payload.clone(), user_id.to_string());
         db.store_item(task.clone()).await.expect("store");
 
         let err = task
@@ -675,7 +675,7 @@ mod tests {
         let user_id = "user123";
         let payload = create_payload(user_id);
 
-        let task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let task = IngestionTask::new(payload.clone(), user_id.to_string());
         db.store_item(task.clone()).await.expect("store");
 
         let err = task
@@ -707,7 +707,7 @@ mod tests {
         let user_id = "user123";
         let payload = create_payload(user_id);
 
-        let task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let task = IngestionTask::new(payload.clone(), user_id.to_string());
         db.store_item(task.clone()).await.expect("store");
 
         let err = task

@@ -221,7 +221,7 @@ pub async fn get_task_updates_stream(
                                 // Send a specific event that HTMX uses to close the connection
                                 // Send a event to reload the recent content
                                 // Send a event to remove the loading indicatior
-                                let check_icon = state.templates.render("icons/check_icon.html", &context!{}).unwrap_or("Ok".to_string());
+                                let check_icon = state.templates.render("icons/check_icon.html", &context!{}).unwrap_or_else(|_| "Ok".to_string());
                                 yield Ok(Event::default().event("stop_loading").data(check_icon));
                                 yield Ok(Event::default().event("update_latest_content").data("Update latest content"));
                                 yield Ok(Event::default().event("close_stream").data("Stream complete"));

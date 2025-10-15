@@ -55,7 +55,7 @@ pub async fn show_new_knowledge_entity_form(
 ) -> Result<impl IntoResponse, HtmlError> {
     let entity_types: Vec<String> = KnowledgeEntityType::variants()
         .iter()
-        .map(|s| s.to_string())
+        .map(|&s| s.to_owned())
         .collect();
 
     let existing_entities = User::get_knowledge_entities(&user.id, &state.db).await?;
@@ -729,7 +729,7 @@ pub async fn show_edit_knowledge_entity_form(
     // Get entity types
     let entity_types: Vec<String> = KnowledgeEntityType::variants()
         .iter()
-        .map(|s| s.to_string())
+        .map(|&s| s.to_owned())
         .collect();
 
     // Get the entity and validate ownership

@@ -137,7 +137,7 @@ pub async fn show_existing_chat(
         ChatPageData {
             history: messages,
             user,
-            conversation: Some(conversation.clone()),
+            conversation: Some(conversation),
             conversation_archive,
         },
     ))

@@ -59,13 +59,13 @@ impl TemplateEngine {
         match self {
             // Only compile this arm for debug builds
             #[cfg(debug_assertions)]
-            TemplateEngine::AutoReload(reloader) => {
+            Self::AutoReload(reloader) => {
                 let env = reloader.acquire_env()?;
                 env.get_template(name)?.render(ctx)
             }
             // Only compile this arm for release builds
             #[cfg(not(debug_assertions))]
-            TemplateEngine::Embedded(env) => env.get_template(name)?.render(ctx),
+            Self::Embedded(env) => env.get_template(name)?.render(ctx),
         }
     }
 
@@ -78,19 +78,17 @@ impl TemplateEngine {
         match self {
             // Only compile this arm for debug builds
             #[cfg(debug_assertions)]
-            TemplateEngine::AutoReload(reloader) => {
-                let env = reloader.acquire_env()?;
-                let template = env.get_template(template_name)?;
-                let mut state = template.eval_to_state(context)?;
-                state.render_block(block_name)
-            }
+            Self::AutoReload(reloader) => reloader
+                .acquire_env()?
+                .get_template(template_name)?
+                .eval_to_state(context)?
+                .render_block(block_name),
             // Only compile this arm for release builds
             #[cfg(not(debug_assertions))]
-            TemplateEngine::Embedded(env) => {
-                let template = env.get_template(template_name)?;
-                let mut state = template.eval_to_state(context)?;
-                state.render_block(block_name)
-            }
+            Self::Embedded(env) => env
+                .get_template(template_name)?
+                .eval_to_state(context)?
+                .render_block(block.name),
         }
     }
 }

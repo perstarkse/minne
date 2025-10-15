@@ -84,7 +84,7 @@ fn add_char_into_object(
             if let ObjectStatus::KeyQuoteOpen { ref key_so_far, .. } = current_status {
                 let key = key_so_far.iter().collect::<String>();
                 if let Value::Object(obj) = object {
-                    obj.insert(key.clone(), Value::Null);
+                    obj.insert(key, Value::Null);
                 }
                 *current_status = ObjectStatus::KeyQuoteClose {
                     key: key_so_far.clone(),

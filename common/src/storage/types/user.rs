@@ -168,7 +168,7 @@ impl User {
         let now = Utc::now();
         let id = Uuid::new_v4().to_string();
 
-        let user: Option<User> = db
+        let user: Option<Self> = db
             .client
             .query(
                 "LET $count = (SELECT count() FROM type::table($table))[0].count;
@@ -217,7 +217,7 @@ impl User {
         password: &str,
         db: &SurrealDbClient,
     ) -> Result<Self, AppError> {
-        let user: Option<User> = db
+        let user: Option<Self> = db
             .client
             .query(
                 "SELECT * FROM user 
@@ -235,7 +235,7 @@ impl User {
         email: &str,
         db: &SurrealDbClient,
     ) -> Result<Option<Self>, AppError> {
-        let user: Option<User> = db
+        let user: Option<Self> = db
             .client
             .query("SELECT * FROM user WHERE email = $email LIMIT 1")
             .bind(("email", email.to_string()))
@@ -249,7 +249,7 @@ impl User {
         api_key: &str,
         db: &SurrealDbClient,
     ) -> Result<Option<Self>, AppError> {
-        let user: Option<User> = db
+        let user: Option<Self> = db
             .client
             .query("SELECT * FROM user WHERE api_key = $api_key LIMIT 1")
             .bind(("api_key", api_key.to_string()))
@@ -264,7 +264,7 @@ impl User {
         let api_key = format!("sk_{}", Uuid::new_v4().to_string().replace("-", ""));
 
         // Update the user record with the new API key
-        let user: Option<User> = db
+        let user: Option<Self> = db
             .client
             .query(
                 "UPDATE type::thing('user', $id) 
@@ -285,7 +285,7 @@ impl User {
     }
 
     pub async fn revoke_api_key(id: &str, db: &SurrealDbClient) -> Result<(), AppError> {
-        let user: Option<User> = db
+        let user: Option<Self> = db
             .client
             .query(
                 "UPDATE type::thing('user', $id) 
@@ -357,7 +357,7 @@ impl User {
         let entity_types: Vec<String> = response
             .into_iter()
             .map(|item| {
-                let normalized = KnowledgeEntityType::from(item.entity_type.clone());
+                let normalized = KnowledgeEntityType::from(item.entity_type);
                 format!("{:?}", normalized)
             })
             .collect();
@@ -449,7 +449,7 @@ impl User {
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
         db.query("UPDATE type::thing('user', $user_id) SET timezone = $timezone")
-            .bind(("table_name", User::table_name()))
+            .bind(("table_name", Self::table_name()))
             .bind(("user_id", user_id.to_string()))
             .bind(("timezone", timezone.to_string()))
             .await?;
@@ -729,19 +729,19 @@ mod tests {
             user_id: user_id.to_string(),
         };
 
-        let created_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let created_task = IngestionTask::new(payload.clone(), user_id.to_string());
         db.store_item(created_task.clone())
             .await
             .expect("Failed to store created task");
 
-        let mut processing_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let mut processing_task = IngestionTask::new(payload.clone(), user_id.to_string());
         processing_task.state = TaskState::Processing;
         processing_task.attempts = 1;
         db.store_item(processing_task.clone())
             .await
             .expect("Failed to store processing task");
 
-        let mut failed_retry_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let mut failed_retry_task = IngestionTask::new(payload.clone(), user_id.to_string());
         failed_retry_task.state = TaskState::Failed;
         failed_retry_task.attempts = 1;
         failed_retry_task.scheduled_at = chrono::Utc::now() - chrono::Duration::minutes(5);
@@ -749,8 +749,7 @@ mod tests {
             .await
             .expect("Failed to store retryable failed task");
 
-        let mut failed_blocked_task =
-            IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let mut failed_blocked_task = IngestionTask::new(payload.clone(), user_id.to_string());
         failed_blocked_task.state = TaskState::Failed;
         failed_blocked_task.attempts = MAX_ATTEMPTS;
         failed_blocked_task.error_message = Some("Too many failures".into());
@@ -758,7 +757,7 @@ mod tests {
             .await
             .expect("Failed to store blocked task");
 
-        let mut completed_task = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let mut completed_task = IngestionTask::new(payload.clone(), user_id.to_string());
         completed_task.state = TaskState::Succeeded;
         db.store_item(completed_task.clone())
             .await
@@ -770,7 +769,7 @@ mod tests {
             category: "Category".to_string(),
             user_id: other_user_id.to_string(),
         };
-        let other_task = IngestionTask::new(other_payload, other_user_id.to_string()).await;
+        let other_task = IngestionTask::new(other_payload, other_user_id.to_string());
         db.store_item(other_task)
             .await
             .expect("Failed to store other user task");
@@ -804,14 +803,14 @@ mod tests {
         };
 
         // Oldest task
-        let mut first = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let mut first = IngestionTask::new(payload.clone(), user_id.to_string());
         first.created_at = first.created_at - chrono::Duration::minutes(1);
         first.updated_at = first.created_at;
         first.state = TaskState::Succeeded;
         db.store_item(first.clone()).await.expect("store first");
 
         // Latest task
-        let mut second = IngestionTask::new(payload.clone(), user_id.to_string()).await;
+        let mut second = IngestionTask::new(payload.clone(), user_id.to_string());
         second.state = TaskState::Processing;
         db.store_item(second.clone()).await.expect("store second");
 
@@ -821,7 +820,7 @@ mod tests {
             category: "Category".to_string(),
             user_id: other_user_id.to_string(),
         };
-        let other_task = IngestionTask::new(other_payload, other_user_id.to_string()).await;
+        let other_task = IngestionTask::new(other_payload, other_user_id.to_string());
         db.store_item(other_task).await.expect("store other");
 
         let tasks = User::get_all_ingestion_tasks(user_id, &db)

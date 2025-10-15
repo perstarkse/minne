@@ -46,9 +46,7 @@ pub async fn ingest_data(
 
     let futures: Vec<_> = payloads
         .into_iter()
-        .map(|object| {
-            IngestionTask::create_and_add_to_db(object.clone(), user.id.clone(), &state.db)
-        })
+        .map(|object| IngestionTask::create_and_add_to_db(object, user.id.clone(), &state.db))
         .collect();
 
     try_join_all(futures).await?;
