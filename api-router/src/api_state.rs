@@ -23,7 +23,7 @@ impl ApiState {
 
         surreal_db_client.apply_migrations().await?;
 
-        let app_state = ApiState {
+        let app_state = Self {
             db: surreal_db_client.clone(),
             config: config.clone(),
         };

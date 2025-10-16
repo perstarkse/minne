@@ -35,7 +35,7 @@ fn extract_api_key(request: &Request) -> Option<String> {
                 .headers()
                 .get("Authorization")
                 .and_then(|v| v.to_str().ok())
-                .and_then(|auth| auth.strip_prefix("Bearer ").map(|s| s.trim()))
+                .and_then(|auth| auth.strip_prefix("Bearer ").map(str::trim))
         })
         .map(String::from)
 }

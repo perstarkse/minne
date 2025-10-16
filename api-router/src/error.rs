@@ -27,40 +27,40 @@ impl From<AppError> for ApiError {
         match err {
             AppError::Database(_) | AppError::OpenAI(_) => {
                 tracing::error!("Internal error: {:?}", err);
-                ApiError::InternalError("Internal server error".to_string())
+                Self::InternalError("Internal server error".to_string())
             }
-            AppError::NotFound(msg) => ApiError::NotFound(msg),
-            AppError::Validation(msg) => ApiError::ValidationError(msg),
-            AppError::Auth(msg) => ApiError::Unauthorized(msg),
-            _ => ApiError::InternalError("Internal server error".to_string()),
+            AppError::NotFound(msg) => Self::NotFound(msg),
+            AppError::Validation(msg) => Self::ValidationError(msg),
+            AppError::Auth(msg) => Self::Unauthorized(msg),
+            _ => Self::InternalError("Internal server error".to_string()),
         }
     }
 }
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, error_response) = match self {
-            ApiError::InternalError(message) => (
+            Self::InternalError(message) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ErrorResponse {
                     error: message,
                     status: "error".to_string(),
                 },
             ),
-            ApiError::ValidationError(message) => (
+            Self::ValidationError(message) => (
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
                     error: message,
                     status: "error".to_string(),
                 },
             ),
-            ApiError::NotFound(message) => (
+            Self::NotFound(message) => (
                 StatusCode::NOT_FOUND,
                 ErrorResponse {
                     error: message,
                     status: "error".to_string(),
                 },
             ),
-            ApiError::Unauthorized(message) => (
+            Self::Unauthorized(message) => (
                 StatusCode::UNAUTHORIZED,
                 ErrorResponse {
                     error: message,
