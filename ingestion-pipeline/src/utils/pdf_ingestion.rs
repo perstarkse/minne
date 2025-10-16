@@ -118,7 +118,7 @@ async fn load_page_numbers(pdf_bytes: Vec<u8>) -> Result<Vec<u32>, AppError> {
 /// Uses the existing headless Chrome dependency to rasterize the requested PDF pages into PNGs.
 async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>>, AppError> {
     let file_url = url::Url::from_file_path(file_path)
-        .map_err(|_| AppError::Processing("Unable to construct PDF file URL".into()))?;
+        .map_err(|()| AppError::Processing("Unable to construct PDF file URL".into()))?;
 
     let browser = create_browser()?;
     let tab = browser
@@ -133,8 +133,7 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
 
     for (idx, page) in pages.iter().enumerate() {
         let target = format!(
-            "{}#page={}&toolbar=0&statusbar=0&zoom=page-fit",
-            file_url, page
+            "{file_url}#page={page}&toolbar=0&statusbar=0&zoom=page-fit"
         );
         tab.navigate_to(&target)
             .map_err(|err| AppError::Processing(format!("Failed to navigate to PDF page: {err}")))?
@@ -279,7 +278,7 @@ async fn vision_markdown(
     let mut markdown_sections = Vec::with_capacity(rendered_pages.len());
 
     for (batch_idx, chunk) in rendered_pages.chunks(PAGES_PER_VISION_CHUNK).enumerate() {
-        let total_image_bytes: usize = chunk.iter().map(|bytes| bytes.len()).sum();
+        let total_image_bytes: usize = chunk.iter().map(std::vec::Vec::len).sum();
         debug!(
             batch = batch_idx,
             pages = chunk.len(),
@@ -318,7 +317,7 @@ async fn vision_markdown(
             );
 
             for encoded in &encoded_images {
-                let image_url = format!("data:image/png;base64,{}", encoded);
+                let image_url = format!("data:image/png;base64,{encoded}");
                 content_parts.push(
                     ChatCompletionRequestMessageContentPartImageArgs::default()
                         .image_url(
@@ -413,7 +412,7 @@ fn looks_good_enough(text: &str) -> bool {
         return false;
     }
 
-    let ascii_chars = text.chars().filter(|c| c.is_ascii()).count() as f64;
+    let ascii_chars = text.chars().filter(char::is_ascii).count() as f64;
     let ascii_ratio = ascii_chars / total_chars;
     if ascii_ratio < FAST_PATH_MIN_ASCII_RATIO {
         return false;
@@ -484,8 +483,7 @@ fn is_structural_line(line: &str) -> bool {
         || lowered
             .chars()
             .next()
-            .map(|c| c.is_ascii_digit())
-            .unwrap_or(false)
+            .is_some_and(|c| c.is_ascii_digit())
             && lowered.contains('.')
 }
 
@@ -572,14 +570,13 @@ fn prepare_pdf_viewer(tab: &headless_chrome::Tab, page_number: u32) {
                 const toolbar = app.shadowRoot.querySelector('#toolbar');
                 if (toolbar) {{ toolbar.style.display = 'none'; }}
             }}
-            const page = viewer.shadowRoot.querySelector('viewer-page:nth-of-type({page})');
+            const page = viewer.shadowRoot.querySelector('viewer-page:nth-of-type({page_number})');
             if (page && page.scrollIntoView) {{
                 page.scrollIntoView({{ block: 'start', inline: 'center' }});
             }}
-            const canvas = viewer.shadowRoot.querySelector('canvas[aria-label="Page {page}"]');
+            const canvas = viewer.shadowRoot.querySelector('canvas[aria-label="Page {page_number}"]');
             return !!canvas;
-        }})()"#,
-        page = page_number
+        }})()"#
     );
 
     match tab.evaluate(&script, false) {
@@ -607,12 +604,11 @@ fn canvas_viewport_for_page(
             if (!embed || !embed.shadowRoot) return null;
             const viewer = embed.shadowRoot.querySelector('pdf-viewer');
             if (!viewer || !viewer.shadowRoot) return null;
-            const canvas = viewer.shadowRoot.querySelector('canvas[aria-label="Page {page}"]');
+            const canvas = viewer.shadowRoot.querySelector('canvas[aria-label="Page {page_number}"]');
             if (!canvas) return null;
             const rect = canvas.getBoundingClientRect();
             return {{ x: rect.x, y: rect.y, width: rect.width, height: rect.height }};
-        }})()"#,
-        page = page_number
+        }})()"#
     );
 
     let result = tab
@@ -683,7 +679,7 @@ fn capture_full_page_png(tab: &headless_chrome::Tab) -> Result<Vec<u8>, AppError
     })
 }
 
-fn is_suspicious_image(len: usize) -> bool {
+const fn is_suspicious_image(len: usize) -> bool {
     len < MIN_PAGE_IMAGE_BYTES
 }
 
@@ -710,7 +706,7 @@ fn is_low_quality_response(content: &str) -> bool {
     lowered.contains("unable to") || lowered.contains("cannot")
 }
 
-fn prompt_for_attempt(attempt: usize, base_prompt: &str) -> &str {
+const fn prompt_for_attempt(attempt: usize, base_prompt: &str) -> &str {
     if attempt == 0 {
         base_prompt
     } else {

@@ -15,13 +15,13 @@ pub struct GraphMapper {
 
 impl Default for GraphMapper {
     fn default() -> Self {
-        GraphMapper::new()
+        Self::new()
     }
 }
 
 impl GraphMapper {
     pub fn new() -> Self {
-        GraphMapper {
+        Self {
             key_to_id: HashMap::new(),
         }
     }
@@ -36,8 +36,7 @@ impl GraphMapper {
         // If parsing fails, look it up in the map.
         self.key_to_id.get(key).copied().ok_or_else(|| {
             AppError::GraphMapper(format!(
-                "Key '{}' is not a valid UUID and was not found in the map.",
-                key
+                "Key '{key}' is not a valid UUID and was not found in the map."
             ))
         })
     }
@@ -54,6 +53,6 @@ impl GraphMapper {
         self.key_to_id
             .get(key)
             .copied()
-            .ok_or_else(|| AppError::GraphMapper(format!("Key '{}' not found in map.", key)))
+            .ok_or_else(|| AppError::GraphMapper(format!("Key '{key}' not found in map.")))
     }
 }

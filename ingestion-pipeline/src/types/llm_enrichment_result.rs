@@ -49,7 +49,7 @@ impl LLMEnrichmentResult {
     /// # Arguments
     ///
     /// * `source_id` - A UUID representing the source identifier.
-    /// * `openai_client` - OpenAI client for LLM calls.
+    /// * `openai_client` - `OpenAI` client for LLM calls.
     ///
     /// # Returns
     ///

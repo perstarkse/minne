@@ -19,7 +19,7 @@ pub async fn extract_text_from_image(
 
     let base64_image = STANDARD.encode(&image_bytes);
 
-    let image_url = format!("data:image/png;base64,{}", base64_image);
+    let image_url = format!("data:image/png;base64,{base64_image}");
 
     let request = CreateChatCompletionRequestArgs::default()
         .model(system_settings.image_processing_model)

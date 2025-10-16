@@ -68,7 +68,7 @@ impl IngestionPipeline {
         .await?;
 
         match self.process(&text_content).await {
-            Ok(_) => {
+            Ok(()) => {
                 processing_task.mark_succeeded(&self.db).await?;
                 info!(%task_id, attempt, "ingestion task succeeded");
                 Ok(())
@@ -173,7 +173,7 @@ impl IngestionPipeline {
         let entity_count = entities.len();
         let relationship_count = relationships.len();
 
-        const STORE_GRAPH_MUTATION: &str = r#"
+        const STORE_GRAPH_MUTATION: &str = r"
             BEGIN TRANSACTION;
             LET $entities = $entities;
             LET $relationships = $relationships;
@@ -192,7 +192,7 @@ impl IngestionPipeline {
             };
 
             COMMIT TRANSACTION;
-        "#;
+        ";
 
         const MAX_ATTEMPTS: usize = 3;
         const INITIAL_BACKOFF_MS: u64 = 50;

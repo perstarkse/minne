@@ -25,7 +25,7 @@ pub struct IngestionEnricher {
 }
 
 impl IngestionEnricher {
-    pub fn new(
+    pub const fn new(
         db_client: Arc<SurrealDbClient>,
         openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     ) -> Self {
@@ -61,8 +61,7 @@ impl IngestionEnricher {
         user_id: &str,
     ) -> Result<Vec<RetrievedEntity>, AppError> {
         let input_text = format!(
-            "content: {}, category: {}, user_context: {:?}",
-            text, category, context
+            "content: {text}, category: {category}, user_context: {context:?}"
         );
 
         retrieve_entities(&self.db_client, &self.openai_client, &input_text, user_id).await
@@ -80,8 +79,7 @@ impl IngestionEnricher {
         let entities_json = format_entities_json(similar_entities);
 
         let user_message = format!(
-            "Category:\n{}\ncontext:\n{:?}\nContent:\n{}\nExisting KnowledgeEntities in database:\n{}",
-            category, context, text, entities_json
+            "Category:\n{category}\ncontext:\n{context:?}\nContent:\n{text}\nExisting KnowledgeEntities in database:\n{entities_json}"
         );
 
         debug!("Prepared LLM request message: {}", user_message);
@@ -122,7 +120,7 @@ impl IngestionEnricher {
             ))?;
 
         serde_json::from_str::<LLMEnrichmentResult>(content).map_err(|e| {
-            AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {}", e))
+            AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {e}"))
         })
     }
 }

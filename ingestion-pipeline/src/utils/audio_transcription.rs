@@ -4,7 +4,7 @@ use common::{
     storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
 };
 
-/// Transcribes an audio file using the configured OpenAI Whisper model.
+/// Transcribes an audio file using the configured `OpenAI` Whisper model.
 pub async fn transcribe_audio_file(
     file_path: &str,
     db_client: &SurrealDbClient,
@@ -23,6 +23,6 @@ pub async fn transcribe_audio_file(
         .audio()
         .transcribe(request)
         .await
-        .map_err(|e| AppError::Processing(format!("Audio transcription failed: {}", e)))?;
+        .map_err(|e| AppError::Processing(format!("Audio transcription failed: {e}")))?;
     Ok(response.text)
 }
