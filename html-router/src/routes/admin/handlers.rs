@@ -103,7 +103,7 @@ pub async fn toggle_registration_status(
     // Early return if the user is not admin
     if !user.admin {
         return Ok(TemplateResponse::redirect("/"));
-    };
+    }
 
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
@@ -147,7 +147,7 @@ pub async fn update_model_settings(
     // Early return if the user is not admin
     if !user.admin {
         return Ok(TemplateResponse::redirect("/"));
-    };
+    }
 
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
@@ -239,7 +239,7 @@ pub async fn show_edit_system_prompt(
     // Early return if the user is not admin
     if !user.admin {
         return Ok(TemplateResponse::redirect("/"));
-    };
+    }
 
     let settings = SystemSettings::get_current(&state.db).await?;
 
@@ -270,7 +270,7 @@ pub async fn patch_query_prompt(
     // Early return if the user is not admin
     if !user.admin {
         return Ok(TemplateResponse::redirect("/"));
-    };
+    }
 
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
@@ -303,7 +303,7 @@ pub async fn show_edit_ingestion_prompt(
     // Early return if the user is not admin
     if !user.admin {
         return Ok(TemplateResponse::redirect("/"));
-    };
+    }
 
     let settings = SystemSettings::get_current(&state.db).await?;
 
@@ -329,7 +329,7 @@ pub async fn patch_ingestion_prompt(
     // Early return if the user is not admin
     if !user.admin {
         return Ok(TemplateResponse::redirect("/"));
-    };
+    }
 
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
@@ -362,7 +362,7 @@ pub async fn show_edit_image_prompt(
     // Early return if the user is not admin
     if !user.admin {
         return Ok(TemplateResponse::redirect("/"));
-    };
+    }
 
     let settings = SystemSettings::get_current(&state.db).await?;
 
@@ -388,7 +388,7 @@ pub async fn patch_image_prompt(
     // Early return if the user is not admin
     if !user.admin {
         return Ok(TemplateResponse::redirect("/"));
-    };
+    }
 
     let current_settings = SystemSettings::get_current(&state.db).await?;
 

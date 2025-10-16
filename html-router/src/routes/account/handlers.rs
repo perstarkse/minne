@@ -24,7 +24,7 @@ pub async fn show_account_page(
     RequireUser(user): RequireUser,
     State(state): State<HtmlState>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let timezones = TZ_VARIANTS.iter().map(|tz| tz.to_string()).collect();
+    let timezones = TZ_VARIANTS.iter().map(std::string::ToString::to_string).collect();
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -102,7 +102,7 @@ pub async fn update_timezone(
         ..user.clone()
     };
 
-    let timezones = TZ_VARIANTS.iter().map(|tz| tz.to_string()).collect();
+    let timezones = TZ_VARIANTS.iter().map(std::string::ToString::to_string).collect();
 
     // Render the API key section block
     Ok(TemplateResponse::new_partial(

@@ -29,14 +29,11 @@ pub async fn show_signup_form(
         return Ok(TemplateResponse::redirect("/"));
     }
 
-    match boosted {
-        true => Ok(TemplateResponse::new_partial(
-            "auth/signup_form.html",
-            "body",
-            (),
-        )),
-        false => Ok(TemplateResponse::new_template("auth/signup_form.html", ())),
-    }
+    if boosted { Ok(TemplateResponse::new_partial(
+        "auth/signup_form.html",
+        "body",
+        (),
+    )) } else { Ok(TemplateResponse::new_template("auth/signup_form.html", ())) }
 }
 
 pub async fn process_signup_and_show_verification(
@@ -48,7 +45,7 @@ pub async fn process_signup_and_show_verification(
         Ok(user) => user,
         Err(e) => {
             tracing::error!("{:?}", e);
-            return Ok(Html(format!("<p>{}</p>", e)).into_response());
+            return Ok(Html(format!("<p>{e}</p>")).into_response());
         }
     };
 

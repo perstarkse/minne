@@ -107,7 +107,7 @@ pub async fn delete_text_content(
         "dashboard/recent_content.html",
         "latest_content_section",
         LatestTextContentData {
-            user: user.to_owned(),
+            user: user.clone(),
             text_contents,
         },
     ))

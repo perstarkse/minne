@@ -118,7 +118,7 @@ where
     }
 
     /// Enables response compression when building the router.
-    pub fn with_compression(mut self) -> Self {
+    pub const fn with_compression(mut self) -> Self {
         self.compression_enabled = true;
         self
     }

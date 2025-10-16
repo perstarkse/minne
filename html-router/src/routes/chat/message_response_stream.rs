@@ -251,7 +251,7 @@ pub async fn get_response_stream(
                     Err(e) => {
                         yield Ok(Event::default()
                             .event("error")
-                            .data(format!("Stream error: {}", e)));
+                            .data(format!("Stream error: {e}")));
                     }
                 }
             }
@@ -260,7 +260,7 @@ pub async fn get_response_stream(
         .chain(stream::once(async move {
             if let Some(message) = rx_final.recv().await {
                 // Don't send any event if references is empty
-                if message.references.as_ref().is_some_and(|x| x.is_empty()) {
+                if message.references.as_ref().is_some_and(std::vec::Vec::is_empty) {
                     return Ok(Event::default().event("empty")); // This event won't be sent
                 }
 

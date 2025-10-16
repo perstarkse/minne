@@ -205,26 +205,26 @@ pub enum HtmlError {
 
 impl From<AppError> for HtmlError {
     fn from(err: AppError) -> Self {
-        HtmlError::AppError(err)
+        Self::AppError(err)
     }
 }
 
 impl From<surrealdb::Error> for HtmlError {
     fn from(err: surrealdb::Error) -> Self {
-        HtmlError::AppError(AppError::from(err))
+        Self::AppError(AppError::from(err))
     }
 }
 
 impl From<minijinja::Error> for HtmlError {
     fn from(err: minijinja::Error) -> Self {
-        HtmlError::TemplateError(err.to_string())
+        Self::TemplateError(err.to_string())
     }
 }
 
 impl IntoResponse for HtmlError {
     fn into_response(self) -> Response {
         match self {
-            HtmlError::AppError(err) => match err {
+            Self::AppError(err) => match err {
                 AppError::NotFound(_) => TemplateResponse::not_found().into_response(),
                 AppError::Auth(_) => TemplateResponse::unauthorized().into_response(),
                 AppError::Validation(msg) => TemplateResponse::bad_request(&msg).into_response(),
@@ -233,7 +233,7 @@ impl IntoResponse for HtmlError {
                     TemplateResponse::server_error().into_response()
                 }
             },
-            HtmlError::TemplateError(err) => {
+            Self::TemplateError(err) => {
                 error!("Template error: {}", err);
                 TemplateResponse::server_error().into_response()
             }

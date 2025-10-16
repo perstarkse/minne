@@ -157,7 +157,7 @@ pub async fn new_user_message(
 
     if conversation.user_id != user.id {
         return Ok(TemplateResponse::unauthorized().into_response());
-    };
+    }
 
     let user_message = Message::new(conversation_id, MessageRole::User, form.content, None);
 
