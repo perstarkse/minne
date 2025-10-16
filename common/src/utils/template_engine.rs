@@ -88,7 +88,7 @@ impl TemplateEngine {
             Self::Embedded(env) => env
                 .get_template(template_name)?
                 .eval_to_state(context)?
-                .render_block(block.name),
+                .render_block(block_name),
         }
     }
 }
