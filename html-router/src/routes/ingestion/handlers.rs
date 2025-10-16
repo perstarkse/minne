@@ -150,13 +150,8 @@ pub async fn get_task_updates_stream(
     let db = state.db.clone();
 
     // 1. Check for authenticated user
-    let current_user = match auth.current_user {
-        Some(user) => user,
-        None => {
-            return Sse::new(create_error_stream(
-                "User not authenticated. Please log in.",
-            ));
-        }
+    let Some(current_user) = auth.current_user else {
+        return Sse::new(create_error_stream("User not authenticated"));
     };
 
     // 2. Fetch task for initial authorization and to ensure it exists
@@ -236,10 +231,10 @@ pub async fn get_task_updates_stream(
                         Err(db_err) => {
                             error!("Database error while fetching task '{}': {:?}", task_id, db_err);
                             consecutive_db_errors += 1;
-                            yield Ok(Event::default().event("error").data(format!("Temporary error fetching task update (attempt {}).", consecutive_db_errors)));
+                            yield Ok(Event::default().event("error").data(format!("Temporary error fetching task update (attempt {consecutive_db_errors}).")));
 
                             if consecutive_db_errors >= max_consecutive_db_errors {
-                                error!("Max consecutive DB errors reached for task '{}'. Closing stream.", task_id);
+                                error!("Max consecutive DB errors reached for task '{task_id}'. Closing stream.");
                                 yield Ok(Event::default().event("error").data("Persistent error fetching task updates. Stream closed."));
                                 yield Ok(Event::default().event("close_stream").data("Stream complete"));
                                 break;
@@ -257,14 +252,10 @@ pub async fn get_task_updates_stream(
             )
         }
         Ok(None) => Sse::new(create_error_stream(format!(
-            "Task with ID '{}' not found.",
-            task_id
+            "Task with ID '{task_id}' not found."
         ))),
         Err(e) => {
-            error!(
-                "Failed to fetch task '{}' for authorization: {:?}",
-                task_id, e
-            );
+            error!("Failed to fetch task '{task_id}' for authorization: {e:?}");
             Sse::new(create_error_stream(
                 "An error occurred while retrieving task details. Please try again later.",
             ))

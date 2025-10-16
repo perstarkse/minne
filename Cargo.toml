@@ -60,3 +60,14 @@ state-machines = "0.2.0"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[workspace.lints.clippy]
+perf = { level = "warn",  priority = -1 }
+pedantic = { level = "warn",  priority = -1 }
+nursery = { level = "warn",  priority = -1 }
+cargo = { level = "warn",  priority = -1 }
+
+needless_question_mark = "allow"
+single_call_fn = "allow"
+must_use_candidate = "allow"
+

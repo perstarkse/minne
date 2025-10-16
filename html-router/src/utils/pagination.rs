@@ -16,7 +16,7 @@ pub struct Pagination {
 }
 
 impl Pagination {
-    pub fn new(
+    pub const fn new(
         current_page: usize,
         per_page: usize,
         total_items: usize,

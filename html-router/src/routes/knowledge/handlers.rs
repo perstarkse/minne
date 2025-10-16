@@ -90,10 +90,8 @@ pub async fn create_knowledge_entity(
     let description = form.description.trim().to_string();
     let entity_type = KnowledgeEntityType::from(form.entity_type.trim().to_string());
 
-    let embedding_input = format!(
-        "name: {}, description: {}, type: {:?}",
-        name, description, entity_type
-    );
+    let embedding_input =
+        format!("name: {name}, description: {description}, type: {entity_type:?}");
     let embedding = generate_embedding(&state.openai_client, &embedding_input, &state.db).await?;
 
     let source_id = format!("manual::{}", Uuid::new_v4());
@@ -126,7 +124,7 @@ pub async fn create_knowledge_entity(
             .collect();
         let mut unique_ids: HashSet<String> = HashSet::new();
 
-        for target_id in form.relationship_ids.into_iter() {
+        for target_id in form.relationship_ids {
             if target_id == new_entity.id {
                 continue;
             }
@@ -333,7 +331,7 @@ async fn build_knowledge_base_data(
         if encoded.is_empty() {
             String::new()
         } else {
-            format!("&{}", encoded)
+            format!("&{encoded}")
         }
     };
 
@@ -662,7 +660,7 @@ pub async fn get_knowledge_graph_json(
 
     let mut degree_count: HashMap<String, usize> = HashMap::new();
     let mut links: Vec<GraphLink> = Vec::new();
-    for rel in relationships.iter() {
+    for rel in &relationships {
         if entity_ids.contains(&rel.in_) && entity_ids.contains(&rel.out) {
             // undirected counting for degree
             *degree_count.entry(rel.in_.clone()).or_insert(0) += 1;
@@ -689,17 +687,14 @@ pub async fn get_knowledge_graph_json(
 }
 // Normalize filter parameters: convert empty strings or "none" (case-insensitive) to None
 fn normalize_filter(input: Option<String>) -> Option<String> {
-    match input {
-        None => None,
-        Some(s) => {
-            let trimmed = s.trim();
-            if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
-                None
-            } else {
-                Some(trim_matching_quotes(trimmed).to_string())
-            }
+    input.and_then(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
+            None
+        } else {
+            Some(trim_matching_quotes(trimmed).to_string())
         }
-    }
+    })
 }
 
 fn trim_matching_quotes(value: &str) -> &str {
@@ -739,8 +734,8 @@ pub async fn show_edit_knowledge_entity_form(
         "knowledge/edit_knowledge_entity_modal.html",
         EntityData {
             entity,
-            user,
             entity_types,
+            user,
         },
     ))
 }
