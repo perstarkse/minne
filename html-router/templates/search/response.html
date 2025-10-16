@@ -2,72 +2,120 @@
 <ul class="nb-card p-0">
   {% for result in search_result %}
   <li class="p-4 u-hairline hover:bg-base-200/40 flex gap-3">
-    <div class="w-10 h-10 flex-shrink-0 self-start mt-1 grid place-items-center border-2 border-neutral bg-base-100 shadow-[4px_4px_0_0_#000]">
-      {% if result.url_info and result.url_info.url %}
-      <div class="tooltip tooltip-right" data-tip="Web Link">
-        {% include "icons/link_icon.html" %}
-      </div>
-      {% elif result.file_info and result.file_info.file_name %}
-      <div class="tooltip tooltip-right" data-tip="File Document">
-        {% include "icons/document_icon.html" %}
-      </div>
-      {% else %}
-      <div class="tooltip tooltip-right" data-tip="Text Content">
-        {% include "icons/bars_icon.html" %}
-      </div>
-      {% endif %}
-    </div>
-
-    <div class="flex-1 min-w-0">
-      <h3 class="text-lg font-extrabold mb-1 leading-snug">
-        <a hx-get="/content/{{ result.id }}/read" hx-target="#modal" hx-swap="innerHTML" class="nb-link">
-          {% set title_text = result.highlighted_url_title
-          | default(result.url_info.title if result.url_info else none, true)
-          | default(result.highlighted_file_name, true)
-          | default(result.file_info.file_name if result.file_info else none, true)
-          | default("Text snippet: " ~ (result.id | string)[-8:], true) %}
-          {{ title_text | safe }}
-        </a>
-      </h3>
-
-      <div class="markdown-content prose-tufte-compact text-base-content/80 mb-3 overflow-hidden line-clamp-6" data-content="{{result.highlighted_text | escape}}">
-        {% if result.highlighted_text %}
-        {{ result.highlighted_text | escape }}
-        {% elif result.text %}
-        {{ result.text | escape }}
+    {% if result.result_type == "text_content" %}
+      {% set tc = result.text_content %}
+      <div class="w-10 h-10 flex-shrink-0 self-start mt-1 grid place-items-center border-2 border-neutral bg-base-100 shadow-[4px_4px_0_0_#000]">
+        {% if tc.url_info and tc.url_info.url %}
+        <div class="tooltip tooltip-right" data-tip="Web Link">
+          {% include "icons/link_icon.html" %}
+        </div>
+        {% elif tc.file_info and tc.file_info.file_name %}
+        <div class="tooltip tooltip-right" data-tip="File Document">
+          {% include "icons/document_icon.html" %}
+        </div>
         {% else %}
-        <span class="italic opacity-60">No text preview available.</span>
+        <div class="tooltip tooltip-right" data-tip="Text Content">
+          {% include "icons/bars_icon.html" %}
+        </div>
         {% endif %}
       </div>
 
-      <div class="text-xs flex flex-wrap gap-x-4 gap-y-2 items-center">
-        <span class="inline-flex items-center">
-          <span class="uppercase tracking-wide opacity-60 mr-2">Category</span>
-          <span class="nb-badge">{{ result.highlighted_category | default(result.category, true) | safe }}</span>
-        </span>
-
-        {% if result.highlighted_context or result.context %}
-        <span class="inline-flex items-center min-w-0">
-          <span class="uppercase tracking-wide opacity-60 mr-2">Context</span>
-          <span class="nb-badge">{{ result.highlighted_context | default(result.context, true) | safe }}</span>
-        </span>
-        {% endif %}
-
-        {% if result.url_info and result.url_info.url %}
-        <span class="inline-flex items-center min-w-0">
-          <span class="uppercase tracking-wide opacity-60 mr-2">Source</span>
-          <a href="{{ result.url_info.url }}" target="_blank" class="nb-link truncate" title="{{ result.url_info.url }}">
-            {{ result.highlighted_url | default(result.url_info.url ) | safe }}
+      <div class="flex-1 min-w-0">
+        <h3 class="text-lg font-extrabold mb-1 leading-snug">
+          <a hx-get="/content/{{ tc.id }}/read" hx-target="#modal" hx-swap="innerHTML" class="nb-link">
+            {% set title_text = tc.highlighted_url_title
+            | default(tc.url_info.title if tc.url_info else none, true)
+            | default(tc.highlighted_file_name, true)
+            | default(tc.file_info.file_name if tc.file_info else none, true)
+            | default("Text snippet: " ~ (tc.id | string)[-8:], true) %}
+            {{ title_text | safe }}
           </a>
-        </span>
-        {% endif %}
+        </h3>
 
-        <span class="inline-flex items-center">
-          <span class="uppercase tracking-wide opacity-60 mr-2">Score</span>
-          <span class="nb-badge">{{ result.score }}</span>
-        </span>
+        <div class="markdown-content prose-tufte-compact text-base-content/80 mb-3 overflow-hidden line-clamp-6" data-content="{{tc.highlighted_text | escape}}">
+          {% if tc.highlighted_text %}
+          {{ tc.highlighted_text | escape }}
+          {% elif tc.text %}
+          {{ tc.text | escape }}
+          {% else %}
+          <span class="italic opacity-60">No text preview available.</span>
+          {% endif %}
+        </div>
+
+        <div class="text-xs flex flex-wrap gap-x-4 gap-y-2 items-center">
+          <span class="inline-flex items-center">
+            <span class="uppercase tracking-wide opacity-60 mr-2">Category</span>
+            <span class="nb-badge">{{ tc.highlighted_category | default(tc.category, true) | safe }}</span>
+          </span>
+
+          {% if tc.highlighted_context or tc.context %}
+          <span class="inline-flex items-center min-w-0">
+            <span class="uppercase tracking-wide opacity-60 mr-2">Context</span>
+            <span class="nb-badge">{{ tc.highlighted_context | default(tc.context, true) | safe }}</span>
+          </span>
+          {% endif %}
+
+          {% if tc.url_info and tc.url_info.url %}
+          <span class="inline-flex items-center min-w-0">
+            <span class="uppercase tracking-wide opacity-60 mr-2">Source</span>
+            <a href="{{ tc.url_info.url }}" target="_blank" class="nb-link truncate" title="{{ tc.url_info.url }}">
+              {{ tc.highlighted_url | default(tc.url_info.url ) | safe }}
+            </a>
+          </span>
+          {% endif %}
+
+          <span class="inline-flex items-center">
+            <span class="uppercase tracking-wide opacity-60 mr-2">Score</span>
+            <span class="nb-badge">{{ result.score }}</span>
+          </span>
+        </div>
       </div>
-    </div>
+    {% elif result.result_type == "knowledge_entity" %}
+      {% set entity = result.knowledge_entity %}
+      <div class="w-10 h-10 flex-shrink-0 self-start mt-1 grid place-items-center border-2 border-neutral bg-base-100 shadow-[4px_4px_0_0_#000]">
+        <div class="tooltip tooltip-right" data-tip="Knowledge Entity">
+          {% include "icons/book_icon.html" %}
+        </div>
+      </div>
+
+      <div class="flex-1 min-w-0">
+        <h3 class="text-lg font-extrabold mb-1 leading-snug">
+          <a hx-get="/knowledge-entity/{{ entity.id }}" hx-target="#modal" hx-swap="innerHTML" class="nb-link">
+            {% set entity_title = entity.highlighted_name | default(entity.name, true) %}
+            {{ entity_title | safe }}
+          </a>
+        </h3>
+
+        <div class="prose prose-tufte-compact text-base-content/80 mb-3 overflow-hidden line-clamp-6">
+          {% if entity.highlighted_description %}
+          {{ entity.highlighted_description | safe }}
+          {% elif entity.description %}
+          {{ entity.description | escape }}
+          {% else %}
+          <span class="italic opacity-60">No description available.</span>
+          {% endif %}
+        </div>
+
+        <div class="text-xs flex flex-wrap gap-x-4 gap-y-2 items-center">
+          <span class="inline-flex items-center">
+            <span class="uppercase tracking-wide opacity-60 mr-2">Entity Type</span>
+            <span class="nb-badge">{{ entity.entity_type }}</span>
+          </span>
+
+          {% if entity.source_id %}
+          <span class="inline-flex items-center min-w-0">
+            <span class="uppercase tracking-wide opacity-60 mr-2">Source ID</span>
+            <span class="nb-badge truncate max-w-xs" title="{{ entity.source_id }}">{{ entity.source_id }}</span>
+          </span>
+          {% endif %}
+
+          <span class="inline-flex items-center">
+            <span class="uppercase tracking-wide opacity-60 mr-2">Score</span>
+            <span class="nb-badge">{{ result.score }}</span>
+          </span>
+        </div>
+      </div>
+    {% endif %}
   </li>
   {% endfor %}
   </ul>

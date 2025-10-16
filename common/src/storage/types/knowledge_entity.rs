@@ -40,6 +40,38 @@ impl From<String> for KnowledgeEntityType {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct KnowledgeEntitySearchResult {
+    #[serde(deserialize_with = "deserialize_flexible_id")]
+    pub id: String,
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime",
+        default
+    )]
+    pub created_at: DateTime<Utc>,
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime",
+        default
+    )]
+    pub updated_at: DateTime<Utc>,
+
+    pub source_id: String,
+    pub name: String,
+    pub description: String,
+    pub entity_type: KnowledgeEntityType,
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
+    pub user_id: String,
+
+    pub score: f32,
+    #[serde(default)]
+    pub highlighted_name: Option<String>,
+    #[serde(default)]
+    pub highlighted_description: Option<String>,
+}
+
 stored_object!(KnowledgeEntity, "knowledge_entity", {
     source_id: String,
     name: String,
@@ -73,6 +105,50 @@ impl KnowledgeEntity {
             embedding,
             user_id,
         }
+    }
+
+    pub async fn search(
+        db: &SurrealDbClient,
+        search_terms: &str,
+        user_id: &str,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeEntitySearchResult>, AppError> {
+        let sql = r#"
+            SELECT
+                id,
+                created_at,
+                updated_at,
+                source_id,
+                name,
+                description,
+                entity_type,
+                metadata,
+                user_id,
+                search::highlight('<b>', '</b>', 0) AS highlighted_name,
+                search::highlight('<b>', '</b>', 1) AS highlighted_description,
+                (
+                    IF search::score(0) != NONE THEN search::score(0) ELSE 0 END +
+                    IF search::score(1) != NONE THEN search::score(1) ELSE 0 END
+                ) AS score
+            FROM knowledge_entity
+            WHERE
+                (
+                    name @0@ $terms OR
+                    description @1@ $terms
+                )
+                AND user_id = $user_id
+            ORDER BY score DESC
+            LIMIT $limit;
+        "#;
+
+        Ok(db
+            .client
+            .query(sql)
+            .bind(("terms", search_terms.to_owned()))
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("limit", limit))
+            .await?
+            .take(0)?)
     }
 
     pub async fn delete_by_source_id(
