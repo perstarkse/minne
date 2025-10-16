@@ -20,7 +20,7 @@ use common::storage::{
 ///
 /// * `source_id` - The identifier to search for in the database
 /// * `table_name` - The name of the table to search in
-/// * `db_client` - The SurrealDB client instance for database operations
+/// * `db_client` - The `SurrealDB` client instance for database operations
 ///
 /// # Type Parameters
 ///

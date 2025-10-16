@@ -42,8 +42,8 @@ pub struct LLMResponseFormat {
 ///
 /// # Arguments
 ///
-/// * `surreal_db_client` - Client for SurrealDB interactions
-/// * `openai_client` - Client for OpenAI API calls
+/// * `surreal_db_client` - Client for `SurrealDB` interactions
+/// * `openai_client` - Client for `OpenAI` API calls
 /// * `query` - The user's query string
 /// * `user_id` - The user's id
 ///
@@ -106,20 +106,19 @@ pub fn format_entities_json(entities: &[RetrievedEntity]) -> Value {
 }
 
 fn round_score(value: f32) -> f64 {
-    ((value as f64) * 1000.0).round() / 1000.0
+    (f64::from(value) * 1000.0).round() / 1000.0
 }
 pub fn create_user_message(entities_json: &Value, query: &str) -> String {
     format!(
-        r#"
+        r"
         Context Information:
         ==================
-        {}
+        {entities_json}
 
         User Question:
         ==================
-        {}
-        "#,
-        entities_json, query
+        {query}
+        "
     )
 }
 
@@ -129,7 +128,7 @@ pub fn create_user_message_with_history(
     query: &str,
 ) -> String {
     format!(
-        r#"
+        r"
         Chat history:
         ==================
         {}
@@ -141,7 +140,7 @@ pub fn create_user_message_with_history(
         User Question:
         ==================
         {}
-        "#,
+        ",
         format_history(history),
         entities_json,
         query
@@ -183,7 +182,7 @@ pub async fn process_llm_response(
         ))
         .and_then(|content| {
             serde_json::from_str::<LLMResponseFormat>(content).map_err(|e| {
-                AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {}", e))
+                AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {e}"))
             })
         })
 }

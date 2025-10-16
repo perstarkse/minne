@@ -27,22 +27,22 @@ impl<T> Scored<T> {
         }
     }
 
-    pub fn with_vector_score(mut self, score: f32) -> Self {
+    pub const fn with_vector_score(mut self, score: f32) -> Self {
         self.scores.vector = Some(score);
         self
     }
 
-    pub fn with_fts_score(mut self, score: f32) -> Self {
+    pub const fn with_fts_score(mut self, score: f32) -> Self {
         self.scores.fts = Some(score);
         self
     }
 
-    pub fn with_graph_score(mut self, score: f32) -> Self {
+    pub const fn with_graph_score(mut self, score: f32) -> Self {
         self.scores.graph = Some(score);
         self
     }
 
-    pub fn update_fused(&mut self, fused: f32) {
+    pub const fn update_fused(&mut self, fused: f32) {
         self.fused = fused;
     }
 }
@@ -67,7 +67,7 @@ impl Default for FusionWeights {
     }
 }
 
-pub fn clamp_unit(value: f32) -> f32 {
+pub const fn clamp_unit(value: f32) -> f32 {
     value.clamp(0.0, 1.0)
 }
 
@@ -109,10 +109,10 @@ pub fn min_max_normalize(scores: &[f32]) -> Vec<f32> {
     scores
         .iter()
         .map(|score| {
-            if !score.is_finite() {
-                0.0
-            } else {
+            if score.is_finite() {
                 clamp_unit((score - min) / (max - min))
+            } else {
+                0.0
             }
         })
         .collect()
