@@ -21,3 +21,4 @@ async-openai = { workspace = true }
 uuid = { workspace = true }
  
 common = { path = "../common", features = ["test-utils"] }
+state-machines = { workspace = true }

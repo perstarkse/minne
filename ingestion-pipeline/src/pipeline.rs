@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Instant};
 
 use text_splitter::TextSplitter;
 use tokio::time::{sleep, Duration};
-use tracing::{info, info_span, warn};
+use tracing::{debug, info, info_span, warn};
 
 use common::{
     error::AppError,
@@ -66,6 +66,34 @@ impl IngestionPipeline {
             &self.openai_client,
         )
         .await?;
+
+        let text_len = text_content.text.chars().count();
+        let preview: String = text_content.text.chars().take(120).collect();
+        let preview_clean = preview.replace("\n", " ");
+        let preview_len = preview_clean.chars().count();
+        let truncated = text_len > preview_len;
+        let context_len = text_content
+            .context
+            .as_ref()
+            .map(|c| c.chars().count())
+            .unwrap_or(0);
+        info!(
+            %task_id,
+            attempt,
+            user_id = %text_content.user_id,
+            category = %text_content.category,
+            text_chars = text_len,
+            context_chars = context_len,
+            attachments = text_content.file_info.is_some(),
+            "ingestion task input ready"
+        );
+        debug!(
+            %task_id,
+            attempt,
+            preview = %preview_clean,
+            preview_truncated = truncated,
+            "ingestion task input preview"
+        );
 
         match self.process(&text_content).await {
             Ok(()) => {

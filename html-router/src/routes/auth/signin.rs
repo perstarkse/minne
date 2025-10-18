@@ -27,11 +27,15 @@ pub async fn show_signin_form(
     if auth.is_authenticated() {
         return Ok(TemplateResponse::redirect("/"));
     }
-    if boosted { Ok(TemplateResponse::new_partial(
-        "auth/signin_base.html",
-        "body",
-        (),
-    )) } else { Ok(TemplateResponse::new_template("auth/signin_base.html", ())) }
+    if boosted {
+        Ok(TemplateResponse::new_partial(
+            "auth/signin_base.html",
+            "body",
+            (),
+        ))
+    } else {
+        Ok(TemplateResponse::new_template("auth/signin_base.html", ()))
+    }
 }
 
 pub async fn authenticate_user(

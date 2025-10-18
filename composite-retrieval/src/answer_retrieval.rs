@@ -17,9 +17,9 @@ use common::{
     },
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
-use crate::{retrieve_entities, RetrievedEntity};
+use crate::{retrieve_entities, retrieved_entities_to_json};
 
 use super::answer_retrieval_helper::get_query_response_schema;
 
@@ -65,7 +65,7 @@ pub async fn get_answer_with_references(
     let entities = retrieve_entities(surreal_db_client, openai_client, query, user_id).await?;
     let settings = SystemSettings::get_current(surreal_db_client).await?;
 
-    let entities_json = format_entities_json(&entities);
+    let entities_json = retrieved_entities_to_json(&entities);
     let user_message = create_user_message(&entities_json, query);
 
     let request = create_chat_request(user_message, &settings)?;
@@ -83,31 +83,6 @@ pub async fn get_answer_with_references(
     })
 }
 
-pub fn format_entities_json(entities: &[RetrievedEntity]) -> Value {
-    json!(entities
-        .iter()
-        .map(|entry| {
-            json!({
-                "KnowledgeEntity": {
-                    "id": entry.entity.id,
-                    "name": entry.entity.name,
-                    "description": entry.entity.description,
-                    "score": round_score(entry.score),
-                    "chunks": entry.chunks.iter().map(|chunk| {
-                        json!({
-                            "score": round_score(chunk.score),
-                            "content": chunk.chunk.chunk
-                        })
-                    }).collect::<Vec<_>>()
-                }
-            })
-        })
-        .collect::<Vec<_>>())
-}
-
-fn round_score(value: f32) -> f64 {
-    (f64::from(value) * 1000.0).round() / 1000.0
-}
 pub fn create_user_message(entities_json: &Value, query: &str) -> String {
     format!(
         r"

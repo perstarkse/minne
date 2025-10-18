@@ -132,9 +132,7 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
     let mut captures = Vec::with_capacity(pages.len());
 
     for (idx, page) in pages.iter().enumerate() {
-        let target = format!(
-            "{file_url}#page={page}&toolbar=0&statusbar=0&zoom=page-fit"
-        );
+        let target = format!("{file_url}#page={page}&toolbar=0&statusbar=0&zoom=page-fit");
         tab.navigate_to(&target)
             .map_err(|err| AppError::Processing(format!("Failed to navigate to PDF page: {err}")))?
             .wait_until_navigated()
@@ -480,11 +478,7 @@ fn is_structural_line(line: &str) -> bool {
         || line.starts_with('~')
         || line.starts_with("| ")
         || line.starts_with("+-")
-        || lowered
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit())
-            && lowered.contains('.')
+        || lowered.chars().next().is_some_and(|c| c.is_ascii_digit()) && lowered.contains('.')
 }
 
 fn debug_dump_directory() -> Option<PathBuf> {

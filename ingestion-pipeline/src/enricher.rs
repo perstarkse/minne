@@ -9,10 +9,7 @@ use common::{
     error::AppError,
     storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
 };
-use composite_retrieval::{
-    answer_retrieval::format_entities_json, retrieve_entities, RetrievedEntity,
-};
-use tracing::{debug, info};
+use composite_retrieval::{retrieve_entities, retrieved_entities_to_json, RetrievedEntity};
 
 use crate::{
     types::llm_enrichment_result::LLMEnrichmentResult,
@@ -42,11 +39,9 @@ impl IngestionEnricher {
         text: &str,
         user_id: &str,
     ) -> Result<LLMEnrichmentResult, AppError> {
-        info!("getting similar entitities");
         let similar_entities = self
             .find_similar_entities(category, context, text, user_id)
             .await?;
-        info!("got similar entitities");
         let llm_request = self
             .prepare_llm_request(category, context, text, &similar_entities)
             .await?;
@@ -60,9 +55,8 @@ impl IngestionEnricher {
         text: &str,
         user_id: &str,
     ) -> Result<Vec<RetrievedEntity>, AppError> {
-        let input_text = format!(
-            "content: {text}, category: {category}, user_context: {context:?}"
-        );
+        let input_text =
+            format!("content: {text}, category: {category}, user_context: {context:?}");
 
         retrieve_entities(&self.db_client, &self.openai_client, &input_text, user_id).await
     }
@@ -76,13 +70,11 @@ impl IngestionEnricher {
     ) -> Result<CreateChatCompletionRequest, AppError> {
         let settings = SystemSettings::get_current(&self.db_client).await?;
 
-        let entities_json = format_entities_json(similar_entities);
+        let entities_json = retrieved_entities_to_json(similar_entities);
 
         let user_message = format!(
             "Category:\n{category}\ncontext:\n{context:?}\nContent:\n{text}\nExisting KnowledgeEntities in database:\n{entities_json}"
         );
-
-        debug!("Prepared LLM request message: {}", user_message);
 
         let response_format = ResponseFormat::JsonSchema {
             json_schema: ResponseFormatJsonSchema {

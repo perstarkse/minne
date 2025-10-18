@@ -1345,6 +1345,7 @@ dependencies = [
  "futures",
  "serde",
  "serde_json",
+ "state-machines",
  "surrealdb",
  "thiserror 1.0.69",
  "tokio",

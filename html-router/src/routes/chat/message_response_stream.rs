@@ -9,11 +9,8 @@ use axum::{
     },
 };
 use composite_retrieval::{
-    answer_retrieval::{
-        create_chat_request, create_user_message_with_history, format_entities_json,
-        LLMResponseFormat,
-    },
-    retrieve_entities,
+    answer_retrieval::{create_chat_request, create_user_message_with_history, LLMResponseFormat},
+    retrieve_entities, retrieved_entities_to_json,
 };
 use futures::{
     stream::{self, once},
@@ -136,7 +133,7 @@ pub async fn get_response_stream(
     };
 
     // 3. Create the OpenAI request
-    let entities_json = format_entities_json(&entities);
+    let entities_json = retrieved_entities_to_json(&entities);
     let formatted_user_message =
         create_user_message_with_history(&entities_json, &history, &user_message.content);
     let settings = match SystemSettings::get_current(&state.db).await {
@@ -260,7 +257,11 @@ pub async fn get_response_stream(
         .chain(stream::once(async move {
             if let Some(message) = rx_final.recv().await {
                 // Don't send any event if references is empty
-                if message.references.as_ref().is_some_and(std::vec::Vec::is_empty) {
+                if message
+                    .references
+                    .as_ref()
+                    .is_some_and(std::vec::Vec::is_empty)
+                {
                     return Ok(Event::default().event("empty")); // This event won't be sent
                 }
 
