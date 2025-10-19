@@ -1,5 +1,8 @@
 # Changelog
 ## Unreleased
+- Added manual knowledge entity creation flows using a modal, with the option for suggested relationships
+- Added knowledge entity search results to the global search
+- Backend fixes for improved performance when ingesting and retrieval
 
 ## Version 0.2.4 (2025-10-15)
 - Improved retrieval performance. Ingestion and chat now utilizes full text search, vector comparison and graph traversal.

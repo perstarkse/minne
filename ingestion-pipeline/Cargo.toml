@@ -31,5 +31,7 @@ lopdf = "0.32"
 
 common = { path = "../common" }
 composite-retrieval = { path = "../composite-retrieval" }
+async-trait = { workspace = true }
+state-machines = { workspace = true }
 [features]
 docker = []

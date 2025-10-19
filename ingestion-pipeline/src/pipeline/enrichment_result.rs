@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use chrono::Utc;
+use futures::stream::{self, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::task;
 
 use common::{
     error::AppError,
@@ -15,28 +15,25 @@ use common::{
     },
     utils::embedding::generate_embedding,
 };
-use futures::future::try_join_all;
 
-use crate::utils::GraphMapper;
+use crate::utils::graph_mapper::GraphMapper;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LLMKnowledgeEntity {
-    pub key: String, // Temporary identifier
+    pub key: String,
     pub name: String,
     pub description: String,
-    pub entity_type: String, // Should match KnowledgeEntityType variants
+    pub entity_type: String,
 }
 
-/// Represents a single relationship from the LLM.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LLMRelationship {
     #[serde(rename = "type")]
-    pub type_: String, // e.g., RelatedTo, RelevantTo
-    pub source: String, // Key of the source entity
-    pub target: String, // Key of the target entity
+    pub type_: String,
+    pub source: String,
+    pub target: String,
 }
 
-/// Represents the entire graph analysis result from the LLM.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LLMEnrichmentResult {
     pub knowledge_entities: Vec<LLMKnowledgeEntity>,
@@ -44,27 +41,16 @@ pub struct LLMEnrichmentResult {
 }
 
 impl LLMEnrichmentResult {
-    /// Converts the LLM graph analysis result into database entities and relationships.
-    ///
-    /// # Arguments
-    ///
-    /// * `source_id` - A UUID representing the source identifier.
-    /// * `openai_client` - `OpenAI` client for LLM calls.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError>` - A tuple containing vectors of `KnowledgeEntity` and `KnowledgeRelationship`.
     pub async fn to_database_entities(
         &self,
         source_id: &str,
         user_id: &str,
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
         db_client: &SurrealDbClient,
+        entity_concurrency: usize,
     ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
-        // Create mapper and pre-assign IDs
-        let mapper = Arc::new(Mutex::new(self.create_mapper()?));
+        let mapper = Arc::new(self.create_mapper()?);
 
-        // Process entities
         let entities = self
             .process_entities(
                 source_id,
@@ -72,10 +58,10 @@ impl LLMEnrichmentResult {
                 Arc::clone(&mapper),
                 openai_client,
                 db_client,
+                entity_concurrency,
             )
             .await?;
 
-        // Process relationships
         let relationships = self.process_relationships(source_id, user_id, Arc::clone(&mapper))?;
 
         Ok((entities, relationships))
@@ -84,7 +70,6 @@ impl LLMEnrichmentResult {
     fn create_mapper(&self) -> Result<GraphMapper, AppError> {
         let mut mapper = GraphMapper::new();
 
-        // Pre-assign all IDs
         for entity in &self.knowledge_entities {
             mapper.assign_id(&entity.key);
         }
@@ -96,57 +81,46 @@ impl LLMEnrichmentResult {
         &self,
         source_id: &str,
         user_id: &str,
-        mapper: Arc<Mutex<GraphMapper>>,
+        mapper: Arc<GraphMapper>,
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
         db_client: &SurrealDbClient,
+        entity_concurrency: usize,
     ) -> Result<Vec<KnowledgeEntity>, AppError> {
-        let futures: Vec<_> = self
-            .knowledge_entities
-            .iter()
-            .map(|entity| {
-                let mapper = Arc::clone(&mapper);
-                let openai_client = openai_client.clone();
-                let source_id = source_id.to_string();
-                let user_id = user_id.to_string();
-                let entity = entity.clone();
-                let db_client = db_client.clone();
+        stream::iter(self.knowledge_entities.iter().cloned().map(|entity| {
+            let mapper = Arc::clone(&mapper);
+            let openai_client = openai_client.clone();
+            let source_id = source_id.to_string();
+            let user_id = user_id.to_string();
+            let db_client = db_client.clone();
 
-                task::spawn(async move {
-                    create_single_entity(
-                        &entity,
-                        &source_id,
-                        &user_id,
-                        mapper,
-                        &openai_client,
-                        &db_client.clone(),
-                    )
-                    .await
-                })
-            })
-            .collect();
-
-        let results = try_join_all(futures)
-            .await?
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(results)
+            async move {
+                create_single_entity(
+                    &entity,
+                    &source_id,
+                    &user_id,
+                    mapper,
+                    &openai_client,
+                    &db_client,
+                )
+                .await
+            }
+        }))
+        .buffer_unordered(entity_concurrency.max(1))
+        .try_collect()
+        .await
     }
 
     fn process_relationships(
         &self,
         source_id: &str,
         user_id: &str,
-        mapper: Arc<Mutex<GraphMapper>>,
+        mapper: Arc<GraphMapper>,
     ) -> Result<Vec<KnowledgeRelationship>, AppError> {
-        let mapper_guard = mapper
-            .lock()
-            .map_err(|_| AppError::GraphMapper("Failed to lock mapper".into()))?;
         self.relationships
             .iter()
             .map(|rel| {
-                let source_db_id = mapper_guard.get_or_parse_id(&rel.source)?;
-                let target_db_id = mapper_guard.get_or_parse_id(&rel.target)?;
+                let source_db_id = mapper.get_or_parse_id(&rel.source)?;
+                let target_db_id = mapper.get_or_parse_id(&rel.target)?;
 
                 Ok(KnowledgeRelationship::new(
                     source_db_id.to_string(),
@@ -159,20 +133,16 @@ impl LLMEnrichmentResult {
             .collect()
     }
 }
+
 async fn create_single_entity(
     llm_entity: &LLMKnowledgeEntity,
     source_id: &str,
     user_id: &str,
-    mapper: Arc<Mutex<GraphMapper>>,
+    mapper: Arc<GraphMapper>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     db_client: &SurrealDbClient,
 ) -> Result<KnowledgeEntity, AppError> {
-    let assigned_id = {
-        let mapper = mapper
-            .lock()
-            .map_err(|_| AppError::GraphMapper("Failed to lock mapper".into()))?;
-        mapper.get_id(&llm_entity.key)?.to_string()
-    };
+    let assigned_id = mapper.get_id(&llm_entity.key)?.to_string();
 
     let embedding_input = format!(
         "name: {}, description: {}, type: {}",
