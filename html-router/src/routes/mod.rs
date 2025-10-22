@@ -6,4 +6,5 @@ pub mod content;
 pub mod index;
 pub mod ingestion;
 pub mod knowledge;
+pub mod scratchpad;
 pub mod search;

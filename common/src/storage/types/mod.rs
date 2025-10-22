@@ -7,6 +7,7 @@ pub mod ingestion_task;
 pub mod knowledge_entity;
 pub mod knowledge_relationship;
 pub mod message;
+pub mod scratchpad;
 pub mod system_prompts;
 pub mod system_settings;
 pub mod text_chunk;

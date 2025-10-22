@@ -9,6 +9,8 @@
 {% include "icons/chat_icon.html" %}
 {% elif name == "search" %}
 {% include "icons/search_icon.html" %}
+{% elif name == "scratchpad" %}
+{% include "icons/scratchpad_icon.html" %}
 {% endif %}
 {% endmacro %}
 
@@ -26,7 +28,8 @@
       ("/knowledge", "book", "Knowledge"),
       ("/content", "document", "Content"),
       ("/chat", "chat", "Chat"),
-      ("/search", "search", "Search")
+      ("/search", "search", "Search"),
+      ("/scratchpad", "scratchpad", "Scratchpad")
       ] %}
       <li>
         <a hx-boost="true" href="{{ url }}" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">

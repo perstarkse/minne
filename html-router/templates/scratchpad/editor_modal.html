@@ -1,0 +1,286 @@
+{% extends "modal_base.html" %}
+
+{% block modal_class %}w-11/12 max-w-[90ch] max-h-[95%] overflow-y-auto{% endblock %}
+
+{% block form_attributes %}{% endblock %}
+
+{% block modal_content %}
+<h3 class="text-xl font-extrabold tracking-tight">
+  <div class="flex items-center gap-2" id="title-container">
+    <span class="font-semibold text-lg flex-1 truncate" id="title-display">{{ scratchpad.title }}</span>
+    <button type="button" onclick="editTitle()" class="nb-btn nb-btn-sm btn-ghost">
+      {% include "icons/edit_icon.html" %} Edit title
+    </button>
+  </div>
+
+  <!-- Hidden title form -->
+  <form id="title-form" hx-patch="/scratchpad/{{ scratchpad.id }}/title" hx-target="#body_modal" hx-swap="outerHTML"
+    class="hidden flex items-center gap-2">
+    <input type="text" name="title" value="{{ scratchpad.title }}"
+           class="nb-input nb-input-sm font-semibold text-lg flex-1" id="title-input">
+    <button type="submit" class="nb-btn nb-btn-sm">{% include "icons/check_icon.html" %}</button>
+    <button type="button" onclick="cancelEditTitle()" class="nb-btn nb-btn-sm btn-ghost">{% include "icons/x_icon.html" %}</button>
+  </form>
+</h3>
+
+  <div class="flex flex-col gap-3">
+    <div class="text-xs text-base-content/50 flex items-center gap-2">
+      <span>Last saved: <span id="last-saved">{{ scratchpad.last_saved_at }}</span></span>
+      <span id="save-status"
+        class="inline-flex items-center gap-1 text-success opacity-0 transition-opacity duration-300 pointer-events-none">
+        {% include "icons/check_icon.html" %} <span class="uppercase tracking-wider text-[0.7em]">Saved</span>
+      </span>
+    </div>
+
+  <form id="auto-save-form"
+      hx-patch="/scratchpad/{{ scratchpad.id }}/auto-save"
+      hx-trigger="keyup changed delay:2s, focusout"
+      hx-indicator="#save-indicator"
+      hx-swap="none"
+    class="flex flex-col gap-2">
+    <label class="w-full">
+      <textarea name="content" id="scratchpad-content"
+        class="nb-input w-full min-h-[60vh] resize-none font-mono text-sm"
+        placeholder="Start typing your thoughts... (Tab to indent, Shift+Tab to outdent)"
+        autofocus>{{ scratchpad.content }}</textarea>
+    </label>
+
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div id="save-indicator" class="htmx-indicator text-sm text-base-content/50 hidden">
+          {% include "icons/refresh_icon.html" %} Saving...
+        </div>
+      </div>
+      <div class="text-sm text-base-content/50">
+        <span id="char-count">{{ scratchpad.content|length }}</span> characters
+      </div>
+    </div>
+  </form>
+
+  <div id="action-row" class="flex gap-2 justify-between items-center">
+    <form hx-post="/scratchpad/{{ scratchpad.id }}/ingest"
+      hx-target="#main_section"
+      hx-swap="outerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('body_modal').close()"
+      class="inline flex flex-col gap-3"
+      id="ingest-form">
+      <button type="button" class="nb-btn nb-cta" onclick="toggleIngestConfirmation(true)"
+        data-role="ingest-trigger">
+        {% include "icons/send_icon.html" %} Ingest as Content
+      </button>
+      <div id="ingest-warning"
+        class="nb-card bg-warning/10 border border-warning text-warning-content text-sm leading-relaxed flex flex-col gap-2 p-3 hidden">
+        <div>
+          <strong class="font-semibold text-warning">Before you ingest</strong>
+          <p>
+            This will archive the scratchpad right away. After ingestion finishes you can review the content from the
+            <a href="/content" class="nb-link">Content</a> page, and archived scratchpads remain available below with a restore option.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="submit" class="nb-btn nb-btn-sm nb-cta">
+            Confirm ingest
+          </button>
+          <button type="button" class="nb-btn nb-btn-sm btn-ghost" onclick="toggleIngestConfirmation(false)">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <form id="archive-form" hx-post="/scratchpad/{{ scratchpad.id }}/archive" hx-target="#main_section"
+      hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) document.getElementById('body_modal').close()"
+      class="inline">
+      <button type="submit" class="nb-btn nb-btn-ghost text-warning">
+        {% include "icons/delete_icon.html" %} Archive
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+// Title editing functions
+function editTitle() {
+  const titleContainer = document.getElementById('title-container');
+  const titleForm = document.getElementById('title-form');
+  const titleInput = document.getElementById('title-input');
+  if (!titleContainer || !titleForm) return;
+
+  titleContainer.classList.add('hidden');
+  titleForm.classList.remove('hidden');
+
+  if (titleInput) {
+    titleInput.focus();
+    titleInput.select();
+  }
+}
+
+function cancelEditTitle() {
+  const titleContainer = document.getElementById('title-container');
+  const titleForm = document.getElementById('title-form');
+  if (!titleContainer || !titleForm) return;
+
+  titleContainer.classList.remove('hidden');
+  titleForm.classList.add('hidden');
+}
+
+(function initScratchpadModal() {
+  const modal = document.getElementById('body_modal');
+  if (!modal) return;
+
+  const textarea = modal.querySelector('#scratchpad-content');
+  const charCount = modal.querySelector('#char-count');
+  const lastSaved = modal.querySelector('#last-saved');
+  const saveStatus = modal.querySelector('#save-status');
+  const autoSaveForm = modal.querySelector('#auto-save-form');
+  const ingestWarning = modal.querySelector('#ingest-warning');
+  const ingestForm = modal.querySelector('#ingest-form');
+  const actionRow = modal.querySelector('#action-row');
+  let saveStatusTimeout;
+
+  const updateCharCount = () => {
+    if (!textarea || !charCount) return;
+    charCount.textContent = textarea.value.length;
+  };
+
+  const autoResize = () => {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  };
+
+  if (textarea) {
+    textarea.addEventListener('input', () => {
+      updateCharCount();
+      autoResize();
+    });
+
+    // Tab support - insert 4 spaces or handle outdenting
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const value = textarea.value;
+
+        if (e.shiftKey) {
+          // Shift+Tab: Outdent - remove up to 4 spaces from start of current line
+          const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+          const currentLine = value.substring(lineStart, start);
+          const leadingSpaces = currentLine.match(/^ */)?.[0]?.length || 0;
+          const spacesToRemove = Math.min(4, leadingSpaces);
+
+          if (spacesToRemove > 0) {
+            textarea.value = value.substring(0, lineStart) +
+                           currentLine.substring(spacesToRemove) +
+                           value.substring(start);
+
+            // Adjust cursor position
+            textarea.selectionStart = textarea.selectionEnd = start - spacesToRemove;
+          }
+        } else {
+          // Tab: Indent - insert 4 spaces at cursor position
+          textarea.value = value.substring(0, start) + '    ' + value.substring(end);
+
+          // Restore cursor position after inserted spaces
+          textarea.selectionStart = textarea.selectionEnd = start + 4;
+        }
+
+        // Trigger input event to update character count and auto-resize
+        textarea.dispatchEvent(new Event('input'));
+      }
+    });
+
+    updateCharCount();
+    autoResize();
+  }
+
+  if (autoSaveForm) {
+    autoSaveForm.addEventListener('htmx:beforeRequest', (evt) => {
+      if (evt.detail.elt !== autoSaveForm) return;
+      if (saveStatus) {
+        saveStatus.classList.add('opacity-0');
+        saveStatus.classList.remove('opacity-100');
+      }
+    });
+
+    autoSaveForm.addEventListener('htmx:afterRequest', (evt) => {
+      if (evt.detail.elt !== autoSaveForm) return;
+      if (!evt.detail.successful) return;
+
+      const xhr = evt.detail.xhr;
+      if (xhr && xhr.responseText) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.last_saved_at_display && lastSaved) {
+            lastSaved.textContent = data.last_saved_at_display;
+          }
+        } catch (_) {
+          // Ignore JSON parse errors
+        }
+      }
+
+      if (saveStatus) {
+        if (saveStatusTimeout) {
+          clearTimeout(saveStatusTimeout);
+        }
+        saveStatus.classList.remove('opacity-0');
+        saveStatus.classList.add('opacity-100');
+        saveStatusTimeout = setTimeout(() => {
+          saveStatus.classList.add('opacity-0');
+          saveStatus.classList.remove('opacity-100');
+        }, 2000);
+      }
+    });
+  }
+
+  if (ingestForm) {
+    ingestForm.addEventListener('htmx:afterRequest', (evt) => {
+      if (evt.detail.elt !== ingestForm) return;
+      toggleIngestConfirmation(false);
+    });
+  }
+})();
+
+function toggleIngestConfirmation(show) {
+  const modal = document.getElementById('body_modal');
+  if (!modal) return;
+
+  const warning = modal.querySelector('#ingest-warning');
+  const actionRow = modal.querySelector('#action-row');
+  const ingestForm = modal.querySelector('#ingest-form');
+  const archiveForm = modal.querySelector('#archive-form');
+  const ingestButton = modal.querySelector('[data-role="ingest-trigger"]');
+  const confirmButton = warning ? warning.querySelector('button[type="submit"]') : null;
+  if (!warning || !ingestButton || !actionRow || !ingestForm) return;
+
+  if (show) {
+    warning.classList.remove('hidden');
+    ingestButton.classList.add('hidden');
+    actionRow.classList.add('flex-col', 'items-stretch');
+    actionRow.classList.remove('items-center', 'justify-between');
+    ingestForm.classList.add('w-full');
+    if (archiveForm) {
+      archiveForm.classList.add('w-full');
+    }
+    if (confirmButton) {
+      confirmButton.focus();
+    }
+  } else {
+    warning.classList.add('hidden');
+    ingestButton.classList.remove('hidden');
+    actionRow.classList.remove('flex-col', 'items-stretch');
+    actionRow.classList.add('items-center', 'justify-between');
+    ingestForm.classList.remove('w-full');
+    if (archiveForm) {
+      archiveForm.classList.remove('w-full');
+    }
+  }
+}
+</script>
+{% endblock %}
+
+{% block primary_actions %}
+<!-- No additional actions needed -->
+{% endblock %}
