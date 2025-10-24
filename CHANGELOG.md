@@ -1,5 +1,7 @@
 # Changelog
 ## Unreleased
+
+## Version 0.2.5 (2025-10-24)
 - Added manual knowledge entity creation flows using a modal, with the option for suggested relationships
 - Scratchpad feature, with the feature to convert scratchpads to content.
 - Added knowledge entity search results to the global search
