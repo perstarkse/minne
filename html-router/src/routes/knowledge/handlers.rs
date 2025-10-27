@@ -4,10 +4,11 @@ use std::fmt;
 
 use axum::{
     extract::{Path, Query, State},
-    response::IntoResponse,
+    http::HeaderValue,
+    response::{IntoResponse, Response},
     Form, Json,
 };
-use axum_htmx::{HxBoosted, HxRequest};
+use axum_htmx::{HxBoosted, HxRequest, HX_TRIGGER};
 use serde::{
     de::{self, Deserializer, MapAccess, Visitor},
     Deserialize, Serialize,
@@ -41,6 +42,16 @@ const KNOWLEDGE_ENTITIES_PER_PAGE: usize = 12;
 const DEFAULT_RELATIONSHIP_TYPE: &str = "relates_to";
 const MAX_RELATIONSHIP_SUGGESTIONS: usize = 10;
 const SUGGESTION_MIN_SCORE: f32 = 0.5;
+
+const GRAPH_REFRESH_TRIGGER: &str = r#"{"knowledge-graph-refresh":true}"#;
+
+fn respond_with_graph_refresh(response: TemplateResponse) -> Response {
+    let mut response = response.into_response();
+    if let Ok(value) = HeaderValue::from_str(GRAPH_REFRESH_TRIGGER) {
+        response.headers_mut().insert(HX_TRIGGER, value);
+    }
+    response
+}
 
 #[derive(Deserialize, Default)]
 pub struct FilterParams {
@@ -148,11 +159,11 @@ pub async fn create_knowledge_entity(
 
     let default_params = FilterParams::default();
     let kb_data = build_knowledge_base_data(&state, &user, &default_params).await?;
-    Ok(TemplateResponse::new_partial(
+    Ok(respond_with_graph_refresh(TemplateResponse::new_partial(
         "knowledge/base.html",
         "main",
         kb_data,
-    ))
+    )))
 }
 
 pub async fn suggest_knowledge_relationships(
@@ -806,7 +817,7 @@ pub async fn patch_knowledge_entity(
     let content_categories = User::get_user_categories(&user.id, &state.db).await?;
 
     // Render updated list
-    Ok(TemplateResponse::new_template(
+    Ok(respond_with_graph_refresh(TemplateResponse::new_template(
         "knowledge/entity_list.html",
         EntityListData {
             visible_entities,
@@ -818,7 +829,7 @@ pub async fn patch_knowledge_entity(
             selected_content_category: None,
             page_query: String::new(),
         },
-    ))
+    )))
 }
 
 pub async fn delete_knowledge_entity(
@@ -845,7 +856,7 @@ pub async fn delete_knowledge_entity(
     // Get content categories
     let content_categories = User::get_user_categories(&user.id, &state.db).await?;
 
-    Ok(TemplateResponse::new_template(
+    Ok(respond_with_graph_refresh(TemplateResponse::new_template(
         "knowledge/entity_list.html",
         EntityListData {
             visible_entities,
@@ -857,7 +868,7 @@ pub async fn delete_knowledge_entity(
             selected_content_category: None,
             page_query: String::new(),
         },
-    ))
+    )))
 }
 
 #[derive(Serialize)]
@@ -878,13 +889,13 @@ pub async fn delete_knowledge_relationship(
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
 
     // Render updated list
-    Ok(TemplateResponse::new_template(
+    Ok(respond_with_graph_refresh(TemplateResponse::new_template(
         "knowledge/relationship_table.html",
         RelationshipTableData {
             entities,
             relationships,
         },
-    ))
+    )))
 }
 
 #[derive(Deserialize)]
@@ -915,11 +926,11 @@ pub async fn save_knowledge_relationship(
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
 
     // Render updated list
-    Ok(TemplateResponse::new_template(
+    Ok(respond_with_graph_refresh(TemplateResponse::new_template(
         "knowledge/relationship_table.html",
         RelationshipTableData {
             entities,
             relationships,
         },
-    ))
+    )))
 }

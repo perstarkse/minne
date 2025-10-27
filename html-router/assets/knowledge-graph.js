@@ -419,6 +419,10 @@
   document.addEventListener('DOMContentLoaded', () => tryRender(document));
 
   // HTMX partial swaps
+  document.body.addEventListener('knowledge-graph-refresh', () => {
+    tryRender(document);
+  });
+
   document.body.addEventListener('htmx:afterSettle', (evt) => {
     tryRender(evt && evt.target ? evt.target : document);
   });
