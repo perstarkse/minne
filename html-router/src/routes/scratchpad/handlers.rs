@@ -5,6 +5,7 @@ use axum::{
     Form,
 };
 use axum_htmx::{HxBoosted, HxRequest, HX_TRIGGER};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::html_state::HtmlState;
@@ -32,7 +33,7 @@ pub struct ScratchpadListItem {
     id: String,
     title: String,
     content: String,
-    last_saved_at: String,
+    last_saved_at: DateTime<Utc>,
 }
 
 #[derive(Serialize)]
@@ -46,9 +47,9 @@ pub struct ScratchpadDetailData {
 pub struct ScratchpadArchiveItem {
     id: String,
     title: String,
-    archived_at: String,
+    archived_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ingested_at: Option<String>,
+    ingested_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize)]
@@ -56,9 +57,9 @@ pub struct ScratchpadDetail {
     id: String,
     title: String,
     content: String,
-    created_at: String,
-    updated_at: String,
-    last_saved_at: String,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    last_saved_at: DateTime<Utc>,
     is_dirty: bool,
 }
 
@@ -75,7 +76,7 @@ impl From<&Scratchpad> for ScratchpadListItem {
             id: value.id.clone(),
             title: value.title.clone(),
             content: value.content.clone(),
-            last_saved_at: value.last_saved_at.format("%Y-%m-%d %H:%M").to_string(),
+            last_saved_at: value.last_saved_at,
         }
     }
 }
@@ -85,13 +86,8 @@ impl From<&Scratchpad> for ScratchpadArchiveItem {
         Self {
             id: value.id.clone(),
             title: value.title.clone(),
-            archived_at: value
-                .archived_at
-                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                .unwrap_or_else(|| "Unknown".to_string()),
-            ingested_at: value
-                .ingested_at
-                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string()),
+            archived_at: value.archived_at,
+            ingested_at: value.ingested_at,
         }
     }
 }
@@ -102,9 +98,9 @@ impl From<&Scratchpad> for ScratchpadDetail {
             id: value.id.clone(),
             title: value.title.clone(),
             content: value.content.clone(),
-            created_at: value.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            updated_at: value.updated_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            last_saved_at: value.last_saved_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            last_saved_at: value.last_saved_at,
             is_dirty: value.is_dirty,
         }
     }
@@ -391,6 +387,126 @@ pub async fn ingest_scratchpad(
     Ok(response)
 }
 
+pub async fn archive_scratchpad(
+    RequireUser(user): RequireUser,
+    State(state): State<HtmlState>,
+    Path(scratchpad_id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    Scratchpad::archive(&scratchpad_id, &user.id, &state.db, false).await?;
+
+    let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
+    let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
+    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
+
+    let scratchpad_list: Vec<ScratchpadListItem> =
+        scratchpads.iter().map(ScratchpadListItem::from).collect();
+    let archived_list: Vec<ScratchpadArchiveItem> = archived_scratchpads
+        .iter()
+        .map(ScratchpadArchiveItem::from)
+        .collect();
+
+    Ok(TemplateResponse::new_template(
+        "scratchpad/base.html",
+        ScratchpadPageData {
+            user,
+            scratchpads: scratchpad_list,
+            archived_scratchpads: archived_list,
+            conversation_archive,
+            new_scratchpad: None,
+        },
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_scratchpad_list_item_conversion() {
+        // Create a test scratchpad with datetime values
+        let now = Utc::now();
+        let mut scratchpad = common::storage::types::scratchpad::Scratchpad::new(
+            "test_user".to_string(),
+            "Test Scratchpad".to_string(),
+        );
+
+        // Override the timestamps with known values for testing
+        scratchpad.last_saved_at = now;
+
+        // Test conversion to ScratchpadListItem
+        let list_item = ScratchpadListItem::from(&scratchpad);
+
+        assert_eq!(list_item.id, scratchpad.id);
+        assert_eq!(list_item.title, scratchpad.title);
+        assert_eq!(list_item.content, scratchpad.content);
+        assert_eq!(list_item.last_saved_at, scratchpad.last_saved_at);
+    }
+
+    #[test]
+    fn test_scratchpad_detail_conversion() {
+        // Create a test scratchpad with datetime values
+        let now = Utc::now();
+        let mut scratchpad = common::storage::types::scratchpad::Scratchpad::new(
+            "test_user".to_string(),
+            "Test Scratchpad".to_string(),
+        );
+
+        // Override the timestamps with known values for testing
+        scratchpad.last_saved_at = now;
+
+        // Test conversion to ScratchpadDetail
+        let detail = ScratchpadDetail::from(&scratchpad);
+
+        assert_eq!(detail.id, scratchpad.id);
+        assert_eq!(detail.title, scratchpad.title);
+        assert_eq!(detail.content, scratchpad.content);
+        assert_eq!(detail.created_at, scratchpad.created_at);
+        assert_eq!(detail.updated_at, scratchpad.updated_at);
+        assert_eq!(detail.last_saved_at, scratchpad.last_saved_at);
+        assert_eq!(detail.is_dirty, scratchpad.is_dirty);
+    }
+
+    #[test]
+    fn test_scratchpad_archive_item_conversion() {
+        // Create a test scratchpad with optional datetime values
+        let now = Utc::now();
+        let mut scratchpad = common::storage::types::scratchpad::Scratchpad::new(
+            "test_user".to_string(),
+            "Test Scratchpad".to_string(),
+        );
+
+        // Set optional datetime fields
+        scratchpad.archived_at = Some(now);
+        scratchpad.ingested_at = Some(now);
+
+        // Test conversion to ScratchpadArchiveItem
+        let archive_item = ScratchpadArchiveItem::from(&scratchpad);
+
+        assert_eq!(archive_item.id, scratchpad.id);
+        assert_eq!(archive_item.title, scratchpad.title);
+        assert_eq!(archive_item.archived_at, scratchpad.archived_at);
+        assert_eq!(archive_item.ingested_at, scratchpad.ingested_at);
+    }
+
+    #[test]
+    fn test_scratchpad_archive_item_conversion_with_none_values() {
+        // Create a test scratchpad without optional datetime values
+        let scratchpad = common::storage::types::scratchpad::Scratchpad::new(
+            "test_user".to_string(),
+            "Test Scratchpad".to_string(),
+        );
+
+        // Test conversion to ScratchpadArchiveItem
+        let archive_item = ScratchpadArchiveItem::from(&scratchpad);
+
+        assert_eq!(archive_item.id, scratchpad.id);
+        assert_eq!(archive_item.title, scratchpad.title);
+        assert_eq!(archive_item.archived_at, None);
+        assert_eq!(archive_item.ingested_at, None);
+    }
+}
+
 pub async fn restore_scratchpad(
     RequireUser(user): RequireUser,
     State(state): State<HtmlState>,
@@ -418,55 +534,6 @@ pub async fn restore_scratchpad(
     });
     let trigger_value = serde_json::to_string(&trigger_payload).unwrap_or_else(|_| {
         r#"{"toast":{"title":"Scratchpad restored","description":"The scratchpad is back in your active list.","type":"info"}}"#.to_string()
-    });
-
-    let template_response = TemplateResponse::new_partial(
-        "scratchpad/base.html",
-        "main",
-        ScratchpadPageData {
-            user,
-            scratchpads: scratchpad_list,
-            archived_scratchpads: archived_list,
-            conversation_archive,
-            new_scratchpad: None,
-        },
-    );
-
-    let mut response = template_response.into_response();
-    if let Ok(header_value) = HeaderValue::from_str(&trigger_value) {
-        response.headers_mut().insert(HX_TRIGGER, header_value);
-    }
-
-    Ok(response)
-}
-
-pub async fn archive_scratchpad(
-    RequireUser(user): RequireUser,
-    State(state): State<HtmlState>,
-    Path(scratchpad_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
-    Scratchpad::archive(&scratchpad_id, &user.id, &state.db, false).await?;
-
-    let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
-    let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
-
-    let scratchpad_list: Vec<ScratchpadListItem> =
-        scratchpads.iter().map(ScratchpadListItem::from).collect();
-    let archived_list: Vec<ScratchpadArchiveItem> = archived_scratchpads
-        .iter()
-        .map(ScratchpadArchiveItem::from)
-        .collect();
-
-    let trigger_payload = serde_json::json!({
-        "toast": {
-            "title": "Scratchpad archived",
-            "description": "You can find it in the archive drawer below.",
-            "type": "warning"
-        }
-    });
-    let trigger_value = serde_json::to_string(&trigger_payload).unwrap_or_else(|_| {
-        r#"{"toast":{"title":"Scratchpad archived","description":"You can find it in the archive drawer below.","type":"warning"}}"#.to_string()
     });
 
     let template_response = TemplateResponse::new_partial(

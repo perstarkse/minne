@@ -459,4 +459,41 @@ mod tests {
         let retrieved: Option<Scratchpad> = db.get_item(&scratchpad_id).await.unwrap();
         assert!(retrieved.is_some());
     }
+
+    #[tokio::test]
+    async fn test_timezone_aware_scratchpad_conversion() {
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .expect("Failed to create test database");
+
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
+
+        let user_id = "test_user_123";
+        let scratchpad = Scratchpad::new(user_id.to_string(), "Test Timezone Scratchpad".to_string());
+        let scratchpad_id = scratchpad.id.clone();
+
+        db.store_item(scratchpad).await.unwrap();
+
+        let retrieved = Scratchpad::get_by_id(&scratchpad_id, user_id, &db).await.unwrap();
+
+        // Test that datetime fields are preserved and can be used for timezone formatting
+        assert!(retrieved.created_at.timestamp() > 0);
+        assert!(retrieved.updated_at.timestamp() > 0);
+        assert!(retrieved.last_saved_at.timestamp() > 0);
+
+        // Test that optional datetime fields work correctly
+        assert!(retrieved.archived_at.is_none());
+        assert!(retrieved.ingested_at.is_none());
+
+        // Archive the scratchpad to test optional datetime handling
+        let archived = Scratchpad::archive(&scratchpad_id, user_id, &db, false)
+            .await
+            .unwrap();
+
+        assert!(archived.archived_at.is_some());
+        assert!(archived.archived_at.unwrap().timestamp() > 0);
+        assert!(archived.ingested_at.is_none());
+    }
 }

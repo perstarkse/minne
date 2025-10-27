@@ -40,7 +40,7 @@
           {{ scratchpad.content[:100] }}{% if scratchpad.content|length > 100 %}...{% endif %}
         </div>
         <div class="text-xs text-base-content/50">
-          Last saved: {{ scratchpad.last_saved_at }}
+          Last saved: {{ scratchpad.last_saved_at | datetimeformat(format="short", tz=user.timezone) }}
         </div>
       </div>
       {% else %}
@@ -76,9 +76,9 @@
             <div class="flex items-start justify-between gap-3">
               <div class="flex-1 min-w-0">
                 <h4 class="font-semibold text-base truncate" title="{{ scratchpad.title }}">{{ scratchpad.title }}</h4>
-                <div class="text-xs text-base-content/50">Archived {{ scratchpad.archived_at }}</div>
+                <div class="text-xs text-base-content/50">Archived {{ scratchpad.archived_at | datetimeformat(format="short", tz=user.timezone) }}</div>
                 {% if scratchpad.ingested_at %}
-                <div class="text-xs text-base-content/40">Ingestion started {{ scratchpad.ingested_at }}</div>
+                <div class="text-xs text-base-content/40">Ingestion started {{ scratchpad.ingested_at | datetimeformat(format="short", tz=user.timezone) }}</div>
                 {% endif %}
               </div>
               <div class="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
