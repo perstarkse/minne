@@ -39,11 +39,87 @@ use crate::{
 use url::form_urlencoded;
 
 const KNOWLEDGE_ENTITIES_PER_PAGE: usize = 12;
-const DEFAULT_RELATIONSHIP_TYPE: &str = "relates_to";
+const RELATIONSHIP_TYPE_OPTIONS: &[&str] = &["RelatedTo", "RelevantTo", "SimilarTo", "References"];
+const DEFAULT_RELATIONSHIP_TYPE: &str = RELATIONSHIP_TYPE_OPTIONS[0];
 const MAX_RELATIONSHIP_SUGGESTIONS: usize = 10;
 const SUGGESTION_MIN_SCORE: f32 = 0.5;
 
 const GRAPH_REFRESH_TRIGGER: &str = r#"{"knowledge-graph-refresh":true}"#;
+const RELATIONSHIP_TYPE_ALIASES: &[(&str, &str)] = &[("relatesto", "RelatedTo")];
+
+fn relationship_type_or_default(value: Option<&str>) -> String {
+    match value {
+        Some(raw) => canonicalize_relationship_type(raw),
+        None => DEFAULT_RELATIONSHIP_TYPE.to_string(),
+    }
+}
+
+fn canonicalize_relationship_type(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return DEFAULT_RELATIONSHIP_TYPE.to_string();
+    }
+
+    let key: String = trimmed
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect();
+
+    for option in RELATIONSHIP_TYPE_OPTIONS {
+        let option_key: String = option
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect();
+        if option_key == key {
+            return (*option).to_string();
+        }
+    }
+
+    for (alias, target) in RELATIONSHIP_TYPE_ALIASES {
+        if *alias == key {
+            return (*target).to_string();
+        }
+    }
+
+    let mut result = String::new();
+    for segment in trimmed
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|segment| !segment.is_empty())
+    {
+        let mut chars = segment.chars();
+        if let Some(first) = chars.next() {
+            result.extend(first.to_uppercase());
+            for ch in chars {
+                result.extend(ch.to_lowercase());
+            }
+        }
+    }
+
+    if result.is_empty() {
+        trimmed.to_string()
+    } else {
+        result
+    }
+}
+
+fn collect_relationship_type_options(relationships: &[KnowledgeRelationship]) -> Vec<String> {
+    let mut options: HashSet<String> = RELATIONSHIP_TYPE_OPTIONS
+        .iter()
+        .map(|value| (*value).to_string())
+        .collect();
+
+    for relationship in relationships {
+        options.insert(canonicalize_relationship_type(
+            &relationship.metadata.relationship_type,
+        ));
+    }
+
+    let mut options: Vec<String> = options.into_iter().collect();
+    options.sort();
+    options
+}
 
 fn respond_with_graph_refresh(response: TemplateResponse) -> Response {
     let mut response = response.into_response();
@@ -70,6 +146,8 @@ pub async fn show_new_knowledge_entity_form(
         .collect();
 
     let existing_entities = User::get_knowledge_entities(&user.id, &state.db).await?;
+    let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
+    let relationship_type_options = collect_relationship_type_options(&relationships);
     let empty_selected: HashSet<String> = HashSet::new();
     let empty_scores: HashMap<String, f32> = HashMap::new();
     let relationship_options =
@@ -81,9 +159,10 @@ pub async fn show_new_knowledge_entity_form(
             entity_types,
             relationship_list: RelationshipListData {
                 relationship_options,
-                relationship_type: DEFAULT_RELATIONSHIP_TYPE.to_string(),
+                relationship_type: relationship_type_or_default(None),
                 suggestion_count: 0,
             },
+            relationship_type_options,
         },
     ))
 }
@@ -118,13 +197,7 @@ pub async fn create_knowledge_entity(
 
     state.db.store_item(new_entity.clone()).await?;
 
-    let relationship_type = form
-        .relationship_type
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(DEFAULT_RELATIONSHIP_TYPE)
-        .to_string();
+    let relationship_type = relationship_type_or_default(form.relationship_type.as_deref());
 
     debug!("form: {:?}", form);
     if !form.relationship_ids.is_empty() {
@@ -236,13 +309,7 @@ pub async fn suggest_knowledge_relationships(
         }
     }
 
-    let relationship_type = form
-        .relationship_type
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(DEFAULT_RELATIONSHIP_TYPE)
-        .to_string();
+    let relationship_type = relationship_type_or_default(form.relationship_type.as_deref());
 
     let entities: Vec<KnowledgeEntity> = entity_lookup.into_values().collect();
     let relationship_options =
@@ -262,7 +329,7 @@ pub async fn suggest_knowledge_relationships(
 pub struct KnowledgeBaseData {
     entities: Vec<KnowledgeEntity>,
     visible_entities: Vec<KnowledgeEntity>,
-    relationships: Vec<KnowledgeRelationship>,
+    relationships: Vec<RelationshipTableRow>,
     user: User,
     entity_types: Vec<String>,
     content_categories: Vec<String>,
@@ -271,6 +338,8 @@ pub struct KnowledgeBaseData {
     conversation_archive: Vec<Conversation>,
     pagination: Pagination,
     page_query: String,
+    relationship_type_options: Vec<String>,
+    default_relationship_type: String,
 }
 
 #[derive(Serialize)]
@@ -279,6 +348,12 @@ pub struct RelationshipOption {
     is_selected: bool,
     is_suggested: bool,
     score: Option<f32>,
+}
+
+#[derive(Serialize)]
+pub struct RelationshipTableRow {
+    relationship: KnowledgeRelationship,
+    relationship_type_label: String,
 }
 
 fn build_relationship_options(
@@ -320,6 +395,40 @@ fn build_relationship_options(
     options
 }
 
+fn build_relationship_table_data(
+    entities: Vec<KnowledgeEntity>,
+    relationships: Vec<KnowledgeRelationship>,
+) -> RelationshipTableData {
+    let relationship_type_options = collect_relationship_type_options(&relationships);
+    let mut frequency: HashMap<String, usize> = HashMap::new();
+    let relationships = relationships
+        .into_iter()
+        .map(|relationship| {
+            let relationship_type_label =
+                canonicalize_relationship_type(&relationship.metadata.relationship_type);
+            *frequency
+                .entry(relationship_type_label.clone())
+                .or_insert(0) += 1;
+            RelationshipTableRow {
+                relationship,
+                relationship_type_label,
+            }
+        })
+        .collect();
+    let default_relationship_type = frequency
+        .into_iter()
+        .max_by_key(|(_, count)| *count)
+        .map(|(label, _)| label)
+        .unwrap_or_else(|| DEFAULT_RELATIONSHIP_TYPE.to_string());
+
+    RelationshipTableData {
+        entities,
+        relationships,
+        relationship_type_options,
+        default_relationship_type,
+    }
+}
+
 async fn build_knowledge_base_data(
     state: &HtmlState,
     user: &User,
@@ -359,10 +468,16 @@ async fn build_knowledge_base_data(
 
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
     let entity_id_set: HashSet<String> = entities.iter().map(|e| e.id.clone()).collect();
-    let relationships: Vec<KnowledgeRelationship> = relationships
+    let filtered_relationships: Vec<KnowledgeRelationship> = relationships
         .into_iter()
         .filter(|rel| entity_id_set.contains(&rel.in_) && entity_id_set.contains(&rel.out))
         .collect();
+    let RelationshipTableData {
+        entities: _,
+        relationships,
+        relationship_type_options,
+        default_relationship_type,
+    } = build_relationship_table_data(entities.clone(), filtered_relationships);
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(KnowledgeBaseData {
@@ -377,6 +492,8 @@ async fn build_knowledge_base_data(
         conversation_archive,
         pagination,
         page_query,
+        relationship_type_options,
+        default_relationship_type,
     })
 }
 
@@ -391,6 +508,7 @@ pub struct RelationshipListData {
 pub struct NewEntityModalData {
     entity_types: Vec<String>,
     relationship_list: RelationshipListData,
+    relationship_type_options: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -690,7 +808,7 @@ pub async fn get_knowledge_graph_json(
             links.push(GraphLink {
                 source: rel.out.clone(),
                 target: rel.in_.clone(),
-                relationship_type: rel.metadata.relationship_type.clone(),
+                relationship_type: canonicalize_relationship_type(&rel.metadata.relationship_type),
             });
         }
     }
@@ -874,7 +992,9 @@ pub async fn delete_knowledge_entity(
 #[derive(Serialize)]
 pub struct RelationshipTableData {
     entities: Vec<KnowledgeEntity>,
-    relationships: Vec<KnowledgeRelationship>,
+    relationships: Vec<RelationshipTableRow>,
+    relationship_type_options: Vec<String>,
+    default_relationship_type: String,
 }
 
 pub async fn delete_knowledge_relationship(
@@ -887,14 +1007,12 @@ pub async fn delete_knowledge_relationship(
     let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
+    let table_data = build_relationship_table_data(entities, relationships);
 
     // Render updated list
     Ok(respond_with_graph_refresh(TemplateResponse::new_template(
         "knowledge/relationship_table.html",
-        RelationshipTableData {
-            entities,
-            relationships,
-        },
+        table_data,
     )))
 }
 
@@ -911,12 +1029,13 @@ pub async fn save_knowledge_relationship(
     Form(form): Form<SaveKnowledgeRelationshipInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
     // Construct relationship
+    let relationship_type = canonicalize_relationship_type(&form.relationship_type);
     let relationship = KnowledgeRelationship::new(
         form.in_,
         form.out,
         user.id.clone(),
         "manual".into(),
-        form.relationship_type,
+        relationship_type,
     );
 
     relationship.store_relationship(&state.db).await?;
@@ -924,13 +1043,11 @@ pub async fn save_knowledge_relationship(
     let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
 
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
+    let table_data = build_relationship_table_data(entities, relationships);
 
     // Render updated list
     Ok(respond_with_graph_refresh(TemplateResponse::new_template(
         "knowledge/relationship_table.html",
-        RelationshipTableData {
-            entities,
-            relationships,
-        },
+        table_data,
     )))
 }

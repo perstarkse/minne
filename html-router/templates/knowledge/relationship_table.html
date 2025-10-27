@@ -9,7 +9,8 @@
       </tr>
     </thead>
     <tbody>
-      {% for relationship in relationships %}
+      {% for row in relationships %}
+      {% set relationship = row.relationship %}
       <tr>
         <!-- Origin column -->
         <td>
@@ -30,7 +31,7 @@
           {{ relationship.out }}
           {% endfor %}
         </td>
-        <td class="uppercase tracking-wide text-xs">{{ relationship.metadata.relationship_type }}</td>
+        <td class="uppercase tracking-wide text-xs">{{ row.relationship_type_label }}</td>
         <td>
           <button class="nb-btn btn-xs" hx-delete="/knowledge-relationship/{{ relationship.id }}"
             hx-target="#relationship_table_section" hx-swap="outerHTML">
@@ -61,7 +62,7 @@
         </td>
         <td>
           <input id="relationship_type_input" name="relationship_type" type="text" placeholder="RelatedTo"
-            class="nb-input w-full new_relationship_input" />
+            class="nb-input w-full new_relationship_input" value="{{ default_relationship_type }}" />
         </td>
         <td>
           <button id="save_relationship_button" type="button" class="nb-btn btn-sm" hx-post="/knowledge-relationship"

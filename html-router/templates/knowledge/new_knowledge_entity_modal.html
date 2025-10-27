@@ -45,8 +45,13 @@ hx-swap="outerHTML"
       <label class="flex items-center gap-2">
         <span class="text-xs uppercase tracking-wide opacity-70">Type</span>
         <input type="text" name="relationship_type" value="{{ relationship_list.relationship_type }}"
-          class="nb-input w-28" placeholder="relates_to">
+          class="nb-input w-32" placeholder="RelatedTo" list="relationship-type-options">
       </label>
+      <datalist id="relationship-type-options">
+        {% for rel_type in relationship_type_options %}
+        <option value="{{ rel_type }}"></option>
+        {% endfor %}
+      </datalist>
       <button type="button" class="nb-btn btn-sm nb-cta sm:ml-2" hx-post="/knowledge-entity/suggestions"
         hx-target="#relationship-list" hx-swap="outerHTML" hx-include="#modal_form">
         Suggest Relationships

@@ -1,6 +1,7 @@
 # Changelog
 ## Unreleased
 - Added an opt-in FastEmbed-based reranking stage behind `reranking_enabled`. It improves retrieval accuracy by re-scoring hybrid results.
+- Fix: default name for relationships harmonized across application
 
 ## Version 0.2.5 (2025-10-24)
 - Added manual knowledge entity creation flows using a modal, with the option for suggested relationships
