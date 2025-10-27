@@ -5,6 +5,7 @@ use serde::Deserialize;
 #[serde(rename_all = "lowercase")]
 pub enum StorageKind {
     Local,
+    Memory,
 }
 
 fn default_storage_kind() -> StorageKind {
