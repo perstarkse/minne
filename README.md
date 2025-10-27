@@ -98,6 +98,23 @@ The graph visualization shows:
 - Relationships as connections (manually defined, AI-discovered, or suggested)
 - Interactive navigation for discovery and editing
 
+### Optional FastEmbed Reranking
+
+Minne ships with an opt-in reranking stage powered by [fastembed-rs](https://github.com/Anush008/fastembed-rs). When enabled, the hybrid retrieval results are rescored with a lightweight cross-encoder before being returned to chat or ingestion flows. In practice this often means more relevant results, boosting answer quality and downstream enrichment.
+
+⚠️ **Resource notes**
+- Enabling reranking downloads and caches ~1.1 GB of model data on first startup (cached under `<data_dir>/fastembed/reranker` by default).
+- Initialization takes longer while warming the cache, and each query consumes extra CPU. The default pool size (2) is tuned for a singe user setup, but could work with a pool size on 1 as well.
+- The feature is disabled by default. Set `reranking_enabled: true` (or `RERANKING_ENABLED=true`) if you’re comfortable with the additional footprint.
+
+Example configuration:
+
+```yaml
+reranking_enabled: true
+reranking_pool_size: 2
+fastembed_cache_dir: "/var/lib/minne/fastembed"  # optional override, defaults to .fastembed_cache
+```
+
 ## Tech Stack
 
 - **Backend:** Rust with Axum framework and Server-Side Rendering (SSR)
@@ -125,6 +142,10 @@ Minne can be configured using environment variables or a `config.yaml` file. Env
 - `RUST_LOG`: Controls logging level (e.g., `minne=info,tower_http=debug`)
 - `DATA_DIR`: Directory to store local data (e.g., `./data`)
 - `OPENAI_BASE_URL`: Base URL for custom AI providers (like Ollama)
+- `RERANKING_ENABLED` / `reranking_enabled`: Set to `true` to enable the FastEmbed reranking stage (default `false`)
+- `RERANKING_POOL_SIZE` / `reranking_pool_size`: Maximum concurrent reranker workers (defaults to `2`)
+- `FASTEMBED_CACHE_DIR` / `fastembed_cache_dir`: Directory for cached FastEmbed models (defaults to `<data_dir>/fastembed/reranker`)
+- `FASTEMBED_SHOW_DOWNLOAD_PROGRESS` / `fastembed_show_download_progress`: Show model download progress when warming the cache (default `true`)
 
 ### Example config.yaml
 

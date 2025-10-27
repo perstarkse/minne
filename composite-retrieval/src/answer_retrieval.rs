@@ -8,18 +8,13 @@ use async_openai::{
 };
 use common::{
     error::AppError,
-    storage::{
-        db::SurrealDbClient,
-        types::{
-            message::{format_history, Message},
-            system_settings::SystemSettings,
-        },
+    storage::types::{
+        message::{format_history, Message},
+        system_settings::SystemSettings,
     },
 };
 use serde::Deserialize;
 use serde_json::Value;
-
-use crate::{retrieve_entities, retrieved_entities_to_json};
 
 use super::answer_retrieval_helper::get_query_response_schema;
 
@@ -36,51 +31,10 @@ pub struct LLMResponseFormat {
     pub references: Vec<Reference>,
 }
 
-/// Orchestrates query processing and returns an answer with references
-///
-/// Takes a query and uses the provided clients to generate an answer with supporting references.
-///
-/// # Arguments
-///
-/// * `surreal_db_client` - Client for `SurrealDB` interactions
-/// * `openai_client` - Client for `OpenAI` API calls
-/// * `query` - The user's query string
-/// * `user_id` - The user's id
-///
-/// # Returns
-///
-/// Returns a tuple of the answer and its references, or an API error
 #[derive(Debug)]
 pub struct Answer {
     pub content: String,
     pub references: Vec<String>,
-}
-
-pub async fn get_answer_with_references(
-    surreal_db_client: &SurrealDbClient,
-    openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-    query: &str,
-    user_id: &str,
-) -> Result<Answer, AppError> {
-    let entities = retrieve_entities(surreal_db_client, openai_client, query, user_id).await?;
-    let settings = SystemSettings::get_current(surreal_db_client).await?;
-
-    let entities_json = retrieved_entities_to_json(&entities);
-    let user_message = create_user_message(&entities_json, query);
-
-    let request = create_chat_request(user_message, &settings)?;
-    let response = openai_client.chat().create(request).await?;
-
-    let llm_response = process_llm_response(response).await?;
-
-    Ok(Answer {
-        content: llm_response.answer,
-        references: llm_response
-            .references
-            .into_iter()
-            .map(|r| r.reference)
-            .collect(),
-    })
 }
 
 pub fn create_user_message(entities_json: &Value, query: &str) -> String {

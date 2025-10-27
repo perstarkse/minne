@@ -214,6 +214,7 @@ mod tests {
             openai_base_url: "..".into(),
             storage: StorageKind::Local,
             pdf_ingest_mode: LlmFirst,
+            ..Default::default()
         }
     }
 

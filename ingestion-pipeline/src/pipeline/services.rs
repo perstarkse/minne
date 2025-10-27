@@ -18,7 +18,9 @@ use common::{
     },
     utils::{config::AppConfig, embedding::generate_embedding},
 };
-use composite_retrieval::{retrieve_entities, retrieved_entities_to_json, RetrievedEntity};
+use composite_retrieval::{
+    reranking::RerankerPool, retrieve_entities, retrieved_entities_to_json, RetrievedEntity,
+};
 use text_splitter::TextSplitter;
 
 use super::{enrichment_result::LLMEnrichmentResult, preparation::to_text_content};
@@ -62,6 +64,7 @@ pub struct DefaultPipelineServices {
     db: Arc<SurrealDbClient>,
     openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     config: AppConfig,
+    reranker_pool: Option<Arc<RerankerPool>>,
 }
 
 impl DefaultPipelineServices {
@@ -69,11 +72,13 @@ impl DefaultPipelineServices {
         db: Arc<SurrealDbClient>,
         openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
         config: AppConfig,
+        reranker_pool: Option<Arc<RerankerPool>>,
     ) -> Self {
         Self {
             db,
             openai_client,
             config,
+            reranker_pool,
         }
     }
 
@@ -151,7 +156,19 @@ impl PipelineServices for DefaultPipelineServices {
             content.text, content.category, content.context
         );
 
-        retrieve_entities(&self.db, &self.openai_client, &input_text, &content.user_id).await
+        let rerank_lease = match &self.reranker_pool {
+            Some(pool) => Some(pool.checkout().await),
+            None => None,
+        };
+
+        retrieve_entities(
+            &self.db,
+            &self.openai_client,
+            &input_text,
+            &content.user_id,
+            rerank_lease,
+        )
+        .await
     }
 
     async fn run_enrichment(

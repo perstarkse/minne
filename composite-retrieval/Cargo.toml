@@ -19,6 +19,7 @@ surrealdb = { workspace = true }
 futures = { workspace = true }
 async-openai = { workspace = true }
 uuid = { workspace = true }
+fastembed = { workspace = true }
  
 common = { path = "../common", features = ["test-utils"] }
 state-machines = { workspace = true }

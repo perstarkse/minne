@@ -118,11 +118,17 @@ pub async fn get_response_stream(
         };
 
     // 2. Retrieve knowledge entities
+    let rerank_lease = match state.reranker_pool.as_ref() {
+        Some(pool) => Some(pool.checkout().await),
+        None => None,
+    };
+
     let entities = match retrieve_entities(
         &state.db,
         &state.openai_client,
         &user_message.content,
         &user.id,
+        rerank_lease,
     )
     .await
     {

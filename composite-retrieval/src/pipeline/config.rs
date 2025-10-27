@@ -17,6 +17,9 @@ pub struct RetrievalTuning {
     pub graph_score_decay: f32,
     pub graph_seed_min_score: f32,
     pub graph_vector_inheritance: f32,
+    pub rerank_blend_weight: f32,
+    pub rerank_scores_only: bool,
+    pub rerank_keep_top: usize,
 }
 
 impl Default for RetrievalTuning {
@@ -36,6 +39,9 @@ impl Default for RetrievalTuning {
             graph_score_decay: 0.75,
             graph_seed_min_score: 0.4,
             graph_vector_inheritance: 0.6,
+            rerank_blend_weight: 0.65,
+            rerank_scores_only: false,
+            rerank_keep_top: 8,
         }
     }
 }

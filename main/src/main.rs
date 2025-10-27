@@ -1,6 +1,7 @@
 use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
 use common::{storage::db::SurrealDbClient, utils::config::get_config};
+use composite_retrieval::reranking::RerankerPool;
 use html_router::{html_routes, html_state::HtmlState};
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use std::sync::Arc;
@@ -43,8 +44,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_api_base(&config.openai_base_url),
     ));
 
-    let html_state =
-        HtmlState::new_with_resources(db, openai_client, session_store, config.clone())?;
+    let reranker_pool = RerankerPool::maybe_from_config(&config)?;
+
+    let html_state = HtmlState::new_with_resources(
+        db,
+        openai_client,
+        session_store,
+        config.clone(),
+        reranker_pool.clone(),
+    )?;
 
     let api_state = ApiState {
         db: html_state.db.clone(),
@@ -102,9 +110,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_api_base(&config.openai_base_url),
         ));
         let ingestion_pipeline = Arc::new(
-            IngestionPipeline::new(worker_db.clone(), openai_client.clone(), config.clone())
-                .await
-                .unwrap(),
+            IngestionPipeline::new(
+                worker_db.clone(),
+                openai_client.clone(),
+                config.clone(),
+                reranker_pool.clone(),
+            )
+            .await
+            .unwrap(),
         );
 
         info!("Starting worker process");
@@ -152,6 +165,7 @@ mod tests {
             openai_base_url: "https://example.com".into(),
             storage: StorageKind::Local,
             pdf_ingest_mode: PdfIngestMode::LlmFirst,
+            ..Default::default()
         }
     }
 
@@ -181,9 +195,14 @@ mod tests {
                 .with_api_base(&config.openai_base_url),
         ));
 
-        let html_state =
-            HtmlState::new_with_resources(db.clone(), openai_client, session_store, config.clone())
-                .expect("failed to build html state");
+        let html_state = HtmlState::new_with_resources(
+            db.clone(),
+            openai_client,
+            session_store,
+            config.clone(),
+            None,
+        )
+        .expect("failed to build html state");
 
         let api_state = ApiState {
             db: html_state.db.clone(),

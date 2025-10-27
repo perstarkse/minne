@@ -270,11 +270,28 @@ impl FileInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::config::{PdfIngestMode::LlmFirst, StorageKind};
+    use crate::utils::config::{AppConfig, PdfIngestMode::LlmFirst, StorageKind};
     use axum::http::HeaderMap;
     use axum_typed_multipart::FieldMetadata;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    fn test_config(data_dir: &str) -> AppConfig {
+        AppConfig {
+            data_dir: data_dir.to_string(),
+            openai_api_key: "test_key".to_string(),
+            surrealdb_address: "test_address".to_string(),
+            surrealdb_username: "test_user".to_string(),
+            surrealdb_password: "test_pass".to_string(),
+            surrealdb_namespace: "test_ns".to_string(),
+            surrealdb_database: "test_db".to_string(),
+            http_port: 3000,
+            openai_base_url: "..".to_string(),
+            storage: StorageKind::Local,
+            pdf_ingest_mode: LlmFirst,
+            ..Default::default()
+        }
+    }
 
     /// Creates a test temporary file with the given content
     fn create_test_file(content: &[u8], file_name: &str) -> FieldData<NamedTempFile> {
@@ -314,19 +331,7 @@ mod tests {
 
         // Create a FileInfo instance with data_dir in /tmp
         let user_id = "test_user";
-        let config = AppConfig {
-            data_dir: "/tmp/minne_test_data".to_string(), // Using /tmp which is typically on a different filesystem
-            openai_api_key: "test_key".to_string(),
-            surrealdb_address: "test_address".to_string(),
-            surrealdb_username: "test_user".to_string(),
-            surrealdb_password: "test_pass".to_string(),
-            surrealdb_namespace: "test_ns".to_string(),
-            surrealdb_database: "test_db".to_string(),
-            http_port: 3000,
-            openai_base_url: "..".to_string(),
-            storage: StorageKind::Local,
-            pdf_ingest_mode: LlmFirst,
-        };
+        let config = test_config("/tmp/minne_test_data");
 
         // Test file creation
         let file_info = FileInfo::new(field_data, &db, user_id, &config)
@@ -375,19 +380,7 @@ mod tests {
 
         // Create a FileInfo instance with data_dir in /tmp
         let user_id = "test_user";
-        let config = AppConfig {
-            data_dir: "/tmp/minne_test_data".to_string(),
-            openai_api_key: "test_key".to_string(),
-            surrealdb_address: "test_address".to_string(),
-            surrealdb_username: "test_user".to_string(),
-            surrealdb_password: "test_pass".to_string(),
-            surrealdb_namespace: "test_ns".to_string(),
-            surrealdb_database: "test_db".to_string(),
-            http_port: 3000,
-            openai_base_url: "..".to_string(),
-            storage: StorageKind::Local,
-            pdf_ingest_mode: LlmFirst,
-        };
+        let config = test_config("/tmp/minne_test_data");
 
         // Store the original file
         let original_file_info = FileInfo::new(field_data, &db, user_id, &config)
@@ -432,19 +425,7 @@ mod tests {
 
         // Create a FileInfo instance
         let user_id = "test_user";
-        let config = AppConfig {
-            data_dir: "./data".to_string(),
-            openai_api_key: "test_key".to_string(),
-            surrealdb_address: "test_address".to_string(),
-            surrealdb_username: "test_user".to_string(),
-            surrealdb_password: "test_pass".to_string(),
-            surrealdb_namespace: "test_ns".to_string(),
-            surrealdb_database: "test_db".to_string(),
-            http_port: 3000,
-            openai_base_url: "..".to_string(),
-            storage: StorageKind::Local,
-            pdf_ingest_mode: LlmFirst,
-        };
+        let config = test_config("./data");
         let file_info = FileInfo::new(field_data, &db, user_id, &config).await;
 
         // We can't fully test persistence to disk in unit tests,
@@ -490,19 +471,7 @@ mod tests {
         let file_name = "original.txt";
         let user_id = "test_user";
 
-        let config = AppConfig {
-            data_dir: "./data".to_string(),
-            openai_api_key: "test_key".to_string(),
-            surrealdb_address: "test_address".to_string(),
-            surrealdb_username: "test_user".to_string(),
-            surrealdb_password: "test_pass".to_string(),
-            surrealdb_namespace: "test_ns".to_string(),
-            surrealdb_database: "test_db".to_string(),
-            http_port: 3000,
-            openai_base_url: "..".to_string(),
-            storage: StorageKind::Local,
-            pdf_ingest_mode: LlmFirst,
-        };
+        let config = test_config("./data");
 
         let field_data1 = create_test_file(content, file_name);
         let original_file_info = FileInfo::new(field_data1, &db, user_id, &config)
@@ -655,19 +624,7 @@ mod tests {
 
         // Create and persist a test file via FileInfo::new
         let user_id = "user123";
-        let cfg = AppConfig {
-            data_dir: "./data".to_string(),
-            openai_api_key: "".to_string(),
-            surrealdb_address: "".to_string(),
-            surrealdb_username: "".to_string(),
-            surrealdb_password: "".to_string(),
-            surrealdb_namespace: "".to_string(),
-            surrealdb_database: "".to_string(),
-            http_port: 0,
-            openai_base_url: "".to_string(),
-            storage: crate::utils::config::StorageKind::Local,
-            pdf_ingest_mode: LlmFirst,
-        };
+        let cfg = test_config("./data");
         let temp = create_test_file(b"test content", "test_file.txt");
         let file_info = FileInfo::new(temp, &db, user_id, &cfg)
             .await
@@ -710,19 +667,7 @@ mod tests {
         let result = FileInfo::delete_by_id(
             "nonexistent_id",
             &db,
-            &AppConfig {
-                data_dir: "./data".to_string(),
-                openai_api_key: "".to_string(),
-                surrealdb_address: "".to_string(),
-                surrealdb_username: "".to_string(),
-                surrealdb_password: "".to_string(),
-                surrealdb_namespace: "".to_string(),
-                surrealdb_database: "".to_string(),
-                http_port: 0,
-                openai_base_url: "".to_string(),
-                storage: crate::utils::config::StorageKind::Local,
-                pdf_ingest_mode: LlmFirst,
-            },
+            &test_config("./data"),
         )
         .await;
 
@@ -813,19 +758,7 @@ mod tests {
         // Create a FileInfo instance with a custom data directory
         let user_id = "test_user";
         let custom_data_dir = "/tmp/minne_custom_data_dir";
-        let config = AppConfig {
-            data_dir: custom_data_dir.to_string(),
-            openai_api_key: "test_key".to_string(),
-            surrealdb_address: "test_address".to_string(),
-            surrealdb_username: "test_user".to_string(),
-            surrealdb_password: "test_pass".to_string(),
-            surrealdb_namespace: "test_ns".to_string(),
-            surrealdb_database: "test_db".to_string(),
-            http_port: 3000,
-            openai_base_url: "..".to_string(),
-            storage: StorageKind::Local,
-            pdf_ingest_mode: LlmFirst,
-        };
+        let config = test_config(custom_data_dir);
 
         // Test file creation
         let file_info = FileInfo::new(field_data, &db, user_id, &config)

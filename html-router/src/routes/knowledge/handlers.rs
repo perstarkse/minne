@@ -195,8 +195,19 @@ pub async fn suggest_knowledge_relationships(
 
     if !query_parts.is_empty() {
         let query = query_parts.join(" ");
-        if let Ok(results) =
-            retrieve_entities(&state.db, &state.openai_client, &query, &user.id).await
+        let rerank_lease = match state.reranker_pool.as_ref() {
+            Some(pool) => Some(pool.checkout().await),
+            None => None,
+        };
+
+        if let Ok(results) = retrieve_entities(
+            &state.db,
+            &state.openai_client,
+            &query,
+            &user.id,
+            rerank_lease,
+        )
+        .await
         {
             for RetrievedEntity { entity, score, .. } in results {
                 if suggestion_scores.len() >= MAX_RELATIONSHIP_SUGGESTIONS {

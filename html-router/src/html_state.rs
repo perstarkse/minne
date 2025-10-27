@@ -1,6 +1,7 @@
 use common::storage::db::SurrealDbClient;
 use common::utils::template_engine::{ProvidesTemplateEngine, TemplateEngine};
 use common::{create_template_engine, storage::db::ProvidesDb, utils::config::AppConfig};
+use composite_retrieval::reranking::RerankerPool;
 use std::sync::Arc;
 use tracing::debug;
 
@@ -13,6 +14,7 @@ pub struct HtmlState {
     pub templates: Arc<TemplateEngine>,
     pub session_store: Arc<SessionStoreType>,
     pub config: AppConfig,
+    pub reranker_pool: Option<Arc<RerankerPool>>,
 }
 
 impl HtmlState {
@@ -21,6 +23,7 @@ impl HtmlState {
         openai_client: Arc<OpenAIClientType>,
         session_store: Arc<SessionStoreType>,
         config: AppConfig,
+        reranker_pool: Option<Arc<RerankerPool>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let template_engine = create_template_engine!("templates");
         debug!("Template engine created for html_router.");
@@ -31,6 +34,7 @@ impl HtmlState {
             session_store,
             templates: Arc::new(template_engine),
             config,
+            reranker_pool,
         })
     }
 }

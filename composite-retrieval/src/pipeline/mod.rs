@@ -4,7 +4,7 @@ mod state;
 
 pub use config::{RetrievalConfig, RetrievalTuning};
 
-use crate::RetrievedEntity;
+use crate::{reranking::RerankerLease, RetrievedEntity};
 use async_openai::Client;
 use common::{error::AppError, storage::db::SurrealDbClient};
 use tracing::info;
@@ -16,6 +16,7 @@ pub async fn run_pipeline(
     input_text: &str,
     user_id: &str,
     config: RetrievalConfig,
+    reranker: Option<RerankerLease>,
 ) -> Result<Vec<RetrievedEntity>, AppError> {
     let machine = state::ready();
     let input_chars = input_text.chars().count();
@@ -35,11 +36,13 @@ pub async fn run_pipeline(
         input_text.to_owned(),
         user_id.to_owned(),
         config,
+        reranker,
     );
     let machine = stages::embed(machine, &mut ctx).await?;
     let machine = stages::collect_candidates(machine, &mut ctx).await?;
     let machine = stages::expand_graph(machine, &mut ctx).await?;
     let machine = stages::attach_chunks(machine, &mut ctx).await?;
+    let machine = stages::rerank(machine, &mut ctx).await?;
     let results = stages::assemble(machine, &mut ctx)?;
 
     Ok(results)
@@ -53,6 +56,7 @@ pub async fn run_pipeline_with_embedding(
     input_text: &str,
     user_id: &str,
     config: RetrievalConfig,
+    reranker: Option<RerankerLease>,
 ) -> Result<Vec<RetrievedEntity>, AppError> {
     let machine = state::ready();
     let mut ctx = stages::PipelineContext::with_embedding(
@@ -62,11 +66,13 @@ pub async fn run_pipeline_with_embedding(
         input_text.to_owned(),
         user_id.to_owned(),
         config,
+        reranker,
     );
     let machine = stages::embed(machine, &mut ctx).await?;
     let machine = stages::collect_candidates(machine, &mut ctx).await?;
     let machine = stages::expand_graph(machine, &mut ctx).await?;
     let machine = stages::attach_chunks(machine, &mut ctx).await?;
+    let machine = stages::rerank(machine, &mut ctx).await?;
     let results = stages::assemble(machine, &mut ctx)?;
 
     Ok(results)

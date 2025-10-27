@@ -3,6 +3,7 @@ use std::sync::Arc;
 use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
 use common::{storage::db::SurrealDbClient, utils::config::get_config};
+use composite_retrieval::reranking::RerankerPool;
 use html_router::{html_routes, html_state::HtmlState};
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -41,8 +42,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_api_base(&config.openai_base_url),
     ));
 
-    let html_state =
-        HtmlState::new_with_resources(db, openai_client, session_store, config.clone())?;
+    let reranker_pool = RerankerPool::maybe_from_config(&config)?;
+
+    let html_state = HtmlState::new_with_resources(
+        db,
+        openai_client,
+        session_store,
+        config.clone(),
+        reranker_pool,
+    )?;
 
     let api_state = ApiState {
         db: html_state.db.clone(),

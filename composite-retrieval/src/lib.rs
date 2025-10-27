@@ -3,6 +3,7 @@ pub mod answer_retrieval_helper;
 pub mod fts;
 pub mod graph;
 pub mod pipeline;
+pub mod reranking;
 pub mod scoring;
 pub mod vector;
 
@@ -13,6 +14,7 @@ use common::{
         types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk},
     },
 };
+use reranking::RerankerLease;
 use tracing::instrument;
 
 pub use pipeline::{retrieved_entities_to_json, RetrievalConfig, RetrievalTuning};
@@ -39,6 +41,7 @@ pub async fn retrieve_entities(
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     input_text: &str,
     user_id: &str,
+    reranker: Option<RerankerLease>,
 ) -> Result<Vec<RetrievedEntity>, AppError> {
     pipeline::run_pipeline(
         db_client,
@@ -46,6 +49,7 @@ pub async fn retrieve_entities(
         input_text,
         user_id,
         RetrievalConfig::default(),
+        reranker,
     )
     .await
 }
@@ -142,6 +146,7 @@ mod tests {
             "Rust concurrency async tasks",
             user_id,
             RetrievalConfig::default(),
+            None,
         )
         .await
         .expect("Hybrid retrieval failed");
@@ -232,6 +237,7 @@ mod tests {
             "Rust concurrency async tasks",
             user_id,
             RetrievalConfig::default(),
+            None,
         )
         .await
         .expect("Hybrid retrieval failed");

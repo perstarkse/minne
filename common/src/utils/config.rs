@@ -42,6 +42,16 @@ pub struct AppConfig {
     pub storage: StorageKind,
     #[serde(default = "default_pdf_ingest_mode")]
     pub pdf_ingest_mode: PdfIngestMode,
+    #[serde(default = "default_reranking_enabled")]
+    pub reranking_enabled: bool,
+    #[serde(default)]
+    pub reranking_pool_size: Option<usize>,
+    #[serde(default)]
+    pub fastembed_cache_dir: Option<String>,
+    #[serde(default)]
+    pub fastembed_show_download_progress: Option<bool>,
+    #[serde(default)]
+    pub fastembed_max_length: Option<usize>,
 }
 
 fn default_data_dir() -> String {
@@ -50,6 +60,33 @@ fn default_data_dir() -> String {
 
 fn default_base_url() -> String {
     "https://api.openai.com/v1".to_string()
+}
+
+fn default_reranking_enabled() -> bool {
+    false
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            openai_api_key: String::new(),
+            surrealdb_address: String::new(),
+            surrealdb_username: String::new(),
+            surrealdb_password: String::new(),
+            surrealdb_namespace: String::new(),
+            surrealdb_database: String::new(),
+            data_dir: default_data_dir(),
+            http_port: 0,
+            openai_base_url: default_base_url(),
+            storage: default_storage_kind(),
+            pdf_ingest_mode: default_pdf_ingest_mode(),
+            reranking_enabled: default_reranking_enabled(),
+            reranking_pool_size: None,
+            fastembed_cache_dir: None,
+            fastembed_show_download_progress: None,
+            fastembed_max_length: None,
+        }
+    }
 }
 
 pub fn get_config() -> Result<AppConfig, ConfigError> {

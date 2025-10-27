@@ -26,6 +26,7 @@ use common::{
     },
     utils::config::AppConfig,
 };
+use composite_retrieval::reranking::RerankerPool;
 use tracing::{debug, info, warn};
 
 use self::{
@@ -45,9 +46,14 @@ impl IngestionPipeline {
         db: Arc<SurrealDbClient>,
         openai_client: Arc<Client<async_openai::config::OpenAIConfig>>,
         config: AppConfig,
+        reranker_pool: Option<Arc<RerankerPool>>,
     ) -> Result<Self, AppError> {
-        let services =
-            DefaultPipelineServices::new(db.clone(), openai_client.clone(), config.clone());
+        let services = DefaultPipelineServices::new(
+            db.clone(),
+            openai_client.clone(),
+            config.clone(),
+            reranker_pool,
+        );
 
         Self::with_services(db, IngestionConfig::default(), Arc::new(services))
     }

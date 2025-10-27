@@ -7,6 +7,7 @@ use common::{
     },
     utils::embedding::generate_embedding,
 };
+use fastembed::RerankResult;
 use futures::{stream::FuturesUnordered, StreamExt};
 use state_machines::core::GuardError;
 use std::collections::{HashMap, HashSet};
@@ -15,6 +16,7 @@ use tracing::{debug, instrument, warn};
 use crate::{
     fts::find_items_by_fts,
     graph::{find_entities_by_relationship_by_id, find_entities_by_source_ids},
+    reranking::RerankerLease,
     scoring::{
         clamp_unit, fuse_scores, merge_scored_by_id, min_max_normalize, sort_by_fused_desc,
         FusionWeights, Scored,
@@ -27,6 +29,7 @@ use super::{
     config::RetrievalConfig,
     state::{
         CandidatesLoaded, ChunksAttached, Embedded, GraphExpanded, HybridRetrievalMachine, Ready,
+        Reranked,
     },
 };
 
@@ -41,6 +44,7 @@ pub struct PipelineContext<'a> {
     pub chunk_candidates: HashMap<String, Scored<TextChunk>>,
     pub filtered_entities: Vec<Scored<KnowledgeEntity>>,
     pub chunk_values: Vec<Scored<TextChunk>>,
+    pub reranker: Option<RerankerLease>,
 }
 
 impl<'a> PipelineContext<'a> {
@@ -50,6 +54,7 @@ impl<'a> PipelineContext<'a> {
         input_text: String,
         user_id: String,
         config: RetrievalConfig,
+        reranker: Option<RerankerLease>,
     ) -> Self {
         Self {
             db_client,
@@ -62,6 +67,7 @@ impl<'a> PipelineContext<'a> {
             chunk_candidates: HashMap::new(),
             filtered_entities: Vec::new(),
             chunk_values: Vec::new(),
+            reranker,
         }
     }
 
@@ -73,8 +79,16 @@ impl<'a> PipelineContext<'a> {
         input_text: String,
         user_id: String,
         config: RetrievalConfig,
+        reranker: Option<RerankerLease>,
     ) -> Self {
-        let mut ctx = Self::new(db_client, openai_client, input_text, user_id, config);
+        let mut ctx = Self::new(
+            db_client,
+            openai_client,
+            input_text,
+            user_id,
+            config,
+            reranker,
+        );
         ctx.query_embedding = Some(query_embedding);
         ctx
     }
@@ -327,8 +341,57 @@ pub async fn attach_chunks(
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn assemble(
+pub async fn rerank(
     machine: HybridRetrievalMachine<(), ChunksAttached>,
+    ctx: &mut PipelineContext<'_>,
+) -> Result<HybridRetrievalMachine<(), Reranked>, AppError> {
+    let mut applied = false;
+
+    if let Some(reranker) = ctx.reranker.as_ref() {
+        if ctx.filtered_entities.len() > 1 {
+            let documents = build_rerank_documents(ctx, ctx.config.tuning.max_chunks_per_entity);
+
+            if documents.len() > 1 {
+                match reranker.rerank(&ctx.input_text, documents).await {
+                    Ok(results) if !results.is_empty() => {
+                        apply_rerank_results(ctx, results);
+                        applied = true;
+                    }
+                    Ok(_) => {
+                        debug!("Reranker returned no results; retaining original ordering");
+                    }
+                    Err(err) => {
+                        warn!(
+                            error = %err,
+                            "Reranking failed; continuing with original ordering"
+                        );
+                    }
+                }
+            } else {
+                debug!(
+                    document_count = documents.len(),
+                    "Skipping reranking stage; insufficient document context"
+                );
+            }
+        } else {
+            debug!("Skipping reranking stage; less than two entities available");
+        }
+    } else {
+        debug!("No reranker lease provided; skipping reranking stage");
+    }
+
+    if applied {
+        debug!("Applied reranking adjustments to candidate ordering");
+    }
+
+    machine
+        .rerank()
+        .map_err(|(_, guard)| map_guard_error("rerank", guard))
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn assemble(
+    machine: HybridRetrievalMachine<(), Reranked>,
     ctx: &mut PipelineContext<'_>,
 ) -> Result<Vec<RetrievedEntity>, AppError> {
     debug!("Assembling final retrieved entities");
@@ -559,6 +622,113 @@ async fn enrich_chunks_from_entities(
     }
 
     Ok(())
+}
+
+fn build_rerank_documents(ctx: &PipelineContext<'_>, max_chunks_per_entity: usize) -> Vec<String> {
+    if ctx.filtered_entities.is_empty() {
+        return Vec::new();
+    }
+
+    let mut chunk_by_source: HashMap<&str, Vec<&Scored<TextChunk>>> = HashMap::new();
+    for chunk in &ctx.chunk_values {
+        chunk_by_source
+            .entry(chunk.item.source_id.as_str())
+            .or_default()
+            .push(chunk);
+    }
+
+    ctx.filtered_entities
+        .iter()
+        .map(|entity| {
+            let mut doc = format!(
+                "Name: {}\nType: {:?}\nDescription: {}\n",
+                entity.item.name, entity.item.entity_type, entity.item.description
+            );
+
+            if let Some(chunks) = chunk_by_source.get(entity.item.source_id.as_str()) {
+                let mut chunk_refs = chunks.clone();
+                chunk_refs.sort_by(|a, b| {
+                    b.fused
+                        .partial_cmp(&a.fused)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                let mut header_added = false;
+                for chunk in chunk_refs.into_iter().take(max_chunks_per_entity.max(1)) {
+                    let snippet = chunk.item.chunk.trim();
+                    if snippet.is_empty() {
+                        continue;
+                    }
+                    if !header_added {
+                        doc.push_str("Chunks:\n");
+                        header_added = true;
+                    }
+                    doc.push_str("- ");
+                    doc.push_str(snippet);
+                    doc.push('\n');
+                }
+            }
+
+            doc
+        })
+        .collect()
+}
+
+fn apply_rerank_results(ctx: &mut PipelineContext<'_>, results: Vec<RerankResult>) {
+    if results.is_empty() || ctx.filtered_entities.is_empty() {
+        return;
+    }
+
+    let mut remaining: Vec<Option<Scored<KnowledgeEntity>>> =
+        std::mem::take(&mut ctx.filtered_entities)
+            .into_iter()
+            .map(Some)
+            .collect();
+
+    let raw_scores: Vec<f32> = results.iter().map(|r| r.score).collect();
+    let normalized_scores = min_max_normalize(&raw_scores);
+
+    let use_only = ctx.config.tuning.rerank_scores_only;
+    let blend = if use_only {
+        1.0
+    } else {
+        clamp_unit(ctx.config.tuning.rerank_blend_weight)
+    };
+    let mut reranked: Vec<Scored<KnowledgeEntity>> = Vec::with_capacity(remaining.len());
+    for (result, normalized) in results.into_iter().zip(normalized_scores.into_iter()) {
+        if let Some(slot) = remaining.get_mut(result.index) {
+            if let Some(mut candidate) = slot.take() {
+                let original = candidate.fused;
+                let blended = if use_only {
+                    clamp_unit(normalized)
+                } else {
+                    clamp_unit(original * (1.0 - blend) + normalized * blend)
+                };
+                candidate.update_fused(blended);
+                reranked.push(candidate);
+            }
+        } else {
+            warn!(
+                result_index = result.index,
+                "Reranker returned out-of-range index; skipping"
+            );
+        }
+        if reranked.len() == remaining.len() {
+            break;
+        }
+    }
+
+    for slot in remaining.into_iter() {
+        if let Some(candidate) = slot {
+            reranked.push(candidate);
+        }
+    }
+
+    ctx.filtered_entities = reranked;
+    let keep_top = ctx.config.tuning.rerank_keep_top;
+    if keep_top > 0 && ctx.filtered_entities.len() > keep_top {
+        ctx.filtered_entities.truncate(keep_top);
+    }
 }
 
 fn estimate_tokens(text: &str, avg_chars_per_token: usize) -> usize {

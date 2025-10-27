@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use common::{storage::db::SurrealDbClient, utils::config::get_config};
+use composite_retrieval::reranking::RerankerPool;
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -32,8 +33,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_api_base(&config.openai_base_url),
     ));
 
-    let ingestion_pipeline =
-        Arc::new(IngestionPipeline::new(db.clone(), openai_client.clone(), config).await?);
+    let reranker_pool = RerankerPool::maybe_from_config(&config)?;
+
+    let ingestion_pipeline = Arc::new(
+        IngestionPipeline::new(db.clone(), openai_client.clone(), config, reranker_pool).await?,
+    );
 
     run_worker_loop(db, ingestion_pipeline).await
 }
