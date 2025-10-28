@@ -4,60 +4,61 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs = {
     self,
     nixpkgs,
     flake-utils,
+    crane,
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
+        craneLib = crane.mkLib pkgs;
 
-        # --- Minne Package Definition ---
-        minne-pkg = pkgs.rustPlatform.buildRustPackage {
+        minne-pkg = craneLib.buildPackage {
+          src = craneLib.cleanCargoSource ./.;
           pname = "minne";
           version = "0.1.0";
 
-          src = self;
-
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-          };
-
-          # Skip tests due to testing fs operations
           doCheck = false;
 
           nativeBuildInputs = [
             pkgs.pkg-config
             pkgs.rustfmt
-            pkgs.makeWrapper # For the postInstall hook
+            pkgs.makeWrapper
           ];
+
           buildInputs = [
             pkgs.openssl
-            pkgs.chromium # Runtime dependency for the browser
+            pkgs.chromium
+            pkgs.onnxruntime
           ];
 
-          # Wrap the actual executables to provide CHROME at runtime
-          postInstall = let
-            chromium_executable = "${pkgs.chromium}/bin/chromium";
-          in ''
-            wrapProgram $out/bin/main \
-              --set CHROME "${chromium_executable}"
-            wrapProgram $out/bin/worker \
-              --set CHROME "${chromium_executable}"
-          '';
+          ORT_STRATEGY = "system";
+          ORT_LIB_LOCATION = "${pkgs.onnxruntime}/lib";
+          ORT_SKIP_DOWNLOAD = "1";
 
-          meta = with pkgs.lib; {
-            description = "Minne Application";
-            license = licenses.mit;
-          };
+          postInstall = ''
+            wrapProgram $out/bin/main \
+              --set CHROME ${pkgs.chromium}/bin/chromium \
+              --set ORT_DYLIB_PATH ${pkgs.onnxruntime}/lib/libonnxruntime.so
+            if [ -f $out/bin/worker ]; then
+              wrapProgram $out/bin/worker \
+                --set CHROME ${pkgs.chromium}/bin/chromium \
+                --set ORT_DYLIB_PATH ${pkgs.onnxruntime}/lib/libonnxruntime.so
+            fi
+            if [ -f $out/bin/server]; then
+              wrapProgram $out/bin/server\
+                --set ORT_DYLIB_PATH ${pkgs.onnxruntime}/lib/libonnxruntime.so
+            fi
+          '';
         };
       in {
         packages = {
-          minne = minne-pkg;
-          default = self.packages.${system}.minne;
+          default = self.packages.${system}.minne-pkg;
         };
 
         apps = {
