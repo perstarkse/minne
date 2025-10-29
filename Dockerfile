@@ -1,7 +1,10 @@
-# === Builder Stage ===
-FROM clux/muslrust:1.86.0-stable as builder 
-
+# === Builder ===
+FROM rust:1.86-bookworm AS builder
 WORKDIR /usr/src/minne
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config clang cmake git && rm -rf /var/lib/apt/lists/*
+
+# Cache deps
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir -p api-router common composite-retrieval html-router ingestion-pipeline json-stream-parser main worker
 COPY api-router/Cargo.toml ./api-router/
@@ -11,43 +14,38 @@ COPY html-router/Cargo.toml ./html-router/
 COPY ingestion-pipeline/Cargo.toml ./ingestion-pipeline/
 COPY json-stream-parser/Cargo.toml ./json-stream-parser/
 COPY main/Cargo.toml ./main/
+RUN cargo build --release --bin main --features ingestion-pipeline/docker || true
 
-# Build with the MUSL target
-RUN cargo build --release --target x86_64-unknown-linux-musl --bin main --features ingestion-pipeline/docker || true
-
-# Copy the rest of the source code
+# Build
 COPY . .
+RUN cargo build --release --bin main --features ingestion-pipeline/docker
 
-# Build the final application binary with the MUSL target
-RUN cargo build --release --target x86_64-unknown-linux-musl --bin main --features ingestion-pipeline/docker
+# === Runtime ===
+FROM debian:bookworm-slim
 
-# === Runtime Stage ===
-FROM alpine:latest
+# Chromium + runtime deps + OpenMP for ORT
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium libnss3 libasound2 libgbm1 libxshmfence1 \
+    ca-certificates fonts-dejavu fonts-noto-color-emoji \
+    libgomp1 libstdc++6 curl \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN apk update && apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \
-    font-noto-emoji \
-    && \
-    rm -rf /var/cache/apk/*
+# ONNX Runtime (CPU). Change if you bump ort.
+ARG ORT_VERSION=1.21.0
+RUN mkdir -p /opt/onnxruntime && \
+    curl -fsSL -o /tmp/ort.tgz \
+      "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" && \
+    tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 && rm /tmp/ort.tgz
 
-ENV CHROME_BIN=/usr/bin/chromium-browser \
-    CHROME_PATH=/usr/lib/chromium/ \
-    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV CHROME_BIN=/usr/bin/chromium \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    ORT_DYLIB_PATH=/opt/onnxruntime/lib/libonnxruntime.so
 
-# Create a non-root user to run the application
-RUN adduser -D -h /home/appuser appuser
-WORKDIR /home/appuser
+# Non-root
+RUN useradd -m appuser
 USER appuser
+WORKDIR /home/appuser
 
-# Copy the compiled binary from the builder stage (note the target path)
-COPY --from=builder /usr/src/minne/target/x86_64-unknown-linux-musl/release/main /usr/local/bin/main
-
+COPY --from=builder /usr/src/minne/target/release/main /usr/local/bin/main
 EXPOSE 3000
-# EXPOSE 8000-9000
-
 CMD ["main"]
