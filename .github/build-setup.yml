@@ -1,0 +1,49 @@
+- name: Prepare lib dir
+  run: mkdir -p lib
+
+# Linux
+- name: Fetch ONNX Runtime (Linux)
+  if: runner.os == 'Linux'
+  env:
+    ORT_VER: 1.22.0
+  run: |
+    set -euo pipefail
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+      x86_64)  URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-x64-${ORT_VER}.tgz" ;;
+      aarch64) URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-aarch64-${ORT_VER}.tgz" ;;
+      *) echo "Unsupported arch $ARCH"; exit 1 ;;
+    esac
+    curl -fsSL -o ort.tgz "$URL"
+    tar -xzf ort.tgz
+    cp -v onnxruntime-*/lib/libonnxruntime.so* lib/
+
+# macOS
+- name: Fetch ONNX Runtime (macOS)
+  if: runner.os == 'macOS'
+  env:
+    ORT_VER: 1.22.0
+  run: |
+    set -euo pipefail
+    curl -fsSL -o ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-osx-universal2-${ORT_VER}.tgz"
+    tar -xzf ort.tgz
+    # copy the main dylib; rename to stable name if needed
+    cp -v onnxruntime-*/lib/libonnxruntime*.dylib lib/
+    # optional: ensure a stable name
+    if [ ! -f lib/libonnxruntime.dylib ]; then
+      cp -v lib/libonnxruntime*.dylib lib/libonnxruntime.dylib
+    fi
+
+# Windows
+- name: Fetch ONNX Runtime (Windows)
+  if: runner.os == 'Windows'
+  shell: pwsh
+  env:
+    ORT_VER: 1.22.0
+  run: |
+    $url = "https://github.com/microsoft/onnxruntime/releases/download/v$env:ORT_VER/onnxruntime-win-x64-$env:ORT_VER.zip"
+    Invoke-WebRequest $url -OutFile ort.zip
+    Expand-Archive ort.zip -DestinationPath ort
+    $dll = Get-ChildItem -Recurse -Path ort -Filter onnxruntime.dll | Select-Object -First 1
+    Copy-Item $dll.FullName lib\onnxruntime.dll
+

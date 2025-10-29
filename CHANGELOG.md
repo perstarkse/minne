@@ -1,5 +1,7 @@
 # Changelog
 ## Unreleased
+
+## Version 0.2.6 (2025-10-29)
 - Added an opt-in FastEmbed-based reranking stage behind `reranking_enabled`. It improves retrieval accuracy by re-scoring hybrid results.
 
 ## Version 0.2.5 (2025-10-24)
