@@ -8,8 +8,7 @@ cargo-dist-version = "0.30.0"
 # CI backends to support
 ci = "github"
 # Extra static files to include in each App (path relative to this Cargo.toml's dir)
-include = []
-github-build-setup = "../build-setup.yml"
+include = ["lib"]
 # The installers to generate for each app
 installers = []
 # Target platforms to build apps for (Rust target-triple syntax)
