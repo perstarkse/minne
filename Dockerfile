@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 # ONNX Runtime (CPU). Change if you bump ort.
-ARG ORT_VERSION=1.21.0
+ARG ORT_VERSION=1.22.0
 RUN mkdir -p /opt/onnxruntime && \
     curl -fsSL -o /tmp/ort.tgz \
       "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" && \

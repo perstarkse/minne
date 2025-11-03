@@ -1,5 +1,6 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
+use std::env;
 
 #[derive(Clone, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -67,6 +68,36 @@ fn default_reranking_enabled() -> bool {
     false
 }
 
+pub fn ensure_ort_path() {
+    if env::var_os("ORT_DYLIB_PATH").is_some() {
+        return;
+    }
+    if let Ok(mut exe) = env::current_exe() {
+        exe.pop();
+
+        if cfg!(target_os = "windows") {
+            for p in [
+                exe.join("onnxruntime.dll"),
+                exe.join("lib").join("onnxruntime.dll"),
+            ] {
+                if p.exists() {
+                    env::set_var("ORT_DYLIB_PATH", p);
+                    return;
+                }
+            }
+        }
+        let name = if cfg!(target_os = "macos") {
+            "libonnxruntime.dylib"
+        } else {
+            "libonnxruntime.so"
+        };
+        let p = exe.join("lib").join(name);
+        if p.exists() {
+            env::set_var("ORT_DYLIB_PATH", p);
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -91,6 +122,8 @@ impl Default for AppConfig {
 }
 
 pub fn get_config() -> Result<AppConfig, ConfigError> {
+    ensure_ort_path();
+
     let config = Config::builder()
         .add_source(File::with_name("config").required(false))
         .add_source(Environment::default())

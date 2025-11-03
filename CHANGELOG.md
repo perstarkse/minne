@@ -1,5 +1,7 @@
 # Changelog
 ## Unreleased
+
+## Version 0.2.6 (2025-10-29)
 - Added an opt-in FastEmbed-based reranking stage behind `reranking_enabled`. It improves retrieval accuracy by re-scoring hybrid results.
 - Fix: default name for relationships harmonized across application
 
