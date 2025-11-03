@@ -12,10 +12,11 @@ services:
       SURREALDB_PASSWORD: "root_password"
       SURREALDB_DATABASE: "test"
       SURREALDB_NAMESPACE: "test"
-      OPENAI_API_KEY: "sk-key"
+      OPENAI_API_KEY: "sk-add-your-key"
       DATA_DIR: "./data"
       HTTP_PORT: 3000
       RUST_LOG: "info"
+      RERANKING_ENABLED: false ## Change to true to enable reranking
     depends_on:
       - surrealdb 
     networks:
@@ -31,7 +32,7 @@ services:
       - ./database:/database # Mounts a 'database' folder from your project directory
     command: >
       start
-      --log debug
+      --log info
       --user root_user
       --pass root_password
       rocksdb:./database/database.db
