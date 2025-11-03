@@ -11,12 +11,22 @@
     pkgs.openssl
     pkgs.nodejs
     pkgs.vscode-langservers-extracted
+    pkgs.cargo-dist
+    pkgs.cargo-xwin
+    pkgs.clang
+    pkgs.onnxruntime
   ];
 
   languages.rust = {
     enable = true;
     components = ["rustc" "clippy" "rustfmt" "cargo" "rust-analyzer"];
+    channel = "nightly";
+    targets = ["x86_64-unknown-linux-gnu" "x86_64-pc-windows-msvc"];
     mold.enable = true;
+  };
+
+  env = {
+    ORT_DYLIB_PATH = "${pkgs.onnxruntime}/lib/libonnxruntime.so";
   };
 
   processes = {
