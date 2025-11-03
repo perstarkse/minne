@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
-use common::{storage::db::SurrealDbClient, utils::config::get_config};
+use common::{
+    storage::db::SurrealDbClient, storage::store::StorageManager, utils::config::get_config,
+};
 use composite_retrieval::reranking::RerankerPool;
 use html_router::{html_routes, html_state::HtmlState};
 use tracing::info;
@@ -44,18 +46,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let reranker_pool = RerankerPool::maybe_from_config(&config)?;
 
+    // Create global storage manager
+    let storage = StorageManager::new(&config).await?;
+
     let html_state = HtmlState::new_with_resources(
         db,
         openai_client,
         session_store,
+        storage.clone(),
         config.clone(),
         reranker_pool,
-    )?;
+    )
+    .await?;
 
-    let api_state = ApiState {
-        db: html_state.db.clone(),
-        config: config.clone(),
-    };
+    let api_state = ApiState::new(&config, storage).await?;
 
     // Create Axum router
     let app = Router::new()

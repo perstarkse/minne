@@ -10,6 +10,7 @@ use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
+        store::StorageManager,
         types::{
             ingestion_payload::IngestionPayload, knowledge_entity::KnowledgeEntity,
             knowledge_relationship::KnowledgeRelationship, system_settings::SystemSettings,
@@ -65,6 +66,7 @@ pub struct DefaultPipelineServices {
     openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
     config: AppConfig,
     reranker_pool: Option<Arc<RerankerPool>>,
+    storage: StorageManager,
 }
 
 impl DefaultPipelineServices {
@@ -73,12 +75,14 @@ impl DefaultPipelineServices {
         openai_client: Arc<async_openai::Client<async_openai::config::OpenAIConfig>>,
         config: AppConfig,
         reranker_pool: Option<Arc<RerankerPool>>,
+        storage: StorageManager,
     ) -> Self {
         Self {
             db,
             openai_client,
             config,
             reranker_pool,
+            storage,
         }
     }
 
@@ -144,7 +148,14 @@ impl PipelineServices for DefaultPipelineServices {
         &self,
         payload: IngestionPayload,
     ) -> Result<TextContent, AppError> {
-        to_text_content(payload, &self.db, &self.config, &self.openai_client).await
+        to_text_content(
+            payload,
+            &self.db,
+            &self.config,
+            &self.openai_client,
+            &self.storage,
+        )
+        .await
     }
 
     async fn retrieve_similar_entities(

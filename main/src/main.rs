@@ -1,6 +1,8 @@
 use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
-use common::{storage::db::SurrealDbClient, utils::config::get_config};
+use common::{
+    storage::db::SurrealDbClient, storage::store::StorageManager, utils::config::get_config,
+};
 use composite_retrieval::reranking::RerankerPool;
 use html_router::{html_routes, html_state::HtmlState};
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
@@ -46,18 +48,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let reranker_pool = RerankerPool::maybe_from_config(&config)?;
 
+    // Create global storage manager
+    let storage = StorageManager::new(&config).await?;
+
     let html_state = HtmlState::new_with_resources(
         db,
         openai_client,
         session_store,
+        storage.clone(),
         config.clone(),
         reranker_pool.clone(),
-    )?;
+    )
+    .await?;
 
-    let api_state = ApiState {
-        db: html_state.db.clone(),
-        config: config.clone(),
-    };
+    let api_state = ApiState::new(&config, storage.clone()).await?;
 
     // Create Axum router
     let app = Router::new()
@@ -115,6 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 openai_client.clone(),
                 config.clone(),
                 reranker_pool.clone(),
+                storage.clone(), // Use the global storage manager
             )
             .await
             .unwrap(),
@@ -147,6 +152,7 @@ struct AppState {
 mod tests {
     use super::*;
     use axum::{body::Body, http::Request, http::StatusCode, Router};
+    use common::storage::store::StorageManager;
     use common::utils::config::{AppConfig, PdfIngestMode, StorageKind};
     use std::{path::Path, sync::Arc};
     use tower::ServiceExt;
@@ -195,18 +201,25 @@ mod tests {
                 .with_api_base(&config.openai_base_url),
         ));
 
+        let storage = StorageManager::new(&config)
+            .await
+            .expect("failed to build storage manager");
+
         let html_state = HtmlState::new_with_resources(
             db.clone(),
             openai_client,
             session_store,
+            storage.clone(),
             config.clone(),
             None,
         )
+        .await
         .expect("failed to build html state");
 
         let api_state = ApiState {
-            db: html_state.db.clone(),
+            db: db.clone(),
             config: config.clone(),
+            storage,
         };
 
         let app = Router::new()

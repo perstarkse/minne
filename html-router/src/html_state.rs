@@ -1,4 +1,4 @@
-use common::storage::db::SurrealDbClient;
+use common::storage::{db::SurrealDbClient, store::StorageManager};
 use common::utils::template_engine::{ProvidesTemplateEngine, TemplateEngine};
 use common::{create_template_engine, storage::db::ProvidesDb, utils::config::AppConfig};
 use composite_retrieval::reranking::RerankerPool;
@@ -14,14 +14,16 @@ pub struct HtmlState {
     pub templates: Arc<TemplateEngine>,
     pub session_store: Arc<SessionStoreType>,
     pub config: AppConfig,
+    pub storage: StorageManager,
     pub reranker_pool: Option<Arc<RerankerPool>>,
 }
 
 impl HtmlState {
-    pub fn new_with_resources(
+    pub async fn new_with_resources(
         db: Arc<SurrealDbClient>,
         openai_client: Arc<OpenAIClientType>,
         session_store: Arc<SessionStoreType>,
+        storage: StorageManager,
         config: AppConfig,
         reranker_pool: Option<Arc<RerankerPool>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -34,6 +36,7 @@ impl HtmlState {
             session_store,
             templates: Arc::new(template_engine),
             config,
+            storage,
             reranker_pool,
         })
     }

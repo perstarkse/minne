@@ -471,12 +471,15 @@ mod tests {
             .expect("Failed to apply migrations");
 
         let user_id = "test_user_123";
-        let scratchpad = Scratchpad::new(user_id.to_string(), "Test Timezone Scratchpad".to_string());
+        let scratchpad =
+            Scratchpad::new(user_id.to_string(), "Test Timezone Scratchpad".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
         db.store_item(scratchpad).await.unwrap();
 
-        let retrieved = Scratchpad::get_by_id(&scratchpad_id, user_id, &db).await.unwrap();
+        let retrieved = Scratchpad::get_by_id(&scratchpad_id, user_id, &db)
+            .await
+            .unwrap();
 
         // Test that datetime fields are preserved and can be used for timezone formatting
         assert!(retrieved.created_at.timestamp() > 0);

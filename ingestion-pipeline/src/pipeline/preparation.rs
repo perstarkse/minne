@@ -2,6 +2,7 @@ use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
+        store::StorageManager,
         types::{
             ingestion_payload::IngestionPayload,
             text_content::{TextContent, UrlInfo},
@@ -19,6 +20,7 @@ pub(crate) async fn to_text_content(
     db: &SurrealDbClient,
     config: &AppConfig,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+    storage: &StorageManager,
 ) -> Result<TextContent, AppError> {
     match ingestion_payload {
         IngestionPayload::Url {
@@ -27,7 +29,7 @@ pub(crate) async fn to_text_content(
             category,
             user_id,
         } => {
-            let (article, file_info) = extract_text_from_url(&url, db, &user_id, config).await?;
+            let (article, file_info) = extract_text_from_url(&url, db, &user_id, storage).await?;
             Ok(TextContent::new(
                 article.text_content.into(),
                 Some(context),
@@ -60,7 +62,8 @@ pub(crate) async fn to_text_content(
             category,
             user_id,
         } => {
-            let text = extract_text_from_file(&file_info, db, openai_client, config).await?;
+            let text =
+                extract_text_from_file(&file_info, db, openai_client, config, storage).await?;
             Ok(TextContent::new(
                 text,
                 Some(context),

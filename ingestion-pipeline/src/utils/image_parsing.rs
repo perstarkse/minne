@@ -10,14 +10,13 @@ use common::{
 };
 
 pub async fn extract_text_from_image(
-    path: &str,
+    image_bytes: &[u8],
     db: &SurrealDbClient,
     client: &async_openai::Client<async_openai::config::OpenAIConfig>,
 ) -> Result<String, AppError> {
     let system_settings = SystemSettings::get_current(db).await?;
-    let image_bytes = tokio::fs::read(&path).await?;
 
-    let base64_image = STANDARD.encode(&image_bytes);
+    let base64_image = STANDARD.encode(image_bytes);
 
     let image_url = format!("data:image/png;base64,{base64_image}");
 

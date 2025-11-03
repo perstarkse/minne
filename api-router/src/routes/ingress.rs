@@ -32,7 +32,8 @@ pub async fn ingest_data(
     info!("Received input: {:?}", input);
 
     let file_infos = try_join_all(input.files.into_iter().map(|file| {
-        FileInfo::new(file, &state.db, &user.id, &state.config).map_err(AppError::from)
+        FileInfo::new_with_storage(file, &state.db, &user.id, &state.storage)
+            .map_err(AppError::from)
     }))
     .await?;
 

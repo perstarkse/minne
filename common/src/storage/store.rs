@@ -1,4 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::io::ErrorKind;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result as AnyResult};
@@ -13,41 +14,414 @@ use crate::utils::config::{AppConfig, StorageKind};
 
 pub type DynStore = Arc<dyn ObjectStore>;
 
-/// Build an object store instance anchored at the given filesystem `prefix`.
+/// Storage manager with persistent state and proper lifecycle management.
+#[derive(Clone)]
+pub struct StorageManager {
+    store: DynStore,
+    backend_kind: StorageKind,
+    local_base: Option<PathBuf>,
+}
+
+impl StorageManager {
+    /// Create a new StorageManager with the specified configuration.
+    ///
+    /// This method validates the configuration and creates the appropriate
+    /// storage backend with proper initialization.
+    pub async fn new(cfg: &AppConfig) -> object_store::Result<Self> {
+        let backend_kind = cfg.storage.clone();
+        let (store, local_base) = create_storage_backend(cfg).await?;
+
+        Ok(Self {
+            store,
+            backend_kind,
+            local_base,
+        })
+    }
+
+    /// Create a StorageManager with a custom storage backend.
+    ///
+    /// This method is useful for testing scenarios where you want to inject
+    /// a specific storage backend.
+    pub fn with_backend(store: DynStore, backend_kind: StorageKind) -> Self {
+        Self {
+            store,
+            backend_kind,
+            local_base: None,
+        }
+    }
+
+    /// Get the storage backend kind.
+    pub fn backend_kind(&self) -> &StorageKind {
+        &self.backend_kind
+    }
+
+    /// Access the resolved local base directory when using the local backend.
+    pub fn local_base_path(&self) -> Option<&Path> {
+        self.local_base.as_deref()
+    }
+
+    /// Resolve an object location to a filesystem path when using the local backend.
+    ///
+    /// Returns `None` when the backend is not local or when the provided location includes
+    /// unsupported components (absolute paths or parent traversals).
+    pub fn resolve_local_path(&self, location: &str) -> Option<PathBuf> {
+        let base = self.local_base_path()?;
+        let relative = Path::new(location);
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+        {
+            return None;
+        }
+
+        Some(base.join(relative))
+    }
+
+    /// Store bytes at the specified location.
+    ///
+    /// This operation persists data using the underlying storage backend.
+    /// For memory backends, data persists for the lifetime of the StorageManager.
+    pub async fn put(&self, location: &str, data: Bytes) -> object_store::Result<()> {
+        let path = ObjPath::from(location);
+        let payload = object_store::PutPayload::from_bytes(data);
+        self.store.put(&path, payload).await.map(|_| ())
+    }
+
+    /// Retrieve bytes from the specified location.
+    ///
+    /// Returns the full contents buffered in memory.
+    pub async fn get(&self, location: &str) -> object_store::Result<Bytes> {
+        let path = ObjPath::from(location);
+        let result = self.store.get(&path).await?;
+        result.bytes().await
+    }
+
+    /// Get a streaming handle for large objects.
+    ///
+    /// Returns a fallible stream of Bytes chunks suitable for large file processing.
+    pub async fn get_stream(
+        &self,
+        location: &str,
+    ) -> object_store::Result<BoxStream<'static, object_store::Result<Bytes>>> {
+        let path = ObjPath::from(location);
+        let result = self.store.get(&path).await?;
+        Ok(result.into_stream())
+    }
+
+    /// Delete all objects below the specified prefix.
+    ///
+    /// For local filesystem backends, this also attempts to clean up empty directories.
+    pub async fn delete_prefix(&self, prefix: &str) -> object_store::Result<()> {
+        let prefix_path = ObjPath::from(prefix);
+        let locations = self
+            .store
+            .list(Some(&prefix_path))
+            .map_ok(|m| m.location)
+            .boxed();
+        self.store
+            .delete_stream(locations)
+            .try_collect::<Vec<_>>()
+            .await?;
+
+        // Cleanup filesystem directories only for local backend
+        if matches!(self.backend_kind, StorageKind::Local) {
+            self.cleanup_filesystem_directories(prefix).await?;
+        }
+
+        Ok(())
+    }
+
+    /// List all objects below the specified prefix.
+    pub async fn list(
+        &self,
+        prefix: Option<&str>,
+    ) -> object_store::Result<Vec<object_store::ObjectMeta>> {
+        let prefix_path = prefix.map(ObjPath::from);
+        self.store.list(prefix_path.as_ref()).try_collect().await
+    }
+
+    /// Check if an object exists at the specified location.
+    pub async fn exists(&self, location: &str) -> object_store::Result<bool> {
+        let path = ObjPath::from(location);
+        self.store
+            .head(&path)
+            .await
+            .map(|_| true)
+            .or_else(|e| match e {
+                object_store::Error::NotFound { .. } => Ok(false),
+                _ => Err(e),
+            })
+    }
+
+    /// Cleanup filesystem directories for local backend.
+    ///
+    /// This is a best-effort cleanup and ignores errors.
+    async fn cleanup_filesystem_directories(&self, prefix: &str) -> object_store::Result<()> {
+        if !matches!(self.backend_kind, StorageKind::Local) {
+            return Ok(());
+        }
+
+        let Some(base) = &self.local_base else {
+            return Ok(());
+        };
+
+        let relative = Path::new(prefix);
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+        {
+            tracing::warn!(
+                prefix = %prefix,
+                "Skipping directory cleanup for unsupported prefix components"
+            );
+            return Ok(());
+        }
+
+        let mut current = base.join(relative);
+
+        while current.starts_with(base) && current.as_path() != base.as_path() {
+            match tokio::fs::remove_dir(&current).await {
+                Ok(_) => {}
+                Err(err) => match err.kind() {
+                    ErrorKind::NotFound => {}
+                    ErrorKind::DirectoryNotEmpty => break,
+                    _ => tracing::debug!(
+                        error = %err,
+                        path = %current.display(),
+                        "Failed to remove directory during cleanup"
+                    ),
+                },
+            }
+
+            if let Some(parent) = current.parent() {
+                current = parent.to_path_buf();
+            } else {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Create a storage backend based on configuration.
 ///
-/// - For the `Local` backend, `prefix` is the absolute directory on disk that
-///   serves as the root for all object paths passed to the store.
-/// - For the `Memory` backend, `prefix` is ignored as storage is purely in-memory.
-/// - `prefix` must already exist for Local storage; this function will create it if missing.
-///
-/// Example (Local):
-/// - prefix: `/var/data`
-/// - object location: `user/uuid/file.txt`
-/// - absolute path: `/var/data/user/uuid/file.txt`
-///
-/// Example (Memory):
-/// - prefix: ignored (any value works)
-/// - object location: `user/uuid/file.txt`
-/// - stored in memory for the duration of the process
-pub async fn build_store(prefix: &Path, cfg: &AppConfig) -> object_store::Result<DynStore> {
+/// This factory function handles the creation and initialization of different
+/// storage backends with proper error handling and validation.
+async fn create_storage_backend(
+    cfg: &AppConfig,
+) -> object_store::Result<(DynStore, Option<PathBuf>)> {
     match cfg.storage {
         StorageKind::Local => {
-            if !prefix.exists() {
-                tokio::fs::create_dir_all(prefix).await.map_err(|e| {
+            let base = resolve_base_dir(cfg);
+            if !base.exists() {
+                tokio::fs::create_dir_all(&base).await.map_err(|e| {
                     object_store::Error::Generic {
                         store: "LocalFileSystem",
                         source: e.into(),
                     }
                 })?;
             }
-            let store = LocalFileSystem::new_with_prefix(prefix)?;
-            Ok(Arc::new(store))
+            let store = LocalFileSystem::new_with_prefix(base.clone())?;
+            Ok((Arc::new(store), Some(base)))
         }
         StorageKind::Memory => {
-            // For memory storage, we ignore the prefix as it's purely in-memory
             let store = InMemory::new();
-            Ok(Arc::new(store))
+            Ok((Arc::new(store), None))
         }
+    }
+}
+
+/// Testing utilities for storage operations.
+///
+/// This module provides specialized utilities for testing scenarios with
+/// automatic memory backend setup and proper test isolation.
+#[cfg(test)]
+pub mod testing {
+    use super::*;
+    use crate::utils::config::{AppConfig, PdfIngestMode};
+    use uuid;
+
+    /// Create a test configuration with memory storage.
+    ///
+    /// This provides a ready-to-use configuration for testing scenarios
+    /// that don't require filesystem persistence.
+    pub fn test_config_memory() -> AppConfig {
+        AppConfig {
+            openai_api_key: "test".into(),
+            surrealdb_address: "test".into(),
+            surrealdb_username: "test".into(),
+            surrealdb_password: "test".into(),
+            surrealdb_namespace: "test".into(),
+            surrealdb_database: "test".into(),
+            data_dir: "/tmp/unused".into(), // Ignored for memory storage
+            http_port: 0,
+            openai_base_url: "..".into(),
+            storage: StorageKind::Memory,
+            pdf_ingest_mode: PdfIngestMode::LlmFirst,
+            ..Default::default()
+        }
+    }
+
+    /// Create a test configuration with local storage.
+    ///
+    /// This provides a ready-to-use configuration for testing scenarios
+    /// that require actual filesystem operations.
+    pub fn test_config_local() -> AppConfig {
+        let base = format!("/tmp/minne_test_storage_{}", uuid::Uuid::new_v4());
+        AppConfig {
+            openai_api_key: "test".into(),
+            surrealdb_address: "test".into(),
+            surrealdb_username: "test".into(),
+            surrealdb_password: "test".into(),
+            surrealdb_namespace: "test".into(),
+            surrealdb_database: "test".into(),
+            data_dir: base.into(),
+            http_port: 0,
+            openai_base_url: "..".into(),
+            storage: StorageKind::Local,
+            pdf_ingest_mode: PdfIngestMode::LlmFirst,
+            ..Default::default()
+        }
+    }
+
+    /// A specialized StorageManager for testing scenarios.
+    ///
+    /// This provides automatic setup for memory storage with proper isolation
+    /// and cleanup capabilities for test environments.
+    #[derive(Clone)]
+    pub struct TestStorageManager {
+        storage: StorageManager,
+        _temp_dir: Option<(String, std::path::PathBuf)>, // For local storage cleanup
+    }
+
+    impl TestStorageManager {
+        /// Create a new TestStorageManager with memory backend.
+        ///
+        /// This is the preferred method for unit tests as it provides
+        /// fast execution and complete isolation.
+        pub async fn new_memory() -> object_store::Result<Self> {
+            let cfg = test_config_memory();
+            let storage = StorageManager::new(&cfg).await?;
+
+            Ok(Self {
+                storage,
+                _temp_dir: None,
+            })
+        }
+
+        /// Create a new TestStorageManager with local filesystem backend.
+        ///
+        /// This method creates a temporary directory that will be automatically
+        /// cleaned up when the TestStorageManager is dropped.
+        pub async fn new_local() -> object_store::Result<Self> {
+            let cfg = test_config_local();
+            let storage = StorageManager::new(&cfg).await?;
+            let resolved = storage
+                .local_base_path()
+                .map(|path| (cfg.data_dir.clone(), path.to_path_buf()));
+
+            Ok(Self {
+                storage,
+                _temp_dir: resolved,
+            })
+        }
+
+        /// Create a TestStorageManager with custom configuration.
+        pub async fn with_config(cfg: &AppConfig) -> object_store::Result<Self> {
+            let storage = StorageManager::new(cfg).await?;
+            let temp_dir = if matches!(cfg.storage, StorageKind::Local) {
+                storage
+                    .local_base_path()
+                    .map(|path| (cfg.data_dir.clone(), path.to_path_buf()))
+            } else {
+                None
+            };
+
+            Ok(Self {
+                storage,
+                _temp_dir: temp_dir,
+            })
+        }
+
+        /// Get a reference to the underlying StorageManager.
+        pub fn storage(&self) -> &StorageManager {
+            &self.storage
+        }
+
+        /// Clone the underlying StorageManager.
+        pub fn clone_storage(&self) -> StorageManager {
+            self.storage.clone()
+        }
+
+        /// Store test data at the specified location.
+        pub async fn put(&self, location: &str, data: &[u8]) -> object_store::Result<()> {
+            self.storage.put(location, Bytes::from(data.to_vec())).await
+        }
+
+        /// Retrieve test data from the specified location.
+        pub async fn get(&self, location: &str) -> object_store::Result<Bytes> {
+            self.storage.get(location).await
+        }
+
+        /// Delete test data below the specified prefix.
+        pub async fn delete_prefix(&self, prefix: &str) -> object_store::Result<()> {
+            self.storage.delete_prefix(prefix).await
+        }
+
+        /// Check if test data exists at the specified location.
+        pub async fn exists(&self, location: &str) -> object_store::Result<bool> {
+            self.storage.exists(location).await
+        }
+
+        /// List all test objects below the specified prefix.
+        pub async fn list(
+            &self,
+            prefix: Option<&str>,
+        ) -> object_store::Result<Vec<object_store::ObjectMeta>> {
+            self.storage.list(prefix).await
+        }
+    }
+
+    impl Drop for TestStorageManager {
+        fn drop(&mut self) {
+            // Clean up temporary directories for local storage
+            if let Some((_, path)) = &self._temp_dir {
+                if path.exists() {
+                    let _ = std::fs::remove_dir_all(path);
+                }
+            }
+        }
+    }
+
+    /// Convenience macro for creating memory storage tests.
+    ///
+    /// This macro simplifies the creation of test storage with memory backend.
+    #[macro_export]
+    macro_rules! test_storage_memory {
+        () => {{
+            async move {
+                $crate::storage::store::testing::TestStorageManager::new_memory()
+                    .await
+                    .expect("Failed to create test memory storage")
+            }
+        }};
+    }
+
+    /// Convenience macro for creating local storage tests.
+    ///
+    /// This macro simplifies the creation of test storage with local filesystem backend.
+    #[macro_export]
+    macro_rules! test_storage_local {
+        () => {{
+            async move {
+                $crate::storage::store::testing::TestStorageManager::new_local()
+                    .await
+                    .expect("Failed to create test local storage")
+            }
+        }};
     }
 }
 
@@ -62,137 +436,6 @@ pub fn resolve_base_dir(cfg: &AppConfig) -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(&cfg.data_dir)
     }
-}
-
-/// Build an object store rooted at the configured data directory.
-///
-/// This is the recommended way to obtain a store for logical object operations
-/// such as `put_bytes_at`, `get_bytes_at`, and `delete_prefix_at`.
-///
-/// For `StorageKind::Local`, this creates a filesystem-backed store.
-/// For `StorageKind::Memory`, this creates an in-memory store useful for testing.
-pub async fn build_store_root(cfg: &AppConfig) -> object_store::Result<DynStore> {
-    let base = resolve_base_dir(cfg);
-    build_store(&base, cfg).await
-}
-
-/// Write bytes to `file_name` within a filesystem `prefix` using the configured store.
-///
-/// Prefer [`put_bytes_at`] for location-based writes that do not need to compute
-/// a separate filesystem prefix.
-pub async fn put_bytes(
-    prefix: &Path,
-    file_name: &str,
-    data: Bytes,
-    cfg: &AppConfig,
-) -> object_store::Result<()> {
-    let store = build_store(prefix, cfg).await?;
-    let payload = object_store::PutPayload::from_bytes(data);
-    store.put(&ObjPath::from(file_name), payload).await?;
-    Ok(())
-}
-
-/// Write bytes to the provided logical object `location`, e.g. `"user/uuid/file"`.
-///
-/// The store root is taken from `AppConfig::data_dir` for the local backend.
-/// For memory storage, data is stored in memory for the duration of the process.
-/// This performs an atomic write as guaranteed by `object_store`.
-///
-/// **Note**: Each call creates a new store instance. For memory storage,
-/// this means data is not persisted across different function calls.
-/// Use `build_store_root()` directly when you need to persist data across operations.
-pub async fn put_bytes_at(
-    location: &str,
-    data: Bytes,
-    cfg: &AppConfig,
-) -> object_store::Result<()> {
-    let store = build_store_root(cfg).await?;
-    let payload = object_store::PutPayload::from_bytes(data);
-    store.put(&ObjPath::from(location), payload).await?;
-    Ok(())
-}
-
-/// Read bytes from `file_name` within a filesystem `prefix` using the configured store.
-///
-/// Prefer [`get_bytes_at`] for location-based reads.
-pub async fn get_bytes(
-    prefix: &Path,
-    file_name: &str,
-    cfg: &AppConfig,
-) -> object_store::Result<Bytes> {
-    let store = build_store(prefix, cfg).await?;
-    let r = store.get(&ObjPath::from(file_name)).await?;
-    let b = r.bytes().await?;
-    Ok(b)
-}
-
-/// Read bytes from the provided logical object `location`.
-///
-/// Returns the full contents buffered in memory.
-///
-/// **Note**: Each call creates a new store instance. For memory storage,
-/// this means you can only retrieve data that was written using the same
-/// store instance. Use `build_store_root()` directly when you need to
-/// persist data across operations.
-pub async fn get_bytes_at(location: &str, cfg: &AppConfig) -> object_store::Result<Bytes> {
-    let store = build_store_root(cfg).await?;
-    let r = store.get(&ObjPath::from(location)).await?;
-    r.bytes().await
-}
-
-/// Get a streaming body for the provided logical object `location`.
-///
-/// Returns a fallible `BoxStream` of `Bytes`, suitable for use with
-/// `axum::body::Body::from_stream` to stream responses without buffering.
-pub async fn get_stream_at(
-    location: &str,
-    cfg: &AppConfig,
-) -> object_store::Result<BoxStream<'static, object_store::Result<Bytes>>> {
-    let store = build_store_root(cfg).await?;
-    let r = store.get(&ObjPath::from(location)).await?;
-    Ok(r.into_stream())
-}
-
-/// Delete all objects below the provided filesystem `prefix`.
-///
-/// This is a low-level variant for when a dedicated on-disk prefix is used for a
-/// particular object grouping. Prefer [`delete_prefix_at`] for location-based stores.
-pub async fn delete_prefix(prefix: &Path, cfg: &AppConfig) -> object_store::Result<()> {
-    let store = build_store(prefix, cfg).await?;
-    // list everything and delete
-    let locations = store.list(None).map_ok(|m| m.location).boxed();
-    store
-        .delete_stream(locations)
-        .try_collect::<Vec<_>>()
-        .await?;
-    // Best effort remove the directory itself
-    if tokio::fs::try_exists(prefix).await.unwrap_or(false) {
-        let _ = tokio::fs::remove_dir_all(prefix).await;
-    }
-    Ok(())
-}
-
-/// Delete all objects below the provided logical object `prefix`, e.g. `"user/uuid/"`.
-///
-/// After deleting, attempts a best-effort cleanup of the now-empty directory on disk
-/// when using the local backend.
-pub async fn delete_prefix_at(prefix: &str, cfg: &AppConfig) -> object_store::Result<()> {
-    let store = build_store_root(cfg).await?;
-    let prefix_path = ObjPath::from(prefix);
-    let locations = store
-        .list(Some(&prefix_path))
-        .map_ok(|m| m.location)
-        .boxed();
-    store
-        .delete_stream(locations)
-        .try_collect::<Vec<_>>()
-        .await?;
-    // Best effort remove empty directory on disk for local storage
-    let base_dir = resolve_base_dir(cfg).join(prefix);
-    if tokio::fs::try_exists(&base_dir).await.unwrap_or(false) {
-        let _ = tokio::fs::remove_dir_all(&base_dir).await;
-    }
-    Ok(())
 }
 
 /// Split an absolute filesystem path into `(parent_dir, file_name)`.
@@ -223,7 +466,6 @@ mod tests {
     use super::*;
     use crate::utils::config::{PdfIngestMode::LlmFirst, StorageKind};
     use bytes::Bytes;
-    use futures::TryStreamExt;
     use uuid::Uuid;
 
     fn test_config(root: &str) -> AppConfig {
@@ -261,215 +503,335 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_build_store_root_creates_base() {
-        let base = format!("/tmp/minne_store_test_{}", Uuid::new_v4());
-        let cfg = test_config(&base);
-        let _ = build_store_root(&cfg).await.expect("build store root");
-        assert!(tokio::fs::try_exists(&base).await.unwrap_or(false));
-        let _ = tokio::fs::remove_dir_all(&base).await;
-    }
+    async fn test_storage_manager_memory_basic_operations() {
+        let cfg = test_config_memory();
+        let storage = StorageManager::new(&cfg)
+            .await
+            .expect("create storage manager");
+        assert!(storage.local_base_path().is_none());
 
-    #[tokio::test]
-    async fn test_put_get_bytes_at_and_delete_prefix_at() {
-        let base = format!("/tmp/minne_store_test_{}", Uuid::new_v4());
-        let cfg = test_config(&base);
+        let location = "test/data/file.txt";
+        let data = b"test data for storage manager";
 
-        let location_prefix = format!("{}/{}", "user1", Uuid::new_v4());
-        let file_name = "file.txt";
-        let location = format!("{}/{}", &location_prefix, file_name);
-        let payload = Bytes::from_static(b"hello world");
-
-        put_bytes_at(&location, payload.clone(), &cfg)
+        // Test put and get
+        storage
+            .put(location, Bytes::from(data.to_vec()))
             .await
             .expect("put");
-        let got = get_bytes_at(&location, &cfg).await.expect("get");
-        assert_eq!(got.as_ref(), payload.as_ref());
+        let retrieved = storage.get(location).await.expect("get");
+        assert_eq!(retrieved.as_ref(), data);
 
-        // Delete the whole prefix and ensure retrieval fails
-        delete_prefix_at(&location_prefix, &cfg)
+        // Test exists
+        assert!(storage.exists(location).await.expect("exists check"));
+
+        // Test delete
+        storage.delete_prefix("test/data/").await.expect("delete");
+        assert!(!storage
+            .exists(location)
             .await
-            .expect("delete prefix");
-        assert!(get_bytes_at(&location, &cfg).await.is_err());
-
-        let _ = tokio::fs::remove_dir_all(&base).await;
+            .expect("exists check after delete"));
     }
 
     #[tokio::test]
-    async fn test_get_stream_at() {
-        let base = format!("/tmp/minne_store_test_{}", Uuid::new_v4());
+    async fn test_storage_manager_local_basic_operations() {
+        let base = format!("/tmp/minne_storage_test_{}", Uuid::new_v4());
         let cfg = test_config(&base);
+        let storage = StorageManager::new(&cfg)
+            .await
+            .expect("create storage manager");
+        let resolved_base = storage
+            .local_base_path()
+            .expect("resolved base dir")
+            .to_path_buf();
+        assert_eq!(resolved_base, PathBuf::from(&base));
 
-        let location = format!("{}/{}/stream.bin", "user2", Uuid::new_v4());
-        let content = vec![7u8; 32 * 1024]; // 32KB payload
+        let location = "test/data/file.txt";
+        let data = b"test data for local storage";
 
-        put_bytes_at(&location, Bytes::from(content.clone()), &cfg)
+        // Test put and get
+        storage
+            .put(location, Bytes::from(data.to_vec()))
             .await
             .expect("put");
+        let retrieved = storage.get(location).await.expect("get");
+        assert_eq!(retrieved.as_ref(), data);
 
-        let stream = get_stream_at(&location, &cfg).await.expect("stream");
-        let combined: Vec<u8> = stream
-            .map_ok(|chunk| chunk.to_vec())
-            .try_fold(Vec::new(), |mut acc, mut chunk| async move {
-                acc.append(&mut chunk);
-                Ok(acc)
-            })
+        let object_dir = resolved_base.join("test/data");
+        tokio::fs::metadata(&object_dir)
             .await
-            .expect("collect");
+            .expect("object directory exists after write");
 
-        assert_eq!(combined, content);
+        // Test exists
+        assert!(storage.exists(location).await.expect("exists check"));
 
-        delete_prefix_at(&split_object_path(&location).unwrap().0, &cfg)
+        // Test delete
+        storage.delete_prefix("test/data/").await.expect("delete");
+        assert!(!storage
+            .exists(location)
             .await
-            .ok();
-
-        let _ = tokio::fs::remove_dir_all(&base).await;
-    }
-
-    // Memory storage tests
-    //
-    // Example usage for testing with memory storage:
-    //
-    // ```rust
-    // let cfg = AppConfig {
-    //     storage: StorageKind::Memory,
-    //     // ... other fields
-    //     ..Default::default()
-    // };
-    //
-    // let store = build_store_root(&cfg).await?;
-    // // Use the store for multiple operations to maintain data persistence
-    // store.put(&path, data).await?;
-    // let result = store.get(&path).await?;
-    // ```
-    #[tokio::test]
-    async fn test_build_store_memory_creates_store() {
-        let cfg = test_config_memory();
-        let _ = build_store_root(&cfg).await.expect("build memory store root");
-        // Memory store should be created without any filesystem operations
-    }
-
-    #[tokio::test]
-    async fn test_memory_put_get_bytes_at() {
-        let cfg = test_config_memory();
-
-        // Create a single store instance to reuse across operations
-        let store = build_store_root(&cfg).await.expect("build memory store root");
-        let location_prefix = format!("{}/{}", "user1", Uuid::new_v4());
-        let file_name = "file.txt";
-        let location = format!("{}/{}", &location_prefix, file_name);
-        let payload = Bytes::from_static(b"hello world from memory");
-
-        // Use the store directly instead of the convenience functions
-        let obj_path = ObjPath::from(location.as_str());
-        store.put(&obj_path, object_store::PutPayload::from_bytes(payload.clone())).await.expect("put to memory");
-        let got = store.get(&obj_path).await.expect("get from memory").bytes().await.expect("get bytes");
-        assert_eq!(got.as_ref(), payload.as_ref());
-
-        // Delete the whole prefix and ensure retrieval fails
-        let prefix_path = ObjPath::from(location_prefix.as_str());
-        let locations = store.list(Some(&prefix_path)).map_ok(|m| m.location).boxed();
-        store.delete_stream(locations).try_collect::<Vec<_>>().await.expect("delete prefix from memory");
-        assert!(store.get(&obj_path).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_memory_get_stream_at() {
-        let cfg = test_config_memory();
-
-        // Create a single store instance to reuse across operations
-        let store = build_store_root(&cfg).await.expect("build memory store root");
-        let location = format!("{}/{}/stream.bin", "user2", Uuid::new_v4());
-        let content = vec![42u8; 32 * 1024]; // 32KB payload
-
-        // Use the store directly
-        let obj_path = ObjPath::from(location.as_str());
-        store.put(&obj_path, object_store::PutPayload::from_bytes(Bytes::from(content.clone()))).await.expect("put to memory");
-
-        let stream = store.get(&obj_path).await.expect("get from memory").into_stream();
-        let combined: Vec<u8> = stream
-            .map_ok(|chunk| chunk.to_vec())
-            .try_fold(Vec::new(), |mut acc, mut chunk| async move {
-                acc.append(&mut chunk);
-                Ok(acc)
-            })
+            .expect("exists check after delete"));
+        assert!(
+            tokio::fs::metadata(&object_dir).await.is_err(),
+            "object directory should be removed"
+        );
+        tokio::fs::metadata(&resolved_base)
             .await
-            .expect("collect");
-
-        assert_eq!(combined, content);
-
-        // Clean up
-        delete_prefix_at(&split_object_path(&location).unwrap().0, &cfg)
-            .await
-            .ok();
-    }
-
-    #[tokio::test]
-    async fn test_memory_store_isolation() {
-        // Create two different memory stores to test isolation
-        let cfg1 = test_config_memory();
-        let cfg2 = test_config_memory();
-
-        let store1 = build_store_root(&cfg1).await.expect("build memory store 1");
-        let store2 = build_store_root(&cfg2).await.expect("build memory store 2");
-
-        let location = "test/isolation/file.txt".to_string();
-        let payload1 = Bytes::from_static(b"store 1 content");
-        let payload2 = Bytes::from_static(b"store 2 content");
-
-        // Put different data in each store
-        let obj_path = ObjPath::from(location.as_str());
-        store1.put(&obj_path, object_store::PutPayload::from_bytes(payload1.clone())).await.expect("put to store 1");
-        store2.put(&obj_path, object_store::PutPayload::from_bytes(payload2.clone())).await.expect("put to store 2");
-
-        // Verify isolation - each store should only see its own data
-        let got1 = store1.get(&obj_path).await.expect("get from store 1").bytes().await.expect("get bytes 1");
-        let got2 = store2.get(&obj_path).await.expect("get from store 2").bytes().await.expect("get bytes 2");
-
-        assert_eq!(got1.as_ref(), payload1.as_ref());
-        assert_eq!(got2.as_ref(), payload2.as_ref());
-        assert_ne!(got1.as_ref(), got2.as_ref());
-    }
-
-    #[tokio::test]
-    async fn test_memory_vs_local_behavior_equivalence() {
-        // Test that memory and local storage have equivalent behavior
-        let base = format!("/tmp/minne_store_test_{}", Uuid::new_v4());
-        let local_cfg = test_config(&base);
-        let memory_cfg = test_config_memory();
-
-        // Create stores
-        let local_store = build_store_root(&local_cfg).await.expect("build local store");
-        let memory_store = build_store_root(&memory_cfg).await.expect("build memory store");
-
-        let location = "test/comparison/data.txt".to_string();
-        let payload = Bytes::from_static(b"test data for comparison");
-        let obj_path = ObjPath::from(location.as_str());
-
-        // Put data in both stores
-        local_store.put(&obj_path, object_store::PutPayload::from_bytes(payload.clone())).await.expect("put to local");
-        memory_store.put(&obj_path, object_store::PutPayload::from_bytes(payload.clone())).await.expect("put to memory");
-
-        // Get data from both stores
-        let local_result = local_store.get(&obj_path).await.expect("get from local").bytes().await.expect("get local bytes");
-        let memory_result = memory_store.get(&obj_path).await.expect("get from memory").bytes().await.expect("get memory bytes");
-
-        // Verify equivalence
-        assert_eq!(local_result.as_ref(), memory_result.as_ref());
-        assert_eq!(local_result.as_ref(), payload.as_ref());
-
-        // Test listing behavior
-        let local_prefix = ObjPath::from("test");
-        let memory_prefix = ObjPath::from("test");
-
-        let local_list: Vec<object_store::ObjectMeta> = local_store.list(Some(&local_prefix))
-            .try_collect().await.expect("list local");
-        let memory_list: Vec<object_store::ObjectMeta> = memory_store.list(Some(&memory_prefix))
-            .try_collect().await.expect("list memory");
-
-        assert_eq!(local_list.len(), memory_list.len());
-        assert_eq!(local_list[0].location, memory_list[0].location);
+            .expect("base directory remains intact");
 
         // Clean up
         let _ = tokio::fs::remove_dir_all(&base).await;
+    }
+
+    #[tokio::test]
+    async fn test_storage_manager_memory_persistence() {
+        let cfg = test_config_memory();
+        let storage = StorageManager::new(&cfg)
+            .await
+            .expect("create storage manager");
+
+        let location = "persistence/test.txt";
+        let data1 = b"first data";
+        let data2 = b"second data";
+
+        // Put first data
+        storage
+            .put(location, Bytes::from(data1.to_vec()))
+            .await
+            .expect("put first");
+
+        // Retrieve and verify first data
+        let retrieved1 = storage.get(location).await.expect("get first");
+        assert_eq!(retrieved1.as_ref(), data1);
+
+        // Overwrite with second data
+        storage
+            .put(location, Bytes::from(data2.to_vec()))
+            .await
+            .expect("put second");
+
+        // Retrieve and verify second data
+        let retrieved2 = storage.get(location).await.expect("get second");
+        assert_eq!(retrieved2.as_ref(), data2);
+
+        // Data persists across multiple operations using the same StorageManager
+        assert_ne!(retrieved1.as_ref(), retrieved2.as_ref());
+    }
+
+    #[tokio::test]
+    async fn test_storage_manager_list_operations() {
+        let cfg = test_config_memory();
+        let storage = StorageManager::new(&cfg)
+            .await
+            .expect("create storage manager");
+
+        // Create multiple files
+        let files = vec![
+            ("dir1/file1.txt", b"content1"),
+            ("dir1/file2.txt", b"content2"),
+            ("dir2/file3.txt", b"content3"),
+        ];
+
+        for (location, data) in &files {
+            storage
+                .put(location, Bytes::from(data.to_vec()))
+                .await
+                .expect("put");
+        }
+
+        // Test listing without prefix
+        let all_files = storage.list(None).await.expect("list all");
+        assert_eq!(all_files.len(), 3);
+
+        // Test listing with prefix
+        let dir1_files = storage.list(Some("dir1/")).await.expect("list dir1");
+        assert_eq!(dir1_files.len(), 2);
+        assert!(dir1_files
+            .iter()
+            .any(|meta| meta.location.as_ref().contains("file1.txt")));
+        assert!(dir1_files
+            .iter()
+            .any(|meta| meta.location.as_ref().contains("file2.txt")));
+
+        // Test listing non-existent prefix
+        let empty_files = storage
+            .list(Some("nonexistent/"))
+            .await
+            .expect("list nonexistent");
+        assert_eq!(empty_files.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_storage_manager_stream_operations() {
+        let cfg = test_config_memory();
+        let storage = StorageManager::new(&cfg)
+            .await
+            .expect("create storage manager");
+
+        let location = "stream/test.bin";
+        let content = vec![42u8; 1024 * 64]; // 64KB of data
+
+        // Put large data
+        storage
+            .put(location, Bytes::from(content.clone()))
+            .await
+            .expect("put large data");
+
+        // Get as stream
+        let mut stream = storage.get_stream(location).await.expect("get stream");
+        let mut collected = Vec::new();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.expect("stream chunk");
+            collected.extend_from_slice(&chunk);
+        }
+
+        assert_eq!(collected, content);
+    }
+
+    #[tokio::test]
+    async fn test_storage_manager_with_custom_backend() {
+        use object_store::memory::InMemory;
+
+        // Create custom memory backend
+        let custom_store = InMemory::new();
+        let storage = StorageManager::with_backend(Arc::new(custom_store), StorageKind::Memory);
+
+        let location = "custom/test.txt";
+        let data = b"custom backend test";
+
+        // Test operations with custom backend
+        storage
+            .put(location, Bytes::from(data.to_vec()))
+            .await
+            .expect("put");
+        let retrieved = storage.get(location).await.expect("get");
+        assert_eq!(retrieved.as_ref(), data);
+
+        assert!(storage.exists(location).await.expect("exists"));
+        assert_eq!(*storage.backend_kind(), StorageKind::Memory);
+    }
+
+    #[tokio::test]
+    async fn test_storage_manager_error_handling() {
+        let cfg = test_config_memory();
+        let storage = StorageManager::new(&cfg)
+            .await
+            .expect("create storage manager");
+
+        // Test getting non-existent file
+        let result = storage.get("nonexistent.txt").await;
+        assert!(result.is_err());
+
+        // Test checking existence of non-existent file
+        let exists = storage
+            .exists("nonexistent.txt")
+            .await
+            .expect("exists check");
+        assert!(!exists);
+
+        // Test listing with invalid location (should not panic)
+        let _result = storage.get("").await;
+        // This may or may not error depending on the backend implementation
+        // The important thing is that it doesn't panic
+    }
+
+    // TestStorageManager tests
+    #[tokio::test]
+    async fn test_test_storage_manager_memory() {
+        let test_storage = testing::TestStorageManager::new_memory()
+            .await
+            .expect("create test storage");
+
+        let location = "test/storage/file.txt";
+        let data = b"test data with TestStorageManager";
+
+        // Test put and get
+        test_storage.put(location, data).await.expect("put");
+        let retrieved = test_storage.get(location).await.expect("get");
+        assert_eq!(retrieved.as_ref(), data);
+
+        // Test existence check
+        assert!(test_storage.exists(location).await.expect("exists"));
+
+        // Test list
+        let files = test_storage
+            .list(Some("test/storage/"))
+            .await
+            .expect("list");
+        assert_eq!(files.len(), 1);
+
+        // Test delete
+        test_storage
+            .delete_prefix("test/storage/")
+            .await
+            .expect("delete");
+        assert!(!test_storage
+            .exists(location)
+            .await
+            .expect("exists after delete"));
+    }
+
+    #[tokio::test]
+    async fn test_test_storage_manager_local() {
+        let test_storage = testing::TestStorageManager::new_local()
+            .await
+            .expect("create test storage");
+
+        let location = "test/local/file.txt";
+        let data = b"test data with local TestStorageManager";
+
+        // Test put and get
+        test_storage.put(location, data).await.expect("put");
+        let retrieved = test_storage.get(location).await.expect("get");
+        assert_eq!(retrieved.as_ref(), data);
+
+        // Test existence check
+        assert!(test_storage.exists(location).await.expect("exists"));
+
+        // The storage should be automatically cleaned up when test_storage is dropped
+    }
+
+    #[tokio::test]
+    async fn test_test_storage_manager_isolation() {
+        let storage1 = testing::TestStorageManager::new_memory()
+            .await
+            .expect("create test storage 1");
+        let storage2 = testing::TestStorageManager::new_memory()
+            .await
+            .expect("create test storage 2");
+
+        let location = "isolation/test.txt";
+        let data1 = b"storage 1 data";
+        let data2 = b"storage 2 data";
+
+        // Put different data in each storage
+        storage1.put(location, data1).await.expect("put storage 1");
+        storage2.put(location, data2).await.expect("put storage 2");
+
+        // Verify isolation
+        let retrieved1 = storage1.get(location).await.expect("get storage 1");
+        let retrieved2 = storage2.get(location).await.expect("get storage 2");
+
+        assert_eq!(retrieved1.as_ref(), data1);
+        assert_eq!(retrieved2.as_ref(), data2);
+        assert_ne!(retrieved1.as_ref(), retrieved2.as_ref());
+    }
+
+    #[tokio::test]
+    async fn test_test_storage_manager_config() {
+        let cfg = testing::test_config_memory();
+        let test_storage = testing::TestStorageManager::with_config(&cfg)
+            .await
+            .expect("create test storage with config");
+
+        let location = "config/test.txt";
+        let data = b"test data with custom config";
+
+        test_storage.put(location, data).await.expect("put");
+        let retrieved = test_storage.get(location).await.expect("get");
+        assert_eq!(retrieved.as_ref(), data);
+
+        // Verify it's using memory backend
+        assert_eq!(*test_storage.storage().backend_kind(), StorageKind::Memory);
     }
 }

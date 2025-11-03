@@ -190,7 +190,7 @@ pub async fn delete_text_content(
             TextContent::has_other_with_file(&file_info.id, &text_content.id, &state.db).await?;
 
         if !file_in_use {
-            FileInfo::delete_by_id(&file_info.id, &state.db, &state.config).await?;
+            FileInfo::delete_by_id_with_storage(&file_info.id, &state.db, &state.storage).await?;
         }
     }
 

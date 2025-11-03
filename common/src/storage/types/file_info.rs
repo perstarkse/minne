@@ -1,4 +1,5 @@
 use axum_typed_multipart::FieldData;
+use bytes;
 use mime_guess::from_path;
 use object_store::Error as ObjectStoreError;
 use sha2::{Digest, Sha256};
@@ -13,9 +14,8 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    storage::{db::SurrealDbClient, store},
+    storage::{db::SurrealDbClient, store, store::StorageManager},
     stored_object,
-    utils::config::AppConfig,
 };
 
 #[derive(Error, Debug)]
@@ -51,54 +51,6 @@ stored_object!(FileInfo, "file", {
 });
 
 impl FileInfo {
-    pub async fn new(
-        field_data: FieldData<NamedTempFile>,
-        db_client: &SurrealDbClient,
-        user_id: &str,
-        config: &AppConfig,
-    ) -> Result<Self, FileError> {
-        let file = field_data.contents;
-        let file_name = field_data
-            .metadata
-            .file_name
-            .ok_or(FileError::MissingFileName)?;
-
-        // Calculate SHA256
-        let sha256 = Self::get_sha(&file).await?;
-
-        // Early return if file already exists
-        match Self::get_by_sha(&sha256, db_client).await {
-            Ok(existing_file) => {
-                info!("File already exists with SHA256: {}", sha256);
-                return Ok(existing_file);
-            }
-            Err(FileError::FileNotFound(_)) => (), // Expected case for new files
-            Err(e) => return Err(e),               // Propagate unexpected errors
-        }
-
-        // Generate UUID and prepare paths
-        let uuid = Uuid::new_v4();
-        let sanitized_file_name = Self::sanitize_file_name(&file_name);
-
-        let now = Utc::now();
-        // Create new FileInfo instance
-        let file_info = Self {
-            id: uuid.to_string(),
-            created_at: now,
-            updated_at: now,
-            file_name,
-            sha256,
-            path: Self::persist_file(&uuid, file, &sanitized_file_name, user_id, config).await?,
-            mime_type: Self::guess_mime_type(Path::new(&sanitized_file_name)),
-            user_id: user_id.to_string(),
-        };
-
-        // Store in database
-        db_client.store_item(file_info.clone()).await?;
-
-        Ok(file_info)
-    }
-
     /// Guesses the MIME type based on the file extension.
     ///
     /// # Arguments
@@ -167,36 +119,6 @@ impl FileInfo {
         }
     }
 
-    /// Persists the file under the logical location `{user_id}/{uuid}/{file_name}`.
-    ///
-    /// # Arguments
-    /// * `uuid` - The UUID of the file.
-    /// * `file` - The temporary file to persist.
-    /// * `file_name` - The sanitized file name.
-    /// * `user-id` - User id
-    /// * `config` - Application configuration containing data directory path
-    ///
-    /// # Returns
-    /// * `Result<String, FileError>` - The logical object location or an error.
-    async fn persist_file(
-        uuid: &Uuid,
-        file: NamedTempFile,
-        file_name: &str,
-        user_id: &str,
-        config: &AppConfig,
-    ) -> Result<String, FileError> {
-        // Logical object location relative to the store root
-        let location = format!("{}/{}/{}", user_id, uuid, file_name);
-        info!("Persisting to object location: {}", location);
-
-        let bytes = tokio::fs::read(file.path()).await?;
-        store::put_bytes_at(&location, bytes.into(), config)
-            .await
-            .map_err(FileError::from)?;
-
-        Ok(location)
-    }
-
     /// Retrieves a `FileInfo` by SHA256.
     ///
     /// # Arguments
@@ -215,41 +137,6 @@ impl FileInfo {
             .ok_or(FileError::FileNotFound(sha256.to_string()))
     }
 
-    /// Removes FileInfo from database and file from disk
-    ///
-    /// # Arguments
-    /// * `id` - Id of the FileInfo
-    /// * `db_client` - Reference to SurrealDbClient
-    ///
-    /// # Returns
-    ///  `Result<(), FileError>`
-    pub async fn delete_by_id(
-        id: &str,
-        db_client: &SurrealDbClient,
-        config: &AppConfig,
-    ) -> Result<(), AppError> {
-        // Get the FileInfo from the database
-        let Some(file_info) = db_client.get_item::<FileInfo>(id).await? else {
-            return Ok(());
-        };
-
-        // Remove the object's parent prefix in the object store
-        let (parent_prefix, _file_name) = store::split_object_path(&file_info.path)
-            .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
-        store::delete_prefix_at(&parent_prefix, config)
-            .await
-            .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
-        info!(
-            "Removed object prefix {} and its contents via object_store",
-            parent_prefix
-        );
-
-        // Delete the FileInfo from the database
-        db_client.delete_item::<FileInfo>(id).await?;
-
-        Ok(())
-    }
-
     /// Retrieves a `FileInfo` by its ID.
     ///
     /// # Arguments
@@ -265,33 +152,167 @@ impl FileInfo {
             Err(e) => Err(FileError::SurrealError(e)),
         }
     }
+
+    /// Create a new FileInfo using StorageManager for persistent storage operations.
+    ///
+    /// # Arguments
+    /// * `field_data` - The uploaded file data
+    /// * `db_client` - Reference to the SurrealDbClient
+    /// * `user_id` - The user ID
+    /// * `storage` - A StorageManager instance for storage operations
+    ///
+    /// # Returns
+    /// * `Result<Self, FileError>` - The created FileInfo or an error
+    pub async fn new_with_storage(
+        field_data: FieldData<NamedTempFile>,
+        db_client: &SurrealDbClient,
+        user_id: &str,
+        storage: &StorageManager,
+    ) -> Result<Self, FileError> {
+        let file = field_data.contents;
+        let file_name = field_data
+            .metadata
+            .file_name
+            .ok_or(FileError::MissingFileName)?;
+        let original_file_name = file_name.clone();
+
+        // Calculate SHA256
+        let sha256 = Self::get_sha(&file).await?;
+
+        // Early return if file already exists
+        match Self::get_by_sha(&sha256, db_client).await {
+            Ok(existing_file) => {
+                info!("File already exists with SHA256: {}", sha256);
+                return Ok(existing_file);
+            }
+            Err(FileError::FileNotFound(_)) => (), // Expected case for new files
+            Err(e) => return Err(e),               // Propagate unexpected errors
+        }
+
+        // Generate UUID and prepare paths
+        let uuid = Uuid::new_v4();
+        let sanitized_file_name = Self::sanitize_file_name(&file_name);
+        let now = Utc::now();
+
+        let path =
+            Self::persist_file_with_storage(&uuid, file, &sanitized_file_name, user_id, storage)
+                .await?;
+
+        // Create FileInfo struct
+        let file_info = FileInfo {
+            id: uuid.to_string(),
+            user_id: user_id.to_string(),
+            sha256,
+            file_name: original_file_name,
+            path,
+            mime_type: Self::guess_mime_type(Path::new(&file_name)),
+            created_at: now,
+            updated_at: now,
+        };
+
+        // Store in database
+        db_client
+            .store_item(file_info.clone())
+            .await
+            .map_err(FileError::SurrealError)?;
+
+        Ok(file_info)
+    }
+
+    /// Delete a FileInfo by ID using StorageManager for storage operations.
+    ///
+    /// # Arguments
+    /// * `id` - ID of the FileInfo
+    /// * `db_client` - Reference to SurrealDbClient
+    /// * `storage` - A StorageManager instance for storage operations
+    ///
+    /// # Returns
+    /// * `Result<(), AppError>` - Success or error
+    pub async fn delete_by_id_with_storage(
+        id: &str,
+        db_client: &SurrealDbClient,
+        storage: &StorageManager,
+    ) -> Result<(), AppError> {
+        // Get the FileInfo from the database
+        let Some(file_info) = db_client.get_item::<FileInfo>(id).await? else {
+            return Ok(());
+        };
+
+        // Remove the object's parent prefix in the object store
+        let (parent_prefix, _file_name) = store::split_object_path(&file_info.path)
+            .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
+        storage
+            .delete_prefix(&parent_prefix)
+            .await
+            .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
+        info!(
+            "Removed object prefix {} and its contents via StorageManager",
+            parent_prefix
+        );
+
+        // Delete the FileInfo from the database
+        db_client.delete_item::<FileInfo>(id).await?;
+
+        Ok(())
+    }
+
+    /// Retrieve file content using StorageManager for storage operations.
+    ///
+    /// # Arguments
+    /// * `storage` - A StorageManager instance for storage operations
+    ///
+    /// # Returns
+    /// * `Result<bytes::Bytes, AppError>` - The file content or an error
+    pub async fn get_content_with_storage(
+        &self,
+        storage: &StorageManager,
+    ) -> Result<bytes::Bytes, AppError> {
+        storage
+            .get(&self.path)
+            .await
+            .map_err(|e: object_store::Error| AppError::from(anyhow::anyhow!(e)))
+    }
+
+    /// Persist file to storage using StorageManager.
+    ///
+    /// # Arguments
+    /// * `uuid` - The UUID for the file
+    /// * `file` - The temporary file to persist
+    /// * `file_name` - The name of the file
+    /// * `user_id` - The user ID
+    /// * `storage` - A StorageManager instance for storage operations
+    ///
+    /// # Returns
+    /// * `Result<String, FileError>` - The logical object location or an error.
+    async fn persist_file_with_storage(
+        uuid: &Uuid,
+        file: NamedTempFile,
+        file_name: &str,
+        user_id: &str,
+        storage: &StorageManager,
+    ) -> Result<String, FileError> {
+        // Logical object location relative to the store root
+        let location = format!("{}/{}/{}", user_id, uuid, file_name);
+        info!("Persisting to object location: {}", location);
+
+        let bytes = tokio::fs::read(file.path()).await?;
+        storage
+            .put(&location, bytes.into())
+            .await
+            .map_err(FileError::from)?;
+
+        Ok(location)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::config::{AppConfig, PdfIngestMode::LlmFirst, StorageKind};
+    use crate::storage::store::testing::TestStorageManager;
     use axum::http::HeaderMap;
     use axum_typed_multipart::FieldMetadata;
-    use std::io::Write;
+    use std::{io::Write, path::Path};
     use tempfile::NamedTempFile;
-
-    fn test_config(data_dir: &str) -> AppConfig {
-        AppConfig {
-            data_dir: data_dir.to_string(),
-            openai_api_key: "test_key".to_string(),
-            surrealdb_address: "test_address".to_string(),
-            surrealdb_username: "test_user".to_string(),
-            surrealdb_password: "test_pass".to_string(),
-            surrealdb_namespace: "test_ns".to_string(),
-            surrealdb_database: "test_db".to_string(),
-            http_port: 3000,
-            openai_base_url: "..".to_string(),
-            storage: StorageKind::Local,
-            pdf_ingest_mode: LlmFirst,
-            ..Default::default()
-        }
-    }
 
     /// Creates a test temporary file with the given content
     fn create_test_file(content: &[u8], file_name: &str) -> FieldData<NamedTempFile> {
@@ -316,33 +337,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fileinfo_create_read_delete() {
-        // Setup in-memory database for testing
+    async fn test_fileinfo_create_read_delete_with_storage_manager() {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.unwrap();
 
-        // Create a test file
-        let content = b"This is a test file for cross-filesystem operations";
-        let file_name = "cross_fs_test.txt";
+        let content = b"This is a test file for StorageManager operations";
+        let file_name = "storage_manager_test.txt";
         let field_data = create_test_file(content, file_name);
 
-        // Create a FileInfo instance with data_dir in /tmp
+        // Create test storage manager (memory backend)
+        let test_storage = store::testing::TestStorageManager::new_memory()
+            .await
+            .expect("Failed to create test storage manager");
+
+        // Create a FileInfo instance with storage manager
         let user_id = "test_user";
-        let config = test_config("/tmp/minne_test_data");
 
-        // Test file creation
-        let file_info = FileInfo::new(field_data, &db, user_id, &config)
-            .await
-            .expect("Failed to create file across filesystems");
+        // Test file creation with StorageManager
+        let file_info =
+            FileInfo::new_with_storage(field_data, &db, user_id, test_storage.storage())
+                .await
+                .expect("Failed to create file with StorageManager");
+        assert_eq!(file_info.file_name, file_name);
 
-        // Verify the file exists via object_store and has correct content
-        let bytes = store::get_bytes_at(&file_info.path, &config)
+        // Verify the file exists via StorageManager and has correct content
+        let bytes = file_info
+            .get_content_with_storage(test_storage.storage())
             .await
-            .expect("Failed to read file content via object_store");
-        assert_eq!(bytes, content.as_slice());
+            .expect("Failed to read file content via StorageManager");
+        assert_eq!(bytes.as_ref(), content);
 
         // Test file reading
         let retrieved = FileInfo::get_by_id(&file_info.id, &db)
@@ -350,51 +377,89 @@ mod tests {
             .expect("Failed to retrieve file info");
         assert_eq!(retrieved.id, file_info.id);
         assert_eq!(retrieved.sha256, file_info.sha256);
+        assert_eq!(retrieved.file_name, file_name);
 
-        // Test file deletion
-        FileInfo::delete_by_id(&file_info.id, &db, &config)
+        // Test file deletion with StorageManager
+        FileInfo::delete_by_id_with_storage(&file_info.id, &db, test_storage.storage())
             .await
-            .expect("Failed to delete file");
-        assert!(
-            store::get_bytes_at(&file_info.path, &config).await.is_err(),
-            "File should be deleted"
-        );
+            .expect("Failed to delete file with StorageManager");
 
-        // Clean up the test directory
-        let _ = tokio::fs::remove_dir_all(&config.data_dir).await;
+        let deleted_result = file_info
+            .get_content_with_storage(test_storage.storage())
+            .await;
+        assert!(deleted_result.is_err(), "File should be deleted");
+
+        // No cleanup needed - TestStorageManager handles it automatically
     }
 
     #[tokio::test]
-    async fn test_fileinfo_duplicate_detection() {
-        // Setup in-memory database for testing
+    async fn test_fileinfo_preserves_original_filename_and_sanitizes_path() {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.unwrap();
 
-        // Create a test file
-        let content = b"This is a test file for cross-filesystem duplicate detection";
-        let file_name = "cross_fs_duplicate.txt";
+        let content = b"filename sanitization";
+        let original_name = "Complex name (1).txt";
+        let expected_sanitized = "Complex_name__1_.txt";
+        let field_data = create_test_file(content, original_name);
+
+        let test_storage = store::testing::TestStorageManager::new_memory()
+            .await
+            .expect("Failed to create test storage manager");
+
+        let file_info =
+            FileInfo::new_with_storage(field_data, &db, "sanitized_user", test_storage.storage())
+                .await
+                .expect("Failed to create file via storage manager");
+
+        assert_eq!(file_info.file_name, original_name);
+
+        let stored_name = Path::new(&file_info.path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("stored name");
+        assert_eq!(stored_name, expected_sanitized);
+    }
+
+    #[tokio::test]
+    async fn test_fileinfo_duplicate_detection_with_storage_manager() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.unwrap();
+
+        let content = b"This is a test file for StorageManager duplicate detection";
+        let file_name = "storage_manager_duplicate.txt";
         let field_data = create_test_file(content, file_name);
 
-        // Create a FileInfo instance with data_dir in /tmp
+        // Create test storage manager
+        let test_storage = store::testing::TestStorageManager::new_memory()
+            .await
+            .expect("Failed to create test storage manager");
+
+        // Create a FileInfo instance with storage manager
         let user_id = "test_user";
-        let config = test_config("/tmp/minne_test_data");
 
         // Store the original file
-        let original_file_info = FileInfo::new(field_data, &db, user_id, &config)
-            .await
-            .expect("Failed to create original file");
+        let original_file_info =
+            FileInfo::new_with_storage(field_data, &db, user_id, test_storage.storage())
+                .await
+                .expect("Failed to create original file with StorageManager");
 
         // Create another file with the same content but different name
-        let duplicate_name = "cross_fs_duplicate_2.txt";
+        let duplicate_name = "storage_manager_duplicate_2.txt";
         let field_data2 = create_test_file(content, duplicate_name);
 
         // The system should detect it's the same file and return the original FileInfo
-        let duplicate_file_info = FileInfo::new(field_data2, &db, user_id, &config)
-            .await
-            .expect("Failed to process duplicate file");
+        let duplicate_file_info =
+            FileInfo::new_with_storage(field_data2, &db, user_id, test_storage.storage())
+                .await
+                .expect("Failed to process duplicate file with StorageManager");
 
         // Verify duplicate detection worked
         assert_eq!(duplicate_file_info.id, original_file_info.id);
@@ -402,34 +467,48 @@ mod tests {
         assert_eq!(duplicate_file_info.file_name, file_name);
         assert_ne!(duplicate_file_info.file_name, duplicate_name);
 
-        // Clean up
-        FileInfo::delete_by_id(&original_file_info.id, &db, &config)
+        // Verify both files have the same content (they should point to the same file)
+        let original_content = original_file_info
+            .get_content_with_storage(test_storage.storage())
             .await
-            .expect("Failed to delete file");
-        let _ = tokio::fs::remove_dir_all(&config.data_dir).await;
+            .unwrap();
+        let duplicate_content = duplicate_file_info
+            .get_content_with_storage(test_storage.storage())
+            .await
+            .unwrap();
+        assert_eq!(original_content.as_ref(), content);
+        assert_eq!(duplicate_content.as_ref(), content);
+
+        // Clean up
+        FileInfo::delete_by_id_with_storage(&original_file_info.id, &db, test_storage.storage())
+            .await
+            .expect("Failed to delete original file with StorageManager");
     }
 
     #[tokio::test]
     async fn test_file_creation() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
 
-        // Create a test file
         let content = b"This is a test file content";
         let file_name = "test_file.txt";
         let field_data = create_test_file(content, file_name);
 
-        // Create a FileInfo instance
+        // Create a FileInfo instance with StorageManager
         let user_id = "test_user";
-        let config = test_config("./data");
-        let file_info = FileInfo::new(field_data, &db, user_id, &config).await;
+        let test_storage = TestStorageManager::new_memory()
+            .await
+            .expect("create test storage manager");
+        let file_info =
+            FileInfo::new_with_storage(field_data, &db, user_id, test_storage.storage()).await;
 
-        // We can't fully test persistence to disk in unit tests,
-        // but we can verify the database record was created
+        // Verify the FileInfo was created successfully
         assert!(file_info.is_ok());
         let file_info = file_info.unwrap();
 
@@ -459,33 +538,39 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_duplicate_detection() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
 
         // First, store a file with known content
         let content = b"This is a test file for duplicate detection";
         let file_name = "original.txt";
         let user_id = "test_user";
 
-        let config = test_config("./data");
+        let test_storage = TestStorageManager::new_memory()
+            .await
+            .expect("create test storage manager");
 
         let field_data1 = create_test_file(content, file_name);
-        let original_file_info = FileInfo::new(field_data1, &db, user_id, &config)
-            .await
-            .expect("Failed to create original file");
+        let original_file_info =
+            FileInfo::new_with_storage(field_data1, &db, user_id, test_storage.storage())
+                .await
+                .expect("Failed to create original file");
 
         // Now try to store another file with the same content but different name
         let duplicate_name = "duplicate.txt";
         let field_data2 = create_test_file(content, duplicate_name);
 
         // The system should detect it's the same file and return the original FileInfo
-        let duplicate_file_info = FileInfo::new(field_data2, &db, user_id, &config)
-            .await
-            .expect("Failed to process duplicate file");
+        let duplicate_file_info =
+            FileInfo::new_with_storage(field_data2, &db, user_id, test_storage.storage())
+                .await
+                .expect("Failed to process duplicate file");
 
         // The returned FileInfo should match the original
         assert_eq!(duplicate_file_info.id, original_file_info.id);
@@ -553,7 +638,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_sha_not_found() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
@@ -574,7 +658,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_manual_file_info_creation() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
@@ -615,23 +698,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_id() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
 
-        // Create and persist a test file via FileInfo::new
+        // Create and persist a test file via FileInfo::new_with_storage
         let user_id = "user123";
-        let cfg = test_config("./data");
+        let test_storage = TestStorageManager::new_memory()
+            .await
+            .expect("create test storage manager");
         let temp = create_test_file(b"test content", "test_file.txt");
-        let file_info = FileInfo::new(temp, &db, user_id, &cfg)
+        let file_info = FileInfo::new_with_storage(temp, &db, user_id, test_storage.storage())
             .await
             .expect("create file");
 
-        // Delete the file
-        let delete_result = FileInfo::delete_by_id(&file_info.id, &db, &cfg).await;
+        // Delete the file using StorageManager
+        let delete_result =
+            FileInfo::delete_by_id_with_storage(&file_info.id, &db, test_storage.storage()).await;
 
         // Delete should be successful
         assert!(
@@ -650,13 +738,12 @@ mod tests {
             "FileInfo should be deleted from the database"
         );
 
-        // Verify content no longer retrievable
-        assert!(store::get_bytes_at(&file_info.path, &cfg).await.is_err());
+        // Verify content no longer retrievable from storage
+        assert!(test_storage.storage().get(&file_info.path).await.is_err());
     }
 
     #[tokio::test]
     async fn test_delete_by_id_not_found() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
@@ -664,19 +751,16 @@ mod tests {
             .expect("Failed to start in-memory surrealdb");
 
         // Try to delete a file that doesn't exist
-        let result = FileInfo::delete_by_id(
-            "nonexistent_id",
-            &db,
-            &test_config("./data"),
-        )
-        .await;
+        let test_storage = TestStorageManager::new_memory().await.unwrap();
+        let result =
+            FileInfo::delete_by_id_with_storage("nonexistent_id", &db, test_storage.storage())
+                .await;
 
         // Should succeed even if the file record does not exist
         assert!(result.is_ok());
     }
     #[tokio::test]
     async fn test_get_by_id() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
@@ -717,7 +801,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_id_not_found() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
@@ -741,43 +824,197 @@ mod tests {
         }
     }
 
+    // StorageManager-based tests
     #[tokio::test]
-    async fn test_fileinfo_persist_with_custom_root() {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
+    async fn test_file_info_new_with_storage_memory() {
+        // Setup
+        let db = SurrealDbClient::memory("test_ns", "test_file_storage_memory")
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .unwrap();
+        db.apply_migrations().await.unwrap();
 
-        // Create a test file
-        let content = b"This is a test file for data directory configuration";
-        let file_name = "data_dir_test.txt";
-        let field_data = create_test_file(content, file_name);
-
-        // Create a FileInfo instance with a custom data directory
+        let content = b"This is a test file for StorageManager";
+        let field_data = create_test_file(content, "test_storage.txt");
         let user_id = "test_user";
-        let custom_data_dir = "/tmp/minne_custom_data_dir";
-        let config = test_config(custom_data_dir);
 
-        // Test file creation
-        let file_info = FileInfo::new(field_data, &db, user_id, &config)
+        // Create test storage manager
+        let storage = store::testing::TestStorageManager::new_memory()
             .await
-            .expect("Failed to create file in custom data directory");
+            .unwrap();
 
-        // Verify the file has the correct content via object_store
-        let file_content = store::get_bytes_at(&file_info.path, &config)
+        // Test file creation with StorageManager
+        let file_info = FileInfo::new_with_storage(field_data, &db, user_id, storage.storage())
             .await
-            .expect("Failed to read file content");
-        assert_eq!(file_content.as_ref(), content);
+            .expect("Failed to create file with StorageManager");
 
-        // Test file deletion
-        FileInfo::delete_by_id(&file_info.id, &db, &config)
+        // Verify the file was created correctly
+        assert_eq!(file_info.user_id, user_id);
+        assert_eq!(file_info.file_name, "test_storage.txt");
+        assert!(!file_info.sha256.is_empty());
+        assert!(!file_info.path.is_empty());
+
+        // Test content retrieval with StorageManager
+        let retrieved_content = file_info
+            .get_content_with_storage(storage.storage())
             .await
-            .expect("Failed to delete file");
-        assert!(store::get_bytes_at(&file_info.path, &config).await.is_err());
+            .expect("Failed to get file content with StorageManager");
+        assert_eq!(retrieved_content.as_ref(), content);
 
-        // Clean up the test directory
-        let _ = tokio::fs::remove_dir_all(custom_data_dir).await;
+        // Test file deletion with StorageManager
+        FileInfo::delete_by_id_with_storage(&file_info.id, &db, storage.storage())
+            .await
+            .expect("Failed to delete file with StorageManager");
+
+        // Verify file is deleted
+        let deleted_content_result = file_info.get_content_with_storage(storage.storage()).await;
+        assert!(deleted_content_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_file_info_new_with_storage_local() {
+        // Setup
+        let db = SurrealDbClient::memory("test_ns", "test_file_storage_local")
+            .await
+            .unwrap();
+        db.apply_migrations().await.unwrap();
+
+        let content = b"This is a test file for StorageManager with local storage";
+        let field_data = create_test_file(content, "test_local.txt");
+        let user_id = "test_user";
+
+        // Create test storage manager with local backend
+        let storage = store::testing::TestStorageManager::new_local()
+            .await
+            .unwrap();
+
+        // Test file creation with StorageManager
+        let file_info = FileInfo::new_with_storage(field_data, &db, user_id, storage.storage())
+            .await
+            .expect("Failed to create file with StorageManager");
+
+        // Verify the file was created correctly
+        assert_eq!(file_info.user_id, user_id);
+        assert_eq!(file_info.file_name, "test_local.txt");
+        assert!(!file_info.sha256.is_empty());
+        assert!(!file_info.path.is_empty());
+
+        // Test content retrieval with StorageManager
+        let retrieved_content = file_info
+            .get_content_with_storage(storage.storage())
+            .await
+            .expect("Failed to get file content with StorageManager");
+        assert_eq!(retrieved_content.as_ref(), content);
+
+        // Test file deletion with StorageManager
+        FileInfo::delete_by_id_with_storage(&file_info.id, &db, storage.storage())
+            .await
+            .expect("Failed to delete file with StorageManager");
+
+        // Verify file is deleted
+        let deleted_content_result = file_info.get_content_with_storage(storage.storage()).await;
+        assert!(deleted_content_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_file_info_storage_manager_persistence() {
+        // Setup
+        let db = SurrealDbClient::memory("test_ns", "test_file_persistence")
+            .await
+            .unwrap();
+        db.apply_migrations().await.unwrap();
+
+        let content = b"Test content for persistence";
+        let field_data = create_test_file(content, "persistence_test.txt");
+        let user_id = "test_user";
+
+        // Create test storage manager
+        let storage = store::testing::TestStorageManager::new_memory()
+            .await
+            .unwrap();
+
+        // Create file
+        let file_info = FileInfo::new_with_storage(field_data, &db, user_id, storage.storage())
+            .await
+            .expect("Failed to create file");
+
+        // Test that data persists across multiple operations with the same StorageManager
+        let retrieved_content_1 = file_info
+            .get_content_with_storage(storage.storage())
+            .await
+            .unwrap();
+        let retrieved_content_2 = file_info
+            .get_content_with_storage(storage.storage())
+            .await
+            .unwrap();
+
+        assert_eq!(retrieved_content_1.as_ref(), content);
+        assert_eq!(retrieved_content_2.as_ref(), content);
+
+        // Test that different StorageManager instances don't share data (memory storage isolation)
+        let storage2 = store::testing::TestStorageManager::new_memory()
+            .await
+            .unwrap();
+        let isolated_content_result = file_info.get_content_with_storage(storage2.storage()).await;
+        assert!(
+            isolated_content_result.is_err(),
+            "Different StorageManager should not have access to same data"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_file_info_storage_manager_equivalence() {
+        // Setup
+        let db = SurrealDbClient::memory("test_ns", "test_file_equivalence")
+            .await
+            .unwrap();
+        db.apply_migrations().await.unwrap();
+
+        let content = b"Test content for equivalence testing";
+        let field_data1 = create_test_file(content, "equivalence_test_1.txt");
+        let field_data2 = create_test_file(content, "equivalence_test_2.txt");
+        let user_id = "test_user";
+
+        // Create single storage manager and reuse it
+        let storage_manager = store::testing::TestStorageManager::new_memory()
+            .await
+            .unwrap();
+        let storage = storage_manager.storage();
+
+        // Create multiple files with the same storage manager
+        let file_info_1 = FileInfo::new_with_storage(field_data1, &db, user_id, &storage)
+            .await
+            .expect("Failed to create file 1");
+
+        let file_info_2 = FileInfo::new_with_storage(field_data2, &db, user_id, &storage)
+            .await
+            .expect("Failed to create file 2");
+
+        // Test that both files can be retrieved with the same storage backend
+        let content_1 = file_info_1
+            .get_content_with_storage(&storage)
+            .await
+            .unwrap();
+        let content_2 = file_info_2
+            .get_content_with_storage(&storage)
+            .await
+            .unwrap();
+
+        assert_eq!(content_1.as_ref(), content);
+        assert_eq!(content_2.as_ref(), content);
+
+        // Test that files can be deleted with the same storage manager
+        FileInfo::delete_by_id_with_storage(&file_info_1.id, &db, &storage)
+            .await
+            .unwrap();
+        FileInfo::delete_by_id_with_storage(&file_info_2.id, &db, &storage)
+            .await
+            .unwrap();
+
+        // Verify files are deleted
+        let deleted_content_1 = file_info_1.get_content_with_storage(&storage).await;
+        let deleted_content_2 = file_info_2.get_content_with_storage(&storage).await;
+
+        assert!(deleted_content_1.is_err());
+        assert!(deleted_content_2.is_err());
     }
 }

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use common::{storage::db::SurrealDbClient, utils::config::get_config};
+use common::{
+    storage::db::SurrealDbClient, storage::store::StorageManager, utils::config::get_config,
+};
 use composite_retrieval::reranking::RerankerPool;
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -35,8 +37,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let reranker_pool = RerankerPool::maybe_from_config(&config)?;
 
+    // Create global storage manager
+    let storage = StorageManager::new(&config).await?;
+
     let ingestion_pipeline = Arc::new(
-        IngestionPipeline::new(db.clone(), openai_client.clone(), config, reranker_pool).await?,
+        IngestionPipeline::new(
+            db.clone(),
+            openai_client.clone(),
+            config,
+            reranker_pool,
+            storage,
+        )
+        .await?,
     );
 
     run_worker_loop(db, ingestion_pipeline).await

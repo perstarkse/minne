@@ -17,7 +17,6 @@ use crate::{
     utils::text_content_preview::truncate_text_contents,
     AuthSessionType,
 };
-use common::storage::store;
 use common::storage::types::user::DashboardStats;
 use common::{
     error::AppError,
@@ -86,7 +85,7 @@ pub async fn delete_text_content(
             TextContent::has_other_with_file(&file_info.id, &text_content.id, &state.db).await?;
 
         if !file_in_use {
-            FileInfo::delete_by_id(&file_info.id, &state.db, &state.config).await?;
+            FileInfo::delete_by_id_with_storage(&file_info.id, &state.db, &state.storage).await?;
         }
     }
 
@@ -278,7 +277,7 @@ pub async fn serve_file(
         return Ok(TemplateResponse::unauthorized().into_response());
     }
 
-    let stream = match store::get_stream_at(&file_info.path, &state.config).await {
+    let stream = match state.storage.get_stream(&file_info.path).await {
         Ok(s) => s,
         Err(_) => return Ok(TemplateResponse::server_error().into_response()),
     };

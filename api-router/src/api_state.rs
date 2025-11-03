@@ -1,15 +1,22 @@
 use std::sync::Arc;
 
-use common::{storage::db::SurrealDbClient, utils::config::AppConfig};
+use common::{
+    storage::{db::SurrealDbClient, store::StorageManager},
+    utils::config::AppConfig,
+};
 
 #[derive(Clone)]
 pub struct ApiState {
     pub db: Arc<SurrealDbClient>,
     pub config: AppConfig,
+    pub storage: StorageManager,
 }
 
 impl ApiState {
-    pub async fn new(config: &AppConfig) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(
+        config: &AppConfig,
+        storage: StorageManager,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let surreal_db_client = Arc::new(
             SurrealDbClient::new(
                 &config.surrealdb_address,
@@ -26,6 +33,7 @@ impl ApiState {
         let app_state = Self {
             db: surreal_db_client.clone(),
             config: config.clone(),
+            storage,
         };
 
         Ok(app_state)

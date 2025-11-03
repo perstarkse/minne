@@ -19,6 +19,7 @@ use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
+        store::StorageManager,
         types::{
             ingestion_payload::IngestionPayload,
             ingestion_task::{IngestionTask, TaskErrorInfo},
@@ -47,12 +48,14 @@ impl IngestionPipeline {
         openai_client: Arc<Client<async_openai::config::OpenAIConfig>>,
         config: AppConfig,
         reranker_pool: Option<Arc<RerankerPool>>,
+        storage: StorageManager,
     ) -> Result<Self, AppError> {
         let services = DefaultPipelineServices::new(
             db.clone(),
             openai_client.clone(),
             config.clone(),
             reranker_pool,
+            storage,
         );
 
         Self::with_services(db, IngestionConfig::default(), Arc::new(services))

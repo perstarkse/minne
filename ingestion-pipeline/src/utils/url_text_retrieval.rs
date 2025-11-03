@@ -3,8 +3,7 @@ use axum_typed_multipart::{FieldData, FieldMetadata};
 use chrono::Utc;
 use common::{
     error::AppError,
-    storage::{db::SurrealDbClient, types::file_info::FileInfo},
-    utils::config::AppConfig,
+    storage::{db::SurrealDbClient, store::StorageManager, types::file_info::FileInfo},
 };
 use dom_smoothie::{Article, Readability, TextMode};
 use headless_chrome::Browser;
@@ -19,7 +18,7 @@ pub async fn extract_text_from_url(
     url: &str,
     db: &SurrealDbClient,
     user_id: &str,
-    config: &AppConfig,
+    storage: &StorageManager,
 ) -> Result<(Article, FileInfo), AppError> {
     info!("Fetching URL: {}", url);
     let now = Instant::now();
@@ -81,7 +80,7 @@ pub async fn extract_text_from_url(
         metadata,
     };
 
-    let file_info = FileInfo::new(field_data, db, user_id, config).await?;
+    let file_info = FileInfo::new_with_storage(field_data, db, user_id, storage).await?;
 
     let config = dom_smoothie::Config {
         text_mode: TextMode::Markdown,

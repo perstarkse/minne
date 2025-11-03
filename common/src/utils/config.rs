@@ -1,7 +1,7 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageKind {
     Local,
