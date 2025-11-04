@@ -1,5 +1,9 @@
 use async_openai::types::ListModelResponse;
-use axum::{extract::State, response::IntoResponse, Form};
+use axum::{
+    extract::{Query, State},
+    response::IntoResponse,
+    Form,
+};
 use serde::{Deserialize, Serialize};
 
 use common::{
@@ -31,44 +35,83 @@ use crate::{
 pub struct AdminPanelData {
     user: User,
     settings: SystemSettings,
-    analytics: Analytics,
-    users: i64,
+    analytics: Option<Analytics>,
+    users: Option<i64>,
     default_query_prompt: String,
     default_image_prompt: String,
     conversation_archive: Vec<Conversation>,
-    available_models: ListModelResponse,
+    available_models: Option<ListModelResponse>,
+    current_section: AdminSection,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminSection {
+    Overview,
+    Models,
+}
+
+impl Default for AdminSection {
+    fn default() -> Self {
+        Self::Overview
+    }
+}
+
+#[derive(Deserialize)]
+pub struct AdminPanelQuery {
+    section: Option<String>,
 }
 
 pub async fn show_admin_panel(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
+    Query(query): Query<AdminPanelQuery>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let (
-        settings_res,
-        analytics_res,
-        user_count_res,
-        conversation_archive_res,
-        available_models_res,
-    ) = tokio::join!(
+    let section = match query.section.as_deref() {
+        Some("models") => AdminSection::Models,
+        _ => AdminSection::Overview,
+    };
+
+    let (settings, conversation_archive) = tokio::try_join!(
         SystemSettings::get_current(&state.db),
-        Analytics::get_current(&state.db),
-        Analytics::get_users_amount(&state.db),
-        User::get_user_conversations(&user.id, &state.db),
-        async { state.openai_client.models().list().await }
-    );
+        User::get_user_conversations(&user.id, &state.db)
+    )?;
+
+    let (analytics, users) = if section == AdminSection::Overview {
+        let (analytics, users) = tokio::try_join!(
+            Analytics::get_current(&state.db),
+            Analytics::get_users_amount(&state.db)
+        )?;
+        (Some(analytics), Some(users))
+    } else {
+        (None, None)
+    };
+
+    let available_models = if section == AdminSection::Models {
+        Some(
+            state
+                .openai_client
+                .models()
+                .list()
+                .await
+                .map_err(|e| AppError::InternalError(e.to_string()))?,
+        )
+    } else {
+        None
+    };
 
     Ok(TemplateResponse::new_template(
         "admin/base.html",
         AdminPanelData {
             user,
-            settings: settings_res?,
-            analytics: analytics_res?,
-            available_models: available_models_res
-                .map_err(|e| AppError::InternalError(e.to_string()))?,
-            users: user_count_res?,
+            settings,
+            analytics,
+            available_models,
+            users,
             default_query_prompt: DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
             default_image_prompt: DEFAULT_IMAGE_PROCESSING_PROMPT.to_string(),
-            conversation_archive: conversation_archive_res?,
+            conversation_archive,
+            current_section: section,
         },
     ))
 }
@@ -115,7 +158,7 @@ pub async fn toggle_registration_status(
     SystemSettings::update(&state.db, new_settings.clone()).await?;
 
     Ok(TemplateResponse::new_partial(
-        "admin/base.html",
+        "admin/sections/overview.html",
         "registration_status_input",
         RegistrationToggleData {
             settings: new_settings,
@@ -217,7 +260,7 @@ pub async fn update_model_settings(
         .map_err(|_e| AppError::InternalError("Failed to get models".to_string()))?;
 
     Ok(TemplateResponse::new_partial(
-        "admin/base.html",
+        "admin/sections/models.html",
         "model_settings_form",
         ModelSettingsData {
             settings: new_settings,
@@ -282,7 +325,7 @@ pub async fn patch_query_prompt(
     SystemSettings::update(&state.db, new_settings.clone()).await?;
 
     Ok(TemplateResponse::new_partial(
-        "admin/base.html",
+        "admin/sections/overview.html",
         "system_prompt_section",
         SystemPromptSectionData {
             settings: new_settings,
@@ -341,7 +384,7 @@ pub async fn patch_ingestion_prompt(
     SystemSettings::update(&state.db, new_settings.clone()).await?;
 
     Ok(TemplateResponse::new_partial(
-        "admin/base.html",
+        "admin/sections/overview.html",
         "system_prompt_section",
         SystemPromptSectionData {
             settings: new_settings,
@@ -400,7 +443,7 @@ pub async fn patch_image_prompt(
     SystemSettings::update(&state.db, new_settings.clone()).await?;
 
     Ok(TemplateResponse::new_partial(
-        "admin/base.html",
+        "admin/sections/overview.html",
         "system_prompt_section",
         SystemPromptSectionData {
             settings: new_settings,

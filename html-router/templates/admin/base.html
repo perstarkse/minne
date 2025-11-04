@@ -3,154 +3,49 @@
 {% block title %}Minne - Admin{% endblock %}
 
 {% block main %}
-<div class="flex justify-center grow mt-2 sm:mt-4 pb-4">
-  <div class="container">
-    <section class="mb-4">
-      <div class="nb-panel p-3 flex items-center justify-between">
-        <h1 class="text-xl font-extrabold tracking-tight">Admin Dashboard</h1>
+<div id="admin-shell" class="flex justify-center grow mt-2 sm:mt-4 pb-4">
+  <div class="container flex flex-col gap-4">
+    <section class="nb-panel p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-xl font-extrabold tracking-tight">Admin Controls</h1>
+        <p class="text-sm opacity-70 max-w-2xl">
+          Stay on top of analytics and manage AI integrations without waiting on long-running model calls.
+        </p>
+      </div>
+      <div class="text-xs opacity-60 sm:text-right">
+        Signed in as <span class="font-medium">{{ user.email }}</span>
       </div>
     </section>
 
-    <section class="mb-4">
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div class="nb-stat">
-          <div class="text-xs opacity-70">Page Loads</div>
-          <div class="text-3xl font-extrabold">{{analytics.page_loads}}</div>
-          <div class="text-xs opacity-60">Total page load events</div>
-        </div>
-        <div class="nb-stat">
-          <div class="text-xs opacity-70">Unique Visitors</div>
-          <div class="text-3xl font-extrabold">{{analytics.visitors}}</div>
-          <div class="text-xs opacity-60">Distinct users by fingerprint</div>
-        </div>
-        <div class="nb-stat">
-          <div class="text-xs opacity-70">Users</div>
-          <div class="text-3xl font-extrabold">{{users}}</div>
-          <div class="text-xs opacity-60">Registered accounts</div>
-        </div>
-      </div>
-    </section>
+    <nav
+      class="nb-panel p-2 flex flex-wrap gap-2 text-sm"
+      hx-boost="true"
+      hx-target="#admin-shell"
+      hx-select="#admin-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+    >
+      <a
+        href="/admin?section=overview"
+        class="nb-btn btn-sm px-4 {% if current_section == 'overview' %}nb-cta{% else %}btn-ghost{% endif %}"
+      >
+        Overview
+      </a>
+      <a
+        href="/admin?section=models"
+        class="nb-btn btn-sm px-4 {% if current_section == 'models' %}nb-cta{% else %}btn-ghost{% endif %}"
+      >
+        Models
+      </a>
+    </nav>
 
-    <section class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-      {% block system_prompt_section %}
-      <div id="system_prompt_section" class="nb-panel p-4">
-        <div class="text-sm font-semibold mb-3">System Prompts</div>
-        <div class="flex gap-2 flex-col sm:flex-row">
-          <button type="button" class="nb-btn btn-sm" hx-get="/edit-query-prompt" hx-target="#modal" hx-swap="innerHTML">Edit Query Prompt</button>
-          <button type="button" class="nb-btn btn-sm" hx-get="/edit-ingestion-prompt" hx-target="#modal" hx-swap="innerHTML">Edit Ingestion Prompt</button>
-          <button type="button" class="nb-btn btn-sm" hx-get="/edit-image-prompt" hx-target="#modal" hx-swap="innerHTML">Edit Image Prompt</button>
-        </div>
-      </div>
-      {% endblock %}
-
-      <div class="nb-panel p-4">
-        <div class="text-sm font-semibold mb-3">AI Models</div>
-        {% block model_settings_form %}
-        <form hx-patch="/update-model-settings" hx-swap="outerHTML" class="grid grid-cols-1 gap-4">
-          <!-- Query Model -->
-          <div>
-            <div class="text-sm opacity-80 mb-1">Query Model</div>
-            <select name="query_model" class="nb-select w-full">
-              {% for model in available_models.data %}
-              <option value="{{model.id}}" {% if settings.query_model==model.id %} selected {% endif %}>{{model.id}}</option>
-              {% endfor %}
-            </select>
-            <p class="text-xs opacity-70 mt-1">Current: <span class="font-mono">{{settings.query_model}}</span></p>
-          </div>
-
-          <!-- Processing Model -->
-          <div>
-            <div class="text-sm opacity-80 mb-1">Processing Model</div>
-            <select name="processing_model" class="nb-select w-full">
-              {% for model in available_models.data %}
-              <option value="{{model.id}}" {% if settings.processing_model==model.id %} selected {% endif %}>{{model.id}}</option>
-              {% endfor %}
-            </select>
-            <p class="text-xs opacity-70 mt-1">Current: <span class="font-mono">{{settings.processing_model}}</span></p>
-          </div>
-
-          <!-- Image Processing Model -->
-          <div>
-            <div class="text-sm opacity-80 mb-1">Image Processing Model</div>
-            <select name="image_processing_model" class="nb-select w-full">
-              {% for model in available_models.data %}
-              <option value="{{model.id}}" {% if settings.image_processing_model==model.id %} selected {% endif %}>{{model.id}}</option>
-              {% endfor %}
-            </select>
-            <p class="text-xs opacity-70 mt-1">Current: <span class="font-mono">{{settings.image_processing_model}}</span></p>
-          </div>
-
-          <!-- Voice Processing Model -->
-          <div>
-            <div class="text-sm opacity-80 mb-1">Voice Processing Model</div>
-            <select name="voice_processing_model" class="nb-select w-full">
-              {% for model in available_models.data %}
-              <option value="{{model.id}}" {% if settings.voice_processing_model==model.id %} selected {% endif %}>{{model.id}}</option>
-              {% endfor %}
-            </select>
-            <p class="text-xs opacity-70 mt-1">Current: <span class="font-mono">{{settings.voice_processing_model}}</span></p>
-          </div>
-
-          <!-- Embedding Model -->
-          <div>
-            <div class="text-sm opacity-80 mb-1">Embedding Model</div>
-            <select name="embedding_model" class="nb-select w-full">
-              {% for model in available_models.data %}
-              <option value="{{model.id}}" {% if settings.embedding_model==model.id %} selected {% endif %}>{{model.id}}</option>
-              {% endfor %}
-            </select>
-            <p class="text-xs opacity-70 mt-1">Current: <span class="font-mono">{{settings.embedding_model}} ({{settings.embedding_dimensions}} dims)</span></p>
-          </div>
-
-          <!-- Embedding Dimensions -->
-          <div>
-            <div class="text-sm opacity-80 mb-1" for="embedding_dimensions">Embedding Dimensions</div>
-            <input type="number" id="embedding_dimensions" name="embedding_dimensions" class="nb-input w-full" value="{{ settings.embedding_dimensions }}" required />
-          </div>
-
-          <!-- Alert -->
-          <div id="embedding-change-alert" class="nb-panel p-3 bg-warning/20 hidden">
-            <div class="text-sm"><strong>Warning:</strong> Changing dimensions will require re-creating all embeddings. Look up your model's required dimensions or use a model that allows specifying them.</div>
-          </div>
-
-          <div class="flex justify-end">
-            <button type="submit" class="nb-btn nb-cta btn-sm">Save Model Settings</button>
-          </div>
-        </form>
-
-        <script>
-          // Rebind after HTMX swaps
-          (() => {
-            const dimensionInput = document.getElementById('embedding_dimensions');
-            const alertElement = document.getElementById('embedding-change-alert');
-            const initialDimensions = '{{ settings.embedding_dimensions }}';
-            if (dimensionInput && alertElement) {
-              dimensionInput.addEventListener('input', (event) => {
-                if (String(event.target.value) !== String(initialDimensions)) {
-                  alertElement.classList.remove('hidden');
-                } else {
-                  alertElement.classList.add('hidden');
-                }
-              });
-            }
-          })();
-        </script>
-        {% endblock %}
-      </div>
-
-      <div class="nb-panel p-4">
-        <div class="text-sm font-semibold mb-3">Registration</div>
-        <label class="flex items-center gap-3">
-          {% block registration_status_input %}
-          <form hx-patch="/toggle-registrations" hx-swap="outerHTML" hx-trigger="change">
-          <input name="registration_open" type="checkbox" class="nb-checkbox" {% if settings.registrations_enabled %}checked{% endif %} />
-          </form>
-          {% endblock %}
-          <span class="text-sm">Enable Registrations</span>
-        </label>
-        <div id="registration-status" class="text-xs opacity-70 mt-2"></div>
-      </div>
-    </section>
+    <div id="admin-content" class="flex flex-col gap-4">
+      {% if current_section == 'models' %}
+        {% include 'admin/sections/models.html' %}
+      {% else %}
+        {% include 'admin/sections/overview.html' %}
+      {% endif %}
+    </div>
   </div>
 </div>
 {% endblock %}
