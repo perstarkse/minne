@@ -6,7 +6,7 @@ use common::storage::{
     db::SurrealDbClient,
     types::ingestion_task::{IngestionTask, DEFAULT_LEASE_SECS},
 };
-use pipeline::IngestionPipeline;
+pub use pipeline::{IngestionConfig, IngestionPipeline, IngestionTuning};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use tracing::{error, info, warn};

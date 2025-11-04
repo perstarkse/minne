@@ -68,6 +68,7 @@ where
 {
     let embedding_literal = serde_json::to_string(&query_embedding)
         .map_err(|err| AppError::InternalError(format!("Failed to serialize embedding: {err}")))?;
+
     let closest_query = format!(
         "SELECT id, vector::distance::knn() AS distance \
          FROM {table} \

@@ -7,6 +7,7 @@ mod stages;
 mod state;
 
 pub use config::{IngestionConfig, IngestionTuning};
+pub use enrichment_result::{LLMEnrichmentResult, LLMKnowledgeEntity, LLMRelationship};
 pub use services::{DefaultPipelineServices, PipelineServices};
 
 use std::{
@@ -31,7 +32,7 @@ use composite_retrieval::reranking::RerankerPool;
 use tracing::{debug, info, warn};
 
 use self::{
-    context::PipelineContext,
+    context::{PipelineArtifacts, PipelineContext},
     stages::{enrich, persist, prepare_content, retrieve_related},
     state::ready,
 };
@@ -223,6 +224,33 @@ impl IngestionPipeline {
         );
 
         Ok(())
+    }
+
+    /// Runs the ingestion pipeline up to (but excluding) persistence and returns the prepared artifacts.
+    pub async fn produce_artifacts(
+        &self,
+        task: &IngestionTask,
+    ) -> Result<PipelineArtifacts, AppError> {
+        let payload = task.content.clone();
+        let mut ctx = PipelineContext::new(
+            task,
+            self.db.as_ref(),
+            &self.pipeline_config,
+            self.services.as_ref(),
+        );
+
+        let machine = ready();
+        let machine = prepare_content(machine, &mut ctx, payload)
+            .await
+            .map_err(|err| ctx.abort(err))?;
+        let machine = retrieve_related(machine, &mut ctx)
+            .await
+            .map_err(|err| ctx.abort(err))?;
+        let _machine = enrich(machine, &mut ctx)
+            .await
+            .map_err(|err| ctx.abort(err))?;
+
+        ctx.build_artifacts().await.map_err(|err| ctx.abort(err))
     }
 }
 

@@ -10,6 +10,9 @@ result
 data
 database
 
+eval/cache/
+eval/reports/
+
 # Devenv
 .devenv*
 devenv.local.nix
@@ -21,3 +24,4 @@ devenv.local.nix
 .pre-commit-config.yaml
 # html-router/assets/style.css
 html-router/node_modules
+.fastembed_cache/

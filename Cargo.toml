@@ -6,7 +6,8 @@ members = [
   "html-router",
   "ingestion-pipeline",
   "composite-retrieval",
-  "json-stream-parser"
+  "json-stream-parser",
+  "eval"
 ]
 resolver = "2"
 

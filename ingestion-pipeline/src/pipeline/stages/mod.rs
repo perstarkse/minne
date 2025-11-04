@@ -7,7 +7,6 @@ use common::{
         types::{
             ingestion_payload::IngestionPayload, knowledge_entity::KnowledgeEntity,
             knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
-            text_content::TextContent,
         },
     },
 };
@@ -16,8 +15,7 @@ use tokio::time::{sleep, Duration};
 use tracing::{debug, instrument, warn};
 
 use super::{
-    context::PipelineContext,
-    services::PipelineServices,
+    context::{PipelineArtifacts, PipelineContext},
     state::{ContentPrepared, Enriched, IngestionMachine, Persisted, Ready, Retrieved},
 };
 
@@ -134,37 +132,26 @@ pub async fn persist(
     machine: IngestionMachine<(), Enriched>,
     ctx: &mut PipelineContext<'_>,
 ) -> Result<IngestionMachine<(), Persisted>, AppError> {
-    let content = ctx.take_text_content()?;
-    let analysis = ctx.take_analysis()?;
-
-    let (entities, relationships) = ctx
-        .services
-        .convert_analysis(
-            &content,
-            &analysis,
-            ctx.pipeline_config.tuning.entity_embedding_concurrency,
-        )
-        .await?;
-
+    let PipelineArtifacts {
+        text_content,
+        entities,
+        relationships,
+        chunks,
+    } = ctx.build_artifacts().await?;
     let entity_count = entities.len();
     let relationship_count = relationships.len();
-
-    let chunk_range =
-        ctx.pipeline_config.tuning.chunk_min_chars..ctx.pipeline_config.tuning.chunk_max_chars;
 
     let ((), chunk_count) = tokio::try_join!(
         store_graph_entities(ctx.db, &ctx.pipeline_config.tuning, entities, relationships),
         store_vector_chunks(
             ctx.db,
-            ctx.services,
             ctx.task_id.as_str(),
-            &content,
-            chunk_range,
+            &chunks,
             &ctx.pipeline_config.tuning
         )
     )?;
 
-    ctx.db.store_item(content).await?;
+    ctx.db.store_item(text_content).await?;
     ctx.db.rebuild_indexes().await?;
 
     debug!(
@@ -252,17 +239,14 @@ async fn store_graph_entities(
 
 async fn store_vector_chunks(
     db: &SurrealDbClient,
-    services: &dyn PipelineServices,
     task_id: &str,
-    content: &TextContent,
-    chunk_range: std::ops::Range<usize>,
+    chunks: &[TextChunk],
     tuning: &super::config::IngestionTuning,
 ) -> Result<usize, AppError> {
-    let prepared_chunks = services.prepare_chunks(content, chunk_range).await?;
-    let chunk_count = prepared_chunks.len();
+    let chunk_count = chunks.len();
 
     let batch_size = tuning.chunk_insert_concurrency.max(1);
-    for chunk in &prepared_chunks {
+    for chunk in chunks {
         debug!(
             task_id = %task_id,
             chunk_id = %chunk.id,
@@ -271,7 +255,7 @@ async fn store_vector_chunks(
         );
     }
 
-    for batch in prepared_chunks.chunks(batch_size) {
+    for batch in chunks.chunks(batch_size) {
         store_chunk_batch(db, batch, tuning).await?;
     }
 
