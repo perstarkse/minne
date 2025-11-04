@@ -1,8 +1,14 @@
+use std::ops::Range;
+
 use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
-        types::{ingestion_task::IngestionTask, text_content::TextContent},
+        types::{
+            ingestion_task::IngestionTask, knowledge_entity::KnowledgeEntity,
+            knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
+            text_content::TextContent,
+        },
     },
 };
 use composite_retrieval::RetrievedEntity;
@@ -22,6 +28,14 @@ pub struct PipelineContext<'a> {
     pub text_content: Option<TextContent>,
     pub similar_entities: Vec<RetrievedEntity>,
     pub analysis: Option<LLMEnrichmentResult>,
+}
+
+#[derive(Debug)]
+pub struct PipelineArtifacts {
+    pub text_content: TextContent,
+    pub entities: Vec<KnowledgeEntity>,
+    pub relationships: Vec<KnowledgeRelationship>,
+    pub chunks: Vec<TextChunk>,
 }
 
 impl<'a> PipelineContext<'a> {
@@ -72,5 +86,31 @@ impl<'a> PipelineContext<'a> {
             "ingestion pipeline aborted"
         );
         err
+    }
+
+    pub async fn build_artifacts(&mut self) -> Result<PipelineArtifacts, AppError> {
+        let content = self.take_text_content()?;
+        let analysis = self.take_analysis()?;
+
+        let (entities, relationships) = self
+            .services
+            .convert_analysis(
+                &content,
+                &analysis,
+                self.pipeline_config.tuning.entity_embedding_concurrency,
+            )
+            .await?;
+
+        let chunk_range: Range<usize> = self.pipeline_config.tuning.chunk_min_chars
+            ..self.pipeline_config.tuning.chunk_max_chars;
+
+        let chunks = self.services.prepare_chunks(&content, chunk_range).await?;
+
+        Ok(PipelineArtifacts {
+            text_content: content,
+            entities,
+            relationships,
+            chunks,
+        })
     }
 }

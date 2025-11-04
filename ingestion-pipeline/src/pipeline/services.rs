@@ -29,6 +29,8 @@ use crate::utils::llm_instructions::{
     get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE,
 };
 
+const EMBEDDING_QUERY_CHAR_LIMIT: usize = 12_000;
+
 #[async_trait]
 pub trait PipelineServices: Send + Sync {
     async fn prepare_text_content(
@@ -162,9 +164,13 @@ impl PipelineServices for DefaultPipelineServices {
         &self,
         content: &TextContent,
     ) -> Result<Vec<RetrievedEntity>, AppError> {
+        let truncated_body = truncate_for_embedding(&content.text, EMBEDDING_QUERY_CHAR_LIMIT);
         let input_text = format!(
-            "content: {}, category: {}, user_context: {:?}",
-            content.text, content.category, content.context
+            "content: {}\n[truncated={}], category: {}, user_context: {:?}",
+            truncated_body,
+            truncated_body.len() < content.text.len(),
+            content.category,
+            content.context
         );
 
         let rerank_lease = match &self.reranker_pool {
@@ -238,4 +244,20 @@ impl PipelineServices for DefaultPipelineServices {
         }
         Ok(chunks)
     }
+}
+
+fn truncate_for_embedding(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+
+    let mut truncated = String::with_capacity(max_chars + 3);
+    for (idx, ch) in text.chars().enumerate() {
+        if idx >= max_chars {
+            break;
+        }
+        truncated.push(ch);
+    }
+    truncated.push_str("…");
+    truncated
 }

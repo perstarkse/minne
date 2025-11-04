@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use chat_handlers::{
+pub use chat_handlers::{
     delete_conversation, new_chat_user_message, new_user_message, patch_conversation_title,
     reload_sidebar, show_chat_base, show_conversation_editing_title, show_existing_chat,
     show_initialized_chat,

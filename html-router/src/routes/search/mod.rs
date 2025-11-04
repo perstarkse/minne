@@ -1,7 +1,7 @@
 mod handlers;
 
 use axum::{extract::FromRef, routing::get, Router};
-use handlers::search_result_handler;
+pub use handlers::{search_result_handler, SearchParams};
 
 use crate::html_state::HtmlState;
 

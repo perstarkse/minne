@@ -7,7 +7,7 @@ use include_dir::{include_dir, Dir};
 use std::{ops::Deref, sync::Arc};
 use surrealdb::{
     engine::any::{connect, Any},
-    opt::auth::Root,
+    opt::auth::{Namespace, Root},
     Error, Notification, Surreal,
 };
 use surrealdb_migrations::MigrationRunner;
@@ -45,6 +45,24 @@ impl SurrealDbClient {
         // Set namespace
         db.use_ns(namespace).use_db(database).await?;
 
+        Ok(SurrealDbClient { client: db })
+    }
+
+    pub async fn new_with_namespace_user(
+        address: &str,
+        namespace: &str,
+        username: &str,
+        password: &str,
+        database: &str,
+    ) -> Result<Self, Error> {
+        let db = connect(address).await?;
+        db.signin(Namespace {
+            namespace,
+            username,
+            password,
+        })
+        .await?;
+        db.use_ns(namespace).use_db(database).await?;
         Ok(SurrealDbClient { client: db })
     }
 

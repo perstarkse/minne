@@ -1,0 +1,33 @@
+default_dataset: squad-v2
+datasets:
+  - id: squad-v2
+    label: "SQuAD v2.0"
+    category: "SQuAD v2.0"
+    entity_suffix: "SQuAD"
+    source_prefix: "squad"
+    raw: "data/raw/squad/dev-v2.0.json"
+    converted: "data/converted/squad-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: squad-dev-200
+        label: "SQuAD dev (200)"
+        description: "Deterministic 200-case slice for local eval"
+        limit: 200
+        corpus_limit: 2000
+        seed: 0x5eed2025
+  - id: natural-questions-dev
+    label: "Natural Questions (dev)"
+    category: "Natural Questions"
+    entity_suffix: "Natural Questions"
+    source_prefix: "nq"
+    raw: "data/raw/nq/dev-all.jsonl"
+    converted: "data/converted/nq-dev-minne.json"
+    include_unanswerable: true
+    slices:
+      - id: nq-dev-200
+        label: "NQ dev (200)"
+        description: "200-case slice of the dev set"
+        limit: 200
+        corpus_limit: 2000
+        include_unanswerable: false
+        seed: 0x5eed2025
