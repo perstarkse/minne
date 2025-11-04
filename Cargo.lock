@@ -3248,11 +3248,13 @@ dependencies = [
 name = "ingestion-pipeline"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-openai",
  "async-trait",
  "axum",
  "axum_typed_multipart",
  "base64 0.22.1",
+ "bytes",
  "chrono",
  "common",
  "composite-retrieval",
