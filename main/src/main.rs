@@ -3,9 +3,9 @@ use axum::{extract::FromRef, Router};
 use common::{
     storage::db::SurrealDbClient, storage::store::StorageManager, utils::config::get_config,
 };
-use composite_retrieval::reranking::RerankerPool;
 use html_router::{html_routes, html_state::HtmlState};
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
+use retrieval_pipeline::reranking::RerankerPool;
 use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};

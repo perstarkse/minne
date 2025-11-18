@@ -1,4 +1,5 @@
 use async_openai::Client;
+use async_trait::async_trait;
 use common::{
     error::AppError,
     storage::{
@@ -9,11 +10,9 @@ use common::{
 };
 use fastembed::RerankResult;
 use futures::{stream::FuturesUnordered, StreamExt};
-use state_machines::core::GuardError;
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    time::Instant,
 };
 use tracing::{debug, instrument, warn};
 
@@ -25,21 +24,20 @@ use crate::{
         clamp_unit, fuse_scores, merge_scored_by_id, min_max_normalize, sort_by_fused_desc,
         FusionWeights, Scored,
     },
-    vector::find_items_by_vector_similarity_with_embedding,
+    vector::{
+        find_chunk_snippets_by_vector_similarity_with_embedding,
+        find_items_by_vector_similarity_with_embedding, ChunkSnippet,
+    },
     RetrievedChunk, RetrievedEntity,
 };
 
 use super::{
-    config::RetrievalConfig,
+    config::{RetrievalConfig, RetrievalTuning},
     diagnostics::{
         AssembleStats, ChunkEnrichmentStats, CollectCandidatesStats, EntityAssemblyTrace,
         PipelineDiagnostics,
     },
-    state::{
-        CandidatesLoaded, ChunksAttached, Embedded, GraphExpanded, HybridRetrievalMachine, Ready,
-        Reranked,
-    },
-    PipelineStageTimings,
+    PipelineStage, PipelineStageTimings, StageKind,
 };
 
 pub struct PipelineContext<'a> {
@@ -53,8 +51,11 @@ pub struct PipelineContext<'a> {
     pub chunk_candidates: HashMap<String, Scored<TextChunk>>,
     pub filtered_entities: Vec<Scored<KnowledgeEntity>>,
     pub chunk_values: Vec<Scored<TextChunk>>,
+    pub revised_chunk_values: Vec<Scored<ChunkSnippet>>,
     pub reranker: Option<RerankerLease>,
     pub diagnostics: Option<PipelineDiagnostics>,
+    pub entity_results: Vec<RetrievedEntity>,
+    pub chunk_results: Vec<RetrievedChunk>,
     stage_timings: PipelineStageTimings,
 }
 
@@ -78,8 +79,11 @@ impl<'a> PipelineContext<'a> {
             chunk_candidates: HashMap::new(),
             filtered_entities: Vec::new(),
             chunk_values: Vec::new(),
+            revised_chunk_values: Vec::new(),
             reranker,
             diagnostics: None,
+            entity_results: Vec::new(),
+            chunk_results: Vec::new(),
             stage_timings: PipelineStageTimings::default(),
         }
     }
@@ -145,36 +149,151 @@ impl<'a> PipelineContext<'a> {
         self.diagnostics.take()
     }
 
-    pub fn record_collect_candidates_timing(&mut self, duration: std::time::Duration) {
-        self.stage_timings.record_collect_candidates(duration);
-    }
-
-    pub fn record_graph_expansion_timing(&mut self, duration: std::time::Duration) {
-        self.stage_timings.record_graph_expansion(duration);
-    }
-
-    pub fn record_chunk_attach_timing(&mut self, duration: std::time::Duration) {
-        self.stage_timings.record_chunk_attach(duration);
-    }
-
-    pub fn record_rerank_timing(&mut self, duration: std::time::Duration) {
-        self.stage_timings.record_rerank(duration);
-    }
-
-    pub fn record_assemble_timing(&mut self, duration: std::time::Duration) {
-        self.stage_timings.record_assemble(duration);
-    }
-
     pub fn take_stage_timings(&mut self) -> PipelineStageTimings {
         std::mem::take(&mut self.stage_timings)
+    }
+
+    pub fn record_stage_duration(&mut self, kind: StageKind, duration: std::time::Duration) {
+        self.stage_timings.record(kind, duration);
+    }
+
+    pub fn take_entity_results(&mut self) -> Vec<RetrievedEntity> {
+        std::mem::take(&mut self.entity_results)
+    }
+
+    pub fn take_chunk_results(&mut self) -> Vec<RetrievedChunk> {
+        std::mem::take(&mut self.chunk_results)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EmbedStage;
+
+#[async_trait]
+impl PipelineStage for EmbedStage {
+    fn kind(&self) -> StageKind {
+        StageKind::Embed
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        embed(ctx).await
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CollectCandidatesStage;
+
+#[async_trait]
+impl PipelineStage for CollectCandidatesStage {
+    fn kind(&self) -> StageKind {
+        StageKind::CollectCandidates
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        collect_candidates(ctx).await
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GraphExpansionStage;
+
+#[async_trait]
+impl PipelineStage for GraphExpansionStage {
+    fn kind(&self) -> StageKind {
+        StageKind::GraphExpansion
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        expand_graph(ctx).await
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkAttachStage;
+
+#[async_trait]
+impl PipelineStage for ChunkAttachStage {
+    fn kind(&self) -> StageKind {
+        StageKind::ChunkAttach
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        attach_chunks(ctx).await
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RerankStage;
+
+#[async_trait]
+impl PipelineStage for RerankStage {
+    fn kind(&self) -> StageKind {
+        StageKind::Rerank
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        rerank(ctx).await
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AssembleEntitiesStage;
+
+#[async_trait]
+impl PipelineStage for AssembleEntitiesStage {
+    fn kind(&self) -> StageKind {
+        StageKind::Assemble
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        assemble(ctx)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkVectorStage;
+
+#[async_trait]
+impl PipelineStage for ChunkVectorStage {
+    fn kind(&self) -> StageKind {
+        StageKind::CollectCandidates
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        collect_vector_chunks(ctx).await
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkRerankStage;
+
+#[async_trait]
+impl PipelineStage for ChunkRerankStage {
+    fn kind(&self) -> StageKind {
+        StageKind::Rerank
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        rerank_chunks(ctx).await
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkAssembleStage;
+
+#[async_trait]
+impl PipelineStage for ChunkAssembleStage {
+    fn kind(&self) -> StageKind {
+        StageKind::Assemble
+    }
+
+    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+        assemble_chunks(ctx)
     }
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn embed(
-    machine: HybridRetrievalMachine<(), Ready>,
-    ctx: &mut PipelineContext<'_>,
-) -> Result<HybridRetrievalMachine<(), Embedded>, AppError> {
+pub async fn embed(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     let embedding_cached = ctx.query_embedding.is_some();
     if embedding_cached {
         debug!("Reusing cached query embedding for hybrid retrieval");
@@ -185,17 +304,11 @@ pub async fn embed(
         ctx.query_embedding = Some(embedding);
     }
 
-    machine
-        .embed()
-        .map_err(|(_, guard)| map_guard_error("embed", guard))
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn collect_candidates(
-    machine: HybridRetrievalMachine<(), Embedded>,
-    ctx: &mut PipelineContext<'_>,
-) -> Result<HybridRetrievalMachine<(), CandidatesLoaded>, AppError> {
-    let stage_start = Instant::now();
+pub async fn collect_candidates(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     debug!("Collecting initial candidates via vector and FTS search");
     let embedding = ctx.ensure_embedding()?.clone();
     let tuning = &ctx.config.tuning;
@@ -265,104 +378,80 @@ pub async fn collect_candidates(
     apply_fusion(&mut ctx.entity_candidates, weights);
     apply_fusion(&mut ctx.chunk_candidates, weights);
 
-    let next = machine
-        .collect_candidates()
-        .map_err(|(_, guard)| map_guard_error("collect_candidates", guard))?;
-    ctx.record_collect_candidates_timing(stage_start.elapsed());
-    Ok(next)
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn expand_graph(
-    machine: HybridRetrievalMachine<(), CandidatesLoaded>,
-    ctx: &mut PipelineContext<'_>,
-) -> Result<HybridRetrievalMachine<(), GraphExpanded>, AppError> {
-    let stage_start = Instant::now();
+pub async fn expand_graph(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     debug!("Expanding candidates using graph relationships");
-    let next = {
-        let tuning = &ctx.config.tuning;
-        let weights = FusionWeights::default();
+    let tuning = &ctx.config.tuning;
+    let weights = FusionWeights::default();
 
-        if ctx.entity_candidates.is_empty() {
-            machine
-                .expand_graph()
-                .map_err(|(_, guard)| map_guard_error("expand_graph", guard))
-        } else {
-            let graph_seeds = seeds_from_candidates(
-                &ctx.entity_candidates,
-                tuning.graph_seed_min_score,
-                tuning.graph_traversal_seed_limit,
-            );
+    if ctx.entity_candidates.is_empty() {
+        return Ok(());
+    }
 
-            if graph_seeds.is_empty() {
-                machine
-                    .expand_graph()
-                    .map_err(|(_, guard)| map_guard_error("expand_graph", guard))
-            } else {
-                let mut futures = FuturesUnordered::new();
-                for seed in graph_seeds {
-                    let db = ctx.db_client;
-                    let user = ctx.user_id.clone();
-                    let limit = tuning.graph_neighbor_limit;
-                    futures.push(async move {
-                        let neighbors =
-                            find_entities_by_relationship_by_id(db, &seed.id, &user, limit).await;
-                        (seed, neighbors)
-                    });
-                }
+    let graph_seeds = seeds_from_candidates(
+        &ctx.entity_candidates,
+        tuning.graph_seed_min_score,
+        tuning.graph_traversal_seed_limit,
+    );
 
-                while let Some((seed, neighbors_result)) = futures.next().await {
-                    let neighbors = neighbors_result.map_err(AppError::from)?;
-                    if neighbors.is_empty() {
-                        continue;
-                    }
+    if graph_seeds.is_empty() {
+        return Ok(());
+    }
 
-                    for neighbor in neighbors {
-                        if neighbor.id == seed.id {
-                            continue;
-                        }
+    let mut futures = FuturesUnordered::new();
+    for seed in graph_seeds {
+        let db = ctx.db_client;
+        let user = ctx.user_id.clone();
+        let limit = tuning.graph_neighbor_limit;
+        futures.push(async move {
+            let neighbors = find_entities_by_relationship_by_id(db, &seed.id, &user, limit).await;
+            (seed, neighbors)
+        });
+    }
 
-                        let graph_score = clamp_unit(seed.fused * tuning.graph_score_decay);
-                        let entry = ctx
-                            .entity_candidates
-                            .entry(neighbor.id.clone())
-                            .or_insert_with(|| Scored::new(neighbor.clone()));
-
-                        entry.item = neighbor;
-
-                        let inherited_vector =
-                            clamp_unit(graph_score * tuning.graph_vector_inheritance);
-                        let vector_existing = entry.scores.vector.unwrap_or(0.0);
-                        if inherited_vector > vector_existing {
-                            entry.scores.vector = Some(inherited_vector);
-                        }
-
-                        let existing_graph = entry.scores.graph.unwrap_or(f32::MIN);
-                        if graph_score > existing_graph || entry.scores.graph.is_none() {
-                            entry.scores.graph = Some(graph_score);
-                        }
-
-                        let fused = fuse_scores(&entry.scores, weights);
-                        entry.update_fused(fused);
-                    }
-                }
-
-                machine
-                    .expand_graph()
-                    .map_err(|(_, guard)| map_guard_error("expand_graph", guard))
-            }
+    while let Some((seed, neighbors_result)) = futures.next().await {
+        let neighbors = neighbors_result.map_err(AppError::from)?;
+        if neighbors.is_empty() {
+            continue;
         }
-    }?;
-    ctx.record_graph_expansion_timing(stage_start.elapsed());
-    Ok(next)
+
+        for neighbor in neighbors {
+            if neighbor.id == seed.id {
+                continue;
+            }
+
+            let graph_score = clamp_unit(seed.fused * tuning.graph_score_decay);
+            let entry = ctx
+                .entity_candidates
+                .entry(neighbor.id.clone())
+                .or_insert_with(|| Scored::new(neighbor.clone()));
+
+            entry.item = neighbor;
+
+            let inherited_vector = clamp_unit(graph_score * tuning.graph_vector_inheritance);
+            let vector_existing = entry.scores.vector.unwrap_or(0.0);
+            if inherited_vector > vector_existing {
+                entry.scores.vector = Some(inherited_vector);
+            }
+
+            let existing_graph = entry.scores.graph.unwrap_or(f32::MIN);
+            if graph_score > existing_graph || entry.scores.graph.is_none() {
+                entry.scores.graph = Some(graph_score);
+            }
+
+            let fused = fuse_scores(&entry.scores, weights);
+            entry.update_fused(fused);
+        }
+    }
+
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn attach_chunks(
-    machine: HybridRetrievalMachine<(), GraphExpanded>,
-    ctx: &mut PipelineContext<'_>,
-) -> Result<HybridRetrievalMachine<(), ChunksAttached>, AppError> {
-    let stage_start = Instant::now();
+pub async fn attach_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     debug!("Attaching chunks to surviving entities");
     let tuning = &ctx.config.tuning;
     let weights = FusionWeights::default();
@@ -438,19 +527,11 @@ pub async fn attach_chunks(
 
     ctx.chunk_values = chunk_values;
 
-    let next = machine
-        .attach_chunks()
-        .map_err(|(_, guard)| map_guard_error("attach_chunks", guard))?;
-    ctx.record_chunk_attach_timing(stage_start.elapsed());
-    Ok(next)
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn rerank(
-    machine: HybridRetrievalMachine<(), ChunksAttached>,
-    ctx: &mut PipelineContext<'_>,
-) -> Result<HybridRetrievalMachine<(), Reranked>, AppError> {
-    let stage_start = Instant::now();
+pub async fn rerank(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     let mut applied = false;
 
     if let Some(reranker) = ctx.reranker.as_ref() {
@@ -490,19 +571,124 @@ pub async fn rerank(
         debug!("Applied reranking adjustments to candidate ordering");
     }
 
-    let next = machine
-        .rerank()
-        .map_err(|(_, guard)| map_guard_error("rerank", guard))?;
-    ctx.record_rerank_timing(stage_start.elapsed());
-    Ok(next)
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn assemble(
-    machine: HybridRetrievalMachine<(), Reranked>,
-    ctx: &mut PipelineContext<'_>,
-) -> Result<Vec<RetrievedEntity>, AppError> {
-    let stage_start = Instant::now();
+pub async fn collect_vector_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+    debug!("Collecting vector chunk candidates for revised strategy");
+    let embedding = ctx.ensure_embedding()?.clone();
+    let tuning = &ctx.config.tuning;
+    let mut vector_chunks = find_chunk_snippets_by_vector_similarity_with_embedding(
+        tuning.chunk_vector_take,
+        embedding,
+        ctx.db_client,
+        &ctx.user_id,
+    )
+    .await?;
+
+    if ctx.diagnostics_enabled() {
+        ctx.record_collect_candidates(CollectCandidatesStats {
+            vector_entity_candidates: 0,
+            vector_chunk_candidates: vector_chunks.len(),
+            fts_entity_candidates: 0,
+            fts_chunk_candidates: 0,
+            vector_chunk_scores: sample_scores(&vector_chunks, |chunk| {
+                chunk.scores.vector.unwrap_or(0.0)
+            }),
+            fts_chunk_scores: Vec::new(),
+        });
+    }
+
+    vector_chunks.sort_by(|a, b| b.fused.partial_cmp(&a.fused).unwrap_or(Ordering::Equal));
+    ctx.revised_chunk_values = vector_chunks;
+
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+pub async fn rerank_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+    if ctx.revised_chunk_values.len() <= 1 {
+        return Ok(());
+    }
+
+    let Some(reranker) = ctx.reranker.as_ref() else {
+        debug!("No reranker lease provided; skipping chunk rerank stage");
+        return Ok(());
+    };
+
+    let documents = build_snippet_rerank_documents(
+        &ctx.revised_chunk_values,
+        ctx.config.tuning.rerank_keep_top.max(1),
+    );
+    if documents.len() <= 1 {
+        debug!("Skipping chunk reranking stage; insufficient chunk documents");
+        return Ok(());
+    }
+
+    match reranker.rerank(&ctx.input_text, documents).await {
+        Ok(results) if !results.is_empty() => {
+            apply_snippet_rerank_results(
+                &mut ctx.revised_chunk_values,
+                &ctx.config.tuning,
+                results,
+            );
+        }
+        Ok(_) => debug!("Chunk reranker returned no results; retaining original order"),
+        Err(err) => warn!(
+            error = %err,
+            "Chunk reranking failed; continuing with original ordering"
+        ),
+    }
+
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn assemble_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
+    debug!("Assembling chunk-only retrieval results");
+    let mut chunk_values = std::mem::take(&mut ctx.revised_chunk_values);
+    let question_terms = extract_keywords(&ctx.input_text);
+    rank_snippet_chunks_by_combined_score(
+        &mut chunk_values,
+        &question_terms,
+        ctx.config.tuning.lexical_match_weight,
+    );
+
+    let limit = ctx.config.tuning.chunk_vector_take.max(1);
+    if chunk_values.len() > limit {
+        chunk_values.truncate(limit);
+    }
+
+    ctx.chunk_results = chunk_values
+        .into_iter()
+        .map(|chunk| {
+            let text_chunk = snippet_into_text_chunk(chunk.item, &ctx.user_id);
+            RetrievedChunk {
+                chunk: text_chunk,
+                score: chunk.fused,
+            }
+        })
+        .collect();
+
+    if ctx.diagnostics_enabled() {
+        ctx.record_assemble(AssembleStats {
+            token_budget_start: ctx.config.tuning.token_budget_estimate,
+            token_budget_spent: 0,
+            token_budget_remaining: ctx.config.tuning.token_budget_estimate,
+            budget_exhausted: false,
+            chunks_selected: ctx.chunk_results.len(),
+            chunks_skipped_due_budget: 0,
+            entity_count: 0,
+            entity_traces: Vec::new(),
+        });
+    }
+
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn assemble(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     debug!("Assembling final retrieved entities");
     let tuning = &ctx.config.tuning;
     let query_embedding = ctx.ensure_embedding()?.clone();
@@ -610,11 +796,8 @@ pub fn assemble(
         });
     }
 
-    machine
-        .assemble()
-        .map_err(|(_, guard)| map_guard_error("assemble", guard))?;
-    ctx.record_assemble_timing(stage_start.elapsed());
-    Ok(results)
+    ctx.entity_results = results;
+    Ok(())
 }
 
 const SCORE_SAMPLE_LIMIT: usize = 8;
@@ -630,12 +813,6 @@ where
         .collect()
 }
 
-fn map_guard_error(stage: &'static str, err: GuardError) -> AppError {
-    AppError::InternalError(format!(
-        "state machine guard '{stage}' failed: guard={}, event={}, kind={:?}",
-        err.guard, err.event, err.kind
-    ))
-}
 fn normalize_fts_scores<T>(results: &mut [Scored<T>]) {
     let raw_scores: Vec<f32> = results
         .iter()
@@ -873,6 +1050,23 @@ fn build_rerank_documents(ctx: &PipelineContext<'_>, max_chunks_per_entity: usiz
         .collect()
 }
 
+fn build_snippet_rerank_documents(
+    chunks: &[Scored<ChunkSnippet>],
+    max_chunks: usize,
+) -> Vec<String> {
+    chunks
+        .iter()
+        .take(max_chunks)
+        .map(|chunk| {
+            format!(
+                "Source: {}\nChunk:\n{}",
+                chunk.item.source_id,
+                chunk.item.chunk.trim()
+            )
+        })
+        .collect()
+}
+
 fn apply_rerank_results(ctx: &mut PipelineContext<'_>, results: Vec<RerankResult>) {
     if results.is_empty() || ctx.filtered_entities.is_empty() {
         return;
@@ -930,6 +1124,66 @@ fn apply_rerank_results(ctx: &mut PipelineContext<'_>, results: Vec<RerankResult
     }
 }
 
+fn apply_snippet_rerank_results(
+    chunks: &mut Vec<Scored<ChunkSnippet>>,
+    tuning: &RetrievalTuning,
+    results: Vec<RerankResult>,
+) {
+    if results.is_empty() || chunks.is_empty() {
+        return;
+    }
+
+    let mut remaining: Vec<Option<Scored<ChunkSnippet>>> =
+        std::mem::take(chunks).into_iter().map(Some).collect();
+
+    let raw_scores: Vec<f32> = results.iter().map(|r| r.score).collect();
+    let normalized_scores = min_max_normalize(&raw_scores);
+
+    let use_only = tuning.rerank_scores_only;
+    let blend = if use_only {
+        1.0
+    } else {
+        clamp_unit(tuning.rerank_blend_weight)
+    };
+
+    let mut reranked: Vec<Scored<ChunkSnippet>> = Vec::with_capacity(remaining.len());
+    for (result, normalized) in results.into_iter().zip(normalized_scores.into_iter()) {
+        if let Some(slot) = remaining.get_mut(result.index) {
+            if let Some(mut candidate) = slot.take() {
+                let original = candidate.fused;
+                let blended = if use_only {
+                    clamp_unit(normalized)
+                } else {
+                    clamp_unit(original * (1.0 - blend) + normalized * blend)
+                };
+                candidate.update_fused(blended);
+                reranked.push(candidate);
+            }
+        } else {
+            warn!(
+                result_index = result.index,
+                "Chunk reranker returned out-of-range index; skipping"
+            );
+        }
+        if reranked.len() == remaining.len() {
+            break;
+        }
+    }
+
+    for slot in remaining.into_iter() {
+        if let Some(candidate) = slot {
+            reranked.push(candidate);
+        }
+    }
+
+    let keep_top = tuning.rerank_keep_top;
+    if keep_top > 0 && reranked.len() > keep_top {
+        reranked.truncate(keep_top);
+    }
+
+    *chunks = reranked;
+}
+
 fn estimate_tokens(text: &str, avg_chars_per_token: usize) -> usize {
     let chars = text.chars().count().max(1);
     (chars / avg_chars_per_token).max(1)
@@ -961,6 +1215,32 @@ fn extract_keywords(text: &str) -> Vec<String> {
     terms.sort();
     terms.dedup();
     terms
+}
+
+fn rank_snippet_chunks_by_combined_score(
+    candidates: &mut [Scored<ChunkSnippet>],
+    question_terms: &[String],
+    lexical_weight: f32,
+) {
+    if lexical_weight > 0.0 && !question_terms.is_empty() {
+        for candidate in candidates.iter_mut() {
+            let lexical = lexical_overlap_score(question_terms, &candidate.item.chunk);
+            let combined = clamp_unit(candidate.fused + lexical_weight * lexical);
+            candidate.update_fused(combined);
+        }
+    }
+    candidates.sort_by(|a, b| b.fused.partial_cmp(&a.fused).unwrap_or(Ordering::Equal));
+}
+
+fn snippet_into_text_chunk(snippet: ChunkSnippet, user_id: &str) -> TextChunk {
+    let mut chunk = TextChunk::new(
+        snippet.source_id.clone(),
+        snippet.chunk,
+        Vec::new(),
+        user_id.to_owned(),
+    );
+    chunk.id = snippet.id;
+    chunk
 }
 
 fn lexical_overlap_score(terms: &[String], haystack: &str) -> f32 {

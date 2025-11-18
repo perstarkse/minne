@@ -5,7 +5,7 @@ members = [
   "api-router",
   "html-router",
   "ingestion-pipeline",
-  "composite-retrieval",
+  "retrieval-pipeline",
   "json-stream-parser",
   "eval"
 ]

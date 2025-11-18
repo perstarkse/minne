@@ -28,7 +28,7 @@ use common::{
     },
     utils::config::AppConfig,
 };
-use composite_retrieval::reranking::RerankerPool;
+use retrieval_pipeline::reranking::RerankerPool;
 use tracing::{debug, info, warn};
 
 use self::{

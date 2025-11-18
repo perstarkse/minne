@@ -54,6 +54,8 @@ pub struct AppConfig {
     pub fastembed_show_download_progress: Option<bool>,
     #[serde(default)]
     pub fastembed_max_length: Option<usize>,
+    #[serde(default)]
+    pub retrieval_strategy: Option<String>,
 }
 
 fn default_data_dir() -> String {
@@ -117,6 +119,7 @@ impl Default for AppConfig {
             fastembed_cache_dir: None,
             fastembed_show_download_progress: None,
             fastembed_max_length: None,
+            retrieval_strategy: None,
         }
     }
 }

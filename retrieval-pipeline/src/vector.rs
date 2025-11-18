@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
-use common::storage::types::file_info::deserialize_flexible_id;
 use common::{
     error::AppError,
-    storage::{db::SurrealDbClient, types::StoredObject},
+    storage::{
+        db::SurrealDbClient,
+        types::{file_info::deserialize_flexible_id, StoredObject},
+    },
     utils::embedding::generate_embedding,
 };
 use serde::Deserialize;
@@ -152,6 +154,64 @@ where
                 .unwrap_or_default();
             scored.push(Scored::new(item).with_vector_score(similarity));
         }
+    }
+
+    Ok(scored)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChunkSnippet {
+    pub id: String,
+    pub source_id: String,
+    pub chunk: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChunkDistanceRow {
+    distance: Option<f32>,
+    #[serde(deserialize_with = "deserialize_flexible_id")]
+    pub id: String,
+    pub source_id: String,
+    pub chunk: String,
+}
+
+pub async fn find_chunk_snippets_by_vector_similarity_with_embedding(
+    take: usize,
+    query_embedding: Vec<f32>,
+    db_client: &SurrealDbClient,
+    user_id: &str,
+) -> Result<Vec<Scored<ChunkSnippet>>, AppError> {
+    let embedding_literal = serde_json::to_string(&query_embedding)
+        .map_err(|err| AppError::InternalError(format!("Failed to serialize embedding: {err}")))?;
+
+    let closest_query = format!(
+        "SELECT id, source_id, chunk, vector::distance::knn() AS distance \
+         FROM text_chunk \
+         WHERE user_id = $user_id AND embedding <|{take},40|> {embedding} \
+         LIMIT $limit",
+        take = take,
+        embedding = embedding_literal
+    );
+
+    let mut response = db_client
+        .query(closest_query)
+        .bind(("user_id", user_id.to_owned()))
+        .bind(("limit", take as i64))
+        .await?;
+
+    let rows: Vec<ChunkDistanceRow> = response.take(0)?;
+
+    let mut scored = Vec::with_capacity(rows.len());
+    for row in rows {
+        let similarity = row.distance.map(distance_to_similarity).unwrap_or_default();
+        scored.push(
+            Scored::new(ChunkSnippet {
+                id: row.id,
+                source_id: row.source_id,
+                chunk: row.chunk,
+            })
+            .with_vector_score(similarity),
+        );
     }
 
     Ok(scored)

@@ -17,7 +17,10 @@ use common::{
 use reranking::RerankerLease;
 use tracing::instrument;
 
-pub use pipeline::{retrieved_entities_to_json, RetrievalConfig, RetrievalTuning};
+pub use pipeline::{
+    retrieved_entities_to_json, PipelineDiagnostics, PipelineStageTimings, RetrievalConfig,
+    RetrievalStrategy, RetrievalTuning, StrategyOutput,
+};
 
 // Captures a supporting chunk plus its fused retrieval score for downstream prompts.
 #[derive(Debug, Clone)]
@@ -41,14 +44,15 @@ pub async fn retrieve_entities(
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     input_text: &str,
     user_id: &str,
+    config: RetrievalConfig,
     reranker: Option<RerankerLease>,
-) -> Result<Vec<RetrievedEntity>, AppError> {
+) -> Result<StrategyOutput, AppError> {
     pipeline::run_pipeline(
         db_client,
         openai_client,
         input_text,
         user_id,
-        RetrievalConfig::default(),
+        config,
         reranker,
     )
     .await
@@ -63,7 +67,7 @@ mod tests {
         knowledge_relationship::KnowledgeRelationship,
         text_chunk::TextChunk,
     };
-    use pipeline::RetrievalConfig;
+    use pipeline::{RetrievalConfig, RetrievalStrategy};
     use uuid::Uuid;
 
     fn test_embedding() -> Vec<f32> {
@@ -151,11 +155,16 @@ mod tests {
         .await
         .expect("Hybrid retrieval failed");
 
+        let entities = match results {
+            StrategyOutput::Entities(items) => items,
+            other => panic!("expected entity results, got {:?}", other),
+        };
+
         assert!(
-            !results.is_empty(),
+            !entities.is_empty(),
             "Expected at least one retrieval result"
         );
-        let top = &results[0];
+        let top = &entities[0];
         assert!(
             top.entity.name.contains("Rust"),
             "Expected Rust entity to be ranked first"
@@ -242,8 +251,13 @@ mod tests {
         .await
         .expect("Hybrid retrieval failed");
 
+        let entities = match results {
+            StrategyOutput::Entities(items) => items,
+            other => panic!("expected entity results, got {:?}", other),
+        };
+
         let mut neighbor_entry = None;
-        for entity in &results {
+        for entity in &entities {
             if entity.entity.id == neighbor.id {
                 neighbor_entry = Some(entity.clone());
             }
@@ -262,6 +276,61 @@ mod tests {
                 .iter()
                 .all(|chunk| chunk.chunk.source_id == neighbor.source_id),
             "Neighbor entity should surface its own supporting chunks"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_revised_strategy_returns_chunks() {
+        let db = setup_test_db().await;
+        let user_id = "chunk_user";
+        let chunk_one = TextChunk::new(
+            "src_alpha".into(),
+            "Tokio tasks execute on worker threads managed by the runtime.".into(),
+            chunk_embedding_primary(),
+            user_id.into(),
+        );
+        let chunk_two = TextChunk::new(
+            "src_beta".into(),
+            "Hyper utilizes Tokio to drive HTTP state machines efficiently.".into(),
+            chunk_embedding_secondary(),
+            user_id.into(),
+        );
+
+        db.store_item(chunk_one.clone())
+            .await
+            .expect("Failed to store chunk one");
+        db.store_item(chunk_two.clone())
+            .await
+            .expect("Failed to store chunk two");
+
+        let config = RetrievalConfig::with_strategy(RetrievalStrategy::Revised);
+        let openai_client = Client::new();
+        let results = pipeline::run_pipeline_with_embedding(
+            &db,
+            &openai_client,
+            test_embedding(),
+            "tokio runtime worker behavior",
+            user_id,
+            config,
+            None,
+        )
+        .await
+        .expect("Revised retrieval failed");
+
+        let chunks = match results {
+            StrategyOutput::Chunks(items) => items,
+            other => panic!("expected chunk output, got {:?}", other),
+        };
+
+        assert!(
+            !chunks.is_empty(),
+            "Revised strategy should return chunk-only responses"
+        );
+        assert!(
+            chunks
+                .iter()
+                .any(|entry| entry.chunk.chunk.contains("Tokio")),
+            "Chunk results should contain relevant snippets"
         );
     }
 }

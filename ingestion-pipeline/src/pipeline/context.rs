@@ -11,7 +11,7 @@ use common::{
         },
     },
 };
-use composite_retrieval::RetrievedEntity;
+use retrieval_pipeline::RetrievedEntity;
 use tracing::error;
 
 use super::enrichment_result::LLMEnrichmentResult;

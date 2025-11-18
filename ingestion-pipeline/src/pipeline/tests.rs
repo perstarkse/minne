@@ -16,7 +16,7 @@ use common::{
         },
     },
 };
-use composite_retrieval::{RetrievedChunk, RetrievedEntity};
+use retrieval_pipeline::{RetrievedChunk, RetrievedEntity};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
