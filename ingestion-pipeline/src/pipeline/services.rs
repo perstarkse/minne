@@ -19,8 +19,9 @@ use common::{
     },
     utils::{config::AppConfig, embedding::generate_embedding},
 };
-use composite_retrieval::{
-    reranking::RerankerPool, retrieve_entities, retrieved_entities_to_json, RetrievedEntity,
+use retrieval_pipeline::{
+    reranking::RerankerPool, retrieve_entities, retrieved_entities_to_json, RetrievalConfig,
+    RetrievalStrategy, RetrievedEntity, StrategyOutput,
 };
 use text_splitter::TextSplitter;
 
@@ -124,6 +125,14 @@ impl DefaultPipelineServices {
         Ok(request)
     }
 
+    fn configured_strategy(&self) -> RetrievalStrategy {
+        self.config
+            .retrieval_strategy
+            .as_deref()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(RetrievalStrategy::Initial)
+    }
+
     async fn perform_analysis(
         &self,
         request: CreateChatCompletionRequest,
@@ -178,14 +187,24 @@ impl PipelineServices for DefaultPipelineServices {
             None => None,
         };
 
-        retrieve_entities(
+        let mut config = RetrievalConfig::default();
+        config.strategy = self.configured_strategy();
+        match retrieve_entities(
             &self.db,
             &self.openai_client,
             &input_text,
             &content.user_id,
+            config,
             rerank_lease,
         )
         .await
+        {
+            Ok(StrategyOutput::Entities(entities)) => Ok(entities),
+            Ok(StrategyOutput::Chunks(_)) => Err(AppError::InternalError(
+                "Chunk-only retrieval is not supported in ingestion".into(),
+            )),
+            Err(err) => Err(err),
+        }
     }
 
     async fn run_enrichment(

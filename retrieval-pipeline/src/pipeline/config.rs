@@ -1,4 +1,40 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetrievalStrategy {
+    Initial,
+    Revised,
+}
+
+impl Default for RetrievalStrategy {
+    fn default() -> Self {
+        Self::Initial
+    }
+}
+
+impl std::str::FromStr for RetrievalStrategy {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_ascii_lowercase().as_str() {
+            "initial" => Ok(Self::Initial),
+            "revised" => Ok(Self::Revised),
+            other => Err(format!("unknown retrieval strategy '{other}'")),
+        }
+    }
+}
+
+impl fmt::Display for RetrievalStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            RetrievalStrategy::Initial => "initial",
+            RetrievalStrategy::Revised => "revised",
+        };
+        f.write_str(label)
+    }
+}
 
 /// Tunable parameters that govern each retrieval stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,18 +87,34 @@ impl Default for RetrievalTuning {
 /// Wrapper containing tuning plus future flags for per-request overrides.
 #[derive(Debug, Clone)]
 pub struct RetrievalConfig {
+    pub strategy: RetrievalStrategy,
     pub tuning: RetrievalTuning,
 }
 
 impl RetrievalConfig {
     pub fn new(tuning: RetrievalTuning) -> Self {
-        Self { tuning }
+        Self {
+            strategy: RetrievalStrategy::Initial,
+            tuning,
+        }
+    }
+
+    pub fn with_strategy(strategy: RetrievalStrategy) -> Self {
+        Self {
+            strategy,
+            tuning: RetrievalTuning::default(),
+        }
+    }
+
+    pub fn with_tuning(strategy: RetrievalStrategy, tuning: RetrievalTuning) -> Self {
+        Self { strategy, tuning }
     }
 }
 
 impl Default for RetrievalConfig {
     fn default() -> Self {
         Self {
+            strategy: RetrievalStrategy::default(),
             tuning: RetrievalTuning::default(),
         }
     }

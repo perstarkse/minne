@@ -1,5 +1,5 @@
 [package]
-name = "composite-retrieval"
+name = "retrieval-pipeline"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
@@ -18,8 +18,8 @@ serde_json = { workspace = true }
 surrealdb = { workspace = true }
 futures = { workspace = true }
 async-openai = { workspace = true }
+async-trait = { workspace = true }
 uuid = { workspace = true }
 fastembed = { workspace = true }
  
 common = { path = "../common", features = ["test-utils"] }
-state-machines = { workspace = true }

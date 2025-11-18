@@ -1458,26 +1458,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "composite-retrieval"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-openai",
- "axum",
- "common",
- "fastembed",
- "futures",
- "serde",
- "serde_json",
- "state-machines",
- "surrealdb",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "compression-codecs"
 version = "0.4.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2197,7 +2177,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "common",
- "composite-retrieval",
  "criterion",
  "fastembed",
  "futures",
@@ -2205,6 +2184,7 @@ dependencies = [
  "object_store 0.11.2",
  "once_cell",
  "rand 0.8.5",
+ "retrieval-pipeline",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2880,7 +2860,6 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "common",
- "composite-retrieval",
  "futures",
  "include_dir",
  "json-stream-parser",
@@ -2888,6 +2867,7 @@ dependencies = [
  "minijinja-autoreload",
  "minijinja-contrib",
  "minijinja-embed",
+ "retrieval-pipeline",
  "serde",
  "serde_json",
  "surrealdb",
@@ -3342,13 +3322,13 @@ dependencies = [
  "bytes",
  "chrono",
  "common",
- "composite-retrieval",
  "dom_smoothie",
  "futures",
  "headless_chrome",
  "lopdf 0.32.0",
  "pdf-extract",
  "reqwest",
+ "retrieval-pipeline",
  "serde",
  "serde_json",
  "state-machines",
@@ -3802,10 +3782,10 @@ dependencies = [
  "async-openai",
  "axum",
  "common",
- "composite-retrieval",
  "futures",
  "html-router",
  "ingestion-pipeline",
+ "retrieval-pipeline",
  "serde",
  "serde_json",
  "surrealdb",
@@ -5473,6 +5453,26 @@ dependencies = [
  "pin-project-lite",
  "reqwest",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "retrieval-pipeline"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-openai",
+ "async-trait",
+ "axum",
+ "common",
+ "fastembed",
+ "futures",
+ "serde",
+ "serde_json",
+ "surrealdb",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

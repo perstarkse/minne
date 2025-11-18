@@ -3,8 +3,8 @@ use std::sync::Arc;
 use common::{
     storage::db::SurrealDbClient, storage::store::StorageManager, utils::config::get_config,
 };
-use composite_retrieval::reranking::RerankerPool;
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
+use retrieval_pipeline::reranking::RerankerPool;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]

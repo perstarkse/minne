@@ -1,7 +1,7 @@
 use common::storage::{db::SurrealDbClient, store::StorageManager};
 use common::utils::template_engine::{ProvidesTemplateEngine, TemplateEngine};
 use common::{create_template_engine, storage::db::ProvidesDb, utils::config::AppConfig};
-use composite_retrieval::reranking::RerankerPool;
+use retrieval_pipeline::{reranking::RerankerPool, RetrievalStrategy};
 use std::sync::Arc;
 use tracing::debug;
 
@@ -39,6 +39,14 @@ impl HtmlState {
             storage,
             reranker_pool,
         })
+    }
+
+    pub fn retrieval_strategy(&self) -> RetrievalStrategy {
+        self.config
+            .retrieval_strategy
+            .as_deref()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(RetrievalStrategy::Initial)
     }
 }
 impl ProvidesDb for HtmlState {

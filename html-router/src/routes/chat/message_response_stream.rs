@@ -8,16 +8,16 @@ use axum::{
         Sse,
     },
 };
-use composite_retrieval::{
-    answer_retrieval::{create_chat_request, create_user_message_with_history, LLMResponseFormat},
-    retrieve_entities, retrieved_entities_to_json,
-};
 use futures::{
     stream::{self, once},
     Stream, StreamExt, TryStreamExt,
 };
 use json_stream_parser::JsonStreamParser;
 use minijinja::Value;
+use retrieval_pipeline::{
+    answer_retrieval::{create_chat_request, create_user_message_with_history, LLMResponseFormat},
+    retrieve_entities, retrieved_entities_to_json, RetrievalConfig, StrategyOutput,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 use tokio::sync::{mpsc::channel, Mutex};
@@ -123,16 +123,24 @@ pub async fn get_response_stream(
         None => None,
     };
 
+    let mut retrieval_config = RetrievalConfig::default();
+    retrieval_config.strategy = state.retrieval_strategy();
     let entities = match retrieve_entities(
         &state.db,
         &state.openai_client,
         &user_message.content,
         &user.id,
+        retrieval_config,
         rerank_lease,
     )
     .await
     {
-        Ok(entities) => entities,
+        Ok(StrategyOutput::Entities(entities)) => entities,
+        Ok(StrategyOutput::Chunks(_)) => {
+            return Sse::new(create_error_stream(
+                "Chunk-only retrieval results are not supported in this route",
+            ))
+        }
         Err(_e) => {
             return Sse::new(create_error_stream("Failed to retrieve knowledge entities"));
         }

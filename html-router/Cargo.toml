@@ -38,7 +38,7 @@ url = { workspace = true }
 uuid = { workspace = true }
 
 common = { path = "../common" }
-composite-retrieval = { path = "../composite-retrieval" }
+retrieval-pipeline = { path = "../retrieval-pipeline" }
 json-stream-parser = { path = "../json-stream-parser" }
 
 [build-dependencies]
