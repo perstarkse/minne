@@ -41,17 +41,18 @@ impl KnowledgeRelationship {
     }
     pub async fn store_relationship(&self, db_client: &SurrealDbClient) -> Result<(), AppError> {
         let query = format!(
-            r#"RELATE knowledge_entity:`{}`->relates_to:`{}`->knowledge_entity:`{}`
+            r#"DELETE relates_to:`{rel_id}`;
+            RELATE knowledge_entity:`{in_id}`->relates_to:`{rel_id}`->knowledge_entity:`{out_id}`
             SET
-                metadata.user_id = '{}',
-                metadata.source_id = '{}',
-                metadata.relationship_type = '{}'"#,
-            self.in_,
-            self.id,
-            self.out,
-            self.metadata.user_id,
-            self.metadata.source_id,
-            self.metadata.relationship_type
+                metadata.user_id = '{user_id}',
+                metadata.source_id = '{source_id}',
+                metadata.relationship_type = '{relationship_type}'"#,
+            rel_id = self.id,
+            in_id = self.in_,
+            out_id = self.out,
+            user_id = self.metadata.user_id.as_str(),
+            source_id = self.metadata.source_id.as_str(),
+            relationship_type = self.metadata.relationship_type.as_str()
         );
 
         db_client.query(query).await?;
