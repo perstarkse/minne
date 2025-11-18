@@ -6,10 +6,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Cache deps
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir -p api-router common composite-retrieval html-router ingestion-pipeline json-stream-parser main worker
+RUN mkdir -p api-router common retrieval-pipeline html-router ingestion-pipeline json-stream-parser main worker
 COPY api-router/Cargo.toml ./api-router/
 COPY common/Cargo.toml ./common/
-COPY composite-retrieval/Cargo.toml ./composite-retrieval/
+COPY retrieval-pipeline/Cargo.toml ./retrieval-pipeline/
 COPY html-router/Cargo.toml ./html-router/
 COPY ingestion-pipeline/Cargo.toml ./ingestion-pipeline/
 COPY json-stream-parser/Cargo.toml ./json-stream-parser/
