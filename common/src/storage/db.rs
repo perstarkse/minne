@@ -130,6 +130,19 @@ impl SurrealDbClient {
             .await
     }
 
+    /// Operation to upsert an object in SurrealDB, replacing any existing record
+    /// with the same ID. Useful for idempotent ingestion flows.
+    pub async fn upsert_item<T>(&self, item: T) -> Result<Option<T>, Error>
+    where
+        T: StoredObject + Send + Sync + 'static,
+    {
+        let id = item.get_id().to_string();
+        self.client
+            .upsert((T::table_name(), id))
+            .content(item)
+            .await
+    }
+
     /// Operation to retrieve all objects from a certain table, requires the struct to implement StoredObject
     ///
     /// # Returns
@@ -266,6 +279,56 @@ mod tests {
             .await
             .expect("Failed fetch post delete");
         assert!(fetch_post.is_none());
+    }
+
+    #[tokio::test]
+    async fn upsert_item_overwrites_existing_records() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        db.apply_migrations()
+            .await
+            .expect("Failed to initialize schema");
+
+        let mut dummy = Dummy {
+            id: "abc".to_string(),
+            name: "first".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        db.store_item(dummy.clone())
+            .await
+            .expect("Failed to store initial record");
+
+        dummy.name = "updated".to_string();
+        let upserted = db
+            .upsert_item(dummy.clone())
+            .await
+            .expect("Failed to upsert record");
+        assert!(upserted.is_some());
+
+        let fetched: Option<Dummy> = db.get_item(&dummy.id).await.expect("fetch after upsert");
+        assert_eq!(fetched.unwrap().name, "updated");
+
+        let new_record = Dummy {
+            id: "def".to_string(),
+            name: "brand-new".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        db.upsert_item(new_record.clone())
+            .await
+            .expect("Failed to upsert new record");
+
+        let fetched_new: Option<Dummy> = db
+            .get_item(&new_record.id)
+            .await
+            .expect("fetch inserted via upsert");
+        assert_eq!(fetched_new, Some(new_record));
     }
 
     #[tokio::test]
