@@ -19,6 +19,7 @@ struct PerformanceLogEntry {
     dataset_id: String,
     dataset_label: String,
     run_label: Option<String>,
+    retrieval_strategy: String,
     slice_id: String,
     slice_seed: u64,
     slice_window_offset: usize,
@@ -27,6 +28,10 @@ struct PerformanceLogEntry {
     total_cases: usize,
     correct: usize,
     precision: f64,
+    retrieval_cases: usize,
+    llm_cases: usize,
+    llm_answered: usize,
+    llm_precision: f64,
     k: usize,
     openai_base_url: String,
     ingestion: IngestionPerf,
@@ -87,7 +92,7 @@ impl PerformanceLogEntry {
             rerank_enabled: summary.rerank_enabled,
             rerank_pool_size: summary.rerank_pool_size,
             rerank_keep_top: summary.rerank_keep_top,
-            evaluated_cases: summary.total_cases,
+            evaluated_cases: summary.retrieval_cases,
         };
 
         Self {
@@ -95,6 +100,7 @@ impl PerformanceLogEntry {
             dataset_id: summary.dataset_id.clone(),
             dataset_label: summary.dataset_label.clone(),
             run_label: summary.run_label.clone(),
+            retrieval_strategy: summary.retrieval_strategy.clone(),
             slice_id: summary.slice_id.clone(),
             slice_seed: summary.slice_seed,
             slice_window_offset: summary.slice_window_offset,
@@ -103,6 +109,10 @@ impl PerformanceLogEntry {
             total_cases: summary.total_cases,
             correct: summary.correct,
             precision: summary.precision,
+            retrieval_cases: summary.retrieval_cases,
+            llm_cases: summary.llm_cases,
+            llm_answered: summary.llm_answered,
+            llm_precision: summary.llm_precision,
             k: summary.k,
             openai_base_url: summary.perf.openai_base_url.clone(),
             ingestion,
@@ -163,13 +173,21 @@ pub fn write_perf_logs(
 pub fn print_console_summary(summary: &EvaluationSummary) {
     let perf = &summary.perf;
     println!(
+        "[perf] retrieval strategy={} | rerank={} (pool {:?}, keep {})",
+        summary.retrieval_strategy,
+        summary.rerank_enabled,
+        summary.rerank_pool_size,
+        summary.rerank_keep_top
+    );
+    println!(
         "[perf] ingestion={}ms | namespace_seed={}",
         perf.ingestion_ms,
         format_duration(perf.namespace_seed_ms),
     );
     let stage = &perf.stage_latency;
     println!(
-        "[perf] stage avg ms → collect {:.1} | graph {:.1} | chunk {:.1} | rerank {:.1} | assemble {:.1}",
+        "[perf] stage avg ms → embed {:.1} | collect {:.1} | graph {:.1} | chunk {:.1} | rerank {:.1} | assemble {:.1}",
+        stage.embed.avg,
         stage.collect_candidates.avg,
         stage.graph_expansion.avg,
         stage.chunk_attach.avg,
@@ -212,6 +230,7 @@ mod tests {
 
     fn sample_stage_latency() -> crate::eval::StageLatencyBreakdown {
         crate::eval::StageLatencyBreakdown {
+            embed: sample_latency(),
             collect_candidates: sample_latency(),
             graph_expansion: sample_latency(),
             chunk_attach: sample_latency(),
@@ -252,6 +271,15 @@ mod tests {
             dataset_label: "SQuAD v2".into(),
             dataset_includes_unanswerable: false,
             dataset_source: "dev".into(),
+            includes_impossible_cases: false,
+            require_verified_chunks: true,
+            filtered_questions: 0,
+            retrieval_cases: 2,
+            retrieval_correct: 1,
+            retrieval_precision: 0.5,
+            llm_cases: 0,
+            llm_answered: 0,
+            llm_precision: 0.0,
             slice_id: "slice123".into(),
             slice_seed: 42,
             slice_total_cases: 400,
@@ -285,6 +313,7 @@ mod tests {
             rerank_pool_size: Some(4),
             rerank_keep_top: 10,
             concurrency: 2,
+            retrieval_strategy: "initial".into(),
             detailed_report: false,
             chunk_vector_take: 20,
             chunk_fts_take: 20,

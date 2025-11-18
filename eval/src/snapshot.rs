@@ -54,9 +54,9 @@ impl Descriptor {
             embedding_backend: embedding_provider.backend_label().to_string(),
             embedding_model: embedding_provider.model_code(),
             embedding_dimension: embedding_provider.dimension(),
-            chunk_min_chars: config.chunk_min_chars,
-            chunk_max_chars: config.chunk_max_chars,
-            rerank_enabled: config.rerank,
+            chunk_min_chars: config.retrieval.chunk_min_chars,
+            chunk_max_chars: config.retrieval.chunk_max_chars,
+            rerank_enabled: config.retrieval.rerank,
         };
 
         let dir = config

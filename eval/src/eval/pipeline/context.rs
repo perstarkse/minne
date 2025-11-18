@@ -9,7 +9,7 @@ use common::storage::{
     db::SurrealDbClient,
     types::{system_settings::SystemSettings, user::User},
 };
-use composite_retrieval::{
+use retrieval_pipeline::{
     pipeline::{PipelineStageTimings, RetrievalConfig},
     reranking::RerankerPool,
 };
@@ -52,6 +52,7 @@ pub(super) struct EvaluationContext<'a> {
     pub eval_user: Option<User>,
     pub corpus_handle: Option<ingest::CorpusHandle>,
     pub cases: Vec<SeededCase>,
+    pub filtered_questions: usize,
     pub stage_latency_samples: Vec<PipelineStageTimings>,
     pub latencies: Vec<u128>,
     pub diagnostics_output: Vec<CaseDiagnostics>,
@@ -94,6 +95,7 @@ impl<'a> EvaluationContext<'a> {
             eval_user: None,
             corpus_handle: None,
             cases: Vec::new(),
+            filtered_questions: 0,
             stage_latency_samples: Vec::new(),
             latencies: Vec::new(),
             diagnostics_output: Vec::new(),

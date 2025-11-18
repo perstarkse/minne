@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
+use retrieval_pipeline::RetrievalStrategy;
 
 use crate::datasets::DatasetKind;
 
@@ -36,6 +37,41 @@ impl std::str::FromStr for EmbeddingBackend {
 }
 
 #[derive(Debug, Clone)]
+pub struct RetrievalSettings {
+    pub chunk_min_chars: usize,
+    pub chunk_max_chars: usize,
+    pub chunk_vector_take: Option<usize>,
+    pub chunk_fts_take: Option<usize>,
+    pub chunk_token_budget: Option<usize>,
+    pub chunk_avg_chars_per_token: Option<usize>,
+    pub max_chunks_per_entity: Option<usize>,
+    pub rerank: bool,
+    pub rerank_pool_size: usize,
+    pub rerank_keep_top: usize,
+    pub require_verified_chunks: bool,
+    pub strategy: RetrievalStrategy,
+}
+
+impl Default for RetrievalSettings {
+    fn default() -> Self {
+        Self {
+            chunk_min_chars: 500,
+            chunk_max_chars: 2_000,
+            chunk_vector_take: None,
+            chunk_fts_take: None,
+            chunk_token_budget: None,
+            chunk_avg_chars_per_token: None,
+            max_chunks_per_entity: None,
+            rerank: true,
+            rerank_pool_size: 16,
+            rerank_keep_top: 10,
+            require_verified_chunks: true,
+            strategy: RetrievalStrategy::Initial,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Config {
     pub convert_only: bool,
     pub force_convert: bool,
@@ -49,21 +85,14 @@ pub struct Config {
     pub limit: Option<usize>,
     pub summary_sample: usize,
     pub full_context: bool,
-    pub chunk_min_chars: usize,
-    pub chunk_max_chars: usize,
-    pub chunk_vector_take: Option<usize>,
-    pub chunk_fts_take: Option<usize>,
-    pub chunk_token_budget: Option<usize>,
-    pub chunk_avg_chars_per_token: Option<usize>,
-    pub max_chunks_per_entity: Option<usize>,
-    pub rerank: bool,
-    pub rerank_pool_size: usize,
-    pub rerank_keep_top: usize,
+    pub retrieval: RetrievalSettings,
     pub concurrency: usize,
     pub embedding_backend: EmbeddingBackend,
     pub embedding_model: Option<String>,
     pub cache_dir: PathBuf,
     pub ingestion_cache_dir: PathBuf,
+    pub ingestion_batch_size: usize,
+    pub ingestion_max_retries: usize,
     pub refresh_embeddings_only: bool,
     pub detailed_report: bool,
     pub slice: Option<String>,
@@ -105,21 +134,14 @@ impl Default for Config {
             limit: Some(200),
             summary_sample: 5,
             full_context: false,
-            chunk_min_chars: 500,
-            chunk_max_chars: 2_000,
-            chunk_vector_take: None,
-            chunk_fts_take: None,
-            chunk_token_budget: None,
-            chunk_avg_chars_per_token: None,
-            max_chunks_per_entity: None,
-            rerank: true,
-            rerank_pool_size: 16,
-            rerank_keep_top: 10,
+            retrieval: RetrievalSettings::default(),
             concurrency: 4,
             embedding_backend: EmbeddingBackend::FastEmbed,
             embedding_model: None,
             cache_dir: PathBuf::from("eval/cache"),
             ingestion_cache_dir: PathBuf::from("eval/cache/ingested"),
+            ingestion_batch_size: 5,
+            ingestion_max_retries: 3,
             refresh_embeddings_only: false,
             detailed_report: false,
             slice: None,
@@ -176,6 +198,7 @@ pub fn parse() -> Result<ParsedArgs> {
             "--force" | "--refresh" => config.force_convert = true,
             "--llm-mode" => {
                 config.llm_mode = true;
+                config.retrieval.require_verified_chunks = false;
             }
             "--dataset" => {
                 let value = take_value("--dataset", &mut args)?;
@@ -279,14 +302,14 @@ pub fn parse() -> Result<ParsedArgs> {
                 let parsed = value.parse::<usize>().with_context(|| {
                     format!("failed to parse --chunk-min value '{value}' as usize")
                 })?;
-                config.chunk_min_chars = parsed.max(1);
+                config.retrieval.chunk_min_chars = parsed.max(1);
             }
             "--chunk-max" => {
                 let value = take_value("--chunk-max", &mut args)?;
                 let parsed = value.parse::<usize>().with_context(|| {
                     format!("failed to parse --chunk-max value '{value}' as usize")
                 })?;
-                config.chunk_max_chars = parsed.max(1);
+                config.retrieval.chunk_max_chars = parsed.max(1);
             }
             "--chunk-vector-take" => {
                 let value = take_value("--chunk-vector-take", &mut args)?;
@@ -296,7 +319,7 @@ pub fn parse() -> Result<ParsedArgs> {
                 if parsed == 0 {
                     return Err(anyhow!("--chunk-vector-take must be greater than zero"));
                 }
-                config.chunk_vector_take = Some(parsed);
+                config.retrieval.chunk_vector_take = Some(parsed);
             }
             "--chunk-fts-take" => {
                 let value = take_value("--chunk-fts-take", &mut args)?;
@@ -306,7 +329,7 @@ pub fn parse() -> Result<ParsedArgs> {
                 if parsed == 0 {
                     return Err(anyhow!("--chunk-fts-take must be greater than zero"));
                 }
-                config.chunk_fts_take = Some(parsed);
+                config.retrieval.chunk_fts_take = Some(parsed);
             }
             "--chunk-token-budget" => {
                 let value = take_value("--chunk-token-budget", &mut args)?;
@@ -316,7 +339,7 @@ pub fn parse() -> Result<ParsedArgs> {
                 if parsed == 0 {
                     return Err(anyhow!("--chunk-token-budget must be greater than zero"));
                 }
-                config.chunk_token_budget = Some(parsed);
+                config.retrieval.chunk_token_budget = Some(parsed);
             }
             "--chunk-token-chars" => {
                 let value = take_value("--chunk-token-chars", &mut args)?;
@@ -326,7 +349,14 @@ pub fn parse() -> Result<ParsedArgs> {
                 if parsed == 0 {
                     return Err(anyhow!("--chunk-token-chars must be greater than zero"));
                 }
-                config.chunk_avg_chars_per_token = Some(parsed);
+                config.retrieval.chunk_avg_chars_per_token = Some(parsed);
+            }
+            "--retrieval-strategy" => {
+                let value = take_value("--retrieval-strategy", &mut args)?;
+                let parsed = value.parse::<RetrievalStrategy>().map_err(|err| {
+                    anyhow!("failed to parse --retrieval-strategy value '{value}': {err}")
+                })?;
+                config.retrieval.strategy = parsed;
             }
             "--max-chunks-per-entity" => {
                 let value = take_value("--max-chunks-per-entity", &mut args)?;
@@ -336,7 +366,7 @@ pub fn parse() -> Result<ParsedArgs> {
                 if parsed == 0 {
                     return Err(anyhow!("--max-chunks-per-entity must be greater than zero"));
                 }
-                config.max_chunks_per_entity = Some(parsed);
+                config.retrieval.max_chunks_per_entity = Some(parsed);
             }
             "--embedding" => {
                 let value = take_value("--embedding", &mut args)?;
@@ -354,6 +384,23 @@ pub fn parse() -> Result<ParsedArgs> {
                 let value = take_value("--ingestion-cache-dir", &mut args)?;
                 config.ingestion_cache_dir = PathBuf::from(value);
             }
+            "--ingestion-batch-size" => {
+                let value = take_value("--ingestion-batch-size", &mut args)?;
+                let parsed = value.parse::<usize>().with_context(|| {
+                    format!("failed to parse --ingestion-batch-size value '{value}' as usize")
+                })?;
+                if parsed == 0 {
+                    return Err(anyhow!("--ingestion-batch-size must be greater than zero"));
+                }
+                config.ingestion_batch_size = parsed;
+            }
+            "--ingestion-max-retries" => {
+                let value = take_value("--ingestion-max-retries", &mut args)?;
+                let parsed = value.parse::<usize>().with_context(|| {
+                    format!("failed to parse --ingestion-max-retries value '{value}' as usize")
+                })?;
+                config.ingestion_max_retries = parsed;
+            }
             "--negative-multiplier" => {
                 let value = take_value("--negative-multiplier", &mut args)?;
                 let parsed = value.parse::<f32>().with_context(|| {
@@ -367,21 +414,21 @@ pub fn parse() -> Result<ParsedArgs> {
                 config.negative_multiplier = parsed;
             }
             "--no-rerank" => {
-                config.rerank = false;
+                config.retrieval.rerank = false;
             }
             "--rerank-pool" => {
                 let value = take_value("--rerank-pool", &mut args)?;
                 let parsed = value.parse::<usize>().with_context(|| {
                     format!("failed to parse --rerank-pool value '{value}' as usize")
                 })?;
-                config.rerank_pool_size = parsed.max(1);
+                config.retrieval.rerank_pool_size = parsed.max(1);
             }
             "--rerank-keep" => {
                 let value = take_value("--rerank-keep", &mut args)?;
                 let parsed = value.parse::<usize>().with_context(|| {
                     format!("failed to parse --rerank-keep value '{value}' as usize")
                 })?;
-                config.rerank_keep_top = parsed.max(1);
+                config.retrieval.rerank_keep_top = parsed.max(1);
             }
             "--concurrency" => {
                 let value = take_value("--concurrency", &mut args)?;
@@ -451,15 +498,15 @@ pub fn parse() -> Result<ParsedArgs> {
         }
     }
 
-    if config.chunk_min_chars >= config.chunk_max_chars {
+    if config.retrieval.chunk_min_chars >= config.retrieval.chunk_max_chars {
         return Err(anyhow!(
             "--chunk-min must be less than --chunk-max (got {} >= {})",
-            config.chunk_min_chars,
-            config.chunk_max_chars
+            config.retrieval.chunk_min_chars,
+            config.retrieval.chunk_max_chars
         ));
     }
 
-    if config.rerank && config.rerank_pool_size == 0 {
+    if config.retrieval.rerank && config.retrieval.rerank_pool_size == 0 {
         return Err(anyhow!(
             "--rerank-pool must be greater than zero when reranking is enabled"
         ));
@@ -578,14 +625,20 @@ OPTIONS:
                         Override chunk token budget estimate for assembly (default: 10000).
     --chunk-token-chars <int>
                         Override average characters per token used for budgeting (default: 4).
+    --retrieval-strategy <initial|revised>
+                        Select the retrieval pipeline strategy (default: initial).
     --max-chunks-per-entity <int>
                         Override maximum chunks attached per entity (default: 4).
     --embedding <name>    Embedding backend: 'fastembed' (default) or 'hashed'.
     --embedding-model <code>
                           FastEmbed model code (defaults to crate preset when omitted).
     --cache-dir <path>    Directory for embedding caches (default: eval/cache).
-    --ingestion-cache-dir <path>
-                         Directory for ingestion corpora caches (default: eval/cache/ingested).
+     --ingestion-cache-dir <path>
+                          Directory for ingestion corpora caches (default: eval/cache/ingested).
+     --ingestion-batch-size <int>
+                          Number of paragraphs to ingest concurrently (default: 5).
+     --ingestion-max-retries <int>
+                          Maximum retries for ingestion failures per paragraph (default: 3).
     --negative-multiplier <float>
                           Target negative-to-positive paragraph ratio for slice growth (default: 4.0).
     --refresh-embeddings  Recompute embeddings for cached corpora without re-running ingestion.

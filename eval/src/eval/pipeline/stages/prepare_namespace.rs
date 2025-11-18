@@ -128,13 +128,28 @@ pub(crate) async fn prepare_namespace(
     let user = ensure_eval_user(ctx.db()).await?;
     ctx.eval_user = Some(user);
 
-    let cases = cases_from_manifest(&ctx.corpus_handle().manifest);
+    let corpus_handle = ctx.corpus_handle();
+    let total_manifest_questions = corpus_handle.manifest.questions.len();
+    let cases = cases_from_manifest(&corpus_handle.manifest);
+    let include_impossible = corpus_handle.manifest.metadata.include_unanswerable;
+    let require_verified_chunks = corpus_handle.manifest.metadata.require_verified_chunks;
+    let filtered = total_manifest_questions.saturating_sub(cases.len());
+    if filtered > 0 {
+        info!(
+            filtered_questions = filtered,
+            total_questions = total_manifest_questions,
+            includes_impossible = include_impossible,
+            require_verified_chunks = require_verified_chunks,
+            "Filtered questions not eligible for this evaluation mode (impossible or unverifiable)"
+        );
+    }
     if cases.is_empty() {
         return Err(anyhow!(
-            "no answerable questions found in converted dataset for evaluation"
+            "no eligible questions found in converted dataset for evaluation (consider --llm-mode or refreshing ingestion data)"
         ));
     }
     ctx.cases = cases;
+    ctx.filtered_questions = filtered;
     ctx.namespace_reused = namespace_reused;
     ctx.namespace_seed_ms = namespace_seed_ms;
 

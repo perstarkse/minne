@@ -1,12 +1,10 @@
 mod pipeline;
+mod types;
 
 pub use pipeline::run_evaluation;
+pub use types::*;
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-    time::Duration,
-};
+use std::{collections::HashMap, path::Path, time::Duration};
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -17,10 +15,8 @@ use common::{
         types::{system_settings::SystemSettings, user::User},
     },
 };
-use composite_retrieval::pipeline as retrieval_pipeline;
-use composite_retrieval::pipeline::PipelineStageTimings;
-use composite_retrieval::pipeline::RetrievalTuning;
-use serde::{Deserialize, Serialize};
+use retrieval_pipeline::RetrievalTuning;
+use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tracing::{info, warn};
 
@@ -33,178 +29,6 @@ use crate::{
     snapshot::{self, DbSnapshotState},
 };
 
-#[derive(Debug, Serialize)]
-pub struct EvaluationSummary {
-    pub generated_at: DateTime<Utc>,
-    pub k: usize,
-    pub limit: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub run_label: Option<String>,
-    pub total_cases: usize,
-    pub correct: usize,
-    pub precision: f64,
-    pub correct_at_1: usize,
-    pub correct_at_2: usize,
-    pub correct_at_3: usize,
-    pub precision_at_1: f64,
-    pub precision_at_2: f64,
-    pub precision_at_3: f64,
-    pub duration_ms: u128,
-    pub dataset_id: String,
-    pub dataset_label: String,
-    pub dataset_includes_unanswerable: bool,
-    pub dataset_source: String,
-    pub slice_id: String,
-    pub slice_seed: u64,
-    pub slice_total_cases: usize,
-    pub slice_window_offset: usize,
-    pub slice_window_length: usize,
-    pub slice_cases: usize,
-    pub slice_positive_paragraphs: usize,
-    pub slice_negative_paragraphs: usize,
-    pub slice_total_paragraphs: usize,
-    pub slice_negative_multiplier: f32,
-    pub namespace_reused: bool,
-    pub corpus_paragraphs: usize,
-    pub ingestion_cache_path: String,
-    pub ingestion_reused: bool,
-    pub ingestion_embeddings_reused: bool,
-    pub ingestion_fingerprint: String,
-    pub positive_paragraphs_reused: usize,
-    pub negative_paragraphs_reused: usize,
-    pub latency_ms: LatencyStats,
-    pub perf: PerformanceTimings,
-    pub embedding_backend: String,
-    pub embedding_model: Option<String>,
-    pub embedding_dimension: usize,
-    pub rerank_enabled: bool,
-    pub rerank_pool_size: Option<usize>,
-    pub rerank_keep_top: usize,
-    pub concurrency: usize,
-    pub detailed_report: bool,
-    pub chunk_vector_take: usize,
-    pub chunk_fts_take: usize,
-    pub chunk_token_budget: usize,
-    pub chunk_avg_chars_per_token: usize,
-    pub max_chunks_per_entity: usize,
-    pub cases: Vec<CaseSummary>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CaseSummary {
-    pub question_id: String,
-    pub question: String,
-    pub paragraph_id: String,
-    pub paragraph_title: String,
-    pub expected_source: String,
-    pub answers: Vec<String>,
-    pub matched: bool,
-    pub entity_match: bool,
-    pub chunk_text_match: bool,
-    pub chunk_id_match: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub match_rank: Option<usize>,
-    pub latency_ms: u128,
-    pub retrieved: Vec<RetrievedSummary>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LatencyStats {
-    pub avg: f64,
-    pub p50: u128,
-    pub p95: u128,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct StageLatencyBreakdown {
-    pub collect_candidates: LatencyStats,
-    pub graph_expansion: LatencyStats,
-    pub chunk_attach: LatencyStats,
-    pub rerank: LatencyStats,
-    pub assemble: LatencyStats,
-}
-
-#[derive(Debug, Default, Clone, Serialize)]
-pub struct EvaluationStageTimings {
-    pub prepare_slice_ms: u128,
-    pub prepare_db_ms: u128,
-    pub prepare_corpus_ms: u128,
-    pub prepare_namespace_ms: u128,
-    pub run_queries_ms: u128,
-    pub summarize_ms: u128,
-    pub finalize_ms: u128,
-}
-
-#[derive(Debug, Serialize)]
-pub struct PerformanceTimings {
-    pub openai_base_url: String,
-    pub ingestion_ms: u128,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub namespace_seed_ms: Option<u128>,
-    pub evaluation_stage_ms: EvaluationStageTimings,
-    pub stage_latency: StageLatencyBreakdown,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RetrievedSummary {
-    pub rank: usize,
-    pub entity_id: String,
-    pub source_id: String,
-    pub entity_name: String,
-    pub score: f32,
-    pub matched: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub entity_description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub entity_category: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chunk_text_match: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chunk_id_match: Option<bool>,
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct CaseDiagnostics {
-    question_id: String,
-    question: String,
-    paragraph_id: String,
-    paragraph_title: String,
-    expected_source: String,
-    expected_chunk_ids: Vec<String>,
-    answers: Vec<String>,
-    entity_match: bool,
-    chunk_text_match: bool,
-    chunk_id_match: bool,
-    failure_reasons: Vec<String>,
-    missing_expected_chunk_ids: Vec<String>,
-    attached_chunk_ids: Vec<String>,
-    retrieved: Vec<EntityDiagnostics>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pipeline: Option<retrieval_pipeline::PipelineDiagnostics>,
-}
-
-#[derive(Debug, Serialize)]
-struct EntityDiagnostics {
-    rank: usize,
-    entity_id: String,
-    source_id: String,
-    name: String,
-    score: f32,
-    entity_match: bool,
-    chunk_text_match: bool,
-    chunk_id_match: bool,
-    chunks: Vec<ChunkDiagnosticsEntry>,
-}
-
-#[derive(Debug, Serialize)]
-struct ChunkDiagnosticsEntry {
-    chunk_id: String,
-    score: f32,
-    contains_answer: bool,
-    expected_chunk: bool,
-    snippet: String,
-}
-
 pub(crate) struct SeededCase {
     question_id: String,
     question: String,
@@ -213,6 +37,8 @@ pub(crate) struct SeededCase {
     paragraph_id: String,
     paragraph_title: String,
     expected_chunk_ids: Vec<String>,
+    is_impossible: bool,
+    has_verified_chunks: bool,
 }
 
 pub(crate) fn cases_from_manifest(manifest: &ingest::CorpusManifest) -> Vec<SeededCase> {
@@ -221,10 +47,15 @@ pub(crate) fn cases_from_manifest(manifest: &ingest::CorpusManifest) -> Vec<Seed
         title_map.insert(paragraph.paragraph_id.as_str(), paragraph.title.clone());
     }
 
+    let include_impossible = manifest.metadata.include_unanswerable;
+    let require_verified_chunks = manifest.metadata.require_verified_chunks;
+
     manifest
         .questions
         .iter()
-        .filter(|question| !question.is_impossible)
+        .filter(|question| {
+            should_include_question(question, include_impossible, require_verified_chunks)
+        })
         .map(|question| {
             let title = title_map
                 .get(question.paragraph_id.as_str())
@@ -238,66 +69,25 @@ pub(crate) fn cases_from_manifest(manifest: &ingest::CorpusManifest) -> Vec<Seed
                 paragraph_id: question.paragraph_id.clone(),
                 paragraph_title: title,
                 expected_chunk_ids: question.matching_chunk_ids.clone(),
+                is_impossible: question.is_impossible,
+                has_verified_chunks: !question.matching_chunk_ids.is_empty(),
             }
         })
         .collect()
 }
 
-pub(crate) fn text_contains_answer(text: &str, answers: &[String]) -> bool {
-    if answers.is_empty() {
-        return true;
+fn should_include_question(
+    question: &ingest::CorpusQuestion,
+    include_impossible: bool,
+    require_verified_chunks: bool,
+) -> bool {
+    if !include_impossible && question.is_impossible {
+        return false;
     }
-    let haystack = text.to_ascii_lowercase();
-    answers.iter().any(|needle| haystack.contains(needle))
-}
-
-pub(crate) fn compute_latency_stats(latencies: &[u128]) -> LatencyStats {
-    if latencies.is_empty() {
-        return LatencyStats {
-            avg: 0.0,
-            p50: 0,
-            p95: 0,
-        };
+    if require_verified_chunks && question.matching_chunk_ids.is_empty() {
+        return false;
     }
-    let mut sorted = latencies.to_vec();
-    sorted.sort_unstable();
-    let sum: u128 = sorted.iter().copied().sum();
-    let avg = sum as f64 / (sorted.len() as f64);
-    let p50 = percentile(&sorted, 0.50);
-    let p95 = percentile(&sorted, 0.95);
-    LatencyStats { avg, p50, p95 }
-}
-
-pub(crate) fn build_stage_latency_breakdown(
-    samples: &[PipelineStageTimings],
-) -> StageLatencyBreakdown {
-    fn collect_stage<F>(samples: &[PipelineStageTimings], selector: F) -> Vec<u128>
-    where
-        F: Fn(&PipelineStageTimings) -> u128,
-    {
-        samples.iter().map(selector).collect()
-    }
-
-    StageLatencyBreakdown {
-        collect_candidates: compute_latency_stats(&collect_stage(samples, |entry| {
-            entry.collect_candidates_ms
-        })),
-        graph_expansion: compute_latency_stats(&collect_stage(samples, |entry| {
-            entry.graph_expansion_ms
-        })),
-        chunk_attach: compute_latency_stats(&collect_stage(samples, |entry| entry.chunk_attach_ms)),
-        rerank: compute_latency_stats(&collect_stage(samples, |entry| entry.rerank_ms)),
-        assemble: compute_latency_stats(&collect_stage(samples, |entry| entry.assemble_ms)),
-    }
-}
-
-fn percentile(sorted: &[u128], fraction: f64) -> u128 {
-    if sorted.is_empty() {
-        return 0;
-    }
-    let clamped = fraction.clamp(0.0, 1.0);
-    let idx = (clamped * (sorted.len() as f64 - 1.0)).round() as usize;
-    sorted[idx.min(sorted.len() - 1)]
+    true
 }
 
 pub async fn grow_slice(dataset: &ConvertedDataset, config: &Config) -> Result<()> {
@@ -345,107 +135,21 @@ pub(crate) fn apply_dataset_tuning_overrides(
         return;
     }
 
-    if config.chunk_vector_take.is_none() {
+    if config.retrieval.chunk_vector_take.is_none() {
         tuning.chunk_vector_take = tuning.chunk_vector_take.max(80);
     }
-    if config.chunk_fts_take.is_none() {
+    if config.retrieval.chunk_fts_take.is_none() {
         tuning.chunk_fts_take = tuning.chunk_fts_take.max(80);
     }
-    if config.chunk_token_budget.is_none() {
+    if config.retrieval.chunk_token_budget.is_none() {
         tuning.token_budget_estimate = tuning.token_budget_estimate.max(20_000);
     }
-    if config.max_chunks_per_entity.is_none() {
+    if config.retrieval.max_chunks_per_entity.is_none() {
         tuning.max_chunks_per_entity = tuning.max_chunks_per_entity.max(12);
     }
     if tuning.lexical_match_weight < 0.25 {
         tuning.lexical_match_weight = 0.3;
     }
-}
-
-pub(crate) fn build_case_diagnostics(
-    summary: &CaseSummary,
-    expected_chunk_ids: &[String],
-    answers_lower: &[String],
-    entities: &[composite_retrieval::RetrievedEntity],
-    pipeline_stats: Option<retrieval_pipeline::PipelineDiagnostics>,
-) -> CaseDiagnostics {
-    let expected_set: HashSet<&str> = expected_chunk_ids.iter().map(|id| id.as_str()).collect();
-    let mut seen_chunks: HashSet<String> = HashSet::new();
-    let mut attached_chunk_ids = Vec::new();
-    let mut entity_diagnostics = Vec::new();
-
-    for (idx, entity) in entities.iter().enumerate() {
-        let mut chunk_entries = Vec::new();
-        for chunk in &entity.chunks {
-            let contains_answer = text_contains_answer(&chunk.chunk.chunk, answers_lower);
-            let expected_chunk = expected_set.contains(chunk.chunk.id.as_str());
-            seen_chunks.insert(chunk.chunk.id.clone());
-            attached_chunk_ids.push(chunk.chunk.id.clone());
-            chunk_entries.push(ChunkDiagnosticsEntry {
-                chunk_id: chunk.chunk.id.clone(),
-                score: chunk.score,
-                contains_answer,
-                expected_chunk,
-                snippet: chunk_preview(&chunk.chunk.chunk),
-            });
-        }
-        entity_diagnostics.push(EntityDiagnostics {
-            rank: idx + 1,
-            entity_id: entity.entity.id.clone(),
-            source_id: entity.entity.source_id.clone(),
-            name: entity.entity.name.clone(),
-            score: entity.score,
-            entity_match: entity.entity.source_id == summary.expected_source,
-            chunk_text_match: chunk_entries.iter().any(|entry| entry.contains_answer),
-            chunk_id_match: chunk_entries.iter().any(|entry| entry.expected_chunk),
-            chunks: chunk_entries,
-        });
-    }
-
-    let missing_expected_chunk_ids = expected_chunk_ids
-        .iter()
-        .filter(|id| !seen_chunks.contains(id.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
-
-    let mut failure_reasons = Vec::new();
-    if !summary.entity_match {
-        failure_reasons.push("entity_miss".to_string());
-    }
-    if !summary.chunk_text_match {
-        failure_reasons.push("chunk_text_missing".to_string());
-    }
-    if !summary.chunk_id_match {
-        failure_reasons.push("chunk_id_missing".to_string());
-    }
-    if !missing_expected_chunk_ids.is_empty() {
-        failure_reasons.push("expected_chunk_absent".to_string());
-    }
-
-    CaseDiagnostics {
-        question_id: summary.question_id.clone(),
-        question: summary.question.clone(),
-        paragraph_id: summary.paragraph_id.clone(),
-        paragraph_title: summary.paragraph_title.clone(),
-        expected_source: summary.expected_source.clone(),
-        expected_chunk_ids: expected_chunk_ids.to_vec(),
-        answers: summary.answers.clone(),
-        entity_match: summary.entity_match,
-        chunk_text_match: summary.chunk_text_match,
-        chunk_id_match: summary.chunk_id_match,
-        failure_reasons,
-        missing_expected_chunk_ids,
-        attached_chunk_ids,
-        retrieved: entity_diagnostics,
-        pipeline: pipeline_stats,
-    }
-}
-
-fn chunk_preview(text: &str) -> String {
-    text.chars()
-        .take(200)
-        .collect::<String>()
-        .replace('\n', " ")
 }
 
 pub(crate) async fn write_chunk_diagnostics(path: &Path, cases: &[CaseDiagnostics]) -> Result<()> {
@@ -763,5 +467,120 @@ pub(crate) async fn load_or_init_system_settings(
             Ok((settings, true))
         }
         Err(err) => Err(err).context("loading system settings"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ingest::{CorpusManifest, CorpusMetadata, CorpusParagraph, CorpusQuestion};
+    use chrono::Utc;
+    use common::storage::types::text_content::TextContent;
+
+    fn sample_manifest() -> CorpusManifest {
+        let paragraphs = vec![
+            CorpusParagraph {
+                paragraph_id: "p1".to_string(),
+                title: "Alpha".to_string(),
+                text_content: TextContent::new(
+                    "alpha context".to_string(),
+                    None,
+                    "test".to_string(),
+                    None,
+                    None,
+                    "user".to_string(),
+                ),
+                entities: Vec::new(),
+                relationships: Vec::new(),
+                chunks: Vec::new(),
+            },
+            CorpusParagraph {
+                paragraph_id: "p2".to_string(),
+                title: "Beta".to_string(),
+                text_content: TextContent::new(
+                    "beta context".to_string(),
+                    None,
+                    "test".to_string(),
+                    None,
+                    None,
+                    "user".to_string(),
+                ),
+                entities: Vec::new(),
+                relationships: Vec::new(),
+                chunks: Vec::new(),
+            },
+        ];
+        let questions = vec![
+            CorpusQuestion {
+                question_id: "q1".to_string(),
+                paragraph_id: "p1".to_string(),
+                text_content_id: "tc-alpha".to_string(),
+                question_text: "What is Alpha?".to_string(),
+                answers: vec!["Alpha".to_string()],
+                is_impossible: false,
+                matching_chunk_ids: vec!["chunk-alpha".to_string()],
+            },
+            CorpusQuestion {
+                question_id: "q2".to_string(),
+                paragraph_id: "p1".to_string(),
+                text_content_id: "tc-alpha".to_string(),
+                question_text: "Unanswerable?".to_string(),
+                answers: Vec::new(),
+                is_impossible: true,
+                matching_chunk_ids: Vec::new(),
+            },
+            CorpusQuestion {
+                question_id: "q3".to_string(),
+                paragraph_id: "p2".to_string(),
+                text_content_id: "tc-beta".to_string(),
+                question_text: "Where is Beta?".to_string(),
+                answers: vec!["Beta".to_string()],
+                is_impossible: false,
+                matching_chunk_ids: Vec::new(),
+            },
+        ];
+        CorpusManifest {
+            version: 1,
+            metadata: CorpusMetadata {
+                dataset_id: "ds".to_string(),
+                dataset_label: "Dataset".to_string(),
+                slice_id: "slice".to_string(),
+                include_unanswerable: true,
+                require_verified_chunks: true,
+                ingestion_fingerprint: "fp".to_string(),
+                embedding_backend: "test".to_string(),
+                embedding_model: None,
+                embedding_dimension: 3,
+                converted_checksum: "chk".to_string(),
+                generated_at: Utc::now(),
+                paragraph_count: paragraphs.len(),
+                question_count: questions.len(),
+            },
+            paragraphs,
+            questions,
+        }
+    }
+
+    #[test]
+    fn cases_respect_mode_filters() {
+        let mut manifest = sample_manifest();
+        manifest.metadata.include_unanswerable = false;
+        manifest.metadata.require_verified_chunks = true;
+
+        let strict_cases = cases_from_manifest(&manifest);
+        assert_eq!(strict_cases.len(), 1);
+        assert_eq!(strict_cases[0].question_id, "q1");
+        assert_eq!(strict_cases[0].paragraph_title, "Alpha");
+
+        let mut llm_manifest = manifest.clone();
+        llm_manifest.metadata.include_unanswerable = true;
+        llm_manifest.metadata.require_verified_chunks = false;
+
+        let llm_cases = cases_from_manifest(&llm_manifest);
+        let ids: Vec<_> = llm_cases
+            .iter()
+            .map(|case| case.question_id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["q1", "q2", "q3"]);
     }
 }

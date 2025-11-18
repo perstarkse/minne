@@ -23,5 +23,6 @@ pub fn slice_config_with_limit<'a>(
         slice_seed: config.slice_seed,
         llm_mode: config.llm_mode,
         negative_multiplier: config.negative_multiplier,
+        require_verified_chunks: config.retrieval.require_verified_chunks,
     }
 }

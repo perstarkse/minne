@@ -1,15 +1,17 @@
 use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use anyhow::Context;
-use futures::stream::{self, StreamExt, TryStreamExt};
+use futures::stream::{self, StreamExt};
 use tracing::{debug, info};
 
 use crate::eval::{
-    apply_dataset_tuning_overrides, build_case_diagnostics, text_contains_answer, CaseDiagnostics,
-    CaseSummary, RetrievedSummary,
+    adapt_strategy_output, apply_dataset_tuning_overrides, build_case_diagnostics,
+    text_contains_answer, CaseDiagnostics, CaseSummary, RetrievedSummary,
 };
-use composite_retrieval::pipeline::{self, PipelineStageTimings, RetrievalConfig};
-use composite_retrieval::reranking::RerankerPool;
+use retrieval_pipeline::{
+    pipeline::{self, PipelineStageTimings, RetrievalConfig},
+    reranking::RerankerPool,
+};
 use tokio::sync::Semaphore;
 
 use super::super::{
@@ -38,30 +40,34 @@ pub(crate) async fn run_queries(
     let total_cases = ctx.cases.len();
     let cases_iter = std::mem::take(&mut ctx.cases).into_iter().enumerate();
 
-    let rerank_pool = if config.rerank {
-        Some(RerankerPool::new(config.rerank_pool_size).context("initialising reranker pool")?)
+    let rerank_pool = if config.retrieval.rerank {
+        Some(
+            RerankerPool::new(config.retrieval.rerank_pool_size)
+                .context("initialising reranker pool")?,
+        )
     } else {
         None
     };
 
     let mut retrieval_config = RetrievalConfig::default();
-    retrieval_config.tuning.rerank_keep_top = config.rerank_keep_top;
-    if retrieval_config.tuning.fallback_min_results < config.rerank_keep_top {
-        retrieval_config.tuning.fallback_min_results = config.rerank_keep_top;
+    retrieval_config.strategy = config.retrieval.strategy;
+    retrieval_config.tuning.rerank_keep_top = config.retrieval.rerank_keep_top;
+    if retrieval_config.tuning.fallback_min_results < config.retrieval.rerank_keep_top {
+        retrieval_config.tuning.fallback_min_results = config.retrieval.rerank_keep_top;
     }
-    if let Some(value) = config.chunk_vector_take {
+    if let Some(value) = config.retrieval.chunk_vector_take {
         retrieval_config.tuning.chunk_vector_take = value;
     }
-    if let Some(value) = config.chunk_fts_take {
+    if let Some(value) = config.retrieval.chunk_fts_take {
         retrieval_config.tuning.chunk_fts_take = value;
     }
-    if let Some(value) = config.chunk_token_budget {
+    if let Some(value) = config.retrieval.chunk_token_budget {
         retrieval_config.tuning.token_budget_estimate = value;
     }
-    if let Some(value) = config.chunk_avg_chars_per_token {
+    if let Some(value) = config.retrieval.chunk_avg_chars_per_token {
         retrieval_config.tuning.avg_chars_per_token = value;
     }
-    if let Some(value) = config.max_chunks_per_entity {
+    if let Some(value) = config.retrieval.max_chunks_per_entity {
         retrieval_config.tuning.max_chunks_per_entity = value;
     }
 
@@ -69,9 +75,11 @@ pub(crate) async fn run_queries(
 
     let active_tuning = retrieval_config.tuning.clone();
     let effective_chunk_vector = config
+        .retrieval
         .chunk_vector_take
         .unwrap_or(active_tuning.chunk_vector_take);
     let effective_chunk_fts = config
+        .retrieval
         .chunk_fts_take
         .unwrap_or(active_tuning.chunk_fts_take);
 
@@ -83,11 +91,11 @@ pub(crate) async fn run_queries(
             .limit
             .unwrap_or(ctx.window_total_cases),
         negative_multiplier = %slice_settings.negative_multiplier,
-        rerank_enabled = config.rerank,
-        rerank_pool_size = config.rerank_pool_size,
-        rerank_keep_top = config.rerank_keep_top,
-        chunk_min = config.chunk_min_chars,
-        chunk_max = config.chunk_max_chars,
+        rerank_enabled = config.retrieval.rerank,
+        rerank_pool_size = config.retrieval.rerank_pool_size,
+        rerank_keep_top = config.retrieval.rerank_keep_top,
+        chunk_min = config.retrieval.chunk_min_chars,
+        chunk_max = config.retrieval.chunk_max_chars,
         chunk_vector_take = effective_chunk_vector,
         chunk_fts_take = effective_chunk_fts,
         chunk_token_budget = active_tuning.token_budget_estimate,
@@ -122,12 +130,7 @@ pub(crate) async fn run_queries(
     let db = ctx.db().clone();
     let openai_client = ctx.openai_client();
 
-    let results: Vec<(
-        usize,
-        CaseSummary,
-        Option<CaseDiagnostics>,
-        PipelineStageTimings,
-    )> = stream::iter(cases_iter)
+    let raw_results = stream::iter(cases_iter)
         .map(move |(idx, case)| {
             let db = db.clone();
             let openai_client = openai_client.clone();
@@ -152,6 +155,8 @@ pub(crate) async fn run_queries(
                     paragraph_id,
                     paragraph_title,
                     expected_chunk_ids,
+                    is_impossible,
+                    has_verified_chunks,
                 } = case;
                 let query_start = Instant::now();
 
@@ -165,7 +170,7 @@ pub(crate) async fn run_queries(
                     None => None,
                 };
 
-                let (results, pipeline_diagnostics, stage_timings) = if diagnostics_enabled {
+                let (result_output, pipeline_diagnostics, stage_timings) = if diagnostics_enabled {
                     let outcome = pipeline::run_pipeline_with_embedding_with_diagnostics(
                         &db,
                         &openai_client,
@@ -194,26 +199,27 @@ pub(crate) async fn run_queries(
                 };
                 let query_latency = query_start.elapsed().as_millis() as u128;
 
+                let candidates = adapt_strategy_output(result_output);
                 let mut retrieved = Vec::new();
                 let mut match_rank = None;
                 let answers_lower: Vec<String> =
                     answers.iter().map(|ans| ans.to_ascii_lowercase()).collect();
                 let expected_chunk_ids_set: HashSet<&str> =
                     expected_chunk_ids.iter().map(|id| id.as_str()).collect();
-                let chunk_id_required = !expected_chunk_ids_set.is_empty();
+                let chunk_id_required = has_verified_chunks;
                 let mut entity_hit = false;
                 let mut chunk_text_hit = false;
                 let mut chunk_id_hit = !chunk_id_required;
 
-                for (idx_entity, entity) in results.iter().enumerate() {
+                for (idx_entity, candidate) in candidates.iter().enumerate() {
                     if idx_entity >= config.k {
                         break;
                     }
-                    let entity_match = entity.entity.source_id == expected_source;
+                    let entity_match = candidate.source_id == expected_source;
                     if entity_match {
                         entity_hit = true;
                     }
-                    let chunk_text_for_entity = entity
+                    let chunk_text_for_entity = candidate
                         .chunks
                         .iter()
                         .any(|chunk| text_contains_answer(&chunk.chunk.chunk, &answers_lower));
@@ -221,8 +227,8 @@ pub(crate) async fn run_queries(
                         chunk_text_hit = true;
                     }
                     let chunk_id_for_entity = if chunk_id_required {
-                        expected_chunk_ids_set.contains(entity.entity.source_id.as_str())
-                            || entity.chunks.iter().any(|chunk| {
+                        expected_chunk_ids_set.contains(candidate.source_id.as_str())
+                            || candidate.chunks.iter().any(|chunk| {
                                 expected_chunk_ids_set.contains(chunk.chunk.id.as_str())
                             })
                     } else {
@@ -236,9 +242,11 @@ pub(crate) async fn run_queries(
                         match_rank = Some(idx_entity + 1);
                     }
                     let detail_fields = if config.detailed_report {
+                        let description = candidate.entity_description.clone();
+                        let category = candidate.entity_category.clone();
                         (
-                            Some(entity.entity.description.clone()),
-                            Some(format!("{:?}", entity.entity.entity_type)),
+                            description,
+                            category,
                             Some(chunk_text_for_entity),
                             Some(chunk_id_for_entity),
                         )
@@ -247,10 +255,10 @@ pub(crate) async fn run_queries(
                     };
                     retrieved.push(RetrievedSummary {
                         rank: idx_entity + 1,
-                        entity_id: entity.entity.id.clone(),
-                        source_id: entity.entity.source_id.clone(),
-                        entity_name: entity.entity.name.clone(),
-                        score: entity.score,
+                        entity_id: candidate.entity_id.clone(),
+                        source_id: candidate.source_id.clone(),
+                        entity_name: candidate.entity_name.clone(),
+                        score: candidate.score,
                         matched: success,
                         entity_description: detail_fields.0,
                         entity_category: detail_fields.1,
@@ -271,6 +279,8 @@ pub(crate) async fn run_queries(
                     entity_match: entity_hit,
                     chunk_text_match: chunk_text_hit,
                     chunk_id_match: chunk_id_hit,
+                    is_impossible,
+                    has_verified_chunks,
                     match_rank,
                     latency_ms: query_latency,
                     retrieved,
@@ -281,7 +291,7 @@ pub(crate) async fn run_queries(
                         &summary,
                         &expected_chunk_ids,
                         &answers_lower,
-                        &results,
+                        &candidates,
                         pipeline_diagnostics,
                     ))
                 } else {
@@ -300,8 +310,18 @@ pub(crate) async fn run_queries(
             }
         })
         .buffer_unordered(concurrency)
-        .try_collect()
-        .await?;
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut results = Vec::with_capacity(raw_results.len());
+    for result in raw_results {
+        match result {
+            Ok(val) => results.push(val),
+            Err(err) => {
+                tracing::error!(error = ?err, "Query execution failed");
+            }
+        }
+    }
 
     let mut ordered = results;
     ordered.sort_by_key(|(idx, ..)| *idx);

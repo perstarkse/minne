@@ -1,23 +1,21 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    io::{BufReader, Read},
-    path::{Path, PathBuf},
+    io::Read,
+    path::Path,
     sync::Arc,
 };
 
 use anyhow::{anyhow, Context, Result};
 use async_openai::Client;
-use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use common::{
     storage::{
         db::SurrealDbClient,
         store::{DynStore, StorageManager},
         types::{
             ingestion_payload::IngestionPayload, ingestion_task::IngestionTask,
-            knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
-            text_chunk::TextChunk, text_content::TextContent,
+            knowledge_entity::KnowledgeEntity, text_chunk::TextChunk,
         },
     },
     utils::config::{AppConfig, StorageKind},
@@ -30,273 +28,18 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
-    args::Config,
     datasets::{ConvertedDataset, ConvertedParagraph, ConvertedQuestion},
-    embedding::EmbeddingProvider,
     slices::{self, ResolvedSlice, SliceParagraphKind},
 };
 
-const MANIFEST_VERSION: u32 = 1;
+use crate::ingest::{
+    CorpusCacheConfig, CorpusEmbeddingProvider, CorpusHandle, CorpusManifest, CorpusMetadata,
+    CorpusQuestion, ParagraphShard, ParagraphShardStore, MANIFEST_VERSION,
+};
+
 const INGESTION_SPEC_VERSION: u32 = 1;
-const INGESTION_MAX_RETRIES: usize = 3;
-const INGESTION_BATCH_SIZE: usize = 5;
-const PARAGRAPH_SHARD_VERSION: u32 = 1;
-
-#[derive(Debug, Clone)]
-pub struct CorpusCacheConfig {
-    pub ingestion_cache_dir: PathBuf,
-    pub force_refresh: bool,
-    pub refresh_embeddings_only: bool,
-}
-
-impl CorpusCacheConfig {
-    pub fn new(
-        ingestion_cache_dir: impl Into<PathBuf>,
-        force_refresh: bool,
-        refresh_embeddings_only: bool,
-    ) -> Self {
-        Self {
-            ingestion_cache_dir: ingestion_cache_dir.into(),
-            force_refresh,
-            refresh_embeddings_only,
-        }
-    }
-}
-
-#[async_trait]
-pub trait CorpusEmbeddingProvider: Send + Sync {
-    fn backend_label(&self) -> &str;
-    fn model_code(&self) -> Option<String>;
-    fn dimension(&self) -> usize;
-    async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>>;
-}
 
 type OpenAIClient = Client<async_openai::config::OpenAIConfig>;
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CorpusManifest {
-    pub version: u32,
-    pub metadata: CorpusMetadata,
-    pub paragraphs: Vec<CorpusParagraph>,
-    pub questions: Vec<CorpusQuestion>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CorpusMetadata {
-    pub dataset_id: String,
-    pub dataset_label: String,
-    pub slice_id: String,
-    pub include_unanswerable: bool,
-    pub ingestion_fingerprint: String,
-    pub embedding_backend: String,
-    pub embedding_model: Option<String>,
-    pub embedding_dimension: usize,
-    pub converted_checksum: String,
-    pub generated_at: DateTime<Utc>,
-    pub paragraph_count: usize,
-    pub question_count: usize,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CorpusParagraph {
-    pub paragraph_id: String,
-    pub title: String,
-    pub text_content: TextContent,
-    pub entities: Vec<KnowledgeEntity>,
-    pub relationships: Vec<KnowledgeRelationship>,
-    pub chunks: Vec<TextChunk>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CorpusQuestion {
-    pub question_id: String,
-    pub paragraph_id: String,
-    pub text_content_id: String,
-    pub question_text: String,
-    pub answers: Vec<String>,
-    pub is_impossible: bool,
-    pub matching_chunk_ids: Vec<String>,
-}
-
-pub struct CorpusHandle {
-    pub manifest: CorpusManifest,
-    pub path: PathBuf,
-    pub reused_ingestion: bool,
-    pub reused_embeddings: bool,
-    pub positive_reused: usize,
-    pub positive_ingested: usize,
-    pub negative_reused: usize,
-    pub negative_ingested: usize,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct ParagraphShard {
-    version: u32,
-    paragraph_id: String,
-    shard_path: String,
-    ingestion_fingerprint: String,
-    ingested_at: DateTime<Utc>,
-    title: String,
-    text_content: TextContent,
-    entities: Vec<KnowledgeEntity>,
-    relationships: Vec<KnowledgeRelationship>,
-    chunks: Vec<TextChunk>,
-    #[serde(default)]
-    question_bindings: HashMap<String, Vec<String>>,
-    #[serde(default)]
-    embedding_backend: String,
-    #[serde(default)]
-    embedding_model: Option<String>,
-    #[serde(default)]
-    embedding_dimension: usize,
-}
-
-struct ParagraphShardStore {
-    base_dir: PathBuf,
-}
-
-impl ParagraphShardStore {
-    fn new(base_dir: PathBuf) -> Self {
-        Self { base_dir }
-    }
-
-    fn ensure_base_dir(&self) -> Result<()> {
-        fs::create_dir_all(&self.base_dir)
-            .with_context(|| format!("creating shard base dir {}", self.base_dir.display()))
-    }
-
-    fn resolve(&self, relative: &str) -> PathBuf {
-        self.base_dir.join(relative)
-    }
-
-    fn load(&self, relative: &str, fingerprint: &str) -> Result<Option<ParagraphShard>> {
-        let path = self.resolve(relative);
-        let file = match fs::File::open(&path) {
-            Ok(file) => file,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(err) => {
-                return Err(err).with_context(|| format!("opening shard {}", path.display()))
-            }
-        };
-        let reader = BufReader::new(file);
-        let mut shard: ParagraphShard = serde_json::from_reader(reader)
-            .with_context(|| format!("parsing shard {}", path.display()))?;
-        if shard.version != PARAGRAPH_SHARD_VERSION {
-            warn!(
-                path = %path.display(),
-                version = shard.version,
-                expected = PARAGRAPH_SHARD_VERSION,
-                "Skipping shard due to version mismatch"
-            );
-            return Ok(None);
-        }
-        if shard.ingestion_fingerprint != fingerprint {
-            return Ok(None);
-        }
-        shard.shard_path = relative.to_string();
-        Ok(Some(shard))
-    }
-
-    fn persist(&self, shard: &ParagraphShard) -> Result<()> {
-        let path = self.resolve(&shard.shard_path);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("creating shard dir {}", parent.display()))?;
-        }
-        let tmp_path = path.with_extension("json.tmp");
-        let body = serde_json::to_vec_pretty(shard).context("serialising paragraph shard")?;
-        fs::write(&tmp_path, &body)
-            .with_context(|| format!("writing shard tmp {}", tmp_path.display()))?;
-        fs::rename(&tmp_path, &path)
-            .with_context(|| format!("renaming shard tmp {}", path.display()))?;
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl CorpusEmbeddingProvider for EmbeddingProvider {
-    fn backend_label(&self) -> &str {
-        EmbeddingProvider::backend_label(self)
-    }
-
-    fn model_code(&self) -> Option<String> {
-        EmbeddingProvider::model_code(self)
-    }
-
-    fn dimension(&self) -> usize {
-        EmbeddingProvider::dimension(self)
-    }
-
-    async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
-        EmbeddingProvider::embed_batch(self, texts).await
-    }
-}
-
-impl From<&Config> for CorpusCacheConfig {
-    fn from(config: &Config) -> Self {
-        CorpusCacheConfig::new(
-            config.ingestion_cache_dir.clone(),
-            config.force_convert || config.slice_reset_ingestion,
-            config.refresh_embeddings_only,
-        )
-    }
-}
-
-impl ParagraphShard {
-    fn new(
-        paragraph: &ConvertedParagraph,
-        shard_path: String,
-        ingestion_fingerprint: &str,
-        text_content: TextContent,
-        entities: Vec<KnowledgeEntity>,
-        relationships: Vec<KnowledgeRelationship>,
-        chunks: Vec<TextChunk>,
-        embedding_backend: &str,
-        embedding_model: Option<String>,
-        embedding_dimension: usize,
-    ) -> Self {
-        Self {
-            version: PARAGRAPH_SHARD_VERSION,
-            paragraph_id: paragraph.id.clone(),
-            shard_path,
-            ingestion_fingerprint: ingestion_fingerprint.to_string(),
-            ingested_at: Utc::now(),
-            title: paragraph.title.clone(),
-            text_content,
-            entities,
-            relationships,
-            chunks,
-            question_bindings: HashMap::new(),
-            embedding_backend: embedding_backend.to_string(),
-            embedding_model,
-            embedding_dimension,
-        }
-    }
-
-    fn to_corpus_paragraph(&self) -> CorpusParagraph {
-        CorpusParagraph {
-            paragraph_id: self.paragraph_id.clone(),
-            title: self.title.clone(),
-            text_content: self.text_content.clone(),
-            entities: self.entities.clone(),
-            relationships: self.relationships.clone(),
-            chunks: self.chunks.clone(),
-        }
-    }
-
-    fn ensure_question_binding(
-        &mut self,
-        question: &ConvertedQuestion,
-    ) -> Result<(Vec<String>, bool)> {
-        if let Some(existing) = self.question_bindings.get(&question.id) {
-            return Ok((existing.clone(), false));
-        }
-        let chunk_ids = validate_answers(&self.text_content, &self.chunks, question)?;
-        self.question_bindings
-            .insert(question.id.clone(), chunk_ids.clone());
-        Ok((chunk_ids, true))
-    }
-}
 
 #[derive(Clone)]
 struct ParagraphShardRecord {
@@ -390,6 +133,7 @@ pub async fn ensure_corpus<E: CorpusEmbeddingProvider>(
     store.ensure_base_dir()?;
 
     let positive_set: HashSet<&str> = window.positive_ids().collect();
+    let require_verified_chunks = slice.manifest.require_verified_chunks;
     let embedding_backend_label = embedding.backend_label().to_string();
     let embedding_model_code = embedding.model_code();
     let embedding_dimension = embedding.dimension();
@@ -487,6 +231,8 @@ pub async fn ensure_corpus<E: CorpusEmbeddingProvider>(
             &embedding_backend_label,
             embedding_model_code.clone(),
             embedding_dimension,
+            cache.ingestion_batch_size,
+            cache.ingestion_max_retries,
         )
         .await
         .context("ingesting missing slice paragraphs")?;
@@ -548,6 +294,12 @@ pub async fn ensure_corpus<E: CorpusEmbeddingProvider>(
         let (chunk_ids, updated) = match record.shard.ensure_question_binding(case.question) {
             Ok(result) => result,
             Err(err) => {
+                if require_verified_chunks {
+                    return Err(err).context(format!(
+                        "locating answer text for question '{}' in paragraph '{}'",
+                        case.question.id, case.paragraph.id
+                    ));
+                }
                 warn!(
                     question_id = %case.question.id,
                     paragraph_id = %case.paragraph.id,
@@ -591,6 +343,7 @@ pub async fn ensure_corpus<E: CorpusEmbeddingProvider>(
             dataset_label: dataset.metadata.label.clone(),
             slice_id: slice.manifest.slice_id.clone(),
             include_unanswerable: slice.manifest.includes_unanswerable,
+            require_verified_chunks: slice.manifest.require_verified_chunks,
             ingestion_fingerprint: ingestion_fingerprint.clone(),
             embedding_backend: embedding.backend_label().to_string(),
             embedding_model: embedding.model_code(),
@@ -681,6 +434,8 @@ async fn ingest_paragraph_batch<E: CorpusEmbeddingProvider>(
     embedding_backend: &str,
     embedding_model: Option<String>,
     embedding_dimension: usize,
+    batch_size: usize,
+    max_retries: usize,
 ) -> Result<Vec<ParagraphShard>> {
     if targets.is_empty() {
         return Ok(Vec::new());
@@ -704,7 +459,7 @@ async fn ingest_paragraph_batch<E: CorpusEmbeddingProvider>(
         db,
         openai.clone(),
         app_config,
-        None::<Arc<composite_retrieval::reranking::RerankerPool>>,
+        None::<Arc<retrieval_pipeline::reranking::RerankerPool>>,
         storage,
     )
     .await?;
@@ -712,11 +467,11 @@ async fn ingest_paragraph_batch<E: CorpusEmbeddingProvider>(
 
     let mut shards = Vec::with_capacity(targets.len());
     let category = dataset.metadata.category.clone();
-    for (batch_index, batch) in targets.chunks(INGESTION_BATCH_SIZE).enumerate() {
+    for (batch_index, batch) in targets.chunks(batch_size).enumerate() {
         info!(
             batch = batch_index,
             batch_size = batch.len(),
-            total_batches = (targets.len() + INGESTION_BATCH_SIZE - 1) / INGESTION_BATCH_SIZE,
+            total_batches = (targets.len() + batch_size - 1) / batch_size,
             "Ingesting paragraph batch"
         );
         let model_clone = embedding_model.clone();
@@ -734,6 +489,7 @@ async fn ingest_paragraph_batch<E: CorpusEmbeddingProvider>(
                 backend_clone.clone(),
                 model_clone.clone(),
                 embedding_dimension,
+                max_retries,
             )
         });
         let batch_results: Vec<ParagraphShard> = try_join_all(tasks)
@@ -755,10 +511,11 @@ async fn ingest_single_paragraph<E: CorpusEmbeddingProvider>(
     embedding_backend: String,
     embedding_model: Option<String>,
     embedding_dimension: usize,
+    max_retries: usize,
 ) -> Result<ParagraphShard> {
     let paragraph = request.paragraph;
     let mut last_err: Option<anyhow::Error> = None;
-    for attempt in 1..=INGESTION_MAX_RETRIES {
+    for attempt in 1..=max_retries {
         let payload = IngestionPayload::Text {
             text: paragraph.context.clone(),
             context: paragraph.title.clone(),
@@ -801,7 +558,7 @@ async fn ingest_single_paragraph<E: CorpusEmbeddingProvider>(
                 warn!(
                     paragraph_id = %paragraph.id,
                     attempt,
-                    max_attempts = INGESTION_MAX_RETRIES,
+                    max_attempts = max_retries,
                     error = ?err,
                     "ingestion attempt failed for paragraph; retrying"
                 );
@@ -813,49 +570,6 @@ async fn ingest_single_paragraph<E: CorpusEmbeddingProvider>(
     Err(last_err
         .unwrap_or_else(|| anyhow!("ingestion failed"))
         .context(format!("running ingestion for paragraph {}", paragraph.id)))
-}
-
-fn validate_answers(
-    content: &TextContent,
-    chunks: &[TextChunk],
-    question: &ConvertedQuestion,
-) -> Result<Vec<String>> {
-    if question.is_impossible || question.answers.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut matches = std::collections::BTreeSet::new();
-    let mut found_any = false;
-    let haystack = content.text.to_ascii_lowercase();
-    let haystack_norm = normalize_answer_text(&haystack);
-    for answer in &question.answers {
-        let needle: String = answer.to_ascii_lowercase();
-        let needle_norm = normalize_answer_text(&needle);
-        let text_match = haystack.contains(&needle)
-            || (!needle_norm.is_empty() && haystack_norm.contains(&needle_norm));
-        if text_match {
-            found_any = true;
-        }
-        for chunk in chunks {
-            let chunk_text = chunk.chunk.to_ascii_lowercase();
-            let chunk_norm = normalize_answer_text(&chunk_text);
-            if chunk_text.contains(&needle)
-                || (!needle_norm.is_empty() && chunk_norm.contains(&needle_norm))
-            {
-                matches.insert(chunk.id.clone());
-                found_any = true;
-            }
-        }
-    }
-
-    if !found_any {
-        Err(anyhow!(
-            "expected answer for question '{}' was not found in ingested content",
-            question.id
-        ))
-    } else {
-        Ok(matches.into_iter().collect())
-    }
 }
 
 fn build_ingestion_fingerprint(
@@ -893,108 +607,4 @@ fn compute_file_checksum(path: &Path) -> Result<String> {
         hasher.update(&buffer[..read]);
     }
     Ok(format!("{:x}", hasher.finalize()))
-}
-
-pub async fn seed_manifest_into_db(db: &SurrealDbClient, manifest: &CorpusManifest) -> Result<()> {
-    for paragraph in &manifest.paragraphs {
-        db.store_item(paragraph.text_content.clone())
-            .await
-            .context("storing text_content from manifest")?;
-        for entity in &paragraph.entities {
-            db.store_item(entity.clone())
-                .await
-                .context("storing knowledge_entity from manifest")?;
-        }
-        for relationship in &paragraph.relationships {
-            relationship
-                .store_relationship(db)
-                .await
-                .context("storing knowledge_relationship from manifest")?;
-        }
-        for chunk in &paragraph.chunks {
-            db.store_item(chunk.clone())
-                .await
-                .context("storing text_chunk from manifest")?;
-        }
-    }
-
-    Ok(())
-}
-
-fn normalize_answer_text(text: &str) -> String {
-    text.chars()
-        .map(|ch| {
-            if ch.is_alphanumeric() || ch.is_whitespace() {
-                ch.to_ascii_lowercase()
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::datasets::ConvertedQuestion;
-
-    fn mock_text_content() -> TextContent {
-        TextContent {
-            id: "tc1".into(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            text: "alpha beta gamma".into(),
-            file_info: None,
-            url_info: None,
-            context: Some("ctx".into()),
-            category: "cat".into(),
-            user_id: "user".into(),
-        }
-    }
-
-    fn mock_chunk(id: &str, text: &str) -> TextChunk {
-        TextChunk {
-            id: id.into(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            source_id: "src".into(),
-            chunk: text.into(),
-            embedding: vec![],
-            user_id: "user".into(),
-        }
-    }
-
-    #[test]
-    fn validate_answers_passes_when_present() {
-        let content = mock_text_content();
-        let chunk = mock_chunk("chunk1", "alpha chunk");
-        let question = ConvertedQuestion {
-            id: "q1".into(),
-            question: "?".into(),
-            answers: vec!["Alpha".into()],
-            is_impossible: false,
-        };
-        let matches = validate_answers(&content, &[chunk], &question).expect("answers match");
-        assert_eq!(matches, vec!["chunk1".to_string()]);
-    }
-
-    #[test]
-    fn validate_answers_fails_when_missing() {
-        let question = ConvertedQuestion {
-            id: "q1".into(),
-            question: "?".into(),
-            answers: vec!["delta".into()],
-            is_impossible: false,
-        };
-        let err = validate_answers(
-            &mock_text_content(),
-            &[mock_chunk("chunk", "alpha")],
-            &question,
-        )
-        .expect_err("missing answer should fail");
-        assert!(err.to_string().contains("not found"));
-    }
 }

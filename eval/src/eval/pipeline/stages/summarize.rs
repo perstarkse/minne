@@ -42,7 +42,18 @@ pub(crate) async fn summarize(
     let mut correct_at_1 = 0usize;
     let mut correct_at_2 = 0usize;
     let mut correct_at_3 = 0usize;
+    let mut retrieval_cases = 0usize;
+    let mut llm_cases = 0usize;
+    let mut llm_answered = 0usize;
     for summary in &summaries {
+        if summary.is_impossible {
+            llm_cases += 1;
+            if summary.matched {
+                llm_answered += 1;
+            }
+            continue;
+        }
+        retrieval_cases += 1;
         if summary.matched {
             correct += 1;
             if let Some(rank) = summary.match_rank {
@@ -62,25 +73,31 @@ pub(crate) async fn summarize(
     let latency_stats = compute_latency_stats(&latencies);
     let stage_latency = build_stage_latency_breakdown(&stage_latency_samples);
 
-    let precision = if total_cases == 0 {
+    let retrieval_precision = if retrieval_cases == 0 {
         0.0
     } else {
-        (correct as f64) / (total_cases as f64)
+        (correct as f64) / (retrieval_cases as f64)
     };
-    let precision_at_1 = if total_cases == 0 {
+    let llm_precision = if llm_cases == 0 {
         0.0
     } else {
-        (correct_at_1 as f64) / (total_cases as f64)
+        (llm_answered as f64) / (llm_cases as f64)
     };
-    let precision_at_2 = if total_cases == 0 {
+    let precision = retrieval_precision;
+    let precision_at_1 = if retrieval_cases == 0 {
         0.0
     } else {
-        (correct_at_2 as f64) / (total_cases as f64)
+        (correct_at_1 as f64) / (retrieval_cases as f64)
     };
-    let precision_at_3 = if total_cases == 0 {
+    let precision_at_2 = if retrieval_cases == 0 {
         0.0
     } else {
-        (correct_at_3 as f64) / (total_cases as f64)
+        (correct_at_2 as f64) / (retrieval_cases as f64)
+    };
+    let precision_at_3 = if retrieval_cases == 0 {
+        0.0
+    } else {
+        (correct_at_3 as f64) / (retrieval_cases as f64)
     };
 
     let active_tuning = ctx
@@ -119,6 +136,15 @@ pub(crate) async fn summarize(
         dataset_label: dataset.metadata.label.clone(),
         dataset_includes_unanswerable: dataset.metadata.include_unanswerable,
         dataset_source: dataset.source.clone(),
+        includes_impossible_cases: slice.manifest.includes_unanswerable,
+        require_verified_chunks: slice.manifest.require_verified_chunks,
+        filtered_questions: ctx.filtered_questions,
+        retrieval_cases,
+        retrieval_correct: correct,
+        retrieval_precision,
+        llm_cases,
+        llm_answered,
+        llm_precision,
         slice_id: slice.manifest.slice_id.clone(),
         slice_seed: slice.manifest.seed,
         slice_total_cases: slice.manifest.case_count,
@@ -146,11 +172,15 @@ pub(crate) async fn summarize(
         embedding_backend: ctx.embedding_provider().backend_label().to_string(),
         embedding_model: ctx.embedding_provider().model_code(),
         embedding_dimension: ctx.embedding_provider().dimension(),
-        rerank_enabled: config.rerank,
-        rerank_pool_size: ctx.rerank_pool.as_ref().map(|_| config.rerank_pool_size),
-        rerank_keep_top: config.rerank_keep_top,
+        rerank_enabled: config.retrieval.rerank,
+        rerank_pool_size: ctx
+            .rerank_pool
+            .as_ref()
+            .map(|_| config.retrieval.rerank_pool_size),
+        rerank_keep_top: config.retrieval.rerank_keep_top,
         concurrency: config.concurrency.max(1),
         detailed_report: config.detailed_report,
+        retrieval_strategy: config.retrieval.strategy.to_string(),
         chunk_vector_take: active_tuning.chunk_vector_take,
         chunk_fts_take: active_tuning.chunk_fts_take,
         chunk_token_budget: active_tuning.token_budget_estimate,
