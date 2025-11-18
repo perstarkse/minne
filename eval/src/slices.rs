@@ -26,6 +26,7 @@ pub struct SliceConfig<'a> {
     pub slice_seed: u64,
     pub llm_mode: bool,
     pub negative_multiplier: f32,
+    pub require_verified_chunks: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +37,8 @@ pub struct SliceManifest {
     pub dataset_label: String,
     pub dataset_source: String,
     pub includes_unanswerable: bool,
+    #[serde(default = "default_require_verified_chunks")]
+    pub require_verified_chunks: bool,
     pub seed: u64,
     pub requested_limit: Option<usize>,
     pub requested_corpus: usize,
@@ -47,6 +50,10 @@ pub struct SliceManifest {
     pub negative_multiplier: f32,
     pub cases: Vec<SliceCaseEntry>,
     pub paragraphs: Vec<SliceParagraphEntry>,
+}
+
+fn default_require_verified_chunks() -> bool {
+    false
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,6 +191,7 @@ impl DatasetIndex {
 struct SliceKey<'a> {
     dataset_id: &'a str,
     includes_unanswerable: bool,
+    require_verified_chunks: bool,
     requested_corpus: usize,
     seed: u64,
 }
@@ -222,7 +230,8 @@ pub fn resolve_slice<'a>(
         .max(1);
     let key = SliceKey {
         dataset_id: dataset.metadata.id.as_str(),
-        includes_unanswerable: dataset.metadata.include_unanswerable,
+        includes_unanswerable: config.llm_mode,
+        require_verified_chunks: config.require_verified_chunks,
         requested_corpus,
         seed: config.slice_seed,
     };
@@ -248,11 +257,22 @@ pub fn resolve_slice<'a>(
     let mut manifest = if !config.force_convert && path.exists() {
         match read_manifest(&path) {
             Ok(manifest) if manifest.dataset_id == dataset.metadata.id => {
-                if manifest.includes_unanswerable != dataset.metadata.include_unanswerable {
+                if manifest.includes_unanswerable != config.llm_mode {
                     warn!(
                         slice = manifest.slice_id,
                         path = %path.display(),
+                        expected = config.llm_mode,
+                        found = manifest.includes_unanswerable,
                         "Slice manifest includes_unanswerable mismatch; regenerating"
+                    );
+                    None
+                } else if manifest.require_verified_chunks != config.require_verified_chunks {
+                    warn!(
+                        slice = manifest.slice_id,
+                        path = %path.display(),
+                        expected = config.require_verified_chunks,
+                        found = manifest.require_verified_chunks,
+                        "Slice manifest verified-chunk requirement mismatch; regenerating"
                     );
                     None
                 } else {
@@ -312,6 +332,7 @@ pub fn resolve_slice<'a>(
             &params,
             requested_corpus,
             config.negative_multiplier,
+            config.require_verified_chunks,
             config.limit,
         )
     });
@@ -319,6 +340,8 @@ pub fn resolve_slice<'a>(
     manifest.requested_limit = config.limit;
     manifest.requested_corpus = requested_corpus;
     manifest.negative_multiplier = config.negative_multiplier;
+    manifest.includes_unanswerable = config.llm_mode;
+    manifest.require_verified_chunks = config.require_verified_chunks;
 
     let mut changed = ensure_shard_paths(&mut manifest);
 
@@ -439,6 +462,22 @@ fn load_explicit_slice<'a>(
             dataset.metadata.id
         ));
     }
+    if manifest.includes_unanswerable != config.llm_mode {
+        return Err(anyhow!(
+            "slice '{}' includes_unanswerable mismatch (expected {}, found {})",
+            manifest.slice_id,
+            config.llm_mode,
+            manifest.includes_unanswerable
+        ));
+    }
+    if manifest.require_verified_chunks != config.require_verified_chunks {
+        return Err(anyhow!(
+            "slice '{}' verified-chunk requirement mismatch (expected {}, found {})",
+            manifest.slice_id,
+            config.require_verified_chunks,
+            manifest.require_verified_chunks
+        ));
+    }
 
     // Validate the manifest before returning.
     manifest_to_resolved(dataset, index, manifest.clone(), candidate_path.clone())?;
@@ -452,6 +491,7 @@ fn empty_manifest(
     params: &BuildParams,
     requested_corpus: usize,
     negative_multiplier: f32,
+    require_verified_chunks: bool,
     requested_limit: Option<usize>,
 ) -> SliceManifest {
     SliceManifest {
@@ -460,7 +500,8 @@ fn empty_manifest(
         dataset_id: dataset.metadata.id.clone(),
         dataset_label: dataset.metadata.label.clone(),
         dataset_source: dataset.source.clone(),
-        includes_unanswerable: dataset.metadata.include_unanswerable,
+        includes_unanswerable: params.include_impossible,
+        require_verified_chunks,
         seed: params.base_seed,
         requested_limit,
         requested_corpus,
@@ -891,6 +932,7 @@ mod tests {
             slice_seed: 0x5eed_2025,
             llm_mode: false,
             negative_multiplier: DEFAULT_NEGATIVE_MULTIPLIER,
+            require_verified_chunks: true,
         };
 
         let first = resolve_slice(&dataset, &config)?;
@@ -922,6 +964,7 @@ mod tests {
             slice_seed: 0x5eed_2025,
             llm_mode: false,
             negative_multiplier: DEFAULT_NEGATIVE_MULTIPLIER,
+            require_verified_chunks: true,
         };
         let resolved = resolve_slice(&dataset, &config)?;
         let window = select_window(&resolved, 1, Some(1))?;

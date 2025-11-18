@@ -194,17 +194,34 @@ async fn async_main() -> anyhow::Result<()> {
         )
     })?;
 
-    println!(
-        "[{}] Precision@{k}: {precision:.3} ({correct}/{total}) → JSON: {json} | Markdown: {md} | Perf: {perf}",
-        summary.dataset_label,
-        k = summary.k,
-        precision = summary.precision,
-        correct = summary.correct,
-        total = summary.total_cases,
-        json = report_paths.json.display(),
-        md = report_paths.markdown.display(),
-        perf = perf_log_path.display()
-    );
+    if summary.llm_cases > 0 {
+        println!(
+            "[{}] Retrieval Precision@{k}: {precision:.3} ({correct}/{retrieval_total}) + LLM: {llm_answered}/{llm_total} ({llm_precision:.3}) → JSON: {json} | Markdown: {md} | Perf: {perf}",
+            summary.dataset_label,
+            k = summary.k,
+            precision = summary.precision,
+            correct = summary.correct,
+            retrieval_total = summary.retrieval_cases,
+            llm_answered = summary.llm_answered,
+            llm_total = summary.llm_cases,
+            llm_precision = summary.llm_precision,
+            json = report_paths.json.display(),
+            md = report_paths.markdown.display(),
+            perf = perf_log_path.display()
+        );
+    } else {
+        println!(
+            "[{}] Retrieval Precision@{k}: {precision:.3} ({correct}/{retrieval_total}) → JSON: {json} | Markdown: {md} | Perf: {perf}",
+            summary.dataset_label,
+            k = summary.k,
+            precision = summary.precision,
+            correct = summary.correct,
+            retrieval_total = summary.retrieval_cases,
+            json = report_paths.json.display(),
+            md = report_paths.markdown.display(),
+            perf = perf_log_path.display()
+        );
+    }
 
     if parsed.config.perf_log_console {
         perf::print_console_summary(&summary);
