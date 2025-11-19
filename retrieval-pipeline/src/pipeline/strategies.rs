@@ -4,7 +4,7 @@ use super::{
         ChunkVectorStage, CollectCandidatesStage, EmbedStage, GraphExpansionStage, PipelineContext,
         RerankStage,
     },
-    BoxedStage, RetrievalConfig, RetrievalStrategy, StrategyDriver,
+    BoxedStage, StrategyDriver,
 };
 use crate::{RetrievedChunk, RetrievedEntity};
 use common::error::AppError;
@@ -19,10 +19,6 @@ impl InitialStrategyDriver {
 
 impl StrategyDriver for InitialStrategyDriver {
     type Output = Vec<RetrievedEntity>;
-
-    fn strategy(&self) -> RetrievalStrategy {
-        RetrievalStrategy::Initial
-    }
 
     fn stages(&self) -> Vec<BoxedStage> {
         vec![
@@ -51,10 +47,6 @@ impl RevisedStrategyDriver {
 impl StrategyDriver for RevisedStrategyDriver {
     type Output = Vec<RetrievedChunk>;
 
-    fn strategy(&self) -> RetrievalStrategy {
-        RetrievalStrategy::Revised
-    }
-
     fn stages(&self) -> Vec<BoxedStage> {
         vec![
             Box::new(EmbedStage),
@@ -67,9 +59,58 @@ impl StrategyDriver for RevisedStrategyDriver {
     fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, AppError> {
         Ok(ctx.take_chunk_results())
     }
+}
 
-    fn override_tuning(&self, config: &mut RetrievalConfig) {
-        config.tuning.entity_vector_take = 0;
-        config.tuning.entity_fts_take = 0;
+pub struct RelationshipSuggestionDriver;
+
+impl RelationshipSuggestionDriver {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl StrategyDriver for RelationshipSuggestionDriver {
+    type Output = Vec<RetrievedEntity>;
+
+    fn stages(&self) -> Vec<BoxedStage> {
+        vec![
+            Box::new(EmbedStage),
+            Box::new(CollectCandidatesStage),
+            Box::new(GraphExpansionStage),
+            // Skip ChunkAttachStage
+            Box::new(RerankStage),
+            Box::new(AssembleEntitiesStage),
+        ]
+    }
+
+    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, AppError> {
+        Ok(ctx.take_entity_results())
+    }
+}
+
+pub struct IngestionDriver;
+
+impl IngestionDriver {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl StrategyDriver for IngestionDriver {
+    type Output = Vec<RetrievedEntity>;
+
+    fn stages(&self) -> Vec<BoxedStage> {
+        vec![
+            Box::new(EmbedStage),
+            Box::new(CollectCandidatesStage),
+            Box::new(GraphExpansionStage),
+            // Skip ChunkAttachStage
+            Box::new(RerankStage),
+            Box::new(AssembleEntitiesStage),
+        ]
+    }
+
+    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, AppError> {
+        Ok(ctx.take_entity_results())
     }
 }

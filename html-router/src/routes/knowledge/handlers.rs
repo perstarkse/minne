@@ -24,7 +24,7 @@ use common::{
     },
     utils::embedding::generate_embedding,
 };
-use retrieval_pipeline::{retrieve_entities, RetrievalConfig, RetrievedEntity, StrategyOutput};
+use retrieval_pipeline;
 use tracing::debug;
 use uuid::Uuid;
 
@@ -284,20 +284,18 @@ pub async fn suggest_knowledge_relationships(
             None => None,
         };
 
-        let mut retrieval_config = RetrievalConfig::default();
-        retrieval_config.strategy = state.retrieval_strategy();
-
-        if let Ok(StrategyOutput::Entities(results)) = retrieve_entities(
+        let config = retrieval_pipeline::RetrievalConfig::for_relationship_suggestion();
+        if let Ok(retrieval_pipeline::StrategyOutput::Entities(results)) = retrieval_pipeline::retrieve_entities(
             &state.db,
             &state.openai_client,
             &query,
             &user.id,
-            retrieval_config,
+            config,
             rerank_lease,
         )
         .await
         {
-            for RetrievedEntity { entity, score, .. } in results {
+            for retrieval_pipeline::RetrievedEntity { entity, score, .. } in results {
                 if suggestion_scores.len() >= MAX_RELATIONSHIP_SUGGESTIONS {
                     break;
                 }

@@ -1,6 +1,6 @@
 mod config;
 mod orchestrator;
-mod store;
+pub(crate) mod store;
 
 pub use config::{CorpusCacheConfig, CorpusEmbeddingProvider};
 pub use orchestrator::ensure_corpus;
