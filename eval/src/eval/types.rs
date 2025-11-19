@@ -294,16 +294,16 @@ pub fn build_stage_latency_breakdown(samples: &[PipelineStageTimings]) -> StageL
     }
 
     StageLatencyBreakdown {
-        embed: compute_latency_stats(&collect_stage(samples, |entry| entry.embed_ms)),
+        embed: compute_latency_stats(&collect_stage(samples, |entry| entry.embed_ms())),
         collect_candidates: compute_latency_stats(&collect_stage(samples, |entry| {
-            entry.collect_candidates_ms
+            entry.collect_candidates_ms()
         })),
         graph_expansion: compute_latency_stats(&collect_stage(samples, |entry| {
-            entry.graph_expansion_ms
+            entry.graph_expansion_ms()
         })),
-        chunk_attach: compute_latency_stats(&collect_stage(samples, |entry| entry.chunk_attach_ms)),
-        rerank: compute_latency_stats(&collect_stage(samples, |entry| entry.rerank_ms)),
-        assemble: compute_latency_stats(&collect_stage(samples, |entry| entry.assemble_ms)),
+        chunk_attach: compute_latency_stats(&collect_stage(samples, |entry| entry.chunk_attach_ms())),
+        rerank: compute_latency_stats(&collect_stage(samples, |entry| entry.rerank_ms())),
+        assemble: compute_latency_stats(&collect_stage(samples, |entry| entry.assemble_ms())),
     }
 }
 

@@ -473,7 +473,8 @@ pub(crate) async fn load_or_init_system_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ingest::{CorpusManifest, CorpusMetadata, CorpusParagraph, CorpusQuestion};
+    use crate::ingest::store::CorpusParagraph;
+    use crate::ingest::{CorpusManifest, CorpusMetadata, CorpusQuestion};
     use chrono::Utc;
     use common::storage::types::text_content::TextContent;
 

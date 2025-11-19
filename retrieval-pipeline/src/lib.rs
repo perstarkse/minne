@@ -17,9 +17,16 @@ use common::{
 use reranking::RerankerLease;
 use tracing::instrument;
 
+// Strategy output variants - defined before pipeline module
+#[derive(Debug)]
+pub enum StrategyOutput {
+    Entities(Vec<RetrievedEntity>),
+    Chunks(Vec<RetrievedChunk>),
+}
+
 pub use pipeline::{
     retrieved_entities_to_json, PipelineDiagnostics, PipelineStageTimings, RetrievalConfig,
-    RetrievalStrategy, RetrievalTuning, StrategyOutput,
+    RetrievalStrategy, RetrievalTuning,
 };
 
 // Captures a supporting chunk plus its fused retrieval score for downstream prompts.
@@ -37,7 +44,7 @@ pub struct RetrievedEntity {
     pub chunks: Vec<RetrievedChunk>,
 }
 
-// Primary orchestrator for the process of retrieving KnowledgeEntitities related to a input_text
+/// Primary orchestrator for the process of retrieving KnowledgeEntitities related to a input_text
 #[instrument(skip_all, fields(user_id))]
 pub async fn retrieve_entities(
     db_client: &SurrealDbClient,

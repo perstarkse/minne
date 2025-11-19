@@ -6,6 +6,8 @@ use std::fmt;
 pub enum RetrievalStrategy {
     Initial,
     Revised,
+    RelationshipSuggestion,
+    Ingestion,
 }
 
 impl Default for RetrievalStrategy {
@@ -21,6 +23,8 @@ impl std::str::FromStr for RetrievalStrategy {
         match value.to_ascii_lowercase().as_str() {
             "initial" => Ok(Self::Initial),
             "revised" => Ok(Self::Revised),
+            "relationship_suggestion" => Ok(Self::RelationshipSuggestion),
+            "ingestion" => Ok(Self::Ingestion),
             other => Err(format!("unknown retrieval strategy '{other}'")),
         }
     }
@@ -31,6 +35,8 @@ impl fmt::Display for RetrievalStrategy {
         let label = match self {
             RetrievalStrategy::Initial => "initial",
             RetrievalStrategy::Revised => "revised",
+            RetrievalStrategy::RelationshipSuggestion => "relationship_suggestion",
+            RetrievalStrategy::Ingestion => "ingestion",
         };
         f.write_str(label)
     }
@@ -108,6 +114,21 @@ impl RetrievalConfig {
 
     pub fn with_tuning(strategy: RetrievalStrategy, tuning: RetrievalTuning) -> Self {
         Self { strategy, tuning }
+    }
+
+    /// Create config for chat retrieval with strategy selection support
+    pub fn for_chat(strategy: RetrievalStrategy) -> Self {
+        Self::with_strategy(strategy)
+    }
+
+    /// Create config for relationship suggestion (entity-only retrieval)
+    pub fn for_relationship_suggestion() -> Self {
+        Self::with_strategy(RetrievalStrategy::RelationshipSuggestion)
+    }
+
+    /// Create config for ingestion pipeline (entity-only retrieval)
+    pub fn for_ingestion() -> Self {
+        Self::with_strategy(RetrievalStrategy::Ingestion)
     }
 }
 
