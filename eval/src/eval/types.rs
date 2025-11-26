@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
+use common::storage::types::StoredObject;
 use retrieval_pipeline::{
     PipelineDiagnostics, PipelineStageTimings, RetrievedChunk, RetrievedEntity, StrategyOutput,
 };
@@ -164,7 +165,7 @@ impl EvaluationCandidate {
     fn from_entity(entity: RetrievedEntity) -> Self {
         let entity_category = Some(format!("{:?}", entity.entity.entity_type));
         Self {
-            entity_id: entity.entity.id.clone(),
+            entity_id: entity.entity.get_id().to_string(),
             source_id: entity.entity.source_id.clone(),
             entity_name: entity.entity.name.clone(),
             entity_description: Some(entity.entity.description.clone()),
@@ -177,7 +178,7 @@ impl EvaluationCandidate {
     fn from_chunk(chunk: RetrievedChunk) -> Self {
         let snippet = chunk_snippet(&chunk.chunk.chunk);
         Self {
-            entity_id: chunk.chunk.id.clone(),
+            entity_id: chunk.chunk.get_id().to_string(),
             source_id: chunk.chunk.source_id.clone(),
             entity_name: chunk.chunk.source_id.clone(),
             entity_description: Some(snippet),
@@ -301,7 +302,9 @@ pub fn build_stage_latency_breakdown(samples: &[PipelineStageTimings]) -> StageL
         graph_expansion: compute_latency_stats(&collect_stage(samples, |entry| {
             entry.graph_expansion_ms()
         })),
-        chunk_attach: compute_latency_stats(&collect_stage(samples, |entry| entry.chunk_attach_ms())),
+        chunk_attach: compute_latency_stats(&collect_stage(samples, |entry| {
+            entry.chunk_attach_ms()
+        })),
         rerank: compute_latency_stats(&collect_stage(samples, |entry| entry.rerank_ms())),
         assemble: compute_latency_stats(&collect_stage(samples, |entry| entry.assemble_ms())),
     }
@@ -332,11 +335,11 @@ pub fn build_case_diagnostics(
         let mut chunk_entries = Vec::new();
         for chunk in &candidate.chunks {
             let contains_answer = text_contains_answer(&chunk.chunk.chunk, answers_lower);
-            let expected_chunk = expected_set.contains(chunk.chunk.id.as_str());
-            seen_chunks.insert(chunk.chunk.id.clone());
-            attached_chunk_ids.push(chunk.chunk.id.clone());
+            let expected_chunk = expected_set.contains(chunk.chunk.get_id());
+            seen_chunks.insert(chunk.chunk.get_id().to_string());
+            attached_chunk_ids.push(chunk.chunk.get_id().to_string());
             chunk_entries.push(ChunkDiagnosticsEntry {
-                chunk_id: chunk.chunk.id.clone(),
+                chunk_id: chunk.chunk.get_id().to_string(),
                 score: chunk.score,
                 contains_answer,
                 expected_chunk,

@@ -12,7 +12,7 @@ use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
-        types::{system_settings::SystemSettings, user::User},
+        types::{system_settings::SystemSettings, user::User, StoredObject},
     },
 };
 use retrieval_pipeline::RetrievalTuning;
@@ -172,18 +172,26 @@ pub(crate) async fn warm_hnsw_cache(db: &SurrealDbClient, dimension: usize) -> R
 
     info!("Warming HNSW caches with sample queries");
 
-    // Warm up chunk index
+    // Warm up chunk embedding index - just query the embedding table to load HNSW index
     let _ = db
         .client
-        .query("SELECT * FROM text_chunk WHERE embedding <|1,1|> $embedding LIMIT 5")
+        .query(
+            "SELECT chunk_id \
+             FROM text_chunk_embedding \
+             WHERE embedding <|1,1|> $embedding LIMIT 5",
+        )
         .bind(("embedding", dummy_embedding.clone()))
         .await
         .context("warming text chunk HNSW cache")?;
 
-    // Warm up entity index
+    // Warm up entity embedding index
     let _ = db
         .client
-        .query("SELECT * FROM knowledge_entity WHERE embedding <|1,1|> $embedding LIMIT 5")
+        .query(
+            "SELECT entity_id \
+             FROM knowledge_entity_embedding \
+             WHERE embedding <|1,1|> $embedding LIMIT 5",
+        )
         .bind(("embedding", dummy_embedding))
         .await
         .context("warming knowledge entity HNSW cache")?;
@@ -206,7 +214,7 @@ pub(crate) async fn ensure_eval_user(db: &SurrealDbClient) -> Result<User> {
         timezone: "UTC".to_string(),
     };
 
-    if let Some(existing) = db.get_item::<User>(&user.id).await? {
+    if let Some(existing) = db.get_item::<User>(&user.get_id()).await? {
         return Ok(existing);
     }
 
@@ -321,11 +329,11 @@ pub(crate) async fn can_reuse_namespace(
         }
     };
 
-    if state.slice_case_count < slice_case_count {
+    if state.slice_case_count != slice_case_count {
         info!(
             requested_cases = slice_case_count,
             stored_cases = state.slice_case_count,
-            "Skipping live namespace reuse; ledger grew beyond cached state"
+            "Skipping live namespace reuse; cached state does not match requested window"
         );
         return Ok(false);
     }
@@ -420,12 +428,12 @@ pub(crate) async fn enforce_system_settings(
 ) -> Result<SystemSettings> {
     let mut updated_settings = settings.clone();
     let mut needs_settings_update = false;
-    let mut embedding_dimension_changed = false;
+    // let mut embedding_dimension_changed = false;
 
     if provider_dimension != settings.embedding_dimensions as usize {
         updated_settings.embedding_dimensions = provider_dimension as u32;
         needs_settings_update = true;
-        embedding_dimension_changed = true;
+        // embedding_dimension_changed = true;
     }
     if let Some(query_override) = config.query_model.as_deref() {
         if settings.query_model != query_override {
@@ -442,16 +450,18 @@ pub(crate) async fn enforce_system_settings(
             .await
             .context("updating system settings overrides")?;
     }
-    if embedding_dimension_changed {
-        change_embedding_length_in_hnsw_indexes(db, provider_dimension)
-            .await
-            .context("redefining HNSW indexes for new embedding dimension")?;
-    }
+    // We dont need to do this, we've changed from default settings already
+    // if embedding_dimension_changed {
+    //     change_embedding_length_in_hnsw_indexes(db, provider_dimension)
+    //         .await
+    //         .context("redefining HNSW indexes for new embedding dimension")?;
+    // }
     Ok(settings)
 }
 
 pub(crate) async fn load_or_init_system_settings(
     db: &SurrealDbClient,
+    dimension: usize,
 ) -> Result<(SystemSettings, bool)> {
     match SystemSettings::get_current(db).await {
         Ok(settings) => Ok((settings, false)),
@@ -460,7 +470,6 @@ pub(crate) async fn load_or_init_system_settings(
             db.apply_migrations()
                 .await
                 .context("applying database migrations after missing system settings")?;
-            tokio::time::sleep(Duration::from_millis(50)).await;
             let settings = SystemSettings::get_current(db)
                 .await
                 .context("loading system settings after migrations")?;
@@ -473,8 +482,8 @@ pub(crate) async fn load_or_init_system_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ingest::store::CorpusParagraph;
-    use crate::ingest::{CorpusManifest, CorpusMetadata, CorpusQuestion};
+    use crate::ingest::store::{CorpusParagraph, EmbeddedKnowledgeEntity, EmbeddedTextChunk};
+    use crate::ingest::{CorpusManifest, CorpusMetadata, CorpusQuestion, MANIFEST_VERSION};
     use chrono::Utc;
     use common::storage::types::text_content::TextContent;
 
@@ -491,9 +500,9 @@ mod tests {
                     None,
                     "user".to_string(),
                 ),
-                entities: Vec::new(),
+                entities: Vec::<EmbeddedKnowledgeEntity>::new(),
                 relationships: Vec::new(),
-                chunks: Vec::new(),
+                chunks: Vec::<EmbeddedTextChunk>::new(),
             },
             CorpusParagraph {
                 paragraph_id: "p2".to_string(),
@@ -506,9 +515,9 @@ mod tests {
                     None,
                     "user".to_string(),
                 ),
-                entities: Vec::new(),
+                entities: Vec::<EmbeddedKnowledgeEntity>::new(),
                 relationships: Vec::new(),
-                chunks: Vec::new(),
+                chunks: Vec::<EmbeddedTextChunk>::new(),
             },
         ];
         let questions = vec![
@@ -541,7 +550,7 @@ mod tests {
             },
         ];
         CorpusManifest {
-            version: 1,
+            version: MANIFEST_VERSION,
             metadata: CorpusMetadata {
                 dataset_id: "ds".to_string(),
                 dataset_label: "Dataset".to_string(),

@@ -50,6 +50,7 @@ impl IngestionPipeline {
         config: AppConfig,
         reranker_pool: Option<Arc<RerankerPool>>,
         storage: StorageManager,
+        embedding_provider: Arc<common::utils::embedding::EmbeddingProvider>,
     ) -> Result<Self, AppError> {
         let services = DefaultPipelineServices::new(
             db.clone(),
@@ -57,6 +58,7 @@ impl IngestionPipeline {
             config.clone(),
             reranker_pool,
             storage,
+            embedding_provider,
         );
 
         Self::with_services(db, IngestionConfig::default(), Arc::new(services))

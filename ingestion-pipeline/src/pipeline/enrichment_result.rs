@@ -4,6 +4,7 @@ use chrono::Utc;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
+use anyhow::Context;
 use common::{
     error::AppError,
     storage::{
@@ -13,9 +14,10 @@ use common::{
             knowledge_relationship::KnowledgeRelationship,
         },
     },
-    utils::embedding::generate_embedding,
+    utils::{embedding::generate_embedding, embedding::EmbeddingProvider},
 };
 
+use crate::pipeline::context::EmbeddedKnowledgeEntity;
 use crate::utils::graph_mapper::GraphMapper;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,7 +50,8 @@ impl LLMEnrichmentResult {
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
         db_client: &SurrealDbClient,
         entity_concurrency: usize,
-    ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
+        embedding_provider: Option<&EmbeddingProvider>,
+    ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         let mapper = Arc::new(self.create_mapper()?);
 
         let entities = self
@@ -59,6 +62,7 @@ impl LLMEnrichmentResult {
                 openai_client,
                 db_client,
                 entity_concurrency,
+                embedding_provider,
             )
             .await?;
 
@@ -85,7 +89,8 @@ impl LLMEnrichmentResult {
         openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
         db_client: &SurrealDbClient,
         entity_concurrency: usize,
-    ) -> Result<Vec<KnowledgeEntity>, AppError> {
+        embedding_provider: Option<&EmbeddingProvider>,
+    ) -> Result<Vec<EmbeddedKnowledgeEntity>, AppError> {
         stream::iter(self.knowledge_entities.iter().cloned().map(|entity| {
             let mapper = Arc::clone(&mapper);
             let openai_client = openai_client.clone();
@@ -101,6 +106,7 @@ impl LLMEnrichmentResult {
                     mapper,
                     &openai_client,
                     &db_client,
+                    embedding_provider,
                 )
                 .await
             }
@@ -141,7 +147,8 @@ async fn create_single_entity(
     mapper: Arc<GraphMapper>,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     db_client: &SurrealDbClient,
-) -> Result<KnowledgeEntity, AppError> {
+    embedding_provider: Option<&EmbeddingProvider>,
+) -> Result<EmbeddedKnowledgeEntity, AppError> {
     let assigned_id = mapper.get_id(&llm_entity.key)?.to_string();
 
     let embedding_input = format!(
@@ -149,10 +156,17 @@ async fn create_single_entity(
         llm_entity.name, llm_entity.description, llm_entity.entity_type
     );
 
-    let embedding = generate_embedding(openai_client, &embedding_input, db_client).await?;
+    let embedding = if let Some(provider) = embedding_provider {
+        provider
+            .embed(&embedding_input)
+            .await
+            .context("generating FastEmbed embedding for entity")?
+    } else {
+        generate_embedding(openai_client, &embedding_input, db_client).await?
+    };
 
     let now = Utc::now();
-    Ok(KnowledgeEntity {
+    let entity = KnowledgeEntity {
         id: assigned_id,
         created_at: now,
         updated_at: now,
@@ -161,7 +175,8 @@ async fn create_single_entity(
         entity_type: KnowledgeEntityType::from(llm_entity.entity_type.to_string()),
         source_id: source_id.to_string(),
         metadata: None,
-        embedding,
         user_id: user_id.into(),
-    })
+    };
+
+    Ok(EmbeddedKnowledgeEntity { entity, embedding })
 }

@@ -146,12 +146,12 @@ impl TextContent {
                 search::highlight('<b>', '</b>', 4) AS highlighted_url,       
                 search::highlight('<b>', '</b>', 5) AS highlighted_url_title, 
                 (
-                    search::score(0) +  
-                    search::score(1) +  
-                    search::score(2) +  
-                    search::score(3) +  
-                    search::score(4) +  
-                    search::score(5)    
+                    IF search::score(0) != NONE THEN search::score(0) ELSE 0 END +  
+                    IF search::score(1) != NONE THEN search::score(1) ELSE 0 END +  
+                    IF search::score(2) != NONE THEN search::score(2) ELSE 0 END +  
+                    IF search::score(3) != NONE THEN search::score(3) ELSE 0 END +  
+                    IF search::score(4) != NONE THEN search::score(4) ELSE 0 END +  
+                    IF search::score(5) != NONE THEN search::score(5) ELSE 0 END    
                 ) AS score  
             FROM text_content
             WHERE

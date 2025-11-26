@@ -119,7 +119,6 @@ mod tests {
         let source_id = "source123".to_string();
         let description = format!("Description for {}", name);
         let entity_type = KnowledgeEntityType::Document;
-        let embedding = vec![0.1, 0.2, 0.3];
         let user_id = "user123".to_string();
 
         let entity = KnowledgeEntity::new(
@@ -128,7 +127,6 @@ mod tests {
             description,
             entity_type,
             None,
-            embedding,
             user_id,
         );
 

@@ -122,12 +122,13 @@ fn build_chunk_lookup(manifest: &ingest::CorpusManifest) -> HashMap<String, Chun
         for chunk in &paragraph.chunks {
             let snippet = chunk
                 .chunk
+                .chunk
                 .chars()
                 .take(160)
                 .collect::<String>()
                 .replace('\n', " ");
             lookup.insert(
-                chunk.id.clone(),
+                chunk.chunk.id.clone(),
                 ChunkEntry {
                     paragraph_title: paragraph.title.clone(),
                     snippet,

@@ -6,12 +6,12 @@ use tracing::info;
 use crate::{
     args::EmbeddingBackend,
     cache::EmbeddingCache,
-    embedding,
     eval::{
         connect_eval_db, enforce_system_settings, load_or_init_system_settings, sanitize_model_code,
     },
     openai,
 };
+use common::utils::embedding::EmbeddingProvider;
 
 use super::super::{
     context::{EvalStage, EvaluationContext},
@@ -35,15 +35,22 @@ pub(crate) async fn prepare_db(
     let config = ctx.config();
 
     let db = connect_eval_db(config, &namespace, &database).await?;
-    let (mut settings, settings_missing) = load_or_init_system_settings(&db).await?;
 
-    let embedding_provider =
-        embedding::build_provider(config, settings.embedding_dimensions as usize)
-            .await
-            .context("building embedding provider")?;
     let (raw_openai_client, openai_base_url) =
         openai::build_client_from_env().context("building OpenAI client")?;
     let openai_client = Arc::new(raw_openai_client);
+
+    // Create embedding provider directly from config (eval only supports FastEmbed and Hashed)
+    let embedding_provider = match config.embedding_backend {
+        crate::args::EmbeddingBackend::FastEmbed => {
+            EmbeddingProvider::new_fastembed(config.embedding_model.clone())
+                .await
+                .context("creating FastEmbed provider")?
+        }
+        crate::args::EmbeddingBackend::Hashed => {
+            EmbeddingProvider::new_hashed(1536).context("creating Hashed provider")?
+        }
+    };
     let provider_dimension = embedding_provider.dimension();
     if provider_dimension == 0 {
         return Err(anyhow!(
@@ -61,6 +68,9 @@ pub(crate) async fn prepare_db(
         "Embedding provider initialised"
     );
     info!(openai_base_url = %openai_base_url, "OpenAI client configured");
+
+    let (mut settings, settings_missing) =
+        load_or_init_system_settings(&db, provider_dimension).await?;
 
     let embedding_cache = if config.embedding_backend == EmbeddingBackend::FastEmbed {
         if let Some(model_code) = embedding_provider.model_code() {

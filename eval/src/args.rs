@@ -8,6 +8,23 @@ use retrieval_pipeline::RetrievalStrategy;
 
 use crate::datasets::DatasetKind;
 
+fn workspace_root() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir.parent().unwrap_or(&manifest_dir).to_path_buf()
+}
+
+fn default_report_dir() -> PathBuf {
+    workspace_root().join("eval/reports")
+}
+
+fn default_cache_dir() -> PathBuf {
+    workspace_root().join("eval/cache")
+}
+
+fn default_ingestion_cache_dir() -> PathBuf {
+    workspace_root().join("eval/cache/ingested")
+}
+
 pub const DEFAULT_SLICE_SEED: u64 = 0x5eed_2025;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,7 +146,7 @@ impl Default for Config {
             corpus_limit: None,
             raw_dataset_path: dataset.default_raw_path(),
             converted_dataset_path: dataset.default_converted_path(),
-            report_dir: PathBuf::from("eval/reports"),
+            report_dir: default_report_dir(),
             k: 5,
             limit: Some(200),
             summary_sample: 5,
@@ -138,8 +155,8 @@ impl Default for Config {
             concurrency: 4,
             embedding_backend: EmbeddingBackend::FastEmbed,
             embedding_model: None,
-            cache_dir: PathBuf::from("eval/cache"),
-            ingestion_cache_dir: PathBuf::from("eval/cache/ingested"),
+            cache_dir: default_cache_dir(),
+            ingestion_cache_dir: default_ingestion_cache_dir(),
             ingestion_batch_size: 5,
             ingestion_max_retries: 3,
             refresh_embeddings_only: false,
@@ -585,6 +602,13 @@ where
 }
 
 pub fn print_help() {
+    let report_default = default_report_dir();
+    let cache_default = default_cache_dir();
+    let ingestion_cache_default = default_ingestion_cache_dir();
+    let report_default_display = report_default.display();
+    let cache_default_display = cache_default.display();
+    let ingestion_cache_default_display = ingestion_cache_default.display();
+
     println!(
         "\
 eval — dataset conversion, ingestion, and retrieval evaluation CLI
@@ -610,7 +634,7 @@ OPTIONS:
     --corpus-limit <int>  Cap the slice corpus size (positives + negatives). Defaults to ~10× --limit, capped at 1000.
     --raw <path>          Path to the raw dataset (defaults per dataset).
     --converted <path>    Path to write/read the converted dataset (defaults per dataset).
-    --report-dir <path>   Directory to write evaluation reports (default: eval/reports).
+    --report-dir <path>   Directory to write evaluation reports (default: {report_default_display}).
     --k <int>             Precision@k cutoff (default: 5).
     --limit <int>         Limit the number of questions evaluated (default: 200, 0 = all).
     --sample <int>        Number of mismatches to surface in the Markdown summary (default: 5).
@@ -632,9 +656,9 @@ OPTIONS:
     --embedding <name>    Embedding backend: 'fastembed' (default) or 'hashed'.
     --embedding-model <code>
                           FastEmbed model code (defaults to crate preset when omitted).
-    --cache-dir <path>    Directory for embedding caches (default: eval/cache).
+    --cache-dir <path>    Directory for embedding caches (default: {cache_default_display}).
      --ingestion-cache-dir <path>
-                          Directory for ingestion corpora caches (default: eval/cache/ingested).
+                          Directory for ingestion corpora caches (default: {ingestion_cache_default_display}).
      --ingestion-batch-size <int>
                           Number of paragraphs to ingest concurrently (default: 5).
      --ingestion-max-retries <int>

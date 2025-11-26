@@ -5,9 +5,12 @@ use std::{
 };
 
 use async_openai::Client;
-use common::storage::{
-    db::SurrealDbClient,
-    types::{system_settings::SystemSettings, user::User},
+use common::{
+    storage::{
+        db::SurrealDbClient,
+        types::{system_settings::SystemSettings, user::User},
+    },
+    utils::embedding::EmbeddingProvider,
 };
 use retrieval_pipeline::{
     pipeline::{PipelineStageTimings, RetrievalConfig},
@@ -18,7 +21,6 @@ use crate::{
     args::Config,
     cache::EmbeddingCache,
     datasets::ConvertedDataset,
-    embedding::EmbeddingProvider,
     eval::{CaseDiagnostics, CaseSummary, EvaluationStageTimings, EvaluationSummary, SeededCase},
     ingest, slice, snapshot,
 };

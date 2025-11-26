@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 use async_openai::{config::OpenAIConfig, Client};
 use tokio_retry::{
@@ -13,12 +14,18 @@ use uuid::Uuid;
 stored_object!(TextChunk, "text_chunk", {
     source_id: String,
     chunk: String,
-    embedding: Vec<f32>,
     user_id: String
 });
 
+/// Vector search result including hydrated chunk.
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct TextChunkVectorResult {
+    pub chunk: TextChunk,
+    pub score: f32,
+}
+
 impl TextChunk {
-    pub fn new(source_id: String, chunk: String, embedding: Vec<f32>, user_id: String) -> Self {
+    pub fn new(source_id: String, chunk: String, user_id: String) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),
@@ -26,7 +33,6 @@ impl TextChunk {
             updated_at: now,
             source_id,
             chunk,
-            embedding,
             user_id,
         }
     }
@@ -43,6 +49,94 @@ impl TextChunk {
         db_client.query(query).await?;
 
         Ok(())
+    }
+
+    /// Atomically store a text chunk and its embedding.
+    /// Writes the chunk to `text_chunk` and the embedding to `text_chunk_embedding`.
+    pub async fn store_with_embedding(
+        chunk: TextChunk,
+        embedding: Vec<f32>,
+        db: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        let emb = TextChunkEmbedding::new(
+            &chunk.id,
+            chunk.source_id.clone(),
+            embedding,
+            chunk.user_id.clone(),
+        );
+
+        // Create both records in a single query
+        let query = format!(
+            "
+            BEGIN TRANSACTION;
+              CREATE type::thing('{chunk_table}', $chunk_id) CONTENT $chunk;
+              CREATE type::thing('{emb_table}', $emb_id) CONTENT $emb;
+            COMMIT TRANSACTION;
+            ",
+            chunk_table = Self::table_name(),
+            emb_table = TextChunkEmbedding::table_name(),
+        );
+
+        db.client
+            .query(query)
+            .bind(("chunk_id", chunk.id.clone()))
+            .bind(("chunk", chunk))
+            .bind(("emb_id", emb.id.clone()))
+            .bind(("emb", emb))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
+
+        Ok(())
+    }
+
+    /// Vector search over text chunks using the embedding table, fetching full chunk rows and embeddings.
+    pub async fn vector_search(
+        take: usize,
+        query_embedding: Vec<f32>,
+        db: &SurrealDbClient,
+        user_id: &str,
+    ) -> Result<Vec<TextChunkVectorResult>, AppError> {
+        #[derive(Deserialize)]
+        struct Row {
+            chunk_id: TextChunk,
+            score: f32,
+        }
+
+        let sql = format!(
+            r#"
+            SELECT
+                chunk_id,
+                embedding,
+                vector::similarity::cosine(embedding, $embedding) AS score
+            FROM {emb_table}
+            WHERE user_id = $user_id
+              AND embedding <|{take},100|> $embedding
+            ORDER BY score DESC
+            LIMIT {take}
+            FETCH chunk_id;
+            "#,
+            emb_table = TextChunkEmbedding::table_name(),
+            take = take
+        );
+
+        let mut response = db
+            .query(&sql)
+            .bind(("embedding", query_embedding))
+            .bind(("user_id", user_id.to_string()))
+            .await
+            .map_err(|e| AppError::InternalError(format!("Surreal query failed: {e}")))?;
+
+        let rows: Vec<Row> = response.take::<Vec<Row>>(0).unwrap_or_default();
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TextChunkVectorResult {
+                chunk: r.chunk_id,
+                score: r.score,
+            })
+            .collect())
     }
 
     /// Re-creates embeddings for all text chunks using a safe, atomic transaction.
@@ -70,21 +164,14 @@ impl TextChunk {
         if total_chunks == 0 {
             info!("No text chunks to update. Just updating the idx");
 
-            let mut transaction_query = String::from("BEGIN TRANSACTION;");
-            transaction_query.push_str("REMOVE INDEX idx_embedding_chunks ON TABLE text_chunk;");
-            transaction_query.push_str(&format!(
-            "DEFINE INDEX idx_embedding_chunks ON TABLE text_chunk FIELDS embedding HNSW DIMENSION {};",
-            new_dimensions));
-            transaction_query.push_str("COMMIT TRANSACTION;");
-
-            db.query(transaction_query).await?;
+            TextChunkEmbedding::redefine_hnsw_index(db, new_dimensions as usize).await?;
 
             return Ok(());
         }
         info!("Found {} chunks to process.", total_chunks);
 
         // Generate all new embeddings in memory
-        let mut new_embeddings: HashMap<String, Vec<f32>> = HashMap::new();
+        let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
         info!("Generating new embeddings for all chunks...");
         for chunk in all_chunks.iter() {
             let retry_strategy = ExponentialBackoff::from_millis(100).map(jitter).take(3);
@@ -108,16 +195,18 @@ impl TextChunk {
                 error!("{}", err_msg);
                 return Err(AppError::InternalError(err_msg));
             }
-            new_embeddings.insert(chunk.id.clone(), embedding);
+            new_embeddings.insert(
+                chunk.id.clone(),
+                (embedding, chunk.user_id.clone(), chunk.source_id.clone()),
+            );
         }
         info!("Successfully generated all new embeddings.");
 
-        // Perform DB updates in a single transaction
-        info!("Applying schema and data changes in a transaction...");
+        // Perform DB updates in a single transaction against the embedding table
+        info!("Applying embedding updates in a transaction...");
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
-        // Add all update statements
-        for (id, embedding) in new_embeddings {
+        for (id, (embedding, user_id, source_id)) in new_embeddings {
             let embedding_str = format!(
                 "[{}]",
                 embedding
@@ -126,22 +215,29 @@ impl TextChunk {
                     .collect::<Vec<_>>()
                     .join(",")
             );
+            // Use the chunk id as the embedding record id to keep a 1:1 mapping
             transaction_query.push_str(&format!(
-                "UPDATE type::thing('text_chunk', '{}') SET embedding = {}, updated_at = time::now();",
-                id, embedding_str
+                "UPSERT type::thing('text_chunk_embedding', '{id}') SET \
+                    chunk_id = type::thing('text_chunk', '{id}'), \
+                    source_id = '{source_id}', \
+                    embedding = {embedding}, \
+                    user_id = '{user_id}', \
+                    created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
+                    updated_at = time::now();",
+                id = id,
+                embedding = embedding_str,
+                user_id = user_id,
+                source_id = source_id
             ));
         }
 
-        // Re-create the index inside the same transaction
-        transaction_query.push_str("REMOVE INDEX idx_embedding_chunks ON TABLE text_chunk;");
         transaction_query.push_str(&format!(
-            "DEFINE INDEX idx_embedding_chunks ON TABLE text_chunk FIELDS embedding HNSW DIMENSION {};",
+            "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {};",
             new_dimensions
         ));
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 
-        // Execute the entire atomic operation
         db.query(transaction_query).await?;
 
         info!("Re-embedding process for text chunks completed successfully.");
@@ -152,171 +248,269 @@ impl TextChunk {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
+    use surrealdb::RecordId;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_text_chunk_creation() {
-        // Test basic object creation
         let source_id = "source123".to_string();
         let chunk = "This is a text chunk for testing embeddings".to_string();
-        let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
         let user_id = "user123".to_string();
 
-        let text_chunk = TextChunk::new(
-            source_id.clone(),
-            chunk.clone(),
-            embedding.clone(),
-            user_id.clone(),
-        );
+        let text_chunk = TextChunk::new(source_id.clone(), chunk.clone(), user_id.clone());
 
-        // Check that the fields are set correctly
         assert_eq!(text_chunk.source_id, source_id);
         assert_eq!(text_chunk.chunk, chunk);
-        assert_eq!(text_chunk.embedding, embedding);
         assert_eq!(text_chunk.user_id, user_id);
         assert!(!text_chunk.id.is_empty());
     }
 
     #[tokio::test]
     async fn test_delete_by_source_id() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.expect("migrations");
 
-        // Create test data
         let source_id = "source123".to_string();
-        let chunk1 = "First chunk from the same source".to_string();
-        let chunk2 = "Second chunk from the same source".to_string();
-        let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
         let user_id = "user123".to_string();
+        TextChunkEmbedding::redefine_hnsw_index(&db, 5)
+            .await
+            .expect("redefine index");
 
-        // Create two chunks with the same source_id
-        let text_chunk1 = TextChunk::new(
+        let chunk1 = TextChunk::new(
             source_id.clone(),
-            chunk1,
-            embedding.clone(),
+            "First chunk from the same source".to_string(),
             user_id.clone(),
         );
-
-        let text_chunk2 = TextChunk::new(
+        let chunk2 = TextChunk::new(
             source_id.clone(),
-            chunk2,
-            embedding.clone(),
+            "Second chunk from the same source".to_string(),
             user_id.clone(),
         );
-
-        // Create a chunk with a different source_id
-        let different_source_id = "different_source".to_string();
         let different_chunk = TextChunk::new(
-            different_source_id.clone(),
+            "different_source".to_string(),
             "Different source chunk".to_string(),
-            embedding.clone(),
             user_id.clone(),
         );
 
-        // Store the chunks
-        db.store_item(text_chunk1)
+        TextChunk::store_with_embedding(chunk1.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
             .await
-            .expect("Failed to store text chunk 1");
-        db.store_item(text_chunk2)
+            .expect("store chunk1");
+        TextChunk::store_with_embedding(chunk2.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
             .await
-            .expect("Failed to store text chunk 2");
-        db.store_item(different_chunk.clone())
-            .await
-            .expect("Failed to store different chunk");
+            .expect("store chunk2");
+        TextChunk::store_with_embedding(
+            different_chunk.clone(),
+            vec![0.1, 0.2, 0.3, 0.4, 0.5],
+            &db,
+        )
+        .await
+        .expect("store different chunk");
 
-        // Delete by source_id
         TextChunk::delete_by_source_id(&source_id, &db)
             .await
             .expect("Failed to delete chunks by source_id");
 
-        // Verify all chunks with the original source_id are deleted
-        let query = format!(
-            "SELECT * FROM {} WHERE source_id = '{}'",
-            TextChunk::table_name(),
-            source_id
-        );
         let remaining: Vec<TextChunk> = db
             .client
-            .query(query)
+            .query(format!(
+                "SELECT * FROM {} WHERE source_id = '{}'",
+                TextChunk::table_name(),
+                source_id
+            ))
             .await
             .expect("Query failed")
             .take(0)
             .expect("Failed to get query results");
-        assert_eq!(
-            remaining.len(),
-            0,
-            "All chunks with the source_id should be deleted"
-        );
+        assert_eq!(remaining.len(), 0);
 
-        // Verify the different source_id chunk still exists
-        let different_query = format!(
-            "SELECT * FROM {} WHERE source_id = '{}'",
-            TextChunk::table_name(),
-            different_source_id
-        );
         let different_remaining: Vec<TextChunk> = db
             .client
-            .query(different_query)
+            .query(format!(
+                "SELECT * FROM {} WHERE source_id = '{}'",
+                TextChunk::table_name(),
+                "different_source"
+            ))
             .await
             .expect("Query failed")
             .take(0)
             .expect("Failed to get query results");
-        assert_eq!(
-            different_remaining.len(),
-            1,
-            "Chunk with different source_id should still exist"
-        );
+        assert_eq!(different_remaining.len(), 1);
         assert_eq!(different_remaining[0].id, different_chunk.id);
     }
 
     #[tokio::test]
     async fn test_delete_by_nonexistent_source_id() {
-        // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.expect("migrations");
+        TextChunkEmbedding::redefine_hnsw_index(&db, 5)
+            .await
+            .expect("redefine index");
 
-        // Create a chunk with a real source_id
         let real_source_id = "real_source".to_string();
-        let chunk = "Test chunk".to_string();
-        let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
-        let user_id = "user123".to_string();
-
-        let text_chunk = TextChunk::new(real_source_id.clone(), chunk, embedding, user_id);
-
-        // Store the chunk
-        db.store_item(text_chunk)
-            .await
-            .expect("Failed to store text chunk");
-
-        // Delete using nonexistent source_id
-        let nonexistent_source_id = "nonexistent_source";
-        TextChunk::delete_by_source_id(nonexistent_source_id, &db)
-            .await
-            .expect("Delete operation with nonexistent source_id should not fail");
-
-        // Verify the real chunk still exists
-        let query = format!(
-            "SELECT * FROM {} WHERE source_id = '{}'",
-            TextChunk::table_name(),
-            real_source_id
+        let chunk = TextChunk::new(
+            real_source_id.clone(),
+            "Test chunk".to_string(),
+            "user123".to_string(),
         );
+
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
+            .await
+            .expect("store chunk");
+
+        TextChunk::delete_by_source_id("nonexistent_source", &db)
+            .await
+            .expect("Delete should succeed");
+
         let remaining: Vec<TextChunk> = db
             .client
-            .query(query)
+            .query(format!(
+                "SELECT * FROM {} WHERE source_id = '{}'",
+                TextChunk::table_name(),
+                real_source_id
+            ))
             .await
             .expect("Query failed")
             .take(0)
             .expect("Failed to get query results");
-        assert_eq!(
-            remaining.len(),
-            1,
-            "Chunk with real source_id should still exist"
+        assert_eq!(remaining.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_store_with_embedding_creates_both_records() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.expect("migrations");
+
+        let source_id = "store-src".to_string();
+        let user_id = "user_store".to_string();
+        let chunk = TextChunk::new(source_id.clone(), "chunk body".to_string(), user_id.clone());
+
+        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("redefine index");
+
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
+            .await
+            .expect("store with embedding");
+
+        let stored_chunk: Option<TextChunk> = db.get_item(&chunk.id).await.unwrap();
+        assert!(stored_chunk.is_some());
+        let stored_chunk = stored_chunk.unwrap();
+        assert_eq!(stored_chunk.source_id, source_id);
+        assert_eq!(stored_chunk.user_id, user_id);
+
+        let rid = RecordId::from_table_key(TextChunk::table_name(), &chunk.id);
+        let embedding = TextChunkEmbedding::get_by_chunk_id(&rid, &db)
+            .await
+            .expect("get embedding");
+        assert!(embedding.is_some());
+        let embedding = embedding.unwrap();
+        assert_eq!(embedding.chunk_id, rid);
+        assert_eq!(embedding.user_id, user_id);
+        assert_eq!(embedding.source_id, source_id);
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_returns_empty_when_no_embeddings() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.expect("migrations");
+
+        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("redefine index");
+
+        let results: Vec<TextChunkVectorResult> =
+            TextChunk::vector_search(5, vec![0.1, 0.2, 0.3], &db, "user")
+                .await
+                .unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_single_result() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.expect("migrations");
+
+        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("redefine index");
+
+        let source_id = "src".to_string();
+        let user_id = "user".to_string();
+        let chunk = TextChunk::new(
+            source_id.clone(),
+            "hello world".to_string(),
+            user_id.clone(),
         );
+
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
+            .await
+            .expect("store");
+
+        let results: Vec<TextChunkVectorResult> =
+            TextChunk::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
+                .await
+                .unwrap();
+
+        assert_eq!(results.len(), 1);
+        let res = &results[0];
+        assert_eq!(res.chunk.id, chunk.id);
+        assert_eq!(res.chunk.source_id, source_id);
+        assert_eq!(res.chunk.chunk, "hello world");
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_orders_by_similarity() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.expect("migrations");
+
+        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("redefine index");
+
+        let user_id = "user".to_string();
+        let chunk1 = TextChunk::new("s1".to_string(), "chunk one".to_string(), user_id.clone());
+        let chunk2 = TextChunk::new("s2".to_string(), "chunk two".to_string(), user_id.clone());
+
+        TextChunk::store_with_embedding(chunk1.clone(), vec![1.0, 0.0, 0.0], &db)
+            .await
+            .expect("store chunk1");
+        TextChunk::store_with_embedding(chunk2.clone(), vec![0.0, 1.0, 0.0], &db)
+            .await
+            .expect("store chunk2");
+
+        let results: Vec<TextChunkVectorResult> =
+            TextChunk::vector_search(2, vec![0.0, 1.0, 0.0], &db, &user_id)
+                .await
+                .unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].chunk.id, chunk2.id);
+        assert_eq!(results[1].chunk.id, chunk1.id);
+        assert!(results[0].score >= results[1].score);
     }
 }

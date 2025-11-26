@@ -30,9 +30,10 @@ pub async fn ingest_data(
     TypedMultipart(input): TypedMultipart<IngestParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Received input: {:?}", input);
+    let user_id = user.id;
 
     let file_infos = try_join_all(input.files.into_iter().map(|file| {
-        FileInfo::new_with_storage(file, &state.db, &user.id, &state.storage)
+        FileInfo::new_with_storage(file, &state.db, &user_id, &state.storage)
             .map_err(AppError::from)
     }))
     .await?;
@@ -42,12 +43,12 @@ pub async fn ingest_data(
         input.context,
         input.category,
         file_infos,
-        user.id.as_str(),
+        &user_id,
     )?;
 
     let futures: Vec<_> = payloads
         .into_iter()
-        .map(|object| IngestionTask::create_and_add_to_db(object, user.id.clone(), &state.db))
+        .map(|object| IngestionTask::create_and_add_to_db(object, user_id.clone(), &state.db))
         .collect();
 
     try_join_all(futures).await?;

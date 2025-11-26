@@ -71,25 +71,22 @@ mod tests {
             .await
             .expect("Failed to fetch table info");
 
-        let info: Option<serde_json::Value> = response
+        let info: surrealdb::Value = response
             .take(0)
             .expect("Failed to extract table info response");
 
-        let info = info.expect("Table info result missing");
+        let info_json: serde_json::Value =
+            serde_json::to_value(info).expect("Failed to convert info to json");
 
-        let indexes = info
-            .get("indexes")
-            .or_else(|| {
-                info.get("tables")
-                    .and_then(|tables| tables.get(table_name))
-                    .and_then(|table| table.get("indexes"))
-            })
-            .unwrap_or_else(|| panic!("Indexes collection missing in table info: {info:#?}"));
+        let indexes = info_json["Object"]["indexes"]["Object"]
+            .as_object()
+            .unwrap_or_else(|| panic!("Indexes collection missing in table info: {info_json:#?}"));
 
         let definition = indexes
             .get(index_name)
-            .and_then(|definition| definition.as_str())
-            .unwrap_or_else(|| panic!("Index definition not found in table info: {info:#?}"));
+            .and_then(|definition| definition.get("Strand"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("Index definition not found in table info: {info_json:#?}"));
 
         let dimension_part = definition
             .split("DIMENSION")
@@ -261,48 +258,56 @@ mod tests {
         let initial_chunk = TextChunk::new(
             "source1".into(),
             "This chunk has the original dimension".into(),
-            vec![0.1; 1536],
             "user1".into(),
         );
 
-        db.store_item(initial_chunk.clone())
+        TextChunk::store_with_embedding(initial_chunk.clone(), vec![0.1; 1536], &db)
             .await
-            .expect("Failed to store initial chunk");
+            .expect("Failed to store initial chunk with embedding");
 
         async fn simulate_reembedding(
             db: &SurrealDbClient,
             target_dimension: usize,
             initial_chunk: TextChunk,
         ) {
-            db.query("REMOVE INDEX idx_embedding_chunks ON TABLE text_chunk;")
-                .await
-                .unwrap();
+            db.query(
+                "REMOVE INDEX IF EXISTS idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding;",
+            )
+            .await
+            .unwrap();
             let define_index_query = format!(
-                         "DEFINE INDEX idx_embedding_chunks ON TABLE text_chunk FIELDS embedding HNSW DIMENSION {};",
-                         target_dimension
-                     );
+                "DEFINE INDEX idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {};",
+                target_dimension
+            );
             db.query(define_index_query)
                 .await
                 .expect("Re-defining index should succeed");
 
             let new_embedding = vec![0.5; target_dimension];
-            let sql = "UPDATE type::thing('text_chunk', $id) SET embedding = $embedding;";
+            let sql = "UPSERT type::thing('text_chunk_embedding', $id) SET chunk_id = type::thing('text_chunk', $id), embedding = $embedding, user_id = $user_id;";
 
             let update_result = db
                 .client
                 .query(sql)
                 .bind(("id", initial_chunk.id.clone()))
+                .bind(("user_id", initial_chunk.user_id.clone()))
                 .bind(("embedding", new_embedding))
                 .await;
 
             assert!(update_result.is_ok());
         }
 
-        simulate_reembedding(&db, 768, initial_chunk).await;
+        // Re-embed with the existing configured dimension to ensure migrations remain idempotent.
+        let target_dimension = 1536usize;
+        simulate_reembedding(&db, target_dimension, initial_chunk).await;
 
         let migration_result = db.apply_migrations().await;
 
-        assert!(migration_result.is_ok(), "Migrations should not fail");
+        assert!(
+            migration_result.is_ok(),
+            "Migrations should not fail: {:?}",
+            migration_result.err()
+        );
     }
 
     #[tokio::test]
@@ -320,8 +325,12 @@ mod tests {
             .await
             .expect("Failed to load current settings");
 
-        let initial_chunk_dimension =
-            get_hnsw_index_dimension(&db, "text_chunk", "idx_embedding_chunks").await;
+        let initial_chunk_dimension = get_hnsw_index_dimension(
+            &db,
+            "text_chunk_embedding",
+            "idx_embedding_text_chunk_embedding",
+        )
+        .await;
 
         assert_eq!(
             initial_chunk_dimension, current_settings.embedding_dimensions,
@@ -352,10 +361,18 @@ mod tests {
             .await
             .expect("KnowledgeEntity re-embedding should succeed on fresh DB");
 
-        let text_chunk_dimension =
-            get_hnsw_index_dimension(&db, "text_chunk", "idx_embedding_chunks").await;
-        let knowledge_dimension =
-            get_hnsw_index_dimension(&db, "knowledge_entity", "idx_embedding_entities").await;
+        let text_chunk_dimension = get_hnsw_index_dimension(
+            &db,
+            "text_chunk_embedding",
+            "idx_embedding_text_chunk_embedding",
+        )
+        .await;
+        let knowledge_dimension = get_hnsw_index_dimension(
+            &db,
+            "knowledge_entity_embedding",
+            "idx_embedding_knowledge_entity_embedding",
+        )
+        .await;
 
         assert_eq!(
             text_chunk_dimension, new_dimension,

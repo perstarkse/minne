@@ -59,6 +59,25 @@ impl CorpusEmbeddingProvider for EmbeddingProvider {
     }
 }
 
+#[async_trait]
+impl CorpusEmbeddingProvider for common::utils::embedding::EmbeddingProvider {
+    fn backend_label(&self) -> &str {
+        common::utils::embedding::EmbeddingProvider::backend_label(self)
+    }
+
+    fn model_code(&self) -> Option<String> {
+        common::utils::embedding::EmbeddingProvider::model_code(self)
+    }
+
+    fn dimension(&self) -> usize {
+        common::utils::embedding::EmbeddingProvider::dimension(self)
+    }
+
+    async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
+        common::utils::embedding::EmbeddingProvider::embed_batch(self, texts).await
+    }
+}
+
 impl From<&Config> for CorpusCacheConfig {
     fn from(config: &Config) -> Self {
         CorpusCacheConfig::new(

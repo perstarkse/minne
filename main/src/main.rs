@@ -1,7 +1,11 @@
 use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
 use common::{
-    storage::db::SurrealDbClient, storage::store::StorageManager, utils::config::get_config,
+    storage::{
+        db::SurrealDbClient, indexes::ensure_runtime_indexes, store::StorageManager,
+        types::system_settings::SystemSettings,
+    },
+    utils::config::get_config,
 };
 use html_router::{html_routes, html_state::HtmlState};
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
@@ -38,6 +42,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Ensure db is initialized
     db.apply_migrations().await?;
+    let settings = SystemSettings::get_current(&db).await?;
+    ensure_runtime_indexes(&db, settings.embedding_dimensions as usize).await?;
 
     let session_store = Arc::new(db.create_session_store().await?);
     let openai_client = Arc::new(async_openai::Client::with_config(
@@ -106,6 +112,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await
             .unwrap(),
         );
+        let settings = SystemSettings::get_current(&worker_db)
+            .await
+            .expect("failed to load system settings");
 
         // Initialize worker components
         let openai_client = Arc::new(async_openai::Client::with_config(
@@ -113,13 +122,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_api_key(&config.openai_api_key)
                 .with_api_base(&config.openai_base_url),
         ));
+
+        // Create embedding provider for ingestion
+        let embedding_provider = Arc::new(
+            common::utils::embedding::EmbeddingProvider::new_fastembed(None)
+                .await
+                .expect("failed to create embedding provider"),
+        );
         let ingestion_pipeline = Arc::new(
             IngestionPipeline::new(
                 worker_db.clone(),
                 openai_client.clone(),
                 config.clone(),
                 reranker_pool.clone(),
-                storage.clone(), // Use the global storage manager
+                storage.clone(),
+                embedding_provider,
             )
             .await
             .unwrap(),

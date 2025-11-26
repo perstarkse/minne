@@ -1,5 +1,8 @@
 use super::types::StoredObject;
-use crate::error::AppError;
+use crate::{
+    error::AppError,
+    storage::{indexes::ensure_runtime_indexes, types::system_settings::SystemSettings},
+};
 use axum_session::{SessionConfig, SessionError, SessionStore};
 use axum_session_surreal::SessionSurrealPool;
 use futures::Stream;
@@ -96,20 +99,22 @@ impl SurrealDbClient {
     }
 
     /// Operation to rebuild indexes
-    pub async fn rebuild_indexes(&self) -> Result<(), Error> {
+    pub async fn rebuild_indexes(&self) -> Result<(), AppError> {
         debug!("Rebuilding indexes");
         let rebuild_sql = r#"
-            BEGIN TRANSACTION;
-            REBUILD INDEX IF EXISTS idx_embedding_chunks ON text_chunk;
-            REBUILD INDEX IF EXISTS idx_embedding_entities ON knowledge_entity;
             REBUILD INDEX IF EXISTS text_content_fts_idx ON text_content;
             REBUILD INDEX IF EXISTS knowledge_entity_fts_name_idx ON knowledge_entity;
             REBUILD INDEX IF EXISTS knowledge_entity_fts_description_idx ON knowledge_entity;
             REBUILD INDEX IF EXISTS text_chunk_fts_chunk_idx ON text_chunk;
-            COMMIT TRANSACTION;
+            REBUILD INDEX IF EXISTS idx_embedding_text_chunk_embedding ON text_chunk_embedding;
+            REBUILD INDEX IF EXISTS idx_embedding_knowledge_entity_embedding ON knowledge_entity_embedding;
         "#;
 
-        self.client.query(rebuild_sql).await?;
+        self.client
+            .query(rebuild_sql)
+            .await
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
+
         Ok(())
     }
 

@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use anyhow::Context;
+use common::storage::types::StoredObject;
 use futures::stream::{self, StreamExt};
 use tracing::{debug, info};
 
@@ -174,6 +175,7 @@ pub(crate) async fn run_queries(
                     let outcome = pipeline::run_pipeline_with_embedding_with_diagnostics(
                         &db,
                         &openai_client,
+                        Some(&embedding_provider),
                         query_embedding,
                         &question,
                         &user_id,
@@ -187,6 +189,7 @@ pub(crate) async fn run_queries(
                     let outcome = pipeline::run_pipeline_with_embedding_with_metrics(
                         &db,
                         &openai_client,
+                        Some(&embedding_provider),
                         query_embedding,
                         &question,
                         &user_id,
@@ -228,9 +231,10 @@ pub(crate) async fn run_queries(
                     }
                     let chunk_id_for_entity = if chunk_id_required {
                         expected_chunk_ids_set.contains(candidate.source_id.as_str())
-                            || candidate.chunks.iter().any(|chunk| {
-                                expected_chunk_ids_set.contains(chunk.chunk.id.as_str())
-                            })
+                            || candidate
+                                .chunks
+                                .iter()
+                                .any(|chunk| expected_chunk_ids_set.contains(&chunk.chunk.get_id()))
                     } else {
                         true
                     };

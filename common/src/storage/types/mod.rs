@@ -5,12 +5,14 @@ pub mod file_info;
 pub mod ingestion_payload;
 pub mod ingestion_task;
 pub mod knowledge_entity;
+pub mod knowledge_entity_embedding;
 pub mod knowledge_relationship;
 pub mod message;
 pub mod scratchpad;
 pub mod system_prompts;
 pub mod system_settings;
 pub mod text_chunk;
+pub mod text_chunk_embedding;
 pub mod text_content;
 pub mod user;
 

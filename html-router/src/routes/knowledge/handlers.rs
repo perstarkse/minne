@@ -191,11 +191,10 @@ pub async fn create_knowledge_entity(
         description.clone(),
         entity_type,
         None,
-        embedding,
         user.id.clone(),
     );
 
-    state.db.store_item(new_entity.clone()).await?;
+    KnowledgeEntity::store_with_embedding(new_entity.clone(), embedding, &state.db).await?;
 
     let relationship_type = relationship_type_or_default(form.relationship_type.as_deref());
 
@@ -285,15 +284,16 @@ pub async fn suggest_knowledge_relationships(
         };
 
         let config = retrieval_pipeline::RetrievalConfig::for_relationship_suggestion();
-        if let Ok(retrieval_pipeline::StrategyOutput::Entities(results)) = retrieval_pipeline::retrieve_entities(
-            &state.db,
-            &state.openai_client,
-            &query,
-            &user.id,
-            config,
-            rerank_lease,
-        )
-        .await
+        if let Ok(retrieval_pipeline::StrategyOutput::Entities(results)) =
+            retrieval_pipeline::retrieve_entities(
+                &state.db,
+                &state.openai_client,
+                &query,
+                &user.id,
+                config,
+                rerank_lease,
+            )
+            .await
         {
             for retrieval_pipeline::RetrievedEntity { entity, score, .. } in results {
                 if suggestion_scores.len() >= MAX_RELATIONSHIP_SUGGESTIONS {

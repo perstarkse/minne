@@ -171,7 +171,6 @@ mod tests {
         let source_id3 = "source789".to_string();
 
         let entity_type = KnowledgeEntityType::Document;
-        let embedding = vec![0.1, 0.2, 0.3];
         let user_id = "user123".to_string();
 
         // Entity with source_id1
@@ -181,7 +180,6 @@ mod tests {
             "Description 1".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -192,7 +190,6 @@ mod tests {
             "Description 2".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -203,7 +200,6 @@ mod tests {
             "Description 3".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -214,7 +210,6 @@ mod tests {
             "Description 4".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -318,7 +313,6 @@ mod tests {
 
         // Create some test entities
         let entity_type = KnowledgeEntityType::Document;
-        let embedding = vec![0.1, 0.2, 0.3];
         let user_id = "user123".to_string();
 
         // Create the central entity we'll query relationships for
@@ -328,7 +322,6 @@ mod tests {
             "Central Description".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -339,7 +332,6 @@ mod tests {
             "Related Description 1".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -349,7 +341,6 @@ mod tests {
             "Related Description 2".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -360,7 +351,6 @@ mod tests {
             "Unrelated Description".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 

@@ -18,6 +18,18 @@ use super::enrichment_result::LLMEnrichmentResult;
 
 use super::{config::IngestionConfig, services::PipelineServices};
 
+#[derive(Debug, Clone)]
+pub struct EmbeddedKnowledgeEntity {
+    pub entity: KnowledgeEntity,
+    pub embedding: Vec<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EmbeddedTextChunk {
+    pub chunk: TextChunk,
+    pub embedding: Vec<f32>,
+}
+
 pub struct PipelineContext<'a> {
     pub task: &'a IngestionTask,
     pub task_id: String,
@@ -33,9 +45,9 @@ pub struct PipelineContext<'a> {
 #[derive(Debug)]
 pub struct PipelineArtifacts {
     pub text_content: TextContent,
-    pub entities: Vec<KnowledgeEntity>,
+    pub entities: Vec<EmbeddedKnowledgeEntity>,
     pub relationships: Vec<KnowledgeRelationship>,
-    pub chunks: Vec<TextChunk>,
+    pub chunks: Vec<EmbeddedTextChunk>,
 }
 
 impl<'a> PipelineContext<'a> {

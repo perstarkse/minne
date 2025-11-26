@@ -123,10 +123,6 @@ mod tests {
     };
     use uuid::Uuid;
 
-    fn dummy_embedding() -> Vec<f32> {
-        vec![0.0; 1536]
-    }
-
     #[tokio::test]
     async fn fts_preserves_single_field_score_for_name() {
         let namespace = "fts_test_ns";
@@ -146,7 +142,6 @@ mod tests {
             "completely unrelated description".into(),
             KnowledgeEntityType::Document,
             None,
-            dummy_embedding(),
             user_id.into(),
         );
 
@@ -194,7 +189,6 @@ mod tests {
             "Detailed notes about async runtimes".into(),
             KnowledgeEntityType::Document,
             None,
-            dummy_embedding(),
             user_id.into(),
         );
 
@@ -239,11 +233,10 @@ mod tests {
         let chunk = TextChunk::new(
             "source_chunk".into(),
             "GraphQL documentation reference".into(),
-            dummy_embedding(),
             user_id.into(),
         );
 
-        db.store_item(chunk.clone())
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.0; 1536], &db)
             .await
             .expect("failed to insert chunk");
 

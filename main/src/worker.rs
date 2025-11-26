@@ -37,6 +37,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let reranker_pool = RerankerPool::maybe_from_config(&config)?;
 
+    // Create embedding provider for ingestion
+    let embedding_provider =
+        Arc::new(common::utils::embedding::EmbeddingProvider::new_fastembed(None).await?);
+
     // Create global storage manager
     let storage = StorageManager::new(&config).await?;
 
@@ -47,6 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config,
             reranker_pool,
             storage,
+            embedding_provider,
         )
         .await?,
     );
