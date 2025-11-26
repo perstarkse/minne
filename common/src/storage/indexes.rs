@@ -84,6 +84,9 @@ async fn ensure_runtime_indexes_inner(
     create_fts_analyzer(db).await?;
 
     for spec in fts_index_specs() {
+        if index_exists(db, spec.table, spec.index_name).await? {
+            continue;
+        }
         create_index_with_polling(
             db,
             spec.definition(),
@@ -106,9 +109,18 @@ async fn ensure_hnsw_index(
     spec: &HnswIndexSpec,
     dimension: usize,
 ) -> Result<()> {
-    let definition = match hnsw_index_state(db, spec, dimension).await? {
-        HnswIndexState::Missing => spec.definition_if_not_exists(dimension),
-        HnswIndexState::Matches(_) => spec.definition_if_not_exists(dimension),
+    match hnsw_index_state(db, spec, dimension).await? {
+        HnswIndexState::Missing => {
+            create_index_with_polling(
+                db,
+                spec.definition_if_not_exists(dimension),
+                spec.index_name,
+                spec.table,
+                Some(spec.table),
+            )
+            .await
+        }
+        HnswIndexState::Matches(_) => Ok(()),
         HnswIndexState::Different(existing) => {
             info!(
                 index = spec.index_name,
@@ -117,18 +129,16 @@ async fn ensure_hnsw_index(
                 target_dimension = dimension,
                 "Overwriting HNSW index to match new embedding dimension"
             );
-            spec.definition_overwrite(dimension)
+            create_index_with_polling(
+                db,
+                spec.definition_overwrite(dimension),
+                spec.index_name,
+                spec.table,
+                Some(spec.table),
+            )
+            .await
         }
-    };
-
-    create_index_with_polling(
-        db,
-        definition,
-        spec.index_name,
-        spec.table,
-        Some(spec.table),
-    )
-    .await
+    }
 }
 
 async fn hnsw_index_state(
@@ -407,6 +417,33 @@ async fn count_table_rows(db: &SurrealDbClient, table: &str) -> Result<u64> {
         .take(0)
         .context("failed to deserialize count() response")?;
     Ok(rows.first().map(|r| r.count).unwrap_or(0))
+}
+
+async fn index_exists(db: &SurrealDbClient, table: &str, index_name: &str) -> Result<bool> {
+    let info_query = format!("INFO FOR TABLE {table};");
+    let mut response = db
+        .client
+        .query(info_query)
+        .await
+        .with_context(|| format!("fetching table info for {}", table))?;
+
+    let info: surrealdb::Value = response
+        .take(0)
+        .context("failed to take table info response")?;
+
+    let info_json: Value =
+        serde_json::to_value(info).context("serializing table info to JSON for parsing")?;
+
+    let Some(indexes) = info_json
+        .get("Object")
+        .and_then(|o| o.get("indexes"))
+        .and_then(|i| i.get("Object"))
+        .and_then(|i| i.as_object())
+    else {
+        return Ok(false);
+    };
+
+    Ok(indexes.contains_key(index_name))
 }
 
 const fn hnsw_index_specs() -> [HnswIndexSpec; 2] {
