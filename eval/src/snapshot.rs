@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::fs;
 
-use crate::{args::Config, embedding::EmbeddingProvider, slice};
+use crate::{args::Config, slice};
+use common::utils::embedding::EmbeddingProvider;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SnapshotMetadata {

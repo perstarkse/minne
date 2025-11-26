@@ -1417,6 +1417,7 @@ dependencies = [
  "chrono-tz",
  "config",
  "dom_smoothie",
+ "fastembed",
  "futures",
  "include_dir",
  "mime",

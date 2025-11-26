@@ -1,5 +1,6 @@
 use std::{ops::Range, sync::Arc};
 
+use anyhow::Context;
 use async_openai::types::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
     CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
@@ -12,19 +13,18 @@ use common::{
         db::SurrealDbClient,
         store::StorageManager,
         types::{
-            ingestion_payload::IngestionPayload, knowledge_entity::KnowledgeEntity,
-            knowledge_relationship::KnowledgeRelationship, system_settings::SystemSettings,
-            text_chunk::TextChunk, text_content::TextContent,
+            ingestion_payload::IngestionPayload, knowledge_relationship::KnowledgeRelationship,
+            system_settings::SystemSettings, text_chunk::TextChunk, text_content::TextContent,
+            StoredObject,
         },
     },
-    utils::{config::AppConfig, embedding::generate_embedding},
+    utils::{config::AppConfig, embedding::EmbeddingProvider},
 };
-use retrieval_pipeline::{
-    reranking::RerankerPool, retrieved_entities_to_json, RetrievedEntity,
-};
+use retrieval_pipeline::{reranking::RerankerPool, retrieved_entities_to_json, RetrievedEntity};
 use text_splitter::TextSplitter;
 
 use super::{enrichment_result::LLMEnrichmentResult, preparation::to_text_content};
+use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
 use crate::utils::llm_instructions::{
     get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE,
 };
@@ -54,13 +54,13 @@ pub trait PipelineServices: Send + Sync {
         content: &TextContent,
         analysis: &LLMEnrichmentResult,
         entity_concurrency: usize,
-    ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError>;
+    ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError>;
 
     async fn prepare_chunks(
         &self,
         content: &TextContent,
         range: Range<usize>,
-    ) -> Result<Vec<TextChunk>, AppError>;
+    ) -> Result<Vec<EmbeddedTextChunk>, AppError>;
 }
 
 pub struct DefaultPipelineServices {
@@ -69,6 +69,7 @@ pub struct DefaultPipelineServices {
     config: AppConfig,
     reranker_pool: Option<Arc<RerankerPool>>,
     storage: StorageManager,
+    embedding_provider: Arc<EmbeddingProvider>,
 }
 
 impl DefaultPipelineServices {
@@ -78,6 +79,7 @@ impl DefaultPipelineServices {
         config: AppConfig,
         reranker_pool: Option<Arc<RerankerPool>>,
         storage: StorageManager,
+        embedding_provider: Arc<EmbeddingProvider>,
     ) -> Self {
         Self {
             db,
@@ -85,6 +87,7 @@ impl DefaultPipelineServices {
             config,
             reranker_pool,
             storage,
+            embedding_provider,
         }
     }
 
@@ -182,6 +185,7 @@ impl PipelineServices for DefaultPipelineServices {
         match retrieval_pipeline::retrieve_entities(
             &self.db,
             &self.openai_client,
+            // embedding_provider_ref,
             &input_text,
             &content.user_id,
             config,
@@ -218,14 +222,15 @@ impl PipelineServices for DefaultPipelineServices {
         content: &TextContent,
         analysis: &LLMEnrichmentResult,
         entity_concurrency: usize,
-    ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
+    ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         analysis
             .to_database_entities(
-                &content.id,
+                &content.get_id(),
                 &content.user_id,
                 &self.openai_client,
                 &self.db,
                 entity_concurrency,
+                Some(&*self.embedding_provider),
             )
             .await
     }
@@ -234,7 +239,7 @@ impl PipelineServices for DefaultPipelineServices {
         &self,
         content: &TextContent,
         range: Range<usize>,
-    ) -> Result<Vec<TextChunk>, AppError> {
+    ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
         let splitter = TextSplitter::new(range.clone());
         let chunk_texts: Vec<String> = splitter
             .chunks(&content.text)
@@ -243,13 +248,17 @@ impl PipelineServices for DefaultPipelineServices {
 
         let mut chunks = Vec::with_capacity(chunk_texts.len());
         for chunk in chunk_texts {
-            let embedding = generate_embedding(&self.openai_client, &chunk, &self.db).await?;
-            chunks.push(TextChunk::new(
-                content.id.clone(),
-                chunk,
+            let embedding = self
+                .embedding_provider
+                .embed(&chunk)
+                .await
+                .context("generating FastEmbed embedding for chunk")?;
+            let chunk_struct =
+                TextChunk::new(content.get_id().to_string(), chunk, content.user_id.clone());
+            chunks.push(EmbeddedTextChunk {
+                chunk: chunk_struct,
                 embedding,
-                content.user_id.clone(),
-            ));
+            });
         }
         Ok(chunks)
     }

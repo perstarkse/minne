@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use common::{
@@ -32,7 +33,7 @@ struct MockServices {
     similar_entities: Vec<RetrievedEntity>,
     analysis: LLMEnrichmentResult,
     chunk_embedding: Vec<f32>,
-    graph_entities: Vec<KnowledgeEntity>,
+    graph_entities: Vec<EmbeddedKnowledgeEntity>,
     graph_relationships: Vec<KnowledgeRelationship>,
     calls: Mutex<Vec<&'static str>>,
 }
@@ -54,14 +55,12 @@ impl MockServices {
             "Previously known context".into(),
             KnowledgeEntityType::Document,
             None,
-            vec![0.1; TEST_EMBEDDING_DIM],
             user_id.into(),
         );
 
         let retrieved_chunk = TextChunk::new(
             retrieved_entity.source_id.clone(),
             "existing chunk".into(),
-            vec![0.1; TEST_EMBEDDING_DIM],
             user_id.into(),
         );
 
@@ -76,7 +75,6 @@ impl MockServices {
             "Entity from enrichment".into(),
             KnowledgeEntityType::Idea,
             None,
-            vec![0.2; TEST_EMBEDDING_DIM],
             user_id.into(),
         );
         let graph_relationship = KnowledgeRelationship::new(
@@ -99,7 +97,10 @@ impl MockServices {
             }],
             analysis,
             chunk_embedding: vec![0.3; TEST_EMBEDDING_DIM],
-            graph_entities: vec![graph_entity],
+            graph_entities: vec![EmbeddedKnowledgeEntity {
+                entity: graph_entity,
+                embedding: vec![0.2; TEST_EMBEDDING_DIM],
+            }],
             graph_relationships: vec![graph_relationship],
             calls: Mutex::new(Vec::new()),
         }
@@ -142,7 +143,7 @@ impl PipelineServices for MockServices {
         _content: &TextContent,
         _analysis: &LLMEnrichmentResult,
         _entity_concurrency: usize,
-    ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
+    ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         self.record("convert").await;
         Ok((
             self.graph_entities.clone(),
@@ -154,14 +155,16 @@ impl PipelineServices for MockServices {
         &self,
         content: &TextContent,
         _range: std::ops::Range<usize>,
-    ) -> Result<Vec<TextChunk>, AppError> {
+    ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
         self.record("chunk").await;
-        Ok(vec![TextChunk::new(
-            content.id.clone(),
-            "chunk from mock services".into(),
-            self.chunk_embedding.clone(),
-            content.user_id.clone(),
-        )])
+        Ok(vec![EmbeddedTextChunk {
+            chunk: TextChunk::new(
+                content.id.clone(),
+                "chunk from mock services".into(),
+                content.user_id.clone(),
+            ),
+            embedding: self.chunk_embedding.clone(),
+        }])
     }
 }
 
@@ -200,7 +203,7 @@ impl PipelineServices for FailingServices {
         content: &TextContent,
         analysis: &LLMEnrichmentResult,
         entity_concurrency: usize,
-    ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
+    ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         self.inner
             .convert_analysis(content, analysis, entity_concurrency)
             .await
@@ -210,7 +213,7 @@ impl PipelineServices for FailingServices {
         &self,
         content: &TextContent,
         range: std::ops::Range<usize>,
-    ) -> Result<Vec<TextChunk>, AppError> {
+    ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
         self.inner.prepare_chunks(content, range).await
     }
 }
@@ -244,7 +247,7 @@ impl PipelineServices for ValidationServices {
         _content: &TextContent,
         _analysis: &LLMEnrichmentResult,
         _entity_concurrency: usize,
-    ) -> Result<(Vec<KnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
+    ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         unreachable!("convert_analysis should not be called after validation failure")
     }
 
@@ -252,7 +255,7 @@ impl PipelineServices for ValidationServices {
         &self,
         _content: &TextContent,
         _range: std::ops::Range<usize>,
-    ) -> Result<Vec<TextChunk>, AppError> {
+    ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
         unreachable!("prepare_chunks should not be called after validation failure")
     }
 }

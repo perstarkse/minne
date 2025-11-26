@@ -5,7 +5,6 @@ pub mod graph;
 pub mod pipeline;
 pub mod reranking;
 pub mod scoring;
-pub mod vector;
 
 use common::{
     error::AppError,
@@ -57,6 +56,7 @@ pub async fn retrieve_entities(
     pipeline::run_pipeline(
         db_client,
         openai_client,
+        None,
         input_text,
         user_id,
         config,
@@ -110,10 +110,10 @@ mod tests {
 
         db.query(
             "BEGIN TRANSACTION;
-             REMOVE INDEX IF EXISTS idx_embedding_chunks ON TABLE text_chunk;
-             DEFINE INDEX idx_embedding_chunks ON TABLE text_chunk FIELDS embedding HNSW DIMENSION 3;
-             REMOVE INDEX IF EXISTS idx_embedding_entities ON TABLE knowledge_entity;
-             DEFINE INDEX idx_embedding_entities ON TABLE knowledge_entity FIELDS embedding HNSW DIMENSION 3;
+             REMOVE INDEX IF EXISTS idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding;
+             DEFINE INDEX idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION 3;
+             REMOVE INDEX IF EXISTS idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding;
+             DEFINE INDEX idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION 3;
              COMMIT TRANSACTION;",
         )
         .await
@@ -132,20 +132,18 @@ mod tests {
             "Detailed notes about async runtimes".into(),
             KnowledgeEntityType::Document,
             None,
-            entity_embedding_high(),
             user_id.into(),
         );
         let chunk = TextChunk::new(
             entity.source_id.clone(),
             "Tokio uses cooperative scheduling for fairness.".into(),
-            chunk_embedding_primary(),
             user_id.into(),
         );
 
-        db.store_item(entity.clone())
+        KnowledgeEntity::store_with_embedding(entity.clone(), entity_embedding_high(), &db)
             .await
             .expect("Failed to store entity");
-        db.store_item(chunk.clone())
+        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db)
             .await
             .expect("Failed to store chunk");
 
@@ -153,6 +151,7 @@ mod tests {
         let results = pipeline::run_pipeline_with_embedding(
             &db,
             &openai_client,
+            None,
             test_embedding(),
             "Rust concurrency async tasks",
             user_id,
@@ -193,7 +192,6 @@ mod tests {
             "Explores async runtimes and scheduling strategies.".into(),
             KnowledgeEntityType::Document,
             None,
-            entity_embedding_high(),
             user_id.into(),
         );
         let neighbor = KnowledgeEntity::new(
@@ -202,34 +200,31 @@ mod tests {
             "Details on Tokio's cooperative scheduler.".into(),
             KnowledgeEntityType::Document,
             None,
-            entity_embedding_low(),
             user_id.into(),
         );
 
-        db.store_item(primary.clone())
+        KnowledgeEntity::store_with_embedding(primary.clone(), entity_embedding_high(), &db)
             .await
             .expect("Failed to store primary entity");
-        db.store_item(neighbor.clone())
+        KnowledgeEntity::store_with_embedding(neighbor.clone(), entity_embedding_low(), &db)
             .await
             .expect("Failed to store neighbor entity");
 
         let primary_chunk = TextChunk::new(
             primary.source_id.clone(),
             "Rust async tasks use Tokio's cooperative scheduler.".into(),
-            chunk_embedding_primary(),
             user_id.into(),
         );
         let neighbor_chunk = TextChunk::new(
             neighbor.source_id.clone(),
             "Tokio's scheduler manages task fairness across executors.".into(),
-            chunk_embedding_secondary(),
             user_id.into(),
         );
 
-        db.store_item(primary_chunk)
+        TextChunk::store_with_embedding(primary_chunk, chunk_embedding_primary(), &db)
             .await
             .expect("Failed to store primary chunk");
-        db.store_item(neighbor_chunk)
+        TextChunk::store_with_embedding(neighbor_chunk, chunk_embedding_secondary(), &db)
             .await
             .expect("Failed to store neighbor chunk");
 
@@ -249,6 +244,7 @@ mod tests {
         let results = pipeline::run_pipeline_with_embedding(
             &db,
             &openai_client,
+            None,
             test_embedding(),
             "Rust concurrency async tasks",
             user_id,
@@ -269,6 +265,8 @@ mod tests {
                 neighbor_entry = Some(entity.clone());
             }
         }
+
+        println!("{:?}", entities);
 
         let neighbor_entry =
             neighbor_entry.expect("Graph-enriched neighbor should appear in results");
@@ -293,20 +291,18 @@ mod tests {
         let chunk_one = TextChunk::new(
             "src_alpha".into(),
             "Tokio tasks execute on worker threads managed by the runtime.".into(),
-            chunk_embedding_primary(),
             user_id.into(),
         );
         let chunk_two = TextChunk::new(
             "src_beta".into(),
             "Hyper utilizes Tokio to drive HTTP state machines efficiently.".into(),
-            chunk_embedding_secondary(),
             user_id.into(),
         );
 
-        db.store_item(chunk_one.clone())
+        TextChunk::store_with_embedding(chunk_one.clone(), chunk_embedding_primary(), &db)
             .await
             .expect("Failed to store chunk one");
-        db.store_item(chunk_two.clone())
+        TextChunk::store_with_embedding(chunk_two.clone(), chunk_embedding_secondary(), &db)
             .await
             .expect("Failed to store chunk two");
 
@@ -315,6 +311,7 @@ mod tests {
         let results = pipeline::run_pipeline_with_embedding(
             &db,
             &openai_client,
+            None,
             test_embedding(),
             "tokio runtime worker behavior",
             user_id,

@@ -45,6 +45,7 @@ tokio-retry = { workspace = true }
 object_store = { workspace = true }
 bytes = { workspace = true }
 state-machines = { workspace = true }
+fastembed = { workspace = true }
 
 
 [features]

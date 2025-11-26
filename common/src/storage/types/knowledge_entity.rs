@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    error::AppError, storage::db::SurrealDbClient, stored_object,
+    error::AppError, storage::db::SurrealDbClient,
+    storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding, stored_object,
     utils::embedding::generate_embedding,
 };
 use async_openai::{config::OpenAIConfig, Client};
@@ -78,9 +79,15 @@ stored_object!(KnowledgeEntity, "knowledge_entity", {
     description: String,
     entity_type: KnowledgeEntityType,
     metadata: Option<serde_json::Value>,
-    embedding: Vec<f32>,
     user_id: String
 });
+
+/// Vector search result including hydrated entity.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct KnowledgeEntityVectorResult {
+    pub entity: KnowledgeEntity,
+    pub score: f32,
+}
 
 impl KnowledgeEntity {
     pub fn new(
@@ -89,7 +96,6 @@ impl KnowledgeEntity {
         description: String,
         entity_type: KnowledgeEntityType,
         metadata: Option<serde_json::Value>,
-        embedding: Vec<f32>,
         user_id: String,
     ) -> Self {
         let now = Utc::now();
@@ -102,7 +108,6 @@ impl KnowledgeEntity {
             description,
             entity_type,
             metadata,
-            embedding,
             user_id,
         }
     }
@@ -165,6 +170,89 @@ impl KnowledgeEntity {
         Ok(())
     }
 
+    /// Atomically store a knowledge entity and its embedding.
+    /// Writes the entity to `knowledge_entity` and the embedding to `knowledge_entity_embedding`.
+    pub async fn store_with_embedding(
+        entity: KnowledgeEntity,
+        embedding: Vec<f32>,
+        db: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        let emb = KnowledgeEntityEmbedding::new(&entity.id, embedding, entity.user_id.clone());
+
+        let query = format!(
+            "
+            BEGIN TRANSACTION;
+              CREATE type::thing('{entity_table}', $entity_id) CONTENT $entity;
+              CREATE type::thing('{emb_table}', $emb_id) CONTENT $emb;
+            COMMIT TRANSACTION;
+            ",
+            entity_table = Self::table_name(),
+            emb_table = KnowledgeEntityEmbedding::table_name(),
+        );
+
+        db.client
+            .query(query)
+            .bind(("entity_id", entity.id.clone()))
+            .bind(("entity", entity))
+            .bind(("emb_id", emb.id.clone()))
+            .bind(("emb", emb))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
+
+        Ok(())
+    }
+
+    /// Vector search over knowledge entities using the embedding table, fetching full entity rows and scores.
+    pub async fn vector_search(
+        take: usize,
+        query_embedding: Vec<f32>,
+        db: &SurrealDbClient,
+        user_id: &str,
+    ) -> Result<Vec<KnowledgeEntityVectorResult>, AppError> {
+        #[derive(Deserialize)]
+        struct Row {
+            entity_id: KnowledgeEntity,
+            score: f32,
+        }
+
+        let sql = format!(
+            r#"
+            SELECT
+                entity_id,
+                vector::similarity::cosine(embedding, $embedding) AS score
+            FROM {emb_table}
+            WHERE user_id = $user_id
+              AND embedding <|{take},100|> $embedding
+            ORDER BY score DESC
+            LIMIT {take}
+            FETCH entity_id;
+            "#,
+            emb_table = KnowledgeEntityEmbedding::table_name(),
+            take = take
+        );
+
+        let mut response = db
+            .query(&sql)
+            .bind(("embedding", query_embedding))
+            .bind(("user_id", user_id.to_string()))
+            .await
+            .map_err(|e| AppError::InternalError(format!("Surreal query failed: {e}")))?;
+
+        response = response.check().map_err(AppError::Database)?;
+
+        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::Database)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| KnowledgeEntityVectorResult {
+                entity: r.entity_id,
+                score: r.score,
+            })
+            .collect())
+    }
+
     pub async fn patch(
         id: &str,
         name: &str,
@@ -178,30 +266,53 @@ impl KnowledgeEntity {
             name, description, entity_type
         );
         let embedding = generate_embedding(ai_client, &embedding_input, db_client).await?;
+        let user_id = Self::get_user_id_by_id(id, db_client).await?;
+        let emb = KnowledgeEntityEmbedding::new(id, embedding, user_id);
 
         let now = Utc::now();
 
         db_client
             .client
             .query(
-                "UPDATE type::thing($table, $id)
-                SET name = $name,
-                    description = $description,
-                    updated_at = $updated_at,
-                    entity_type = $entity_type,
-                    embedding = $embedding
-                RETURN AFTER",
+                "BEGIN TRANSACTION;
+                 UPDATE type::thing($table, $id)
+                 SET name = $name,
+                     description = $description,
+                     updated_at = $updated_at,
+                     entity_type = $entity_type;
+                 UPSERT type::thing($emb_table, $emb_id) CONTENT $emb;
+                 COMMIT TRANSACTION;",
             )
             .bind(("table", Self::table_name()))
+            .bind(("emb_table", KnowledgeEntityEmbedding::table_name()))
             .bind(("id", id.to_string()))
             .bind(("name", name.to_string()))
             .bind(("updated_at", surrealdb::Datetime::from(now)))
             .bind(("entity_type", entity_type.to_owned()))
-            .bind(("embedding", embedding))
+            .bind(("emb_id", emb.id.clone()))
+            .bind(("emb", emb))
             .bind(("description", description.to_string()))
             .await?;
 
         Ok(())
+    }
+
+    async fn get_user_id_by_id(id: &str, db_client: &SurrealDbClient) -> Result<String, AppError> {
+        let mut response = db_client
+            .client
+            .query("SELECT user_id FROM type::thing($table, $id) LIMIT 1")
+            .bind(("table", Self::table_name()))
+            .bind(("id", id.to_string()))
+            .await
+            .map_err(AppError::Database)?;
+        #[derive(Deserialize)]
+        struct Row {
+            user_id: String,
+        }
+        let rows: Vec<Row> = response.take(0).map_err(AppError::Database)?;
+        rows.get(0)
+            .map(|r| r.user_id.clone())
+            .ok_or_else(|| AppError::InternalError("user not found for entity".to_string()))
     }
 
     /// Re-creates embeddings for all knowledge entities in the database.
@@ -228,22 +339,13 @@ impl KnowledgeEntity {
         if total_entities == 0 {
             info!("No knowledge entities to update. Just updating the idx");
 
-            let mut transaction_query = String::from("BEGIN TRANSACTION;");
-            transaction_query
-                .push_str("REMOVE INDEX idx_embedding_entities ON TABLE knowledge_entity;");
-            transaction_query.push_str(&format!(
-                "DEFINE INDEX idx_embedding_entities ON TABLE knowledge_entity FIELDS embedding HNSW DIMENSION {};",
-                new_dimensions
-            ));
-            transaction_query.push_str("COMMIT TRANSACTION;");
-
-            db.query(transaction_query).await?;
+            KnowledgeEntityEmbedding::redefine_hnsw_index(db, new_dimensions as usize).await?;
             return Ok(());
         }
         info!("Found {} entities to process.", total_entities);
 
         // Generate all new embeddings in memory
-        let mut new_embeddings: HashMap<String, Vec<f32>> = HashMap::new();
+        let mut new_embeddings: HashMap<String, (Vec<f32>, String)> = HashMap::new();
         info!("Generating new embeddings for all entities...");
         for entity in all_entities.iter() {
             let embedding_input = format!(
@@ -271,17 +373,16 @@ impl KnowledgeEntity {
                 error!("{}", err_msg);
                 return Err(AppError::InternalError(err_msg));
             }
-            new_embeddings.insert(entity.id.clone(), embedding);
+            new_embeddings.insert(entity.id.clone(), (embedding, entity.user_id.clone()));
         }
         info!("Successfully generated all new embeddings.");
 
         // Perform DB updates in a single transaction
-        info!("Applying schema and data changes in a transaction...");
+        info!("Applying embedding updates in a transaction...");
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
-        // Add all update statements
-        for (id, embedding) in new_embeddings {
-            // We must properly serialize the vector for the SurrealQL query string
+        // Add all update statements to the embedding table
+        for (id, (embedding, user_id)) in new_embeddings {
             let embedding_str = format!(
                 "[{}]",
                 embedding
@@ -291,18 +392,22 @@ impl KnowledgeEntity {
                     .join(",")
             );
             transaction_query.push_str(&format!(
-            "UPDATE type::thing('knowledge_entity', '{}') SET embedding = {}, updated_at = time::now();",
-            id, embedding_str
-        ));
+                "UPSERT type::thing('knowledge_entity_embedding', '{id}') SET \
+                    entity_id = type::thing('knowledge_entity', '{id}'), \
+                    embedding = {embedding}, \
+                    user_id = '{user_id}', \
+                    created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
+                    updated_at = time::now();",
+                id = id,
+                embedding = embedding_str,
+                user_id = user_id
+            ));
         }
 
-        // Re-create the index after updating the data that it will index
-        transaction_query
-            .push_str("REMOVE INDEX idx_embedding_entities ON TABLE knowledge_entity;");
         transaction_query.push_str(&format!(
-        "DEFINE INDEX idx_embedding_entities ON TABLE knowledge_entity FIELDS embedding HNSW DIMENSION {};",
-        new_dimensions
-    ));
+            "DEFINE INDEX OVERWRITE idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION {};",
+            new_dimensions
+        ));
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 
@@ -317,7 +422,9 @@ impl KnowledgeEntity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding;
     use serde_json::json;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_knowledge_entity_creation() {
@@ -327,7 +434,6 @@ mod tests {
         let description = "Test Description".to_string();
         let entity_type = KnowledgeEntityType::Document;
         let metadata = Some(json!({"key": "value"}));
-        let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
         let user_id = "user123".to_string();
 
         let entity = KnowledgeEntity::new(
@@ -336,7 +442,6 @@ mod tests {
             description.clone(),
             entity_type.clone(),
             metadata.clone(),
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -346,7 +451,6 @@ mod tests {
         assert_eq!(entity.description, description);
         assert_eq!(entity.entity_type, entity_type);
         assert_eq!(entity.metadata, metadata);
-        assert_eq!(entity.embedding, embedding);
         assert_eq!(entity.user_id, user_id);
         assert!(!entity.id.is_empty());
     }
@@ -410,12 +514,18 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
 
         // Create two entities with the same source_id
         let source_id = "source123".to_string();
         let entity_type = KnowledgeEntityType::Document;
-        let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
         let user_id = "user123".to_string();
+
+        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 5)
+            .await
+            .expect("Failed to redefine index length");
 
         let entity1 = KnowledgeEntity::new(
             source_id.clone(),
@@ -423,7 +533,6 @@ mod tests {
             "Description 1".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -433,7 +542,6 @@ mod tests {
             "Description 2".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
@@ -445,18 +553,18 @@ mod tests {
             "Different Description".to_string(),
             entity_type.clone(),
             None,
-            embedding.clone(),
             user_id.clone(),
         );
 
+        let emb = vec![0.1, 0.2, 0.3, 0.4, 0.5];
         // Store the entities
-        db.store_item(entity1)
+        KnowledgeEntity::store_with_embedding(entity1.clone(), emb.clone(), &db)
             .await
             .expect("Failed to store entity 1");
-        db.store_item(entity2)
+        KnowledgeEntity::store_with_embedding(entity2.clone(), emb.clone(), &db)
             .await
             .expect("Failed to store entity 2");
-        db.store_item(different_entity.clone())
+        KnowledgeEntity::store_with_embedding(different_entity.clone(), emb.clone(), &db)
             .await
             .expect("Failed to store different entity");
 
@@ -505,6 +613,162 @@ mod tests {
         assert_eq!(different_remaining[0].id, different_entity.id);
     }
 
-    // Note: We can't easily test the patch method without mocking the OpenAI client
-    // and the generate_embedding function. This would require more complex setup.
+    #[tokio::test]
+    async fn test_vector_search_returns_empty_when_no_embeddings() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
+
+        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("Failed to redefine index length");
+
+        let results = KnowledgeEntity::vector_search(5, vec![0.1, 0.2, 0.3], &db, "user")
+            .await
+            .expect("vector search");
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_single_result() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
+
+        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("Failed to redefine index length");
+
+        let user_id = "user".to_string();
+        let source_id = "src".to_string();
+        let entity = KnowledgeEntity::new(
+            source_id.clone(),
+            "hello".to_string(),
+            "world".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id.clone(),
+        );
+
+        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.1, 0.2, 0.3], &db)
+            .await
+            .expect("store entity with embedding");
+
+        let stored_entity: Option<KnowledgeEntity> = db.get_item(&entity.id).await.unwrap();
+        assert!(stored_entity.is_some());
+
+        let stored_embeddings: Vec<KnowledgeEntityEmbedding> = db
+            .client
+            .query(format!(
+                "SELECT * FROM {}",
+                KnowledgeEntityEmbedding::table_name()
+            ))
+            .await
+            .expect("query embeddings")
+            .take(0)
+            .expect("take embeddings");
+        assert_eq!(stored_embeddings.len(), 1);
+
+        let rid = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
+        let fetched_emb = KnowledgeEntityEmbedding::get_by_entity_id(&rid, &db)
+            .await
+            .expect("fetch embedding");
+        assert!(fetched_emb.is_some());
+
+        let results = KnowledgeEntity::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
+            .await
+            .expect("vector search");
+
+        assert_eq!(results.len(), 1);
+        let res = &results[0];
+        assert_eq!(res.entity.id, entity.id);
+        assert_eq!(res.entity.source_id, source_id);
+        assert_eq!(res.entity.name, "hello");
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_orders_by_similarity() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
+
+        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("Failed to redefine index length");
+
+        let user_id = "user".to_string();
+        let e1 = KnowledgeEntity::new(
+            "s1".to_string(),
+            "entity one".to_string(),
+            "desc".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id.clone(),
+        );
+        let e2 = KnowledgeEntity::new(
+            "s2".to_string(),
+            "entity two".to_string(),
+            "desc".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id.clone(),
+        );
+
+        KnowledgeEntity::store_with_embedding(e1.clone(), vec![1.0, 0.0, 0.0], &db)
+            .await
+            .expect("store e1");
+        KnowledgeEntity::store_with_embedding(e2.clone(), vec![0.0, 1.0, 0.0], &db)
+            .await
+            .expect("store e2");
+
+        let stored_e1: Option<KnowledgeEntity> = db.get_item(&e1.id).await.unwrap();
+        let stored_e2: Option<KnowledgeEntity> = db.get_item(&e2.id).await.unwrap();
+        assert!(stored_e1.is_some() && stored_e2.is_some());
+
+        let stored_embeddings: Vec<KnowledgeEntityEmbedding> = db
+            .client
+            .query(format!(
+                "SELECT * FROM {}",
+                KnowledgeEntityEmbedding::table_name()
+            ))
+            .await
+            .expect("query embeddings")
+            .take(0)
+            .expect("take embeddings");
+        assert_eq!(stored_embeddings.len(), 2);
+
+        let rid_e1 = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &e1.id);
+        let rid_e2 = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &e2.id);
+        assert!(KnowledgeEntityEmbedding::get_by_entity_id(&rid_e1, &db)
+            .await
+            .unwrap()
+            .is_some());
+        assert!(KnowledgeEntityEmbedding::get_by_entity_id(&rid_e2, &db)
+            .await
+            .unwrap()
+            .is_some());
+
+        let results = KnowledgeEntity::vector_search(2, vec![0.0, 1.0, 0.0], &db, &user_id)
+            .await
+            .expect("vector search");
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].entity.id, e2.id);
+        assert_eq!(results[1].entity.id, e1.id);
+    }
 }

@@ -1,1 +1,1 @@
-REMOVE TABLE job;
+-- No-op: legacy `job` table was superseded by `ingestion_task`; kept for migration order compatibility.

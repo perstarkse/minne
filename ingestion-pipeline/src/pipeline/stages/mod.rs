@@ -15,7 +15,7 @@ use tokio::time::{sleep, Duration};
 use tracing::{debug, instrument, warn};
 
 use super::{
-    context::{PipelineArtifacts, PipelineContext},
+    context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk, PipelineArtifacts, PipelineContext},
     state::{ContentPrepared, Enriched, IngestionMachine, Persisted, Ready, Retrieved},
 };
 
@@ -177,17 +177,21 @@ fn map_guard_error(event: &str, guard: GuardError) -> AppError {
 async fn store_graph_entities(
     db: &SurrealDbClient,
     tuning: &super::config::IngestionTuning,
-    entities: Vec<KnowledgeEntity>,
+    entities: Vec<EmbeddedKnowledgeEntity>,
     relationships: Vec<KnowledgeRelationship>,
 ) -> Result<(), AppError> {
-    const STORE_GRAPH_MUTATION: &str = r"
-        BEGIN TRANSACTION;
-        LET $entities = $entities;
-        LET $relationships = $relationships;
+    // Persist entities with embeddings first.
+    for embedded in entities {
+        KnowledgeEntity::store_with_embedding(embedded.entity, embedded.embedding, db).await?;
+    }
 
-        FOR $entity IN $entities {
-            CREATE type::thing('knowledge_entity', $entity.id) CONTENT $entity;
-        };
+    if relationships.is_empty() {
+        return Ok(());
+    }
+
+    const STORE_RELATIONSHIPS: &str = r"
+        BEGIN TRANSACTION;
+        LET $relationships = $relationships;
 
         FOR $relationship IN $relationships {
             LET $in_node = type::thing('knowledge_entity', $relationship.in);
@@ -201,7 +205,6 @@ async fn store_graph_entities(
         COMMIT TRANSACTION;
     ";
 
-    let entities = Arc::new(entities);
     let relationships = Arc::new(relationships);
 
     let mut backoff_ms = tuning.graph_initial_backoff_ms;
@@ -209,8 +212,7 @@ async fn store_graph_entities(
     for attempt in 0..tuning.graph_store_attempts {
         let result = db
             .client
-            .query(STORE_GRAPH_MUTATION)
-            .bind(("entities", entities.clone()))
+            .query(STORE_RELATIONSHIPS)
             .bind(("relationships", relationships.clone()))
             .await;
 
@@ -240,17 +242,17 @@ async fn store_graph_entities(
 async fn store_vector_chunks(
     db: &SurrealDbClient,
     task_id: &str,
-    chunks: &[TextChunk],
+    chunks: &[EmbeddedTextChunk],
     tuning: &super::config::IngestionTuning,
 ) -> Result<usize, AppError> {
     let chunk_count = chunks.len();
 
     let batch_size = tuning.chunk_insert_concurrency.max(1);
-    for chunk in chunks {
+    for embedded in chunks {
         debug!(
             task_id = %task_id,
-            chunk_id = %chunk.id,
-            chunk_len = chunk.chunk.chars().count(),
+            chunk_id = %embedded.chunk.id,
+            chunk_len = embedded.chunk.chunk.chars().count(),
             "chunk persisted"
         );
     }
@@ -270,53 +272,17 @@ fn is_retryable_conflict(error: &surrealdb::Error) -> bool {
 
 async fn store_chunk_batch(
     db: &SurrealDbClient,
-    batch: &[TextChunk],
-    tuning: &super::config::IngestionTuning,
+    batch: &[EmbeddedTextChunk],
+    _tuning: &super::config::IngestionTuning,
 ) -> Result<(), AppError> {
     if batch.is_empty() {
         return Ok(());
     }
 
-    const STORE_CHUNKS_MUTATION: &str = r"
-        BEGIN TRANSACTION;
-        LET $chunks = $chunks;
-
-        FOR $chunk IN $chunks {
-            CREATE type::thing('text_chunk', $chunk.id) CONTENT $chunk;
-        };
-
-        COMMIT TRANSACTION;
-    ";
-
-    let chunks = Arc::new(batch.to_vec());
-    let mut backoff_ms = tuning.graph_initial_backoff_ms;
-
-    for attempt in 0..tuning.graph_store_attempts {
-        let result = db
-            .client
-            .query(STORE_CHUNKS_MUTATION)
-            .bind(("chunks", chunks.clone()))
-            .await;
-
-        match result {
-            Ok(_) => return Ok(()),
-            Err(err) => {
-                if is_retryable_conflict(&err) && attempt + 1 < tuning.graph_store_attempts {
-                    warn!(
-                        attempt = attempt + 1,
-                        "Transient SurrealDB conflict while storing chunks; retrying"
-                    );
-                    sleep(Duration::from_millis(backoff_ms)).await;
-                    backoff_ms = (backoff_ms * 2).min(tuning.graph_max_backoff_ms);
-                    continue;
-                }
-
-                return Err(AppError::from(err));
-            }
-        }
+    for embedded in batch {
+        TextChunk::store_with_embedding(embedded.chunk.clone(), embedded.embedding.clone(), db)
+            .await?;
     }
 
-    Err(AppError::InternalError(
-        "Failed to store text chunks after retries".to_string(),
-    ))
+    Ok(())
 }

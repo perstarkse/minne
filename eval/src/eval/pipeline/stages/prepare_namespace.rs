@@ -41,6 +41,22 @@ pub(crate) async fn prepare_namespace(
     let database = ctx.database.clone();
     let embedding_provider = ctx.embedding_provider().clone();
 
+    let corpus_handle = ctx.corpus_handle();
+    let base_manifest = &corpus_handle.manifest;
+    let manifest_for_seed =
+        if ctx.window_offset == 0 && ctx.window_length >= base_manifest.questions.len() {
+            base_manifest.clone()
+        } else {
+            ingest::window_manifest(
+                base_manifest,
+                ctx.window_offset,
+                ctx.window_length,
+                ctx.config().negative_multiplier,
+            )
+            .context("selecting manifest window for seeding")?
+        };
+    let requested_cases = manifest_for_seed.questions.len();
+
     let mut namespace_reused = false;
     if !config.reseed_slice {
         namespace_reused = {
@@ -53,7 +69,7 @@ pub(crate) async fn prepare_namespace(
                 dataset.metadata.id.as_str(),
                 slice.manifest.slice_id.as_str(),
                 expected_fingerprint.as_str(),
-                slice.manifest.case_count,
+                requested_cases,
             )
             .await?
         };
@@ -79,25 +95,39 @@ pub(crate) async fn prepare_namespace(
                 slice = slice.manifest.slice_id.as_str(),
                 window_offset = ctx.window_offset,
                 window_length = ctx.window_length,
-                positives = slice.manifest.positive_paragraphs,
-                negatives = slice.manifest.negative_paragraphs,
-                total = slice.manifest.total_paragraphs,
+                positives = manifest_for_seed
+                    .questions
+                    .iter()
+                    .map(|q| q.paragraph_id.as_str())
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
+                negatives = manifest_for_seed.paragraphs.len().saturating_sub(
+                    manifest_for_seed
+                        .questions
+                        .iter()
+                        .map(|q| q.paragraph_id.as_str())
+                        .collect::<std::collections::HashSet<_>>()
+                        .len(),
+                ),
+                total = manifest_for_seed.paragraphs.len(),
                 "Seeding ingestion corpus into SurrealDB"
             );
         }
         let indexes_disabled = remove_all_indexes(ctx.db()).await.is_ok();
+
         let seed_start = Instant::now();
-        ingest::seed_manifest_into_db(ctx.db(), &ctx.corpus_handle().manifest)
+        ingest::seed_manifest_into_db(ctx.db(), &manifest_for_seed)
             .await
             .context("seeding ingestion corpus from manifest")?;
         namespace_seed_ms = Some(seed_start.elapsed().as_millis() as u128);
+
+        // Recreate indexes AFTER data is loaded (correct bulk loading pattern)
         if indexes_disabled {
-            info!("Recreating indexes after namespace reset");
-            if let Err(err) = recreate_indexes(ctx.db(), embedding_provider.dimension()).await {
-                warn!(error = %err, "failed to restore indexes after namespace reset");
-            } else {
-                warm_hnsw_cache(ctx.db(), embedding_provider.dimension()).await?;
-            }
+            info!("Recreating indexes after seeding data");
+            recreate_indexes(ctx.db(), embedding_provider.dimension())
+                .await
+                .context("recreating indexes with correct dimension")?;
+            warm_hnsw_cache(ctx.db(), embedding_provider.dimension()).await?;
         }
         {
             let slice = ctx.slice();
@@ -108,7 +138,7 @@ pub(crate) async fn prepare_namespace(
                 expected_fingerprint.as_str(),
                 &namespace,
                 &database,
-                slice.manifest.case_count,
+                requested_cases,
             )
             .await;
         }
@@ -128,11 +158,10 @@ pub(crate) async fn prepare_namespace(
     let user = ensure_eval_user(ctx.db()).await?;
     ctx.eval_user = Some(user);
 
-    let corpus_handle = ctx.corpus_handle();
-    let total_manifest_questions = corpus_handle.manifest.questions.len();
-    let cases = cases_from_manifest(&corpus_handle.manifest);
-    let include_impossible = corpus_handle.manifest.metadata.include_unanswerable;
-    let require_verified_chunks = corpus_handle.manifest.metadata.require_verified_chunks;
+    let total_manifest_questions = manifest_for_seed.questions.len();
+    let cases = cases_from_manifest(&manifest_for_seed);
+    let include_impossible = manifest_for_seed.metadata.include_unanswerable;
+    let require_verified_chunks = manifest_for_seed.metadata.require_verified_chunks;
     let filtered = total_manifest_questions.saturating_sub(cases.len());
     if filtered > 0 {
         info!(
