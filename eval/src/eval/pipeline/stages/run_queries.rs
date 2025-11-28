@@ -272,6 +272,9 @@ pub(crate) async fn run_queries(
                 }
 
                 let overall_match = match_rank.is_some();
+                let reciprocal_rank = calculate_reciprocal_rank(match_rank);
+                let ndcg = calculate_ndcg(&retrieved, config.k);
+
                 let summary = CaseSummary {
                     question_id,
                     question,
@@ -286,6 +289,8 @@ pub(crate) async fn run_queries(
                     is_impossible,
                     has_verified_chunks,
                     match_rank,
+                    reciprocal_rank: Some(reciprocal_rank),
+                    ndcg: Some(ndcg),
                     latency_ms: query_latency,
                     retrieved,
                 };
@@ -359,3 +364,34 @@ pub(crate) async fn run_queries(
         .run_queries()
         .map_err(|(_, guard)| map_guard_error("run_queries", guard))
 }
+
+fn calculate_reciprocal_rank(rank: Option<usize>) -> f64 {
+    match rank {
+        Some(r) if r > 0 => 1.0 / (r as f64),
+        _ => 0.0,
+    }
+}
+
+fn calculate_ndcg(retrieved: &[RetrievedSummary], k: usize) -> f64 {
+    let mut dcg = 0.0;
+
+    for (i, item) in retrieved.iter().enumerate() {
+        if i >= k {
+            break;
+        }
+        if item.matched {
+            let rel = 1.0;
+            dcg += rel / (i as f64 + 2.0).log2();
+        }
+    }
+
+    // IDCG for a single relevant item at rank 1 is 1.0 / log2(2) = 1.0
+    let idcg = 1.0;
+
+    if dcg == 0.0 {
+        0.0
+    } else {
+        dcg / idcg
+    }
+}
+

@@ -13,6 +13,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
+use clap::ValueEnum;
 
 const MANIFEST_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/manifest.yaml");
 static DATASET_CATALOG: OnceCell<DatasetCatalog> = OnceCell::new();
@@ -243,7 +244,7 @@ fn dataset_entry_for_kind(kind: DatasetKind) -> Result<&'static DatasetEntry> {
     catalog.dataset(kind.id())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum DatasetKind {
     SquadV2,
     NaturalQuestions,
@@ -295,6 +296,12 @@ impl DatasetKind {
         dataset_entry_for_kind(self)
             .map(|entry| entry.converted_path.clone())
             .unwrap_or_else(|err| panic!("dataset manifest missing entry for {:?}: {err}", self))
+    }
+}
+
+impl std::fmt::Display for DatasetKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.id())
     }
 }
 

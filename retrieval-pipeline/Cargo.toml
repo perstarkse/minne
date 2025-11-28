@@ -21,5 +21,6 @@ async-openai = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
 fastembed = { workspace = true }
+clap = { version = "4.4", features = ["derive"] }
  
 common = { path = "../common", features = ["test-utils"] }

@@ -45,6 +45,8 @@ pub(crate) async fn summarize(
     let mut retrieval_cases = 0usize;
     let mut llm_cases = 0usize;
     let mut llm_answered = 0usize;
+    let mut sum_reciprocal_rank = 0.0;
+    let mut sum_ndcg = 0.0;
     for summary in &summaries {
         if summary.is_impossible {
             llm_cases += 1;
@@ -54,6 +56,12 @@ pub(crate) async fn summarize(
             continue;
         }
         retrieval_cases += 1;
+        if let Some(rr) = summary.reciprocal_rank {
+            sum_reciprocal_rank += rr;
+        }
+        if let Some(ndcg) = summary.ndcg {
+            sum_ndcg += ndcg;
+        }
         if summary.matched {
             correct += 1;
             if let Some(rank) = summary.match_rank {
@@ -99,6 +107,16 @@ pub(crate) async fn summarize(
     } else {
         (correct_at_3 as f64) / (retrieval_cases as f64)
     };
+    let mrr = if retrieval_cases == 0 {
+        0.0
+    } else {
+        sum_reciprocal_rank / (retrieval_cases as f64)
+    };
+    let average_ndcg = if retrieval_cases == 0 {
+        0.0
+    } else {
+        sum_ndcg / (retrieval_cases as f64)
+    };
 
     let active_tuning = ctx
         .retrieval_config
@@ -131,6 +149,8 @@ pub(crate) async fn summarize(
         precision_at_1,
         precision_at_2,
         precision_at_3,
+        mrr,
+        average_ndcg,
         duration_ms,
         dataset_id: dataset.metadata.id.clone(),
         dataset_label: dataset.metadata.label.clone(),

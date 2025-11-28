@@ -23,6 +23,8 @@ pub struct EvaluationSummary {
     pub precision_at_1: f64,
     pub precision_at_2: f64,
     pub precision_at_3: f64,
+    pub mrr: f64,
+    pub average_ndcg: f64,
     pub duration_ms: u128,
     pub dataset_id: String,
     pub dataset_label: String,
@@ -90,6 +92,10 @@ pub struct CaseSummary {
     pub has_verified_chunks: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub match_rank: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reciprocal_rank: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ndcg: Option<f64>,
     pub latency_ms: u128,
     pub retrieved: Vec<RetrievedSummary>,
 }
