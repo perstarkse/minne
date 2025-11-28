@@ -78,6 +78,8 @@ pub struct RetrievalSection {
     pub precision_at_1: f64,
     pub precision_at_2: f64,
     pub precision_at_3: f64,
+    pub mrr: f64,
+    pub average_ndcg: f64,
     pub latency: LatencyStats,
     pub concurrency: usize,
     pub strategy: String,
@@ -178,6 +180,8 @@ impl EvaluationReport {
             precision_at_1: summary.precision_at_1,
             precision_at_2: summary.precision_at_2,
             precision_at_3: summary.precision_at_3,
+            mrr: summary.mrr,
+            average_ndcg: summary.average_ndcg,
             latency: summary.latency_ms.clone(),
             concurrency: summary.concurrency,
             strategy: summary.retrieval_strategy.clone(),
@@ -436,6 +440,14 @@ fn render_markdown(report: &EvaluationReport) -> String {
         report.retrieval.precision_at_3
     ));
     md.push_str(&format!(
+        "| MRR | {:.3} |\\n",
+        report.retrieval.mrr
+    ));
+    md.push_str(&format!(
+        "| NDCG | {:.3} |\\n",
+        report.retrieval.average_ndcg
+    ));
+    md.push_str(&format!(
         "| Latency Avg / P50 / P95 (ms) | {:.1} / {} / {} |\\n",
         report.retrieval.latency.avg, report.retrieval.latency.p50, report.retrieval.latency.p95
     ));
@@ -687,6 +699,10 @@ struct HistoryEntry {
     precision_at_2: f64,
     precision_at_3: f64,
     #[serde(default)]
+    mrr: f64,
+    #[serde(default)]
+    average_ndcg: f64,
+    #[serde(default)]
     retrieval_cases: usize,
     #[serde(default)]
     retrieval_precision: f64,
@@ -771,6 +787,8 @@ fn record_history(summary: &EvaluationSummary, report_dir: &Path) -> Result<()> 
         precision_at_1: summary.precision_at_1,
         precision_at_2: summary.precision_at_2,
         precision_at_3: summary.precision_at_3,
+        mrr: summary.mrr,
+        average_ndcg: summary.average_ndcg,
         retrieval_cases: summary.retrieval_cases,
         retrieval_precision: summary.retrieval_precision,
         llm_cases: summary.llm_cases,

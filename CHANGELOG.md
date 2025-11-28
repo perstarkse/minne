@@ -1,6 +1,8 @@
 # Changelog
 ## Unreleased
-- Added a shared `benchmarks` crate with deterministic fixtures and Criterion suites for ingestion, retrieval, and HTML handlers, plus documented baseline results for local performance checks.
+- Added a benchmarks create for evaluating the retrieval process
+- Added fastembed embedding support, enables the use of local CPU generated embeddings
+- Embeddings stored on own table
 
 ## Version 0.2.6 (2025-10-29)
 - Added an opt-in FastEmbed-based reranking stage behind `reranking_enabled`. It improves retrieval accuracy by re-scoring hybrid results.

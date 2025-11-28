@@ -92,10 +92,8 @@ async fn async_main() -> anyhow::Result<()> {
 
     let parsed = args::parse()?;
 
-    if parsed.show_help {
-        args::print_help();
-        return Ok(());
-    }
+    // Clap handles help automatically, so we don't need to check for it manually
+
 
     if parsed.config.inspect_question.is_some() {
         inspection::inspect_question(&parsed.config).await?;

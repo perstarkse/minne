@@ -28,6 +28,7 @@ once_cell = "1.19"
 serde_yaml = "0.9"
 criterion = "0.5"
 state-machines = { workspace = true }
+clap = { version = "4.4", features = ["derive", "env"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
