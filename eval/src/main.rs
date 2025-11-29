@@ -2,7 +2,6 @@ mod args;
 mod cache;
 mod datasets;
 mod db_helpers;
-mod embedding;
 mod eval;
 mod ingest;
 mod inspection;

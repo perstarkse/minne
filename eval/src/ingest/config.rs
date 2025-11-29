@@ -1,9 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
-use async_trait::async_trait;
-
-use crate::{args::Config, embedding::EmbeddingProvider};
+use crate::args::Config;
 
 #[derive(Debug, Clone)]
 pub struct CorpusCacheConfig {
@@ -29,52 +26,6 @@ impl CorpusCacheConfig {
             ingestion_batch_size,
             ingestion_max_retries,
         }
-    }
-}
-
-#[async_trait]
-pub trait CorpusEmbeddingProvider: Send + Sync {
-    fn backend_label(&self) -> &str;
-    fn model_code(&self) -> Option<String>;
-    fn dimension(&self) -> usize;
-    async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>>;
-}
-
-#[async_trait]
-impl CorpusEmbeddingProvider for EmbeddingProvider {
-    fn backend_label(&self) -> &str {
-        EmbeddingProvider::backend_label(self)
-    }
-
-    fn model_code(&self) -> Option<String> {
-        EmbeddingProvider::model_code(self)
-    }
-
-    fn dimension(&self) -> usize {
-        EmbeddingProvider::dimension(self)
-    }
-
-    async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
-        EmbeddingProvider::embed_batch(self, texts).await
-    }
-}
-
-#[async_trait]
-impl CorpusEmbeddingProvider for common::utils::embedding::EmbeddingProvider {
-    fn backend_label(&self) -> &str {
-        common::utils::embedding::EmbeddingProvider::backend_label(self)
-    }
-
-    fn model_code(&self) -> Option<String> {
-        common::utils::embedding::EmbeddingProvider::model_code(self)
-    }
-
-    fn dimension(&self) -> usize {
-        common::utils::embedding::EmbeddingProvider::dimension(self)
-    }
-
-    async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
-        common::utils::embedding::EmbeddingProvider::embed_batch(self, texts).await
     }
 }
 

@@ -439,7 +439,6 @@ impl Config {
 
 pub struct ParsedArgs {
     pub config: Config,
-    pub show_help: bool,
 }
 
 pub fn parse() -> Result<ParsedArgs> {
@@ -447,7 +446,6 @@ pub fn parse() -> Result<ParsedArgs> {
     config.finalize()?;
     Ok(ParsedArgs {
         config,
-        show_help: false, // Clap handles help automatically
     })
 }
 
