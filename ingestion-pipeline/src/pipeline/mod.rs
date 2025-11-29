@@ -52,6 +52,27 @@ impl IngestionPipeline {
         storage: StorageManager,
         embedding_provider: Arc<common::utils::embedding::EmbeddingProvider>,
     ) -> Result<Self, AppError> {
+        Self::new_with_config(
+            db,
+            openai_client,
+            config,
+            reranker_pool,
+            storage,
+            embedding_provider,
+            IngestionConfig::default(),
+        )
+        .await
+    }
+
+    pub async fn new_with_config(
+        db: Arc<SurrealDbClient>,
+        openai_client: Arc<Client<async_openai::config::OpenAIConfig>>,
+        config: AppConfig,
+        reranker_pool: Option<Arc<RerankerPool>>,
+        storage: StorageManager,
+        embedding_provider: Arc<common::utils::embedding::EmbeddingProvider>,
+        pipeline_config: IngestionConfig,
+    ) -> Result<Self, AppError> {
         let services = DefaultPipelineServices::new(
             db.clone(),
             openai_client.clone(),
@@ -61,7 +82,7 @@ impl IngestionPipeline {
             embedding_provider,
         );
 
-        Self::with_services(db, IngestionConfig::default(), Arc::new(services))
+        Self::with_services(db, pipeline_config, Arc::new(services))
     }
 
     pub fn with_services(

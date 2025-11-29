@@ -101,6 +101,10 @@ impl<'a> PipelineContext<'a> {
     }
 
     pub async fn build_artifacts(&mut self) -> Result<PipelineArtifacts, AppError> {
+        if self.pipeline_config.chunk_only {
+            return self.build_chunk_only_artifacts().await;
+        }
+
         let content = self.take_text_content()?;
         let analysis = self.take_analysis()?;
 
@@ -113,8 +117,7 @@ impl<'a> PipelineContext<'a> {
             )
             .await?;
 
-        let chunk_range: Range<usize> = self.pipeline_config.tuning.chunk_min_chars
-            ..self.pipeline_config.tuning.chunk_max_chars;
+        let chunk_range = self.chunk_token_range();
 
         let chunks = self.services.prepare_chunks(&content, chunk_range).await?;
 
@@ -124,5 +127,23 @@ impl<'a> PipelineContext<'a> {
             relationships,
             chunks,
         })
+    }
+
+    pub async fn build_chunk_only_artifacts(&mut self) -> Result<PipelineArtifacts, AppError> {
+        let content = self.take_text_content()?;
+        let chunk_range = self.chunk_token_range();
+
+        let chunks = self.services.prepare_chunks(&content, chunk_range).await?;
+
+        Ok(PipelineArtifacts {
+            text_content: content,
+            entities: Vec::new(),
+            relationships: Vec::new(),
+            chunks,
+        })
+    }
+
+    fn chunk_token_range(&self) -> Range<usize> {
+        self.pipeline_config.tuning.chunk_min_tokens..self.pipeline_config.tuning.chunk_max_tokens
     }
 }

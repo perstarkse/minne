@@ -12,3 +12,14 @@ pub use store::{
     CorpusQuestion, EmbeddedKnowledgeEntity, EmbeddedTextChunk, ParagraphShard,
     ParagraphShardStore, MANIFEST_VERSION,
 };
+
+pub fn make_ingestion_config(config: &crate::args::Config) -> ingestion_pipeline::IngestionConfig {
+    let mut tuning = ingestion_pipeline::IngestionTuning::default();
+    tuning.chunk_min_tokens = config.ingest_chunk_min_tokens;
+    tuning.chunk_max_tokens = config.ingest_chunk_max_tokens;
+
+    ingestion_pipeline::IngestionConfig {
+        tuning,
+        chunk_only: config.ingest_chunks_only,
+    }
+}

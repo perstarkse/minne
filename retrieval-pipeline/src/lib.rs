@@ -69,6 +69,7 @@ pub async fn retrieve_entities(
 mod tests {
     use super::*;
     use async_openai::Client;
+    use common::storage::indexes::ensure_runtime_indexes;
     use common::storage::types::{
         knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
         knowledge_relationship::KnowledgeRelationship,
@@ -107,6 +108,10 @@ mod tests {
         db.apply_migrations()
             .await
             .expect("Failed to apply migrations");
+
+        ensure_runtime_indexes(&db, 3)
+            .await
+            .expect("failed to build runtime indexes");
 
         db.query(
             "BEGIN TRANSACTION;

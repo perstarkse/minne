@@ -16,6 +16,7 @@ use tracing::{debug, instrument, warn};
 
 use super::{
     context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk, PipelineArtifacts, PipelineContext},
+    enrichment_result::LLMEnrichmentResult,
     state::{ContentPrepared, Enriched, IngestionMachine, Persisted, Ready, Retrieved},
 };
 
@@ -76,6 +77,12 @@ pub async fn retrieve_related(
     machine: IngestionMachine<(), ContentPrepared>,
     ctx: &mut PipelineContext<'_>,
 ) -> Result<IngestionMachine<(), Retrieved>, AppError> {
+    if ctx.pipeline_config.chunk_only {
+        return machine
+            .retrieve()
+            .map_err(|(_, guard)| map_guard_error("retrieve", guard));
+    }
+
     let content = ctx.text_content()?;
     let similar = ctx.services.retrieve_similar_entities(content).await?;
 
@@ -102,6 +109,16 @@ pub async fn enrich(
     machine: IngestionMachine<(), Retrieved>,
     ctx: &mut PipelineContext<'_>,
 ) -> Result<IngestionMachine<(), Enriched>, AppError> {
+    if ctx.pipeline_config.chunk_only {
+        ctx.analysis = Some(LLMEnrichmentResult {
+            knowledge_entities: Vec::new(),
+            relationships: Vec::new(),
+        });
+        return machine
+            .enrich()
+            .map_err(|(_, guard)| map_guard_error("enrich", guard));
+    }
+
     let content = ctx.text_content()?;
     let analysis = ctx
         .services

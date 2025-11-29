@@ -21,7 +21,6 @@ use common::{
     utils::{config::AppConfig, embedding::EmbeddingProvider},
 };
 use retrieval_pipeline::{reranking::RerankerPool, retrieved_entities_to_json, RetrievedEntity};
-use text_splitter::TextSplitter;
 
 use super::{enrichment_result::LLMEnrichmentResult, preparation::to_text_content};
 use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
@@ -59,7 +58,7 @@ pub trait PipelineServices: Send + Sync {
     async fn prepare_chunks(
         &self,
         content: &TextContent,
-        range: Range<usize>,
+        token_range: Range<usize>,
     ) -> Result<Vec<EmbeddedTextChunk>, AppError>;
 }
 
@@ -238,23 +237,20 @@ impl PipelineServices for DefaultPipelineServices {
     async fn prepare_chunks(
         &self,
         content: &TextContent,
-        range: Range<usize>,
+        token_range: Range<usize>,
     ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
-        let splitter = TextSplitter::new(range.clone());
-        let chunk_texts: Vec<String> = splitter
-            .chunks(&content.text)
-            .map(|chunk| chunk.to_string())
-            .collect();
+        let chunk_candidates =
+            split_by_token_bounds(&content.text, token_range.start, token_range.end)?;
 
-        let mut chunks = Vec::with_capacity(chunk_texts.len());
-        for chunk in chunk_texts {
+        let mut chunks = Vec::with_capacity(chunk_candidates.len());
+        for chunk_text in chunk_candidates {
             let embedding = self
                 .embedding_provider
-                .embed(&chunk)
+                .embed(&chunk_text)
                 .await
                 .context("generating FastEmbed embedding for chunk")?;
             let chunk_struct =
-                TextChunk::new(content.get_id().to_string(), chunk, content.user_id.clone());
+                TextChunk::new(content.get_id().to_string(), chunk_text, content.user_id.clone());
             chunks.push(EmbeddedTextChunk {
                 chunk: chunk_struct,
                 embedding,
@@ -262,6 +258,45 @@ impl PipelineServices for DefaultPipelineServices {
         }
         Ok(chunks)
     }
+}
+
+fn split_by_token_bounds(
+    text: &str,
+    min_tokens: usize,
+    max_tokens: usize,
+) -> Result<Vec<String>, AppError> {
+    if min_tokens == 0 || max_tokens == 0 || min_tokens > max_tokens {
+        return Err(AppError::Validation(
+            "invalid chunk token bounds; ensure 0 < min <= max".into(),
+        ));
+    }
+
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    if tokens.is_empty() {
+        return Ok(vec![String::new()]);
+    }
+
+    let mut chunks = Vec::new();
+    let mut buffer: Vec<&str> = Vec::new();
+    for (idx, token) in tokens.iter().enumerate() {
+        buffer.push(token);
+        let remaining = tokens.len().saturating_sub(idx + 1);
+        let at_max = buffer.len() >= max_tokens;
+        let at_min_and_boundary =
+            buffer.len() >= min_tokens && (remaining == 0 || buffer.len() + 1 > max_tokens);
+        if at_max || at_min_and_boundary {
+            let chunk_text = buffer.join(" ");
+            chunks.push(chunk_text);
+            buffer.clear();
+        }
+    }
+
+    if !buffer.is_empty() {
+        let chunk_text = buffer.join(" ");
+        chunks.push(chunk_text);
+    }
+
+    Ok(chunks)
 }
 
 fn truncate_for_embedding(text: &str, max_chars: usize) -> String {

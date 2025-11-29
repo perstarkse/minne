@@ -4,7 +4,7 @@ mod types;
 pub use pipeline::run_evaluation;
 pub use types::*;
 
-use std::{collections::HashMap, path::Path, time::Duration};
+use std::{collections::HashMap, path::Path};
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -23,7 +23,6 @@ use tracing::{info, warn};
 use crate::{
     args::{self, Config},
     datasets::{self, ConvertedDataset},
-    db_helpers::change_embedding_length_in_hnsw_indexes,
     ingest,
     slice::{self},
     snapshot::{self, DbSnapshotState},
@@ -461,7 +460,7 @@ pub(crate) async fn enforce_system_settings(
 
 pub(crate) async fn load_or_init_system_settings(
     db: &SurrealDbClient,
-    dimension: usize,
+    _dimension: usize,
 ) -> Result<(SystemSettings, bool)> {
     match SystemSettings::get_current(db).await {
         Ok(settings) => Ok((settings, false)),
@@ -565,6 +564,9 @@ mod tests {
                 generated_at: Utc::now(),
                 paragraph_count: paragraphs.len(),
                 question_count: questions.len(),
+                chunk_min_tokens: 1,
+                chunk_max_tokens: 10,
+                chunk_only: false,
             },
             paragraphs,
             questions,

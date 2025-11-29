@@ -194,6 +194,18 @@ pub struct Config {
     #[arg(long, default_value_os_t = default_ingestion_cache_dir())]
     pub ingestion_cache_dir: PathBuf,
 
+    /// Minimum tokens per chunk for ingestion
+    #[arg(long, default_value_t = 500)]
+    pub ingest_chunk_min_tokens: usize,
+
+    /// Maximum tokens per chunk for ingestion
+    #[arg(long, default_value_t = 2_000)]
+    pub ingest_chunk_max_tokens: usize,
+
+    /// Run ingestion in chunk-only mode (skip analyzer/graph generation)
+    #[arg(long)]
+    pub ingest_chunks_only: bool,
+
     /// Number of paragraphs to ingest concurrently
     #[arg(long, default_value_t = 5)]
     pub ingestion_batch_size: usize,
@@ -347,6 +359,14 @@ impl Config {
                 "--chunk-min must be less than --chunk-max (got {} >= {})",
                 self.retrieval.chunk_min_chars,
                 self.retrieval.chunk_max_chars
+            ));
+        }
+
+        if self.ingest_chunk_min_tokens == 0 || self.ingest_chunk_min_tokens >= self.ingest_chunk_max_tokens {
+            return Err(anyhow!(
+                "--ingest-chunk-min-tokens must be greater than zero and less than --ingest-chunk-max-tokens (got {} >= {})",
+                self.ingest_chunk_min_tokens,
+                self.ingest_chunk_max_tokens
             ));
         }
 
