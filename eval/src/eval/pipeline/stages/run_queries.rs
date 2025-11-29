@@ -374,6 +374,7 @@ fn calculate_reciprocal_rank(rank: Option<usize>) -> f64 {
 
 fn calculate_ndcg(retrieved: &[RetrievedSummary], k: usize) -> f64 {
     let mut dcg = 0.0;
+    let mut relevant_count = 0;
 
     for (i, item) in retrieved.iter().enumerate() {
         if i >= k {
@@ -382,13 +383,23 @@ fn calculate_ndcg(retrieved: &[RetrievedSummary], k: usize) -> f64 {
         if item.matched {
             let rel = 1.0;
             dcg += rel / (i as f64 + 2.0).log2();
+            relevant_count += 1;
         }
     }
 
-    // IDCG for a single relevant item at rank 1 is 1.0 / log2(2) = 1.0
-    let idcg = 1.0;
-
     if dcg == 0.0 {
+        return 0.0;
+    }
+
+    // Calculate IDCG based on the number of relevant items found
+    // We assume ideal ordering would place all 'relevant_count' items at the top
+    let mut idcg = 0.0;
+    for i in 0..relevant_count {
+        let rel = 1.0;
+        idcg += rel / (i as f64 + 2.0).log2();
+    }
+
+    if idcg == 0.0 {
         0.0
     } else {
         dcg / idcg
