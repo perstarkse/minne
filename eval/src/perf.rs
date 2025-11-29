@@ -320,6 +320,8 @@ mod tests {
             chunk_token_budget: 10000,
             chunk_avg_chars_per_token: 4,
             max_chunks_per_entity: 4,
+            average_ndcg: 0.0,
+            mrr: 0.0,
             cases: Vec::new(),
         }
     }

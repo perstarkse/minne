@@ -31,10 +31,12 @@ pub(crate) async fn prepare_corpus(
         .context("selecting slice window for corpus preparation")?;
 
     let descriptor = snapshot::Descriptor::new(config, slice, ctx.embedding_provider());
+    let ingestion_config = ingest::make_ingestion_config(config);
     let expected_fingerprint = ingest::compute_ingestion_fingerprint(
         ctx.dataset(),
         slice,
         config.converted_dataset_path.as_path(),
+        &ingestion_config,
     )?;
     let base_dir = ingest::cached_corpus_dir(
         &cache_settings,
@@ -101,6 +103,7 @@ pub(crate) async fn prepare_corpus(
             openai_client,
             &eval_user_id,
             config.converted_dataset_path.as_path(),
+            ingestion_config.clone(),
         )
         .await
         .context("ensuring ingestion-backed corpus")?

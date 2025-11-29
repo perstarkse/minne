@@ -55,6 +55,7 @@ impl SystemSettings {
 mod tests {
     use crate::storage::types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk};
     use async_openai::Client;
+    use crate::storage::indexes::ensure_runtime_indexes;
 
     use super::*;
     use uuid::Uuid;
@@ -324,6 +325,11 @@ mod tests {
         let mut current_settings = SystemSettings::get_current(&db)
             .await
             .expect("Failed to load current settings");
+
+        // Ensure runtime indexes exist with the current embedding dimension so INFO queries succeed.
+        ensure_runtime_indexes(&db, current_settings.embedding_dimensions as usize)
+            .await
+            .expect("failed to build runtime indexes");
 
         let initial_chunk_dimension = get_hnsw_index_dimension(
             &db,

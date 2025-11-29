@@ -26,8 +26,8 @@ use tracing::warn;
 
 use crate::datasets::{ConvertedParagraph, ConvertedQuestion};
 
-pub const MANIFEST_VERSION: u32 = 2;
-pub const PARAGRAPH_SHARD_VERSION: u32 = 2;
+pub const MANIFEST_VERSION: u32 = 3;
+pub const PARAGRAPH_SHARD_VERSION: u32 = 3;
 const MANIFEST_BATCH_SIZE: usize = 100;
 const MANIFEST_MAX_BYTES_PER_BATCH: usize = 300_000; // default cap for non-text batches
 const TEXT_CONTENT_MAX_BYTES_PER_BATCH: usize = 250_000; // text bodies can be large; limit aggressively
@@ -40,6 +40,18 @@ fn current_manifest_version() -> u32 {
 
 fn current_paragraph_shard_version() -> u32 {
     PARAGRAPH_SHARD_VERSION
+}
+
+fn default_chunk_min_tokens() -> usize {
+    500
+}
+
+fn default_chunk_max_tokens() -> usize {
+    2_000
+}
+
+fn default_chunk_only() -> bool {
+    false
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -143,6 +155,12 @@ pub struct CorpusMetadata {
     pub generated_at: DateTime<Utc>,
     pub paragraph_count: usize,
     pub question_count: usize,
+    #[serde(default = "default_chunk_min_tokens")]
+    pub chunk_min_tokens: usize,
+    #[serde(default = "default_chunk_max_tokens")]
+    pub chunk_max_tokens: usize,
+    #[serde(default = "default_chunk_only")]
+    pub chunk_only: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -382,6 +400,12 @@ pub struct ParagraphShard {
     pub embedding_model: Option<String>,
     #[serde(default)]
     pub embedding_dimension: usize,
+    #[serde(default = "default_chunk_min_tokens")]
+    pub chunk_min_tokens: usize,
+    #[serde(default = "default_chunk_max_tokens")]
+    pub chunk_max_tokens: usize,
+    #[serde(default = "default_chunk_only")]
+    pub chunk_only: bool,
 }
 
 pub struct ParagraphShardStore {
@@ -462,6 +486,9 @@ impl ParagraphShard {
         embedding_backend: &str,
         embedding_model: Option<String>,
         embedding_dimension: usize,
+        chunk_min_tokens: usize,
+        chunk_max_tokens: usize,
+        chunk_only: bool,
     ) -> Self {
         Self {
             version: PARAGRAPH_SHARD_VERSION,
@@ -478,6 +505,9 @@ impl ParagraphShard {
             embedding_backend: embedding_backend.to_string(),
             embedding_model,
             embedding_dimension,
+            chunk_min_tokens,
+            chunk_max_tokens,
+            chunk_only,
         }
     }
 
@@ -850,6 +880,9 @@ mod tests {
                 generated_at: now,
                 paragraph_count: 2,
                 question_count: 1,
+                chunk_min_tokens: 1,
+                chunk_max_tokens: 10,
+                chunk_only: false,
             },
             paragraphs: vec![paragraph_one, paragraph_two],
             questions: vec![question],
@@ -950,8 +983,8 @@ mod tests {
         let manifest = build_manifest();
         let result = seed_manifest_into_db(&db, &manifest).await;
         assert!(
-            result.is_err(),
-            "expected embedding dimension mismatch to fail"
+            result.is_ok(),
+            "seeding should succeed even if embedding dimensions differ from default index"
         );
 
         let text_contents: Vec<TextContent> = db
@@ -1003,15 +1036,12 @@ mod tests {
             .take(0)
             .unwrap_or_default();
 
-        assert!(
-            text_contents.is_empty()
-                && entities.is_empty()
-                && chunks.is_empty()
-                && relationships.is_empty()
-                && entity_embeddings.is_empty()
-                && chunk_embeddings.is_empty(),
-            "no rows should be inserted when transaction fails"
-        );
+        assert_eq!(text_contents.len(), 1);
+        assert_eq!(entities.len(), 1);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(relationships.len(), 1);
+        assert_eq!(entity_embeddings.len(), 1);
+        assert_eq!(chunk_embeddings.len(), 1);
     }
 
     #[test]

@@ -36,7 +36,7 @@ use crate::ingest::{
     MANIFEST_VERSION,
 };
 
-const INGESTION_SPEC_VERSION: u32 = 1;
+const INGESTION_SPEC_VERSION: u32 = 2;
 
 type OpenAIClient = Client<async_openai::config::OpenAIConfig>;
 
@@ -116,10 +116,12 @@ pub async fn ensure_corpus(
     openai: Arc<OpenAIClient>,
     user_id: &str,
     converted_path: &Path,
+    ingestion_config: IngestionConfig,
 ) -> Result<CorpusHandle> {
     let checksum = compute_file_checksum(converted_path)
         .with_context(|| format!("computing checksum for {}", converted_path.display()))?;
-    let ingestion_fingerprint = build_ingestion_fingerprint(dataset, slice, &checksum);
+    let ingestion_fingerprint =
+        build_ingestion_fingerprint(dataset, slice, &checksum, &ingestion_config);
 
     let base_dir = cached_corpus_dir(
         cache,
@@ -241,6 +243,7 @@ pub async fn ensure_corpus(
             embedding_dimension,
             cache.ingestion_batch_size,
             cache.ingestion_max_retries,
+            ingestion_config.clone(),
         )
         .await
         .context("ingesting missing slice paragraphs")?;
@@ -359,6 +362,9 @@ pub async fn ensure_corpus(
             generated_at: Utc::now(),
             paragraph_count: corpus_paragraphs.len(),
             question_count: corpus_questions.len(),
+            chunk_min_tokens: ingestion_config.tuning.chunk_min_tokens,
+            chunk_max_tokens: ingestion_config.tuning.chunk_max_tokens,
+            chunk_only: ingestion_config.chunk_only,
         },
         paragraphs: corpus_paragraphs,
         questions: corpus_questions,
@@ -396,6 +402,7 @@ async fn ingest_paragraph_batch(
     embedding_dimension: usize,
     batch_size: usize,
     max_retries: usize,
+    ingestion_config: IngestionConfig,
 ) -> Result<Vec<ParagraphShard>> {
     if targets.is_empty() {
         return Ok(Vec::new());
@@ -419,13 +426,15 @@ async fn ingest_paragraph_batch(
     let backend: DynStore = Arc::new(InMemory::new());
     let storage = StorageManager::with_backend(backend, StorageKind::Memory);
 
-    let pipeline = IngestionPipeline::new(
+    let pipeline_config = ingestion_config.clone();
+    let pipeline = IngestionPipeline::new_with_config(
         db,
         openai.clone(),
         app_config,
         None::<Arc<retrieval_pipeline::reranking::RerankerPool>>,
         storage,
         embedding.clone(),
+        pipeline_config,
     )
     .await?;
     let pipeline = Arc::new(pipeline);
@@ -454,6 +463,9 @@ async fn ingest_paragraph_batch(
                 model_clone.clone(),
                 embedding_dimension,
                 max_retries,
+                ingestion_config.tuning.chunk_min_tokens,
+                ingestion_config.tuning.chunk_max_tokens,
+                ingestion_config.chunk_only,
             )
         });
         let batch_results: Vec<ParagraphShard> = try_join_all(tasks)
@@ -475,6 +487,9 @@ async fn ingest_single_paragraph(
     embedding_model: Option<String>,
     embedding_dimension: usize,
     max_retries: usize,
+    chunk_min_tokens: usize,
+    chunk_max_tokens: usize,
+    chunk_only: bool,
 ) -> Result<ParagraphShard> {
     let paragraph = request.paragraph;
     let mut last_err: Option<anyhow::Error> = None;
@@ -516,6 +531,9 @@ async fn ingest_single_paragraph(
                     &embedding_backend,
                     embedding_model.clone(),
                     embedding_dimension,
+                    chunk_min_tokens,
+                    chunk_max_tokens,
+                    chunk_only,
                 );
                 for question in &request.question_refs {
                     if let Err(err) = shard.ensure_question_binding(question) {
@@ -558,8 +576,9 @@ pub fn build_ingestion_fingerprint(
     dataset: &ConvertedDataset,
     slice: &ResolvedSlice<'_>,
     checksum: &str,
+    ingestion_config: &IngestionConfig,
 ) -> String {
-    let config_repr = format!("{:?}", IngestionConfig::default());
+    let config_repr = format!("{:?}", ingestion_config);
     let mut hasher = Sha256::new();
     hasher.update(config_repr.as_bytes());
     let config_hash = format!("{:x}", hasher.finalize());
@@ -578,9 +597,15 @@ pub fn compute_ingestion_fingerprint(
     dataset: &ConvertedDataset,
     slice: &ResolvedSlice<'_>,
     converted_path: &Path,
+    ingestion_config: &IngestionConfig,
 ) -> Result<String> {
     let checksum = compute_file_checksum(converted_path)?;
-    Ok(build_ingestion_fingerprint(dataset, slice, &checksum))
+    Ok(build_ingestion_fingerprint(
+        dataset,
+        slice,
+        &checksum,
+        ingestion_config,
+    ))
 }
 
 pub fn load_cached_manifest(base_dir: &Path) -> Result<Option<CorpusManifest>> {
@@ -642,4 +667,108 @@ fn compute_file_checksum(path: &Path) -> Result<String> {
         hasher.update(&buffer[..read]);
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        datasets::{ConvertedDataset, ConvertedParagraph, ConvertedQuestion, DatasetKind},
+        slices::{CaseRef, SliceCaseEntry, SliceManifest, SliceParagraphEntry, SliceParagraphKind},
+    };
+    use chrono::Utc;
+
+    fn dummy_dataset() -> ConvertedDataset {
+        let question = ConvertedQuestion {
+            id: "q1".to_string(),
+            question: "What?".to_string(),
+            answers: vec!["A".to_string()],
+            is_impossible: false,
+        };
+        let paragraph = ConvertedParagraph {
+            id: "p1".to_string(),
+            title: "title".to_string(),
+            context: "context".to_string(),
+            questions: vec![question],
+        };
+
+        ConvertedDataset {
+            generated_at: Utc::now(),
+            metadata: crate::datasets::DatasetMetadata::for_kind(
+                DatasetKind::default(),
+                false,
+                None,
+            ),
+            source: "src".to_string(),
+            paragraphs: vec![paragraph],
+        }
+    }
+
+    fn dummy_slice<'a>(dataset: &'a ConvertedDataset) -> ResolvedSlice<'a> {
+        let paragraph = &dataset.paragraphs[0];
+        let question = &paragraph.questions[0];
+        let manifest = SliceManifest {
+            version: 1,
+            slice_id: "slice-1".to_string(),
+            dataset_id: dataset.metadata.id.clone(),
+            dataset_label: dataset.metadata.label.clone(),
+            dataset_source: dataset.source.clone(),
+            includes_unanswerable: false,
+            require_verified_chunks: false,
+            seed: 1,
+            requested_limit: Some(1),
+            requested_corpus: 1,
+            generated_at: Utc::now(),
+            case_count: 1,
+            positive_paragraphs: 1,
+            negative_paragraphs: 0,
+            total_paragraphs: 1,
+            negative_multiplier: 1.0,
+            cases: vec![SliceCaseEntry {
+                question_id: question.id.clone(),
+                paragraph_id: paragraph.id.clone(),
+            }],
+            paragraphs: vec![SliceParagraphEntry {
+                id: paragraph.id.clone(),
+                kind: SliceParagraphKind::Positive {
+                    question_ids: vec![question.id.clone()],
+                },
+                shard_path: None,
+            }],
+        };
+
+        ResolvedSlice {
+            manifest,
+            path: PathBuf::from("cache"),
+            paragraphs: dataset.paragraphs.iter().collect(),
+            cases: vec![CaseRef {
+                paragraph,
+                question,
+            }],
+        }
+    }
+
+    #[test]
+    fn fingerprint_changes_with_chunk_settings() {
+        let dataset = dummy_dataset();
+        let slice = dummy_slice(&dataset);
+        let checksum = "deadbeef";
+
+        let base_config = IngestionConfig::default();
+        let fp_base = build_ingestion_fingerprint(&dataset, &slice, checksum, &base_config);
+
+        let mut token_config = base_config.clone();
+        token_config.tuning.chunk_min_tokens += 1;
+        let fp_token = build_ingestion_fingerprint(&dataset, &slice, checksum, &token_config);
+        assert_ne!(fp_base, fp_token, "token bounds should affect fingerprint");
+
+        let mut chunk_only_config = base_config;
+        chunk_only_config.chunk_only = true;
+        let fp_chunk_only =
+            build_ingestion_fingerprint(&dataset, &slice, checksum, &chunk_only_config);
+        assert_ne!(
+            fp_base, fp_chunk_only,
+            "chunk-only mode should affect fingerprint"
+        );
+    }
 }

@@ -116,6 +116,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use common::storage::indexes::ensure_runtime_indexes;
     use common::storage::types::{
         knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
         text_chunk::TextChunk,
@@ -134,6 +135,9 @@ mod tests {
         db.apply_migrations()
             .await
             .expect("failed to apply migrations");
+        ensure_runtime_indexes(&db, 1536)
+            .await
+            .expect("failed to build runtime indexes");
 
         let user_id = "user_fts";
         let entity = KnowledgeEntity::new(
@@ -181,6 +185,9 @@ mod tests {
         db.apply_migrations()
             .await
             .expect("failed to apply migrations");
+        ensure_runtime_indexes(&db, 1536)
+            .await
+            .expect("failed to build runtime indexes");
 
         let user_id = "user_fts_desc";
         let entity = KnowledgeEntity::new(
@@ -228,6 +235,9 @@ mod tests {
         db.apply_migrations()
             .await
             .expect("failed to apply migrations");
+        ensure_runtime_indexes(&db, 1536)
+            .await
+            .expect("failed to build runtime indexes");
 
         let user_id = "user_fts_chunk";
         let chunk = TextChunk::new(

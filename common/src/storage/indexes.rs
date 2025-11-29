@@ -120,7 +120,7 @@ async fn ensure_hnsw_index(
             )
             .await
         }
-        HnswIndexState::Matches(_) => Ok(()),
+        HnswIndexState::Matches => Ok(()),
         HnswIndexState::Different(existing) => {
             info!(
                 index = spec.index_name,
@@ -182,7 +182,7 @@ async fn hnsw_index_state(
     };
 
     if current_dimension == expected_dimension as u64 {
-        Ok(HnswIndexState::Matches(current_dimension))
+        Ok(HnswIndexState::Matches)
     } else {
         Ok(HnswIndexState::Different(current_dimension))
     }
@@ -190,7 +190,7 @@ async fn hnsw_index_state(
 
 enum HnswIndexState {
     Missing,
-    Matches(u64),
+    Matches,
     Different(u64),
 }
 

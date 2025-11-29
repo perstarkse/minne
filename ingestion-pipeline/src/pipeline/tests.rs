@@ -212,9 +212,9 @@ impl PipelineServices for FailingServices {
     async fn prepare_chunks(
         &self,
         content: &TextContent,
-        range: std::ops::Range<usize>,
+        token_range: std::ops::Range<usize>,
     ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
-        self.inner.prepare_chunks(content, range).await
+        self.inner.prepare_chunks(content, token_range).await
     }
 }
 
@@ -254,7 +254,7 @@ impl PipelineServices for ValidationServices {
     async fn prepare_chunks(
         &self,
         _content: &TextContent,
-        _range: std::ops::Range<usize>,
+        _token_range: std::ops::Range<usize>,
     ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
         unreachable!("prepare_chunks should not be called after validation failure")
     }
@@ -275,12 +275,13 @@ async fn setup_db() -> SurrealDbClient {
 fn pipeline_config() -> IngestionConfig {
     IngestionConfig {
         tuning: IngestionTuning {
-            chunk_min_chars: 4,
-            chunk_max_chars: 64,
+            chunk_min_tokens: 4,
+            chunk_max_tokens: 64,
             chunk_insert_concurrency: 4,
             entity_embedding_concurrency: 2,
             ..IngestionTuning::default()
         },
+        chunk_only: false,
     }
 }
 
@@ -360,6 +361,69 @@ async fn ingestion_pipeline_happy_path_persists_entities() {
         ["prepare", "retrieve", "enrich", "convert"]
     );
     assert!(call_log[4..].iter().all(|entry| *entry == "chunk"));
+}
+
+#[tokio::test]
+async fn ingestion_pipeline_chunk_only_skips_analysis() {
+    let db = setup_db().await;
+    let worker_id = "worker-chunk-only";
+    let user_id = "user-999";
+    let services = Arc::new(MockServices::new(user_id));
+    let mut config = pipeline_config();
+    config.chunk_only = true;
+    let pipeline =
+        IngestionPipeline::with_services(Arc::new(db.clone()), config, services.clone())
+            .expect("pipeline");
+
+    let task = reserve_task(
+        &db,
+        worker_id,
+        IngestionPayload::Text {
+            text: "Chunk only payload".into(),
+            context: "Context".into(),
+            category: "notes".into(),
+            user_id: user_id.into(),
+        },
+        user_id,
+    )
+    .await;
+
+    pipeline
+        .process_task(task.clone())
+        .await
+        .expect("pipeline succeeds");
+
+    let stored_entities: Vec<KnowledgeEntity> = db
+        .get_all_stored_items::<KnowledgeEntity>()
+        .await
+        .expect("entities stored");
+    assert!(
+        stored_entities.is_empty(),
+        "chunk-only ingestion should not persist entities"
+    );
+    let relationship_count: Option<i64> = db
+        .client
+        .query("SELECT count() as count FROM relates_to;")
+        .await
+        .expect("query relationships")
+        .take::<Option<i64>>(0)
+        .unwrap_or_default();
+    assert_eq!(
+        relationship_count.unwrap_or(0),
+        0,
+        "chunk-only ingestion should not persist relationships"
+    );
+    let stored_chunks: Vec<TextChunk> = db
+        .get_all_stored_items::<TextChunk>()
+        .await
+        .expect("chunks stored");
+    assert!(
+        !stored_chunks.is_empty(),
+        "chunk-only ingestion should still persist chunks"
+    );
+
+    let call_log = services.calls.lock().await.clone();
+    assert_eq!(call_log, vec!["prepare", "chunk"]);
 }
 
 #[tokio::test]
