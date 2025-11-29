@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await
             .unwrap(),
         );
-        let settings = SystemSettings::get_current(&worker_db)
+        let _settings = SystemSettings::get_current(&worker_db)
             .await
             .expect("failed to load system settings");
 

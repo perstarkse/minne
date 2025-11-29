@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use common::storage::{db::SurrealDbClient, indexes::ensure_runtime_indexes};
-use serde::Deserialize;
 use tracing::info;
 
 // Remove and recreate HNSW indexes for changing embedding lengths, used at beginning if embedding length differs from default system settings.
@@ -50,6 +49,7 @@ pub async fn reset_namespace(db: &SurrealDbClient, namespace: &str, database: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
     use uuid::Uuid;
 
     #[derive(Debug, Deserialize)]
