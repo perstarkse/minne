@@ -29,7 +29,10 @@ impl RerankerPool {
     /// Build the pool at startup.
     /// `pool_size` controls max parallel reranks.
     pub fn new(pool_size: usize) -> Result<Arc<Self>, AppError> {
-        Self::new_with_options(pool_size, RerankInitOptions::default())
+        Self::new_with_options(
+            pool_size,
+            RerankInitOptions::new(fastembed::RerankerModel::JINARerankerV1TurboEn),
+        )
     }
 
     fn new_with_options(

@@ -63,6 +63,7 @@ pub struct RetrievalTuning {
     pub rerank_blend_weight: f32,
     pub rerank_scores_only: bool,
     pub rerank_keep_top: usize,
+    pub chunk_result_cap: usize,
 }
 
 impl Default for RetrievalTuning {
@@ -86,6 +87,7 @@ impl Default for RetrievalTuning {
             rerank_blend_weight: 0.65,
             rerank_scores_only: false,
             rerank_keep_top: 8,
+            chunk_result_cap: 5,
         }
     }
 }

@@ -172,13 +172,14 @@ async fn async_main() -> anyhow::Result<()> {
         .await
         .context("running retrieval evaluation")?;
 
-    let report_paths = report::write_reports(
+    let report = report::write_reports(
         &summary,
         parsed.config.report_dir.as_path(),
         parsed.config.summary_sample,
     )
     .with_context(|| format!("writing reports to {}", parsed.config.report_dir.display()))?;
-    let perf_log_path = perf::write_perf_logs(
+    let perf_mirrors = perf::mirror_perf_outputs(
+        &report.record,
         &summary,
         parsed.config.report_dir.as_path(),
         parsed.config.perf_log_json.as_deref(),
@@ -186,14 +187,27 @@ async fn async_main() -> anyhow::Result<()> {
     )
     .with_context(|| {
         format!(
-            "writing perf logs under {}",
+            "writing perf mirrors under {}",
             parsed.config.report_dir.display()
         )
     })?;
 
+    let perf_note = if perf_mirrors.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " | Perf mirrors: {}",
+            perf_mirrors
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+
     if summary.llm_cases > 0 {
         println!(
-            "[{}] Retrieval Precision@{k}: {precision:.3} ({correct}/{retrieval_total}) + LLM: {llm_answered}/{llm_total} ({llm_precision:.3}) → JSON: {json} | Markdown: {md} | Perf: {perf}",
+            "[{}] Retrieval Precision@{k}: {precision:.3} ({correct}/{retrieval_total}) + LLM: {llm_answered}/{llm_total} ({llm_precision:.3}) → JSON: {json} | Markdown: {md} | History: {history}{perf_note}",
             summary.dataset_label,
             k = summary.k,
             precision = summary.precision,
@@ -202,26 +216,28 @@ async fn async_main() -> anyhow::Result<()> {
             llm_answered = summary.llm_answered,
             llm_total = summary.llm_cases,
             llm_precision = summary.llm_precision,
-            json = report_paths.json.display(),
-            md = report_paths.markdown.display(),
-            perf = perf_log_path.display()
+            json = report.paths.json.display(),
+            md = report.paths.markdown.display(),
+            history = report.history_path.display(),
+            perf_note = perf_note,
         );
     } else {
         println!(
-            "[{}] Retrieval Precision@{k}: {precision:.3} ({correct}/{retrieval_total}) → JSON: {json} | Markdown: {md} | Perf: {perf}",
+            "[{}] Retrieval Precision@{k}: {precision:.3} ({correct}/{retrieval_total}) → JSON: {json} | Markdown: {md} | History: {history}{perf_note}",
             summary.dataset_label,
             k = summary.k,
             precision = summary.precision,
             correct = summary.correct,
             retrieval_total = summary.retrieval_cases,
-            json = report_paths.json.display(),
-            md = report_paths.markdown.display(),
-            perf = perf_log_path.display()
+            json = report.paths.json.display(),
+            md = report.paths.markdown.display(),
+            history = report.history_path.display(),
+            perf_note = perf_note,
         );
     }
 
     if parsed.config.perf_log_console {
-        perf::print_console_summary(&summary);
+        perf::print_console_summary(&report.record);
     }
 
     Ok(())

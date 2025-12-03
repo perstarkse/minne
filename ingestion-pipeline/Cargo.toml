@@ -30,10 +30,11 @@ base64 = { workspace = true }
 pdf-extract = "0.9"
 lopdf = "0.32"
 bytes = { workspace = true }
-
-common = { path = "../common" }
-retrieval-pipeline = { path = "../retrieval-pipeline" }
 async-trait = { workspace = true }
 state-machines = { workspace = true }
+tokenizers = { workspace = true }
+common = { path = "../common" }
+retrieval-pipeline = { path = "../retrieval-pipeline" }
+
 [features]
 docker = []

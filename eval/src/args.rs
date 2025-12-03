@@ -52,14 +52,6 @@ impl std::fmt::Display for EmbeddingBackend {
 
 #[derive(Debug, Clone, Args)]
 pub struct RetrievalSettings {
-    /// Minimum characters per chunk for text splitting
-    #[arg(long, default_value_t = 500)]
-    pub chunk_min_chars: usize,
-
-    /// Maximum characters per chunk for text splitting
-    #[arg(long, default_value_t = 2000)]
-    pub chunk_max_chars: usize,
-
     /// Override chunk vector candidate cap
     #[arg(long)]
     pub chunk_vector_take: Option<usize>,
@@ -67,10 +59,6 @@ pub struct RetrievalSettings {
     /// Override chunk FTS candidate cap
     #[arg(long)]
     pub chunk_fts_take: Option<usize>,
-
-    /// Override chunk token budget estimate for assembly
-    #[arg(long)]
-    pub chunk_token_budget: Option<usize>,
 
     /// Override average characters per token used for budgeting
     #[arg(long)]
@@ -80,17 +68,21 @@ pub struct RetrievalSettings {
     #[arg(long)]
     pub max_chunks_per_entity: Option<usize>,
 
-    /// Disable the FastEmbed reranking stage
-    #[arg(long = "no-rerank", action = clap::ArgAction::SetFalse)]
+    /// Enable the FastEmbed reranking stage
+    #[arg(long = "rerank", action = clap::ArgAction::SetTrue, default_value_t = false)]
     pub rerank: bool,
 
     /// Reranking engine pool size / parallelism
-    #[arg(long, default_value_t = 16)]
+    #[arg(long, default_value_t = 4)]
     pub rerank_pool_size: usize,
 
     /// Keep top-N entities after reranking
     #[arg(long, default_value_t = 10)]
     pub rerank_keep_top: usize,
+
+    /// Cap the number of chunks returned by retrieval (revised strategy)
+    #[arg(long, default_value_t = 5)]
+    pub chunk_result_cap: usize,
 
     /// Require verified chunks (disable with --llm-mode)
     #[arg(skip = true)]
@@ -104,16 +96,14 @@ pub struct RetrievalSettings {
 impl Default for RetrievalSettings {
     fn default() -> Self {
         Self {
-            chunk_min_chars: 500,
-            chunk_max_chars: 2_000,
             chunk_vector_take: None,
             chunk_fts_take: None,
-            chunk_token_budget: None,
             chunk_avg_chars_per_token: None,
             max_chunks_per_entity: None,
-            rerank: true,
-            rerank_pool_size: 16,
+            rerank: false,
+            rerank_pool_size: 4,
             rerank_keep_top: 10,
+            chunk_result_cap: 5,
             require_verified_chunks: true,
             strategy: RetrievalStrategy::Initial,
         }
@@ -175,7 +165,7 @@ pub struct Config {
     pub retrieval: RetrievalSettings,
 
     /// Concurrency level
-    #[arg(long, default_value_t = 4)]
+    #[arg(long, default_value_t = 1)]
     pub concurrency: usize,
 
     /// Embedding backend
@@ -195,19 +185,23 @@ pub struct Config {
     pub ingestion_cache_dir: PathBuf,
 
     /// Minimum tokens per chunk for ingestion
-    #[arg(long, default_value_t = 500)]
+    #[arg(long, default_value_t = 256)]
     pub ingest_chunk_min_tokens: usize,
 
     /// Maximum tokens per chunk for ingestion
-    #[arg(long, default_value_t = 2_000)]
+    #[arg(long, default_value_t = 512)]
     pub ingest_chunk_max_tokens: usize,
+
+    /// Overlap between chunks during ingestion (tokens)
+    #[arg(long, default_value_t = 50)]
+    pub ingest_chunk_overlap_tokens: usize,
 
     /// Run ingestion in chunk-only mode (skip analyzer/graph generation)
     #[arg(long)]
     pub ingest_chunks_only: bool,
 
     /// Number of paragraphs to ingest concurrently
-    #[arg(long, default_value_t = 5)]
+    #[arg(long, default_value_t = 10)]
     pub ingestion_batch_size: usize,
 
     /// Maximum retries for ingestion failures per paragraph
@@ -354,19 +348,21 @@ impl Config {
         }
 
         // Validations
-        if self.retrieval.chunk_min_chars >= self.retrieval.chunk_max_chars {
-            return Err(anyhow!(
-                "--chunk-min must be less than --chunk-max (got {} >= {})",
-                self.retrieval.chunk_min_chars,
-                self.retrieval.chunk_max_chars
-            ));
-        }
-
-        if self.ingest_chunk_min_tokens == 0 || self.ingest_chunk_min_tokens >= self.ingest_chunk_max_tokens {
+        if self.ingest_chunk_min_tokens == 0
+            || self.ingest_chunk_min_tokens >= self.ingest_chunk_max_tokens
+        {
             return Err(anyhow!(
                 "--ingest-chunk-min-tokens must be greater than zero and less than --ingest-chunk-max-tokens (got {} >= {})",
                 self.ingest_chunk_min_tokens,
                 self.ingest_chunk_max_tokens
+            ));
+        }
+
+        if self.ingest_chunk_overlap_tokens >= self.ingest_chunk_min_tokens {
+            return Err(anyhow!(
+                "--ingest-chunk-overlap-tokens ({}) must be less than --ingest-chunk-min-tokens ({})",
+                self.ingest_chunk_overlap_tokens,
+                self.ingest_chunk_min_tokens
             ));
         }
 
@@ -444,9 +440,7 @@ pub struct ParsedArgs {
 pub fn parse() -> Result<ParsedArgs> {
     let mut config = Config::parse();
     config.finalize()?;
-    Ok(ParsedArgs {
-        config,
-    })
+    Ok(ParsedArgs { config })
 }
 
 pub fn ensure_parent(path: &Path) -> Result<()> {

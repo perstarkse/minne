@@ -19,7 +19,7 @@ pub struct ReportPaths {
     pub markdown: PathBuf,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluationReport {
     pub overview: OverviewSection,
     pub dataset: DatasetSection,
@@ -28,14 +28,15 @@ pub struct EvaluationReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm: Option<LlmSection>,
     pub performance: PerformanceSection,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub misses: Vec<MissEntry>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub llm_cases: Vec<LlmCaseEntry>,
+    #[serde(default)]
     pub detailed_report: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverviewSection {
     pub generated_at: String,
     pub run_label: Option<String>,
@@ -43,7 +44,7 @@ pub struct OverviewSection {
     pub filtered_questions: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetSection {
     pub id: String,
     pub label: String,
@@ -55,7 +56,7 @@ pub struct DatasetSection {
     pub embedding_dimension: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SliceSection {
     pub id: String,
     pub seed: u64,
@@ -69,7 +70,7 @@ pub struct SliceSection {
     pub negative_multiplier: f32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalSection {
     pub k: usize,
     pub cases: usize,
@@ -86,16 +87,21 @@ pub struct RetrievalSection {
     pub rerank_enabled: bool,
     pub rerank_pool_size: Option<usize>,
     pub rerank_keep_top: usize,
+    pub chunk_result_cap: usize,
+    pub ingest_chunk_min_tokens: usize,
+    pub ingest_chunk_max_tokens: usize,
+    pub ingest_chunk_overlap_tokens: usize,
+    pub ingest_chunks_only: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmSection {
     pub cases: usize,
     pub answered: usize,
     pub precision: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceSection {
     pub openai_base_url: String,
     pub ingestion_ms: u128,
@@ -111,7 +117,7 @@ pub struct PerformanceSection {
     pub negative_paragraphs_reused: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MissEntry {
     pub question_id: String,
     pub paragraph_title: String,
@@ -122,7 +128,7 @@ pub struct MissEntry {
     pub retrieved: Vec<RetrievedSnippet>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmCaseEntry {
     pub question_id: String,
     pub answered: bool,
@@ -131,12 +137,19 @@ pub struct LlmCaseEntry {
     pub retrieved: Vec<RetrievedSnippet>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievedSnippet {
     pub rank: usize,
     pub source_id: String,
     pub entity_name: String,
     pub matched: bool,
+}
+
+#[derive(Debug)]
+pub struct ReportOutcome {
+    pub record: EvaluationReport,
+    pub paths: ReportPaths,
+    pub history_path: PathBuf,
 }
 
 impl EvaluationReport {
@@ -188,6 +201,11 @@ impl EvaluationReport {
             rerank_enabled: summary.rerank_enabled,
             rerank_pool_size: summary.rerank_pool_size,
             rerank_keep_top: summary.rerank_keep_top,
+            chunk_result_cap: summary.chunk_result_cap,
+            ingest_chunk_min_tokens: summary.ingest_chunk_min_tokens,
+            ingest_chunk_max_tokens: summary.ingest_chunk_max_tokens,
+            ingest_chunk_overlap_tokens: summary.ingest_chunk_overlap_tokens,
+            ingest_chunks_only: summary.ingest_chunks_only,
         };
 
         let llm = if summary.llm_cases > 0 {
@@ -215,24 +233,30 @@ impl EvaluationReport {
             negative_paragraphs_reused: summary.negative_paragraphs_reused,
         };
 
-        let misses = summary
-            .cases
-            .iter()
-            .filter(|case| !case.matched && !case.is_impossible)
-            .take(sample)
-            .map(MissEntry::from_case)
-            .collect();
-
-        let llm_cases = if llm.is_some() {
-            summary
+        let (misses, llm_cases) = if summary.detailed_report {
+            let misses = summary
                 .cases
                 .iter()
-                .filter(|case| case.is_impossible)
+                .filter(|case| !case.matched && !case.is_impossible)
                 .take(sample)
-                .map(LlmCaseEntry::from_case)
-                .collect()
+                .map(MissEntry::from_case)
+                .collect();
+
+            let llm_cases = if llm.is_some() {
+                summary
+                    .cases
+                    .iter()
+                    .filter(|case| case.is_impossible)
+                    .take(sample)
+                    .map(LlmCaseEntry::from_case)
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            (misses, llm_cases)
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
 
         Self {
@@ -299,7 +323,7 @@ pub fn write_reports(
     summary: &EvaluationSummary,
     report_dir: &Path,
     sample: usize,
-) -> Result<ReportPaths> {
+) -> Result<ReportOutcome> {
     fs::create_dir_all(report_dir)
         .with_context(|| format!("creating report directory {}", report_dir.display()))?;
     let dataset_dir = dataset_report_dir(report_dir, &summary.dataset_id);
@@ -331,11 +355,15 @@ pub fn write_reports(
     fs::write(&latest_md, markdown)
         .with_context(|| format!("writing latest Markdown report to {}", latest_md.display()))?;
 
-    record_history(summary, &dataset_dir)?;
+    let history_path = record_history(&report, &dataset_dir)?;
 
-    Ok(ReportPaths {
-        json: json_path,
-        markdown: md_path,
+    Ok(ReportOutcome {
+        record: report,
+        paths: ReportPaths {
+            json: json_path,
+            markdown: md_path,
+        },
+        history_path,
     })
 }
 
@@ -555,10 +583,14 @@ fn render_markdown(report: &EvaluationReport) -> String {
     );
 
     if report.misses.is_empty() {
-        md.push_str("\\n_All evaluated retrieval queries matched within the top-k window._\\n");
         if report.detailed_report {
             md.push_str(
-                "\\nSuccess measures were captured for each query (entity, chunk text, chunk ID).\\n",
+                "\\n_All evaluated retrieval queries matched within the top-k window._\\n\
+                \\nSuccess measures were captured for each query (entity, chunk text, chunk ID).\\n",
+            );
+        } else {
+            md.push_str(
+                "\\n_Misses omitted. Re-run with `--detailed-report` to see sampled failures._\\n",
             );
         }
     } else {
@@ -597,7 +629,11 @@ fn render_markdown(report: &EvaluationReport) -> String {
     if report.llm.is_some() {
         md.push_str("\\n## LLM-Only Cases (sample)\\n\\n");
         if report.llm_cases.is_empty() {
-            md.push_str("All LLM-only cases matched within the evaluation window.\\n");
+            if report.detailed_report {
+                md.push_str("All LLM-only cases matched within the evaluation window.\\n");
+            } else {
+                md.push_str("LLM-only cases omitted. Re-run with `--detailed-report` to see samples.\\n");
+            }
         } else {
             md.push_str("| Question ID | Answered | Match Rank | Top Retrieved |\\n");
             md.push_str("| --- | --- | --- | --- |\\n");
@@ -681,7 +717,7 @@ pub fn dataset_report_dir(report_dir: &Path, dataset_id: &str) -> PathBuf {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct HistoryEntry {
+struct LegacyHistoryEntry {
     generated_at: String,
     run_label: Option<String>,
     dataset_id: String,
@@ -719,7 +755,18 @@ struct HistoryEntry {
     rerank_enabled: bool,
     rerank_keep_top: usize,
     rerank_pool_size: Option<usize>,
-    delta: Option<HistoryDelta>,
+    #[serde(default)]
+    chunk_result_cap: Option<usize>,
+    #[serde(default)]
+    ingest_chunk_min_tokens: Option<usize>,
+    #[serde(default)]
+    ingest_chunk_max_tokens: Option<usize>,
+    #[serde(default)]
+    ingest_chunk_overlap_tokens: Option<usize>,
+    #[serde(default)]
+    ingest_chunks_only: Option<bool>,
+    #[serde(default)]
+    delta: Option<LegacyHistoryDelta>,
     openai_base_url: String,
     ingestion_ms: u128,
     #[serde(default)]
@@ -727,92 +774,173 @@ struct HistoryEntry {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct HistoryDelta {
+struct LegacyHistoryDelta {
     precision: f64,
     precision_at_1: f64,
     latency_avg_ms: f64,
 }
 
-fn record_history(summary: &EvaluationSummary, report_dir: &Path) -> Result<()> {
-    let path = report_dir.join("evaluations.json");
-    let mut entries: Vec<HistoryEntry> = if path.exists() {
-        let contents = fs::read(&path)
-            .with_context(|| format!("reading evaluation log {}", path.display()))?;
-        match serde_json::from_slice(&contents) {
-            Ok(entries) => entries,
-            Err(err) => {
-                let timestamp = Utc::now().format("%Y%m%dT%H%M%S");
-                let backup_path =
-                    report_dir.join(format!("evaluations.json.corrupted.{}", timestamp));
+fn default_stage_latency() -> StageLatencyBreakdown {
+    StageLatencyBreakdown {
+        embed: LatencyStats::default(),
+        collect_candidates: LatencyStats::default(),
+        graph_expansion: LatencyStats::default(),
+        chunk_attach: LatencyStats::default(),
+        rerank: LatencyStats::default(),
+        assemble: LatencyStats::default(),
+    }
+}
+
+fn convert_legacy_entry(entry: LegacyHistoryEntry) -> EvaluationReport {
+    let overview = OverviewSection {
+        generated_at: entry.generated_at,
+        run_label: entry.run_label,
+        total_cases: entry.slice_cases,
+        filtered_questions: 0,
+    };
+
+    let dataset = DatasetSection {
+        id: entry.dataset_id,
+        label: entry.dataset_label,
+        source: String::new(),
+        includes_unanswerable: entry.llm_cases > 0,
+        require_verified_chunks: true,
+        embedding_backend: entry.embedding_backend,
+        embedding_model: entry.embedding_model,
+        embedding_dimension: 0,
+    };
+
+    let slice = SliceSection {
+        id: entry.slice_id,
+        seed: entry.slice_seed,
+        window_offset: entry.slice_window_offset,
+        window_length: entry.slice_window_length,
+        slice_cases: entry.slice_cases,
+        ledger_total_cases: entry.slice_total_cases,
+        positives: 0,
+        negatives: 0,
+        total_paragraphs: 0,
+        negative_multiplier: 0.0,
+    };
+
+    let retrieval_cases = if entry.retrieval_cases > 0 {
+        entry.retrieval_cases
+    } else {
+        entry.slice_cases.saturating_sub(entry.llm_cases)
+    };
+    let retrieval_precision = if entry.retrieval_precision > 0.0 {
+        entry.retrieval_precision
+    } else {
+        entry.precision
+    };
+
+    let retrieval = RetrievalSection {
+        k: entry.k,
+        cases: retrieval_cases,
+        correct: 0,
+        precision: retrieval_precision,
+        precision_at_1: entry.precision_at_1,
+        precision_at_2: entry.precision_at_2,
+        precision_at_3: entry.precision_at_3,
+        mrr: entry.mrr,
+        average_ndcg: entry.average_ndcg,
+        latency: entry.latency_ms,
+        concurrency: 0,
+        strategy: "unknown".into(),
+        rerank_enabled: entry.rerank_enabled,
+        rerank_pool_size: entry.rerank_pool_size,
+        rerank_keep_top: entry.rerank_keep_top,
+        chunk_result_cap: entry.chunk_result_cap.unwrap_or(5),
+        ingest_chunk_min_tokens: entry.ingest_chunk_min_tokens.unwrap_or(256),
+        ingest_chunk_max_tokens: entry.ingest_chunk_max_tokens.unwrap_or(512),
+        ingest_chunk_overlap_tokens: entry.ingest_chunk_overlap_tokens.unwrap_or(50),
+        ingest_chunks_only: entry.ingest_chunks_only.unwrap_or(false),
+    };
+
+    let llm = if entry.llm_cases > 0 {
+        Some(LlmSection {
+            cases: entry.llm_cases,
+            answered: 0,
+            precision: entry.llm_precision,
+        })
+    } else {
+        None
+    };
+
+    let performance = PerformanceSection {
+        openai_base_url: entry.openai_base_url,
+        ingestion_ms: entry.ingestion_ms,
+        namespace_seed_ms: entry.namespace_seed_ms,
+        evaluation_stages_ms: EvaluationStageTimings::default(),
+        stage_latency: default_stage_latency(),
+        namespace_reused: false,
+        ingestion_reused: entry.ingestion_reused,
+        embeddings_reused: entry.ingestion_embeddings_reused,
+        ingestion_cache_path: String::new(),
+        corpus_paragraphs: 0,
+        positive_paragraphs_reused: 0,
+        negative_paragraphs_reused: 0,
+    };
+
+    EvaluationReport {
+        overview,
+        dataset,
+        slice,
+        retrieval,
+        llm,
+        performance,
+        misses: Vec::new(),
+        llm_cases: Vec::new(),
+        detailed_report: false,
+    }
+}
+
+fn load_history(path: &Path) -> Result<Vec<EvaluationReport>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let contents =
+        fs::read(path).with_context(|| format!("reading evaluation log {}", path.display()))?;
+
+    if let Ok(entries) = serde_json::from_slice::<Vec<EvaluationReport>>(&contents) {
+        return Ok(entries);
+    }
+
+    match serde_json::from_slice::<Vec<LegacyHistoryEntry>>(&contents) {
+        Ok(entries) => Ok(entries.into_iter().map(convert_legacy_entry).collect()),
+        Err(err) => {
+            let timestamp = Utc::now().format("%Y%m%dT%H%M%S");
+            let backup_path = path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(format!("evaluations.json.corrupted.{timestamp}"));
+            warn!(
+                path = %path.display(),
+                backup = %backup_path.display(),
+                error = %err,
+                "Evaluation history file is corrupted; backing up and starting fresh"
+            );
+            if let Err(e) = fs::rename(path, &backup_path) {
                 warn!(
                     path = %path.display(),
-                    backup = %backup_path.display(),
-                    error = %err,
-                    "Evaluation history file is corrupted; backing up and starting fresh"
+                    error = %e,
+                    "Failed to backup corrupted evaluation history"
                 );
-                if let Err(e) = fs::rename(&path, &backup_path) {
-                    warn!(
-                        path = %path.display(),
-                        error = %e,
-                        "Failed to backup corrupted evaluation history"
-                    );
-                }
-                Vec::new()
             }
+            Ok(Vec::new())
         }
-    } else {
-        Vec::new()
-    };
+    }
+}
 
-    let delta = entries.last().map(|prev| HistoryDelta {
-        precision: summary.precision - prev.precision,
-        precision_at_1: summary.precision_at_1 - prev.precision_at_1,
-        latency_avg_ms: summary.latency_ms.avg - prev.latency_ms.avg,
-    });
-
-    let entry = HistoryEntry {
-        generated_at: format_timestamp(&summary.generated_at),
-        run_label: summary.run_label.clone(),
-        dataset_id: summary.dataset_id.clone(),
-        dataset_label: summary.dataset_label.clone(),
-        slice_id: summary.slice_id.clone(),
-        slice_seed: summary.slice_seed,
-        slice_window_offset: summary.slice_window_offset,
-        slice_window_length: summary.slice_window_length,
-        slice_cases: summary.slice_cases,
-        slice_total_cases: summary.slice_total_cases,
-        k: summary.k,
-        limit: summary.limit,
-        precision: summary.precision,
-        precision_at_1: summary.precision_at_1,
-        precision_at_2: summary.precision_at_2,
-        precision_at_3: summary.precision_at_3,
-        mrr: summary.mrr,
-        average_ndcg: summary.average_ndcg,
-        retrieval_cases: summary.retrieval_cases,
-        retrieval_precision: summary.retrieval_precision,
-        llm_cases: summary.llm_cases,
-        llm_precision: summary.llm_precision,
-        duration_ms: summary.duration_ms,
-        latency_ms: summary.latency_ms.clone(),
-        embedding_backend: summary.embedding_backend.clone(),
-        embedding_model: summary.embedding_model.clone(),
-        ingestion_reused: summary.ingestion_reused,
-        ingestion_embeddings_reused: summary.ingestion_embeddings_reused,
-        rerank_enabled: summary.rerank_enabled,
-        rerank_keep_top: summary.rerank_keep_top,
-        rerank_pool_size: summary.rerank_pool_size,
-        delta,
-        openai_base_url: summary.perf.openai_base_url.clone(),
-        ingestion_ms: summary.perf.ingestion_ms,
-        namespace_seed_ms: summary.perf.namespace_seed_ms,
-    };
-
-    entries.push(entry);
+fn record_history(report: &EvaluationReport, report_dir: &Path) -> Result<PathBuf> {
+    let path = report_dir.join("evaluations.json");
+    let mut entries = load_history(&path)?;
+    entries.push(report.clone());
 
     let blob = serde_json::to_vec_pretty(&entries).context("serialising evaluation log")?;
     fs::write(&path, blob).with_context(|| format!("writing evaluation log {}", path.display()))?;
-    Ok(())
+    Ok(path)
 }
 
 #[cfg(test)]
@@ -822,6 +950,7 @@ mod tests {
         EvaluationStageTimings, PerformanceTimings, RetrievedSummary, StageLatencyBreakdown,
     };
     use chrono::Utc;
+    use tempfile::tempdir;
 
     fn latency(ms: f64) -> LatencyStats {
         LatencyStats {
@@ -961,9 +1090,13 @@ mod tests {
             concurrency: 2,
             detailed_report: true,
             retrieval_strategy: "initial".into(),
+            chunk_result_cap: 5,
+            ingest_chunk_min_tokens: 256,
+            ingest_chunk_max_tokens: 512,
+            ingest_chunk_overlap_tokens: 50,
+            ingest_chunks_only: false,
             chunk_vector_take: 50,
             chunk_fts_take: 50,
-            chunk_token_budget: 10_000,
             chunk_avg_chars_per_token: 4,
             max_chunks_per_entity: 4,
             cases,
@@ -986,5 +1119,26 @@ mod tests {
         let md = render_markdown(&report);
         assert!(!md.contains("LLM Mode Metrics"));
         assert!(!md.contains("LLM-Only Cases"));
+    }
+
+    #[test]
+    fn evaluations_history_captures_strategy_and_concurrency() {
+        let tmp = tempdir().unwrap();
+        let summary = sample_summary(false);
+
+        let outcome =
+            write_reports(&summary, tmp.path(), 5).expect("writing consolidated reports");
+        let contents =
+            std::fs::read_to_string(&outcome.history_path).expect("reading evaluations history");
+        let entries: Vec<EvaluationReport> =
+            serde_json::from_str(&contents).expect("parsing evaluations history");
+        assert_eq!(entries.len(), 1);
+        let stored = &entries[0];
+        assert_eq!(stored.retrieval.concurrency, summary.concurrency);
+        assert_eq!(stored.retrieval.strategy, summary.retrieval_strategy);
+        assert_eq!(
+            stored.performance.evaluation_stages_ms.run_queries_ms,
+            summary.perf.evaluation_stage_ms.run_queries_ms
+        );
     }
 }

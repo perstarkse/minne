@@ -6,6 +6,7 @@ use retrieval_pipeline::{
     PipelineDiagnostics, PipelineStageTimings, RetrievedChunk, RetrievedEntity, StrategyOutput,
 };
 use serde::{Deserialize, Serialize};
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Serialize)]
 pub struct EvaluationSummary {
@@ -68,9 +69,13 @@ pub struct EvaluationSummary {
     pub concurrency: usize,
     pub detailed_report: bool,
     pub retrieval_strategy: String,
+    pub chunk_result_cap: usize,
+    pub ingest_chunk_min_tokens: usize,
+    pub ingest_chunk_max_tokens: usize,
+    pub ingest_chunks_only: bool,
+    pub ingest_chunk_overlap_tokens: usize,
     pub chunk_vector_take: usize,
     pub chunk_fts_take: usize,
-    pub chunk_token_budget: usize,
     pub chunk_avg_chars_per_token: usize,
     pub max_chunks_per_entity: usize,
     pub cases: Vec<CaseSummary>,
@@ -107,7 +112,17 @@ pub struct LatencyStats {
     pub p95: u128,
 }
 
-#[derive(Debug, Clone, Serialize)]
+impl Default for LatencyStats {
+    fn default() -> Self {
+        Self {
+            avg: 0.0,
+            p50: 0,
+            p95: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StageLatencyBreakdown {
     pub embed: LatencyStats,
     pub collect_candidates: LatencyStats,
@@ -117,7 +132,7 @@ pub struct StageLatencyBreakdown {
     pub assemble: LatencyStats,
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct EvaluationStageTimings {
     pub prepare_slice_ms: u128,
     pub prepare_db_ms: u128,
@@ -128,7 +143,7 @@ pub struct EvaluationStageTimings {
     pub finalize_ms: u128,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PerformanceTimings {
     pub openai_base_url: String,
     pub ingestion_ms: u128,
@@ -254,8 +269,44 @@ pub fn text_contains_answer(text: &str, answers: &[String]) -> bool {
     if answers.is_empty() {
         return true;
     }
-    let haystack = text.to_ascii_lowercase();
-    answers.iter().any(|needle| haystack.contains(needle))
+    let haystack = normalize_for_match(text);
+    answers
+        .iter()
+        .map(|needle| normalize_for_match(needle))
+        .any(|needle| !needle.is_empty() && haystack.contains(&needle))
+}
+
+fn normalize_for_match(input: &str) -> String {
+    // NFKC normalize, lowercase, and collapse whitespace/punctuation to a single space
+    // to reduce false negatives from formatting or punctuation differences.
+    let mut out = String::with_capacity(input.len());
+    let mut last_space = false;
+    for ch in input.nfkc().flat_map(|c| c.to_lowercase()) {
+        let is_space = ch.is_whitespace();
+        let is_punct = ch.is_ascii_punctuation()
+            || matches!(
+                ch,
+                '“' | '”' | '‘' | '’' | '«' | '»' | '–' | '—' | '…' | '·' | '•'
+            );
+        if is_space || is_punct {
+            if !last_space {
+                out.push(' ');
+                last_space = true;
+            }
+        } else {
+            out.push(ch);
+            last_space = false;
+        }
+    }
+
+    let trimmed = out.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    trimmed
+        .trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace())
+        .to_string()
 }
 
 fn chunk_snippet(text: &str) -> String {
