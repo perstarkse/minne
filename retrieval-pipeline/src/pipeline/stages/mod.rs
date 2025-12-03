@@ -675,7 +675,13 @@ pub fn assemble_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
         ctx.config.tuning.lexical_match_weight,
     );
 
-    let limit = ctx.config.tuning.chunk_vector_take.max(1);
+    // Limit how many chunks we return to keep context size reasonable.
+    let limit = ctx
+        .config
+        .tuning
+        .chunk_result_cap
+        .max(1)
+        .min(ctx.config.tuning.chunk_vector_take.max(1));
     if chunk_values.len() > limit {
         chunk_values.truncate(limit);
     }

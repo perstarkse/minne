@@ -155,6 +155,7 @@ impl PipelineServices for MockServices {
         &self,
         content: &TextContent,
         _range: std::ops::Range<usize>,
+        _overlap_tokens: usize,
     ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
         self.record("chunk").await;
         Ok(vec![EmbeddedTextChunk {
@@ -213,8 +214,11 @@ impl PipelineServices for FailingServices {
         &self,
         content: &TextContent,
         token_range: std::ops::Range<usize>,
+        overlap_tokens: usize,
     ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
-        self.inner.prepare_chunks(content, token_range).await
+        self.inner
+            .prepare_chunks(content, token_range, overlap_tokens)
+            .await
     }
 }
 
@@ -255,6 +259,7 @@ impl PipelineServices for ValidationServices {
         &self,
         _content: &TextContent,
         _token_range: std::ops::Range<usize>,
+        _overlap_tokens: usize,
     ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
         unreachable!("prepare_chunks should not be called after validation failure")
     }

@@ -1,160 +1,37 @@
 use std::{
-    fs::{self, OpenOptions},
-    io::Write,
+    fs,
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
-use serde::Serialize;
 
 use crate::{
     args,
-    eval::{format_timestamp, EvaluationStageTimings, EvaluationSummary},
-    report,
+    eval::EvaluationSummary,
+    report::{self, EvaluationReport},
 };
 
-#[derive(Debug, Serialize)]
-struct PerformanceLogEntry {
-    generated_at: String,
-    dataset_id: String,
-    dataset_label: String,
-    run_label: Option<String>,
-    retrieval_strategy: String,
-    slice_id: String,
-    slice_seed: u64,
-    slice_window_offset: usize,
-    slice_window_length: usize,
-    limit: Option<usize>,
-    total_cases: usize,
-    correct: usize,
-    precision: f64,
-    retrieval_cases: usize,
-    llm_cases: usize,
-    llm_answered: usize,
-    llm_precision: f64,
-    k: usize,
-    openai_base_url: String,
-    ingestion: IngestionPerf,
-    namespace: NamespacePerf,
-    retrieval: RetrievalPerf,
-    evaluation_stages: EvaluationStageTimings,
-}
-
-#[derive(Debug, Serialize)]
-struct IngestionPerf {
-    duration_ms: u128,
-    cache_path: String,
-    reused: bool,
-    embeddings_reused: bool,
-    fingerprint: String,
-    positives_total: usize,
-    negatives_total: usize,
-}
-
-#[derive(Debug, Serialize)]
-struct NamespacePerf {
-    reused: bool,
-    seed_ms: Option<u128>,
-}
-
-#[derive(Debug, Serialize)]
-struct RetrievalPerf {
-    latency_ms: crate::eval::LatencyStats,
-    stage_latency: crate::eval::StageLatencyBreakdown,
-    concurrency: usize,
-    rerank_enabled: bool,
-    rerank_pool_size: Option<usize>,
-    rerank_keep_top: usize,
-    evaluated_cases: usize,
-}
-
-impl PerformanceLogEntry {
-    fn from_summary(summary: &EvaluationSummary) -> Self {
-        let ingestion = IngestionPerf {
-            duration_ms: summary.perf.ingestion_ms,
-            cache_path: summary.ingestion_cache_path.clone(),
-            reused: summary.ingestion_reused,
-            embeddings_reused: summary.ingestion_embeddings_reused,
-            fingerprint: summary.ingestion_fingerprint.clone(),
-            positives_total: summary.slice_positive_paragraphs,
-            negatives_total: summary.slice_negative_paragraphs,
-        };
-
-        let namespace = NamespacePerf {
-            reused: summary.namespace_reused,
-            seed_ms: summary.perf.namespace_seed_ms,
-        };
-
-        let retrieval = RetrievalPerf {
-            latency_ms: summary.latency_ms.clone(),
-            stage_latency: summary.perf.stage_latency.clone(),
-            concurrency: summary.concurrency,
-            rerank_enabled: summary.rerank_enabled,
-            rerank_pool_size: summary.rerank_pool_size,
-            rerank_keep_top: summary.rerank_keep_top,
-            evaluated_cases: summary.retrieval_cases,
-        };
-
-        Self {
-            generated_at: format_timestamp(&summary.generated_at),
-            dataset_id: summary.dataset_id.clone(),
-            dataset_label: summary.dataset_label.clone(),
-            run_label: summary.run_label.clone(),
-            retrieval_strategy: summary.retrieval_strategy.clone(),
-            slice_id: summary.slice_id.clone(),
-            slice_seed: summary.slice_seed,
-            slice_window_offset: summary.slice_window_offset,
-            slice_window_length: summary.slice_window_length,
-            limit: summary.limit,
-            total_cases: summary.total_cases,
-            correct: summary.correct,
-            precision: summary.precision,
-            retrieval_cases: summary.retrieval_cases,
-            llm_cases: summary.llm_cases,
-            llm_answered: summary.llm_answered,
-            llm_precision: summary.llm_precision,
-            k: summary.k,
-            openai_base_url: summary.perf.openai_base_url.clone(),
-            ingestion,
-            namespace,
-            retrieval,
-            evaluation_stages: summary.perf.evaluation_stage_ms.clone(),
-        }
-    }
-}
-
-pub fn write_perf_logs(
+pub fn mirror_perf_outputs(
+    record: &EvaluationReport,
     summary: &EvaluationSummary,
     report_root: &Path,
     extra_json: Option<&Path>,
     extra_dir: Option<&Path>,
-) -> Result<PathBuf> {
-    let entry = PerformanceLogEntry::from_summary(summary);
-    let dataset_dir = report::dataset_report_dir(report_root, &summary.dataset_id);
-    fs::create_dir_all(&dataset_dir)
-        .with_context(|| format!("creating dataset perf directory {}", dataset_dir.display()))?;
-
-    let log_path = dataset_dir.join("perf-log.jsonl");
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .with_context(|| format!("opening perf log {}", log_path.display()))?;
-    let line = serde_json::to_vec(&entry).context("serialising perf log entry")?;
-    file.write_all(&line)?;
-    file.write_all(b"\n")?;
-    file.flush()?;
+) -> Result<Vec<PathBuf>> {
+    let mut written = Vec::new();
 
     if let Some(path) = extra_json {
         args::ensure_parent(path)?;
-        let blob = serde_json::to_vec_pretty(&entry).context("serialising perf log JSON")?;
+        let blob = serde_json::to_vec_pretty(record).context("serialising perf log JSON")?;
         fs::write(path, blob)
             .with_context(|| format!("writing perf log copy to {}", path.display()))?;
+        written.push(path.to_path_buf());
     }
 
     if let Some(dir) = extra_dir {
         fs::create_dir_all(dir)
             .with_context(|| format!("creating perf log directory {}", dir.display()))?;
+        let dataset_dir = report::dataset_report_dir(report_root, &summary.dataset_id);
         let dataset_slug = dataset_dir
             .file_name()
             .and_then(|os| os.to_str())
@@ -162,22 +39,24 @@ pub fn write_perf_logs(
         let timestamp = summary.generated_at.format("%Y%m%dT%H%M%S").to_string();
         let filename = format!("perf-{}-{}.json", dataset_slug, timestamp);
         let path = dir.join(filename);
-        let blob = serde_json::to_vec_pretty(&entry).context("serialising perf log JSON")?;
+        let blob = serde_json::to_vec_pretty(record).context("serialising perf log JSON")?;
         fs::write(&path, blob)
             .with_context(|| format!("writing perf log mirror {}", path.display()))?;
+        written.push(path);
     }
 
-    Ok(log_path)
+    Ok(written)
 }
 
-pub fn print_console_summary(summary: &EvaluationSummary) {
-    let perf = &summary.perf;
+pub fn print_console_summary(record: &EvaluationReport) {
+    let perf = &record.performance;
     println!(
-        "[perf] retrieval strategy={} | rerank={} (pool {:?}, keep {})",
-        summary.retrieval_strategy,
-        summary.rerank_enabled,
-        summary.rerank_pool_size,
-        summary.rerank_keep_top
+        "[perf] retrieval strategy={} | concurrency={} | rerank={} (pool {:?}, keep {})",
+        record.retrieval.strategy,
+        record.retrieval.concurrency,
+        record.retrieval.rerank_enabled,
+        record.retrieval.rerank_pool_size,
+        record.retrieval.rerank_keep_top
     );
     println!(
         "[perf] ingestion={}ms | namespace_seed={}",
@@ -194,7 +73,7 @@ pub fn print_console_summary(summary: &EvaluationSummary) {
         stage.rerank.avg,
         stage.assemble.avg,
     );
-    let eval = &perf.evaluation_stage_ms;
+    let eval = &perf.evaluation_stages_ms;
     println!(
         "[perf] eval stage ms → slice {} | db {} | corpus {} | namespace {} | queries {} | summarize {} | finalize {}",
         eval.prepare_slice_ms,
@@ -315,9 +194,12 @@ mod tests {
             concurrency: 2,
             retrieval_strategy: "initial".into(),
             detailed_report: false,
+            ingest_chunk_min_tokens: 256,
+            ingest_chunk_max_tokens: 512,
+            ingest_chunk_overlap_tokens: 50,
+            ingest_chunks_only: false,
             chunk_vector_take: 20,
             chunk_fts_take: 20,
-            chunk_token_budget: 10000,
             chunk_avg_chars_per_token: 4,
             max_chunks_per_entity: 4,
             average_ndcg: 0.0,
@@ -327,18 +209,34 @@ mod tests {
     }
 
     #[test]
-    fn writes_perf_log_jsonl() {
+    fn writes_perf_mirrors_from_record() {
         let tmp = tempdir().unwrap();
         let report_root = tmp.path().join("reports");
         let summary = sample_summary();
-        let log_path = write_perf_logs(&summary, &report_root, None, None).expect("perf log write");
-        assert!(log_path.exists());
-        let contents = std::fs::read_to_string(&log_path).expect("reading perf log jsonl");
+        let record = report::EvaluationReport::from_summary(&summary, 5);
+
+        let json_path = tmp.path().join("extra.json");
+        let dir_path = tmp.path().join("copies");
+        let outputs = mirror_perf_outputs(
+            &record,
+            &summary,
+            &report_root,
+            Some(json_path.as_path()),
+            Some(dir_path.as_path()),
+        )
+        .expect("perf mirrors");
+
+        assert!(json_path.exists());
+        let content = std::fs::read_to_string(&json_path).expect("reading mirror json");
         assert!(
-            contents.contains("\"openai_base_url\":\"https://example.com\""),
-            "serialized log should include base URL"
+            content.contains("\"evaluation_stages_ms\""),
+            "perf mirror should include evaluation stage timings"
         );
-        let dataset_dir = report::dataset_report_dir(&report_root, &summary.dataset_id);
-        assert!(dataset_dir.join("perf-log.jsonl").exists());
+        assert_eq!(outputs.len(), 2);
+        let mirrored = outputs
+            .into_iter()
+            .filter(|path| path.starts_with(&dir_path))
+            .collect::<Vec<_>>();
+        assert_eq!(mirrored.len(), 1, "expected timestamped mirror in dir");
     }
 }

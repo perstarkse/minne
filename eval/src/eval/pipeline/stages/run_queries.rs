@@ -6,7 +6,7 @@ use futures::stream::{self, StreamExt};
 use tracing::{debug, info};
 
 use crate::eval::{
-    adapt_strategy_output, apply_dataset_tuning_overrides, build_case_diagnostics,
+    adapt_strategy_output, build_case_diagnostics,
     text_contains_answer, CaseDiagnostics, CaseSummary, RetrievedSummary,
 };
 use retrieval_pipeline::{
@@ -56,14 +56,12 @@ pub(crate) async fn run_queries(
     if retrieval_config.tuning.fallback_min_results < config.retrieval.rerank_keep_top {
         retrieval_config.tuning.fallback_min_results = config.retrieval.rerank_keep_top;
     }
+    retrieval_config.tuning.chunk_result_cap = config.retrieval.chunk_result_cap.max(1);
     if let Some(value) = config.retrieval.chunk_vector_take {
         retrieval_config.tuning.chunk_vector_take = value;
     }
     if let Some(value) = config.retrieval.chunk_fts_take {
         retrieval_config.tuning.chunk_fts_take = value;
-    }
-    if let Some(value) = config.retrieval.chunk_token_budget {
-        retrieval_config.tuning.token_budget_estimate = value;
     }
     if let Some(value) = config.retrieval.chunk_avg_chars_per_token {
         retrieval_config.tuning.avg_chars_per_token = value;
@@ -71,8 +69,6 @@ pub(crate) async fn run_queries(
     if let Some(value) = config.retrieval.max_chunks_per_entity {
         retrieval_config.tuning.max_chunks_per_entity = value;
     }
-
-    apply_dataset_tuning_overrides(dataset, config, &mut retrieval_config.tuning);
 
     let active_tuning = retrieval_config.tuning.clone();
     let effective_chunk_vector = config
@@ -95,11 +91,8 @@ pub(crate) async fn run_queries(
         rerank_enabled = config.retrieval.rerank,
         rerank_pool_size = config.retrieval.rerank_pool_size,
         rerank_keep_top = config.retrieval.rerank_keep_top,
-        chunk_min = config.retrieval.chunk_min_chars,
-        chunk_max = config.retrieval.chunk_max_chars,
         chunk_vector_take = effective_chunk_vector,
         chunk_fts_take = effective_chunk_fts,
-        chunk_token_budget = active_tuning.token_budget_estimate,
         embedding_backend = ctx.embedding_provider().backend_label(),
         embedding_model = ctx
             .embedding_provider()
@@ -405,4 +398,3 @@ fn calculate_ndcg(retrieved: &[RetrievedSummary], k: usize) -> f64 {
         dcg / idcg
     }
 }
-

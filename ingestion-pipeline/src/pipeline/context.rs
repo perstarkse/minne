@@ -118,8 +118,12 @@ impl<'a> PipelineContext<'a> {
             .await?;
 
         let chunk_range = self.chunk_token_range();
+        let chunk_overlap = self.chunk_overlap_tokens();
 
-        let chunks = self.services.prepare_chunks(&content, chunk_range).await?;
+        let chunks = self
+            .services
+            .prepare_chunks(&content, chunk_range, chunk_overlap)
+            .await?;
 
         Ok(PipelineArtifacts {
             text_content: content,
@@ -132,8 +136,12 @@ impl<'a> PipelineContext<'a> {
     pub async fn build_chunk_only_artifacts(&mut self) -> Result<PipelineArtifacts, AppError> {
         let content = self.take_text_content()?;
         let chunk_range = self.chunk_token_range();
+        let chunk_overlap = self.chunk_overlap_tokens();
 
-        let chunks = self.services.prepare_chunks(&content, chunk_range).await?;
+        let chunks = self
+            .services
+            .prepare_chunks(&content, chunk_range, chunk_overlap)
+            .await?;
 
         Ok(PipelineArtifacts {
             text_content: content,
@@ -145,5 +153,9 @@ impl<'a> PipelineContext<'a> {
 
     fn chunk_token_range(&self) -> Range<usize> {
         self.pipeline_config.tuning.chunk_min_tokens..self.pipeline_config.tuning.chunk_max_tokens
+    }
+
+    fn chunk_overlap_tokens(&self) -> usize {
+        self.pipeline_config.tuning.chunk_overlap_tokens
     }
 }

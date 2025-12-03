@@ -15,7 +15,6 @@ use common::{
         types::{system_settings::SystemSettings, user::User, StoredObject},
     },
 };
-use retrieval_pipeline::RetrievalTuning;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tracing::{info, warn};
@@ -120,37 +119,6 @@ pub(crate) fn ledger_target(config: &Config) -> Option<usize> {
     }
 }
 
-pub(crate) fn apply_dataset_tuning_overrides(
-    dataset: &ConvertedDataset,
-    config: &Config,
-    tuning: &mut RetrievalTuning,
-) {
-    let is_long_form = dataset
-        .metadata
-        .id
-        .to_ascii_lowercase()
-        .contains("natural-questions");
-    if !is_long_form {
-        return;
-    }
-
-    if config.retrieval.chunk_vector_take.is_none() {
-        tuning.chunk_vector_take = tuning.chunk_vector_take.max(80);
-    }
-    if config.retrieval.chunk_fts_take.is_none() {
-        tuning.chunk_fts_take = tuning.chunk_fts_take.max(80);
-    }
-    if config.retrieval.chunk_token_budget.is_none() {
-        tuning.token_budget_estimate = tuning.token_budget_estimate.max(20_000);
-    }
-    if config.retrieval.max_chunks_per_entity.is_none() {
-        tuning.max_chunks_per_entity = tuning.max_chunks_per_entity.max(12);
-    }
-    if tuning.lexical_match_weight < 0.25 {
-        tuning.lexical_match_weight = 0.3;
-    }
-}
-
 pub(crate) async fn write_chunk_diagnostics(path: &Path, cases: &[CaseDiagnostics]) -> Result<()> {
     args::ensure_parent(path)?;
     let mut file = tokio::fs::File::create(path)
@@ -175,9 +143,10 @@ pub(crate) async fn warm_hnsw_cache(db: &SurrealDbClient, dimension: usize) -> R
     let _ = db
         .client
         .query(
-            "SELECT chunk_id \
-             FROM text_chunk_embedding \
-             WHERE embedding <|1,1|> $embedding LIMIT 5",
+            r#"SELECT chunk_id
+               FROM text_chunk_embedding
+               WHERE embedding <|1,1|> $embedding
+               LIMIT 5"#,
         )
         .bind(("embedding", dummy_embedding.clone()))
         .await
@@ -187,9 +156,10 @@ pub(crate) async fn warm_hnsw_cache(db: &SurrealDbClient, dimension: usize) -> R
     let _ = db
         .client
         .query(
-            "SELECT entity_id \
-             FROM knowledge_entity_embedding \
-             WHERE embedding <|1,1|> $embedding LIMIT 5",
+            r#"SELECT entity_id
+               FROM knowledge_entity_embedding
+               WHERE embedding <|1,1|> $embedding
+               LIMIT 5"#,
         )
         .bind(("embedding", dummy_embedding))
         .await
@@ -427,12 +397,10 @@ pub(crate) async fn enforce_system_settings(
 ) -> Result<SystemSettings> {
     let mut updated_settings = settings.clone();
     let mut needs_settings_update = false;
-    // let mut embedding_dimension_changed = false;
 
     if provider_dimension != settings.embedding_dimensions as usize {
         updated_settings.embedding_dimensions = provider_dimension as u32;
         needs_settings_update = true;
-        // embedding_dimension_changed = true;
     }
     if let Some(query_override) = config.query_model.as_deref() {
         if settings.query_model != query_override {
@@ -449,12 +417,6 @@ pub(crate) async fn enforce_system_settings(
             .await
             .context("updating system settings overrides")?;
     }
-    // We dont need to do this, we've changed from default settings already
-    // if embedding_dimension_changed {
-    //     change_embedding_length_in_hnsw_indexes(db, provider_dimension)
-    //         .await
-    //         .context("redefining HNSW indexes for new embedding dimension")?;
-    // }
     Ok(settings)
 }
 

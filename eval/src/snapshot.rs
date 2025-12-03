@@ -16,8 +16,6 @@ pub struct SnapshotMetadata {
     pub embedding_backend: String,
     pub embedding_model: Option<String>,
     pub embedding_dimension: usize,
-    pub chunk_min_chars: usize,
-    pub chunk_max_chars: usize,
     pub rerank_enabled: bool,
 }
 
@@ -55,8 +53,6 @@ impl Descriptor {
             embedding_backend: embedding_provider.backend_label().to_string(),
             embedding_model: embedding_provider.model_code(),
             embedding_dimension: embedding_provider.dimension(),
-            chunk_min_chars: config.retrieval.chunk_min_chars,
-            chunk_max_chars: config.retrieval.chunk_max_chars,
             rerank_enabled: config.retrieval.rerank,
         };
 
@@ -146,8 +142,6 @@ mod tests {
             embedding_backend: "hashed".into(),
             embedding_model: None,
             embedding_dimension: 128,
-            chunk_min_chars: 10,
-            chunk_max_chars: 100,
             rerank_enabled: true,
         };
         let descriptor = Descriptor::from_parts(

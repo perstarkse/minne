@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use futures::future::try_join_all;
 use serde::Deserialize;
 use serde_json::Value;
 use tracing::{info, warn};
@@ -83,10 +84,11 @@ async fn ensure_runtime_indexes_inner(
 ) -> Result<()> {
     create_fts_analyzer(db).await?;
 
-    for spec in fts_index_specs() {
+    let fts_tasks = fts_index_specs().into_iter().map(|spec| async move {
         if index_exists(db, spec.table, spec.index_name).await? {
-            continue;
+            return Ok(());
         }
+
         create_index_with_polling(
             db,
             spec.definition(),
@@ -94,51 +96,50 @@ async fn ensure_runtime_indexes_inner(
             spec.table,
             Some(spec.table),
         )
-        .await?;
-    }
+        .await
+    });
 
-    for spec in hnsw_index_specs() {
-        ensure_hnsw_index(db, &spec, embedding_dimension).await?;
-    }
+    let hnsw_tasks = hnsw_index_specs()
+        .into_iter()
+        .map(|spec| async move {
+            match hnsw_index_state(db, &spec, embedding_dimension).await? {
+                HnswIndexState::Missing => {
+                    create_index_with_polling(
+                        db,
+                        spec.definition_if_not_exists(embedding_dimension),
+                        spec.index_name,
+                        spec.table,
+                        Some(spec.table),
+                    )
+                    .await
+                }
+                HnswIndexState::Matches => Ok(()),
+                HnswIndexState::Different(existing) => {
+                    info!(
+                        index = spec.index_name,
+                        table = spec.table,
+                        existing_dimension = existing,
+                        target_dimension = embedding_dimension,
+                        "Overwriting HNSW index to match new embedding dimension"
+                    );
+                    create_index_with_polling(
+                        db,
+                        spec.definition_overwrite(embedding_dimension),
+                        spec.index_name,
+                        spec.table,
+                        Some(spec.table),
+                    )
+                    .await
+                }
+            }
+        });
+
+    futures::try_join!(
+        async { try_join_all(fts_tasks).await.map(|_| ()) },
+        async { try_join_all(hnsw_tasks).await.map(|_| ()) },
+    )?;
 
     Ok(())
-}
-
-async fn ensure_hnsw_index(
-    db: &SurrealDbClient,
-    spec: &HnswIndexSpec,
-    dimension: usize,
-) -> Result<()> {
-    match hnsw_index_state(db, spec, dimension).await? {
-        HnswIndexState::Missing => {
-            create_index_with_polling(
-                db,
-                spec.definition_if_not_exists(dimension),
-                spec.index_name,
-                spec.table,
-                Some(spec.table),
-            )
-            .await
-        }
-        HnswIndexState::Matches => Ok(()),
-        HnswIndexState::Different(existing) => {
-            info!(
-                index = spec.index_name,
-                table = spec.table,
-                existing_dimension = existing,
-                target_dimension = dimension,
-                "Overwriting HNSW index to match new embedding dimension"
-            );
-            create_index_with_polling(
-                db,
-                spec.definition_overwrite(dimension),
-                spec.index_name,
-                spec.table,
-                Some(spec.table),
-            )
-            .await
-        }
-    }
 }
 
 async fn hnsw_index_state(
@@ -265,9 +266,10 @@ async fn poll_index_build_status(
         tokio::time::sleep(poll_every).await;
 
         let info_query = format!("INFO FOR INDEX {index_name} ON TABLE {table};");
-        let mut info_res = db.client.query(info_query).await.with_context(|| {
-            format!("checking index build status for {index_name} on {table}")
-        })?;
+        let mut info_res =
+            db.client.query(info_query).await.with_context(|| {
+                format!("checking index build status for {index_name} on {table}")
+            })?;
 
         let info: Option<Value> = info_res
             .take(0)
@@ -461,19 +463,12 @@ const fn hnsw_index_specs() -> [HnswIndexSpec; 2] {
     ]
 }
 
-const fn fts_index_specs() -> [FtsIndexSpec; 9] {
+const fn fts_index_specs() -> [FtsIndexSpec; 8] {
     [
         FtsIndexSpec {
             index_name: "text_content_fts_idx",
             table: "text_content",
             field: "text",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-        FtsIndexSpec {
-            index_name: "text_content_category_fts_idx",
-            table: "text_content",
-            field: "category",
             analyzer: Some(FTS_ANALYZER_NAME),
             method: "BM25",
         },
