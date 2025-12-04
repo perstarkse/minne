@@ -88,6 +88,10 @@ pub struct RetrievalSection {
     pub rerank_pool_size: Option<usize>,
     pub rerank_keep_top: usize,
     pub chunk_result_cap: usize,
+    #[serde(default)]
+    pub chunk_vector_take: usize,
+    #[serde(default)]
+    pub chunk_fts_take: usize,
     pub ingest_chunk_min_tokens: usize,
     pub ingest_chunk_max_tokens: usize,
     pub ingest_chunk_overlap_tokens: usize,
@@ -202,6 +206,8 @@ impl EvaluationReport {
             rerank_pool_size: summary.rerank_pool_size,
             rerank_keep_top: summary.rerank_keep_top,
             chunk_result_cap: summary.chunk_result_cap,
+            chunk_vector_take: summary.chunk_vector_take,
+            chunk_fts_take: summary.chunk_fts_take,
             ingest_chunk_min_tokens: summary.ingest_chunk_min_tokens,
             ingest_chunk_max_tokens: summary.ingest_chunk_max_tokens,
             ingest_chunk_overlap_tokens: summary.ingest_chunk_overlap_tokens,
@@ -467,10 +473,7 @@ fn render_markdown(report: &EvaluationReport) -> String {
         report.retrieval.precision_at_2,
         report.retrieval.precision_at_3
     ));
-    md.push_str(&format!(
-        "| MRR | {:.3} |\\n",
-        report.retrieval.mrr
-    ));
+    md.push_str(&format!("| MRR | {:.3} |\\n", report.retrieval.mrr));
     md.push_str(&format!(
         "| NDCG | {:.3} |\\n",
         report.retrieval.average_ndcg
@@ -632,7 +635,9 @@ fn render_markdown(report: &EvaluationReport) -> String {
             if report.detailed_report {
                 md.push_str("All LLM-only cases matched within the evaluation window.\\n");
             } else {
-                md.push_str("LLM-only cases omitted. Re-run with `--detailed-report` to see samples.\\n");
+                md.push_str(
+                    "LLM-only cases omitted. Re-run with `--detailed-report` to see samples.\\n",
+                );
             }
         } else {
             md.push_str("| Question ID | Answered | Match Rank | Top Retrieved |\\n");
@@ -851,6 +856,8 @@ fn convert_legacy_entry(entry: LegacyHistoryEntry) -> EvaluationReport {
         rerank_pool_size: entry.rerank_pool_size,
         rerank_keep_top: entry.rerank_keep_top,
         chunk_result_cap: entry.chunk_result_cap.unwrap_or(5),
+        chunk_vector_take: 0,
+        chunk_fts_take: 0,
         ingest_chunk_min_tokens: entry.ingest_chunk_min_tokens.unwrap_or(256),
         ingest_chunk_max_tokens: entry.ingest_chunk_max_tokens.unwrap_or(512),
         ingest_chunk_overlap_tokens: entry.ingest_chunk_overlap_tokens.unwrap_or(50),
@@ -1126,8 +1133,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         let summary = sample_summary(false);
 
-        let outcome =
-            write_reports(&summary, tmp.path(), 5).expect("writing consolidated reports");
+        let outcome = write_reports(&summary, tmp.path(), 5).expect("writing consolidated reports");
         let contents =
             std::fs::read_to_string(&outcome.history_path).expect("reading evaluations history");
         let entries: Vec<EvaluationReport> =

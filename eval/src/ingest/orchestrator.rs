@@ -26,7 +26,6 @@ use uuid::Uuid;
 
 use crate::{
     datasets::{ConvertedDataset, ConvertedParagraph, ConvertedQuestion},
-    db_helpers::change_embedding_length_in_hnsw_indexes,
     slices::{self, ResolvedSlice, SliceParagraphKind},
 };
 
@@ -416,10 +415,6 @@ async fn ingest_paragraph_batch(
     db.apply_migrations()
         .await
         .context("applying migrations for ingestion")?;
-
-    change_embedding_length_in_hnsw_indexes(&db, embedding_dimension)
-        .await
-        .context("failed setting new hnsw length")?;
 
     let mut app_config = AppConfig::default();
     app_config.storage = StorageKind::Memory;
