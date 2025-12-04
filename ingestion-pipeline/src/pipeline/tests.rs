@@ -376,9 +376,8 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() {
     let services = Arc::new(MockServices::new(user_id));
     let mut config = pipeline_config();
     config.chunk_only = true;
-    let pipeline =
-        IngestionPipeline::with_services(Arc::new(db.clone()), config, services.clone())
-            .expect("pipeline");
+    let pipeline = IngestionPipeline::with_services(Arc::new(db.clone()), config, services.clone())
+        .expect("pipeline");
 
     let task = reserve_task(
         &db,

@@ -53,9 +53,9 @@ impl SystemSettings {
 
 #[cfg(test)]
 mod tests {
+    use crate::storage::indexes::ensure_runtime_indexes;
     use crate::storage::types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk};
     use async_openai::Client;
-    use crate::storage::indexes::ensure_runtime_indexes;
 
     use super::*;
     use uuid::Uuid;

@@ -1,7 +1,5 @@
 use super::types::StoredObject;
-use crate::{
-    error::AppError,
-};
+use crate::error::AppError;
 use axum_session::{SessionConfig, SessionError, SessionStore};
 use axum_session_surreal::SessionSurrealPool;
 use futures::Stream;
