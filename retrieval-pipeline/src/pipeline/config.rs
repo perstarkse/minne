@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+use crate::scoring::FusionWeights;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum RetrievalStrategy {
@@ -64,6 +66,12 @@ pub struct RetrievalTuning {
     pub rerank_scores_only: bool,
     pub rerank_keep_top: usize,
     pub chunk_result_cap: usize,
+    /// Optional fusion weights for hybrid search. If None, uses default weights.
+    pub fusion_weights: Option<FusionWeights>,
+    /// Normalize vector similarity scores before fusion (default: true)
+    pub normalize_vector_scores: bool,
+    /// Normalize FTS (BM25) scores before fusion (default: true)
+    pub normalize_fts_scores: bool,
 }
 
 impl Default for RetrievalTuning {
@@ -88,6 +96,12 @@ impl Default for RetrievalTuning {
             rerank_scores_only: false,
             rerank_keep_top: 8,
             chunk_result_cap: 5,
+            fusion_weights: None,
+            // Vector scores (cosine similarity) are already in [0,1] range
+            // Normalization only helps when there's significant variation
+            normalize_vector_scores: false,
+            // FTS scores (BM25) are unbounded, normalization helps more
+            normalize_fts_scores: true,
         }
     }
 }

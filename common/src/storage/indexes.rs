@@ -84,11 +84,11 @@ async fn ensure_runtime_indexes_inner(
 ) -> Result<()> {
     create_fts_analyzer(db).await?;
 
-    let fts_tasks = fts_index_specs().into_iter().map(|spec| async move {
+    for spec in fts_index_specs() {
         if index_exists(db, spec.table, spec.index_name).await? {
-            return Ok(());
+            continue;
         }
-
+        // We need to create these sequentially otherwise SurrealDB errors with read/write clash
         create_index_with_polling(
             db,
             spec.definition(),
@@ -96,48 +96,43 @@ async fn ensure_runtime_indexes_inner(
             spec.table,
             Some(spec.table),
         )
-        .await
+        .await?;
+    }
+
+    let hnsw_tasks = hnsw_index_specs().into_iter().map(|spec| async move {
+        match hnsw_index_state(db, &spec, embedding_dimension).await? {
+            HnswIndexState::Missing => {
+                create_index_with_polling(
+                    db,
+                    spec.definition_if_not_exists(embedding_dimension),
+                    spec.index_name,
+                    spec.table,
+                    Some(spec.table),
+                )
+                .await
+            }
+            HnswIndexState::Matches => Ok(()),
+            HnswIndexState::Different(existing) => {
+                info!(
+                    index = spec.index_name,
+                    table = spec.table,
+                    existing_dimension = existing,
+                    target_dimension = embedding_dimension,
+                    "Overwriting HNSW index to match new embedding dimension"
+                );
+                create_index_with_polling(
+                    db,
+                    spec.definition_overwrite(embedding_dimension),
+                    spec.index_name,
+                    spec.table,
+                    Some(spec.table),
+                )
+                .await
+            }
+        }
     });
 
-    let hnsw_tasks = hnsw_index_specs()
-        .into_iter()
-        .map(|spec| async move {
-            match hnsw_index_state(db, &spec, embedding_dimension).await? {
-                HnswIndexState::Missing => {
-                    create_index_with_polling(
-                        db,
-                        spec.definition_if_not_exists(embedding_dimension),
-                        spec.index_name,
-                        spec.table,
-                        Some(spec.table),
-                    )
-                    .await
-                }
-                HnswIndexState::Matches => Ok(()),
-                HnswIndexState::Different(existing) => {
-                    info!(
-                        index = spec.index_name,
-                        table = spec.table,
-                        existing_dimension = existing,
-                        target_dimension = embedding_dimension,
-                        "Overwriting HNSW index to match new embedding dimension"
-                    );
-                    create_index_with_polling(
-                        db,
-                        spec.definition_overwrite(embedding_dimension),
-                        spec.index_name,
-                        spec.table,
-                        Some(spec.table),
-                    )
-                    .await
-                }
-            }
-        });
-
-    futures::try_join!(
-        async { try_join_all(fts_tasks).await.map(|_| ()) },
-        async { try_join_all(hnsw_tasks).await.map(|_| ()) },
-    )?;
+    try_join_all(hnsw_tasks).await.map(|_| ())?;
 
     Ok(())
 }
@@ -204,20 +199,48 @@ fn extract_dimension(definition: &str) -> Option<u64> {
 }
 
 async fn create_fts_analyzer(db: &SurrealDbClient) -> Result<()> {
-    let analyzer_query = format!(
+    // Prefer snowball stemming when supported; fall back to ascii-only when the filter
+    // is unavailable in the running Surreal build. Use IF NOT EXISTS to avoid clobbering
+    // an existing analyzer definition.
+    let snowball_query = format!(
         "DEFINE ANALYZER IF NOT EXISTS {analyzer}
             TOKENIZERS class
             FILTERS lowercase, ascii, snowball(english);",
         analyzer = FTS_ANALYZER_NAME
     );
 
-    let res = db
-        .client
-        .query(analyzer_query)
-        .await
-        .context("creating FTS analyzer")?;
+    match db.client.query(snowball_query).await {
+        Ok(res) => {
+            if res.check().is_ok() {
+                return Ok(());
+            }
+            warn!(
+                "Snowball analyzer check failed; attempting ascii fallback definition (analyzer: {})",
+                FTS_ANALYZER_NAME
+            );
+        }
+        Err(err) => {
+            warn!(
+                error = %err,
+                "Snowball analyzer creation errored; attempting ascii fallback definition"
+            );
+        }
+    }
 
-    res.check().context("failed to create FTS analyzer")?;
+    let fallback_query = format!(
+        "DEFINE ANALYZER IF NOT EXISTS {analyzer}
+            TOKENIZERS class
+            FILTERS lowercase, ascii;",
+        analyzer = FTS_ANALYZER_NAME
+    );
+
+    db.client
+        .query(fallback_query)
+        .await
+        .context("creating fallback FTS analyzer")?
+        .check()
+        .context("failed to create fallback FTS analyzer")?;
+
     Ok(())
 }
 
@@ -235,13 +258,38 @@ async fn create_index_with_polling(
         None => None,
     };
 
-    let res = db
-        .client
-        .query(definition)
-        .await
-        .with_context(|| format!("creating index {index_name} on table {table}"))?;
-    res.check()
-        .with_context(|| format!("index definition failed for {index_name} on {table}"))?;
+    let mut attempts = 0;
+    const MAX_ATTEMPTS: usize = 3;
+    loop {
+        attempts += 1;
+        let res = db
+            .client
+            .query(definition.clone())
+            .await
+            .with_context(|| format!("creating index {index_name} on table {table}"))?;
+        match res.check() {
+            Ok(_) => break,
+            Err(err) => {
+                let msg = err.to_string();
+                let conflict = msg.contains("read or write conflict");
+                warn!(
+                    index = %index_name,
+                    table = %table,
+                    error = ?err,
+                    attempt = attempts,
+                    definition = %definition,
+                    "Index definition failed"
+                );
+                if conflict && attempts < MAX_ATTEMPTS {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+                return Err(err).with_context(|| {
+                    format!("index definition failed for {index_name} on {table}")
+                });
+            }
+        }
+    }
 
     info!(
         index = %index_name,

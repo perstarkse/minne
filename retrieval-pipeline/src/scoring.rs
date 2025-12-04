@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use common::storage::types::StoredObject;
+use serde::{Deserialize, Serialize};
 
 /// Holds optional subscores gathered from different retrieval signals.
 #[derive(Debug, Clone, Copy, Default)]
@@ -48,7 +49,7 @@ impl<T> Scored<T> {
 }
 
 /// Weights used for linear score fusion.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct FusionWeights {
     pub vector: f32,
     pub fts: f32,
@@ -58,11 +59,14 @@ pub struct FusionWeights {
 
 impl Default for FusionWeights {
     fn default() -> Self {
+        // Default weights favor vector search, which typically performs better
+        // FTS is used as a complement when there's good overlap
+        // Higher multi_bonus to heavily favor chunks with both signals (the "golden chunk")
         Self {
-            vector: 0.5,
-            fts: 0.3,
+            vector: 0.8,
+            fts: 0.2,
             graph: 0.2,
-            multi_bonus: 0.02,
+            multi_bonus: 0.3, // Increased to boost chunks with both signals
         }
     }
 }
@@ -134,8 +138,19 @@ pub fn fuse_scores(scores: &Scores, weights: FusionWeights) -> f32 {
         .chain(scores.fts.iter())
         .chain(scores.graph.iter())
         .count();
+
+    // Boost chunks with multiple signals (especially vector + FTS, the "golden chunk")
     if signals_present >= 2 {
-        fused += weights.multi_bonus;
+        // For chunks with both vector and FTS, give a significant boost
+        // This helps identify the "golden chunk" that appears in both searches
+        if scores.vector.is_some() && scores.fts.is_some() {
+            // Multiplicative boost: multiply by (1 + bonus) to scale with the base score
+            // This ensures high-scoring golden chunks get boosted more than low-scoring ones
+            fused = fused * (1.0 + weights.multi_bonus);
+        } else {
+            // For other multi-signal combinations (e.g., vector + graph), use additive bonus
+            fused += weights.multi_bonus;
+        }
     }
 
     clamp_unit(fused)
