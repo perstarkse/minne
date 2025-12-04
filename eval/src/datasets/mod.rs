@@ -1,3 +1,4 @@
+mod beir;
 mod nq;
 mod squad;
 
@@ -10,10 +11,10 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
+use clap::ValueEnum;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
-use clap::ValueEnum;
 
 const MANIFEST_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/manifest.yaml");
 static DATASET_CATALOG: OnceCell<DatasetCatalog> = OnceCell::new();
@@ -248,6 +249,19 @@ fn dataset_entry_for_kind(kind: DatasetKind) -> Result<&'static DatasetEntry> {
 pub enum DatasetKind {
     SquadV2,
     NaturalQuestions,
+    Beir,
+    #[value(name = "fever")]
+    Fever,
+    #[value(name = "fiqa")]
+    Fiqa,
+    #[value(name = "hotpotqa", alias = "hotpot-qa")]
+    HotpotQa,
+    #[value(name = "nfcorpus", alias = "nf-corpus")]
+    Nfcorpus,
+    #[value(name = "quora")]
+    Quora,
+    #[value(name = "trec-covid", alias = "treccovid", alias = "trec_covid")]
+    TrecCovid,
 }
 
 impl DatasetKind {
@@ -255,6 +269,13 @@ impl DatasetKind {
         match self {
             Self::SquadV2 => "squad-v2",
             Self::NaturalQuestions => "natural-questions-dev",
+            Self::Beir => "beir",
+            Self::Fever => "fever",
+            Self::Fiqa => "fiqa",
+            Self::HotpotQa => "hotpotqa",
+            Self::Nfcorpus => "nfcorpus",
+            Self::Quora => "quora",
+            Self::TrecCovid => "trec-covid",
         }
     }
 
@@ -262,6 +283,13 @@ impl DatasetKind {
         match self {
             Self::SquadV2 => "SQuAD v2.0",
             Self::NaturalQuestions => "Natural Questions (dev)",
+            Self::Beir => "BEIR mix",
+            Self::Fever => "FEVER (BEIR)",
+            Self::Fiqa => "FiQA-2018 (BEIR)",
+            Self::HotpotQa => "HotpotQA (BEIR)",
+            Self::Nfcorpus => "NFCorpus (BEIR)",
+            Self::Quora => "Quora (IR)",
+            Self::TrecCovid => "TREC-COVID (BEIR)",
         }
     }
 
@@ -269,6 +297,13 @@ impl DatasetKind {
         match self {
             Self::SquadV2 => "SQuAD v2.0",
             Self::NaturalQuestions => "Natural Questions",
+            Self::Beir => "BEIR",
+            Self::Fever => "FEVER",
+            Self::Fiqa => "FiQA-2018",
+            Self::HotpotQa => "HotpotQA",
+            Self::Nfcorpus => "NFCorpus",
+            Self::Quora => "Quora",
+            Self::TrecCovid => "TREC-COVID",
         }
     }
 
@@ -276,6 +311,13 @@ impl DatasetKind {
         match self {
             Self::SquadV2 => "SQuAD",
             Self::NaturalQuestions => "Natural Questions",
+            Self::Beir => "BEIR",
+            Self::Fever => "FEVER",
+            Self::Fiqa => "FiQA",
+            Self::HotpotQa => "HotpotQA",
+            Self::Nfcorpus => "NFCorpus",
+            Self::Quora => "Quora",
+            Self::TrecCovid => "TREC-COVID",
         }
     }
 
@@ -283,6 +325,13 @@ impl DatasetKind {
         match self {
             Self::SquadV2 => "squad",
             Self::NaturalQuestions => "nq",
+            Self::Beir => "beir",
+            Self::Fever => "fever",
+            Self::Fiqa => "fiqa",
+            Self::HotpotQa => "hotpotqa",
+            Self::Nfcorpus => "nfcorpus",
+            Self::Quora => "quora",
+            Self::TrecCovid => "trec-covid",
         }
     }
 
@@ -320,12 +369,28 @@ impl FromStr for DatasetKind {
             "nq" | "natural-questions" | "natural_questions" | "natural-questions-dev" => {
                 Ok(Self::NaturalQuestions)
             }
+            "beir" => Ok(Self::Beir),
+            "fever" => Ok(Self::Fever),
+            "fiqa" | "fiqa-2018" => Ok(Self::Fiqa),
+            "hotpotqa" | "hotpot-qa" => Ok(Self::HotpotQa),
+            "nfcorpus" | "nf-corpus" => Ok(Self::Nfcorpus),
+            "quora" => Ok(Self::Quora),
+            "trec-covid" | "treccovid" | "trec_covid" => Ok(Self::TrecCovid),
             other => {
-                anyhow::bail!("unknown dataset '{other}'. Expected 'squad' or 'natural-questions'.")
+                anyhow::bail!("unknown dataset '{other}'. Expected one of: squad, natural-questions, beir, fever, fiqa, hotpotqa, nfcorpus, quora, trec-covid.")
             }
         }
     }
 }
+
+pub const BEIR_DATASETS: [DatasetKind; 6] = [
+    DatasetKind::Fever,
+    DatasetKind::Fiqa,
+    DatasetKind::HotpotQa,
+    DatasetKind::Nfcorpus,
+    DatasetKind::Quora,
+    DatasetKind::TrecCovid,
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetMetadata {
@@ -410,6 +475,13 @@ pub fn convert(
         DatasetKind::NaturalQuestions => {
             nq::convert_nq(raw_path, include_unanswerable, context_token_limit)?
         }
+        DatasetKind::Beir => convert_beir_mix(include_unanswerable, context_token_limit)?,
+        DatasetKind::Fever
+        | DatasetKind::Fiqa
+        | DatasetKind::HotpotQa
+        | DatasetKind::Nfcorpus
+        | DatasetKind::Quora
+        | DatasetKind::TrecCovid => beir::convert_beir(raw_path, dataset)?,
     };
 
     let metadata_limit = match dataset {
@@ -417,12 +489,35 @@ pub fn convert(
         _ => context_token_limit,
     };
 
+    let source_label = match dataset {
+        DatasetKind::Beir => "beir-mix".to_string(),
+        _ => raw_path.display().to_string(),
+    };
+
     Ok(ConvertedDataset {
         generated_at: Utc::now(),
         metadata: DatasetMetadata::for_kind(dataset, include_unanswerable, metadata_limit),
-        source: raw_path.display().to_string(),
+        source: source_label,
         paragraphs,
     })
+}
+
+fn convert_beir_mix(
+    include_unanswerable: bool,
+    _context_token_limit: Option<usize>,
+) -> Result<Vec<ConvertedParagraph>> {
+    if include_unanswerable {
+        warn!("BEIR mix ignores include_unanswerable flag; all questions are answerable");
+    }
+
+    let mut paragraphs = Vec::new();
+    for subset in BEIR_DATASETS {
+        let entry = dataset_entry_for_kind(subset)?;
+        let subset_paragraphs = beir::convert_beir(&entry.raw_path, subset)?;
+        paragraphs.extend(subset_paragraphs);
+    }
+
+    Ok(paragraphs)
 }
 
 fn ensure_parent(path: &Path) -> Result<()> {

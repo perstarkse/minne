@@ -6,8 +6,8 @@ use futures::stream::{self, StreamExt};
 use tracing::{debug, info};
 
 use crate::eval::{
-    adapt_strategy_output, build_case_diagnostics,
-    text_contains_answer, CaseDiagnostics, CaseSummary, RetrievedSummary,
+    adapt_strategy_output, build_case_diagnostics, text_contains_answer, CaseDiagnostics,
+    CaseSummary, RetrievedSummary,
 };
 use retrieval_pipeline::{
     pipeline::{self, PipelineStageTimings, RetrievalConfig},

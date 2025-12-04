@@ -347,6 +347,10 @@ impl Config {
             self.retrieval.require_verified_chunks = true;
         }
 
+        if self.dataset == DatasetKind::Beir {
+            self.negative_multiplier = 9.0;
+        }
+
         // Validations
         if self.ingest_chunk_min_tokens == 0
             || self.ingest_chunk_min_tokens >= self.ingest_chunk_max_tokens

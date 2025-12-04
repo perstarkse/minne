@@ -31,3 +31,108 @@ datasets:
         corpus_limit: 2000
         include_unanswerable: false
         seed: 0x5eed2025
+  - id: beir
+    label: "BEIR mix"
+    category: "BEIR"
+    entity_suffix: "BEIR"
+    source_prefix: "beir"
+    raw: "data/raw/beir"
+    converted: "data/converted/beir-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: beir-mix-600
+        label: "BEIR mix (600)"
+        description: "Balanced slice across FEVER, FiQA, HotpotQA, NFCorpus, Quora, TREC-COVID"
+        limit: 600
+        corpus_limit: 6000
+        seed: 0x5eed2025
+  - id: fever
+    label: "FEVER (BEIR)"
+    category: "FEVER"
+    entity_suffix: "FEVER"
+    source_prefix: "fever"
+    raw: "data/raw/fever"
+    converted: "data/converted/fever-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: fever-test-200
+        label: "FEVER test (200)"
+        description: "200-case slice from BEIR test qrels"
+        limit: 200
+        corpus_limit: 5000
+        seed: 0x5eed2025
+  - id: fiqa
+    label: "FiQA-2018 (BEIR)"
+    category: "FiQA-2018"
+    entity_suffix: "FiQA"
+    source_prefix: "fiqa"
+    raw: "data/raw/fiqa"
+    converted: "data/converted/fiqa-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: fiqa-test-200
+        label: "FiQA test (200)"
+        description: "200-case slice from BEIR test qrels"
+        limit: 200
+        corpus_limit: 5000
+        seed: 0x5eed2025
+  - id: hotpotqa
+    label: "HotpotQA (BEIR)"
+    category: "HotpotQA"
+    entity_suffix: "HotpotQA"
+    source_prefix: "hotpotqa"
+    raw: "data/raw/hotpotqa"
+    converted: "data/converted/hotpotqa-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: hotpotqa-test-200
+        label: "HotpotQA test (200)"
+        description: "200-case slice from BEIR test qrels"
+        limit: 200
+        corpus_limit: 5000
+        seed: 0x5eed2025
+  - id: nfcorpus
+    label: "NFCorpus (BEIR)"
+    category: "NFCorpus"
+    entity_suffix: "NFCorpus"
+    source_prefix: "nfcorpus"
+    raw: "data/raw/nfcorpus"
+    converted: "data/converted/nfcorpus-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: nfcorpus-test-200
+        label: "NFCorpus test (200)"
+        description: "200-case slice from BEIR test qrels"
+        limit: 200
+        corpus_limit: 5000
+        seed: 0x5eed2025
+  - id: quora
+    label: "Quora (IR)"
+    category: "Quora"
+    entity_suffix: "Quora"
+    source_prefix: "quora"
+    raw: "data/raw/quora"
+    converted: "data/converted/quora-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: quora-test-200
+        label: "Quora test (200)"
+        description: "200-case slice from BEIR test qrels"
+        limit: 200
+        corpus_limit: 5000
+        seed: 0x5eed2025
+  - id: trec-covid
+    label: "TREC-COVID (BEIR)"
+    category: "TREC-COVID"
+    entity_suffix: "TREC-COVID"
+    source_prefix: "trec-covid"
+    raw: "data/raw/trec-covid"
+    converted: "data/converted/trec-covid-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: trec-covid-test-200
+        label: "TREC-COVID test (200)"
+        description: "200-case slice from BEIR test qrels"
+        limit: 200
+        corpus_limit: 5000
+        seed: 0x5eed2025
