@@ -22,7 +22,7 @@ use crate::{
     cache::EmbeddingCache,
     datasets::ConvertedDataset,
     eval::{CaseDiagnostics, CaseSummary, EvaluationStageTimings, EvaluationSummary, SeededCase},
-    ingest, slice, snapshot,
+    corpus, slice, snapshot,
 };
 
 pub(super) struct EvaluationContext<'a> {
@@ -52,7 +52,7 @@ pub(super) struct EvaluationContext<'a> {
     pub namespace_reused: bool,
     pub evaluation_start: Option<Instant>,
     pub eval_user: Option<User>,
-    pub corpus_handle: Option<ingest::CorpusHandle>,
+    pub corpus_handle: Option<corpus::CorpusHandle>,
     pub cases: Vec<SeededCase>,
     pub filtered_questions: usize,
     pub stage_latency_samples: Vec<PipelineStageTimings>,
@@ -145,7 +145,7 @@ impl<'a> EvaluationContext<'a> {
             .clone()
     }
 
-    pub fn corpus_handle(&self) -> &ingest::CorpusHandle {
+    pub fn corpus_handle(&self) -> &corpus::CorpusHandle {
         self.corpus_handle.as_ref().expect("corpus handle missing")
     }
 

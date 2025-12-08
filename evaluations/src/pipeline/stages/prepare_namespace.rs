@@ -10,7 +10,7 @@ use crate::{
         can_reuse_namespace, cases_from_manifest, enforce_system_settings, ensure_eval_user,
         record_namespace_state, warm_hnsw_cache,
     },
-    ingest,
+    corpus,
 };
 
 use super::super::{
@@ -47,7 +47,7 @@ pub(crate) async fn prepare_namespace(
         if ctx.window_offset == 0 && ctx.window_length >= base_manifest.questions.len() {
             base_manifest.clone()
         } else {
-            ingest::window_manifest(
+            corpus::window_manifest(
                 base_manifest,
                 ctx.window_offset,
                 ctx.window_length,
@@ -116,7 +116,7 @@ pub(crate) async fn prepare_namespace(
         let indexes_disabled = remove_all_indexes(ctx.db()).await.is_ok();
 
         let seed_start = Instant::now();
-        ingest::seed_manifest_into_db(ctx.db(), &manifest_for_seed)
+        corpus::seed_manifest_into_db(ctx.db(), &manifest_for_seed)
             .await
             .context("seeding ingestion corpus from manifest")?;
         namespace_seed_ms = Some(seed_start.elapsed().as_millis() as u128);

@@ -2,16 +2,6 @@ use anyhow::{Context, Result};
 use common::storage::{db::SurrealDbClient, indexes::ensure_runtime_indexes};
 use tracing::info;
 
-// Remove and recreate HNSW indexes for changing embedding lengths, used at beginning if embedding length differs from default system settings.
-pub async fn change_embedding_length_in_hnsw_indexes(
-    db: &SurrealDbClient,
-    dimension: usize,
-) -> Result<()> {
-    // No-op for now; runtime indexes are created after ingestion with the correct dimension.
-    let _ = (db, dimension);
-    Ok(())
-}
-
 // Helper functions for index management during namespace reseed
 pub async fn remove_all_indexes(db: &SurrealDbClient) -> Result<()> {
     let _ = db;
@@ -44,6 +34,14 @@ pub async fn reset_namespace(db: &SurrealDbClient, namespace: &str, database: &s
         .await
         .context("selecting namespace/database after reset")?;
     Ok(())
+}
+
+// Test helper to force index dimension change
+pub async fn change_embedding_length_in_hnsw_indexes(
+    db: &SurrealDbClient,
+    dimension: usize,
+) -> Result<()> {
+    recreate_indexes(db, dimension).await
 }
 
 #[cfg(test)]

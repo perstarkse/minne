@@ -32,11 +32,11 @@ impl CorpusCacheConfig {
 impl From<&Config> for CorpusCacheConfig {
     fn from(config: &Config) -> Self {
         CorpusCacheConfig::new(
-            config.ingestion_cache_dir.clone(),
-            config.force_convert || config.slice_reset_ingestion,
-            config.refresh_embeddings_only,
-            config.ingestion_batch_size,
-            config.ingestion_max_retries,
+            config.ingest.ingestion_cache_dir.clone(),
+            config.force_convert || config.ingest.slice_reset_ingestion,
+            config.ingest.refresh_embeddings_only,
+            config.ingest.ingestion_batch_size,
+            config.ingest.ingestion_max_retries,
         )
     }
 }

@@ -15,15 +15,15 @@ fn workspace_root() -> PathBuf {
 }
 
 fn default_report_dir() -> PathBuf {
-    workspace_root().join("eval/reports")
+    workspace_root().join("evaluations/reports")
 }
 
 fn default_cache_dir() -> PathBuf {
-    workspace_root().join("eval/cache")
+    workspace_root().join("evaluations/cache")
 }
 
 fn default_ingestion_cache_dir() -> PathBuf {
-    workspace_root().join("eval/cache/ingested")
+    workspace_root().join("evaluations/cache/ingested")
 }
 
 pub const DEFAULT_SLICE_SEED: u64 = 0x5eed_2025;
@@ -135,6 +135,72 @@ impl Default for RetrievalSettings {
     }
 }
 
+#[derive(Debug, Clone, Args)]
+pub struct IngestConfig {
+    /// Directory for ingestion corpora caches
+    #[arg(long, default_value_os_t = default_ingestion_cache_dir())]
+    pub ingestion_cache_dir: PathBuf,
+
+    /// Minimum tokens per chunk for ingestion
+    #[arg(long, default_value_t = 256)]
+    pub ingest_chunk_min_tokens: usize,
+
+    /// Maximum tokens per chunk for ingestion
+    #[arg(long, default_value_t = 512)]
+    pub ingest_chunk_max_tokens: usize,
+
+    /// Overlap between chunks during ingestion (tokens)
+    #[arg(long, default_value_t = 50)]
+    pub ingest_chunk_overlap_tokens: usize,
+
+    /// Run ingestion in chunk-only mode (skip analyzer/graph generation)
+    #[arg(long)]
+    pub ingest_chunks_only: bool,
+
+    /// Number of paragraphs to ingest concurrently
+    #[arg(long, default_value_t = 10)]
+    pub ingestion_batch_size: usize,
+
+    /// Maximum retries for ingestion failures per paragraph
+    #[arg(long, default_value_t = 3)]
+    pub ingestion_max_retries: usize,
+
+    /// Recompute embeddings for cached corpora without re-running ingestion
+    #[arg(long, alias = "refresh-embeddings")]
+    pub refresh_embeddings_only: bool,
+
+    /// Delete cached paragraph shards before rebuilding the ingestion corpus
+    #[arg(long)]
+    pub slice_reset_ingestion: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct DatabaseArgs {
+    /// SurrealDB server endpoint
+    #[arg(long, default_value = "ws://127.0.0.1:8000", env = "EVAL_DB_ENDPOINT")]
+    pub db_endpoint: String,
+
+    /// SurrealDB root username
+    #[arg(long, default_value = "root_user", env = "EVAL_DB_USERNAME")]
+    pub db_username: String,
+
+    /// SurrealDB root password
+    #[arg(long, default_value = "root_password", env = "EVAL_DB_PASSWORD")]
+    pub db_password: String,
+
+    /// Override the namespace used on the SurrealDB server
+    #[arg(long, env = "EVAL_DB_NAMESPACE")]
+    pub db_namespace: Option<String>,
+
+    /// Override the database used on the SurrealDB server
+    #[arg(long, env = "EVAL_DB_DATABASE")]
+    pub db_database: Option<String>,
+
+    /// Path to inspect DB state
+    #[arg(long)]
+    pub inspect_db_state: Option<PathBuf>,
+}
+
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Config {
@@ -205,37 +271,8 @@ pub struct Config {
     #[arg(long, default_value_os_t = default_cache_dir())]
     pub cache_dir: PathBuf,
 
-    /// Directory for ingestion corpora caches
-    #[arg(long, default_value_os_t = default_ingestion_cache_dir())]
-    pub ingestion_cache_dir: PathBuf,
-
-    /// Minimum tokens per chunk for ingestion
-    #[arg(long, default_value_t = 256)]
-    pub ingest_chunk_min_tokens: usize,
-
-    /// Maximum tokens per chunk for ingestion
-    #[arg(long, default_value_t = 512)]
-    pub ingest_chunk_max_tokens: usize,
-
-    /// Overlap between chunks during ingestion (tokens)
-    #[arg(long, default_value_t = 50)]
-    pub ingest_chunk_overlap_tokens: usize,
-
-    /// Run ingestion in chunk-only mode (skip analyzer/graph generation)
-    #[arg(long)]
-    pub ingest_chunks_only: bool,
-
-    /// Number of paragraphs to ingest concurrently
-    #[arg(long, default_value_t = 10)]
-    pub ingestion_batch_size: usize,
-
-    /// Maximum retries for ingestion failures per paragraph
-    #[arg(long, default_value_t = 3)]
-    pub ingestion_max_retries: usize,
-
-    /// Recompute embeddings for cached corpora without re-running ingestion
-    #[arg(long, alias = "refresh-embeddings")]
-    pub refresh_embeddings_only: bool,
+    #[command(flatten)]
+    pub ingest: IngestConfig,
 
     /// Include entity descriptions and categories in JSON reports
     #[arg(long)]
@@ -261,12 +298,8 @@ pub struct Config {
     #[arg(long, default_value_t = 0)]
     pub slice_offset: usize,
 
-    /// Delete cached paragraph shards before rebuilding the ingestion corpus
-    #[arg(long)]
-    pub slice_reset_ingestion: bool,
-
     /// Target negative-to-positive paragraph ratio for slice growth
-    #[arg(long, default_value_t = crate::slices::DEFAULT_NEGATIVE_MULTIPLIER)]
+    #[arg(long, default_value_t = crate::slice::DEFAULT_NEGATIVE_MULTIPLIER)]
     pub negative_multiplier: f32,
 
     /// Annotate the run; label is stored in JSON/Markdown reports
@@ -301,29 +334,8 @@ pub struct Config {
     #[arg(long, alias = "perf-log")]
     pub perf_log_console: bool,
 
-    /// SurrealDB server endpoint
-    #[arg(long, default_value = "ws://127.0.0.1:8000", env = "EVAL_DB_ENDPOINT")]
-    pub db_endpoint: String,
-
-    /// SurrealDB root username
-    #[arg(long, default_value = "root_user", env = "EVAL_DB_USERNAME")]
-    pub db_username: String,
-
-    /// SurrealDB root password
-    #[arg(long, default_value = "root_password", env = "EVAL_DB_PASSWORD")]
-    pub db_password: String,
-
-    /// Override the namespace used on the SurrealDB server
-    #[arg(long, env = "EVAL_DB_NAMESPACE")]
-    pub db_namespace: Option<String>,
-
-    /// Override the database used on the SurrealDB server
-    #[arg(long, env = "EVAL_DB_DATABASE")]
-    pub db_database: Option<String>,
-
-    /// Path to inspect DB state
-    #[arg(long)]
-    pub inspect_db_state: Option<PathBuf>,
+    #[command(flatten)]
+    pub database: DatabaseArgs,
 
     // Computed fields (not arguments)
     #[arg(skip)]
@@ -377,21 +389,21 @@ impl Config {
         }
 
         // Validations
-        if self.ingest_chunk_min_tokens == 0
-            || self.ingest_chunk_min_tokens >= self.ingest_chunk_max_tokens
+        if self.ingest.ingest_chunk_min_tokens == 0
+            || self.ingest.ingest_chunk_min_tokens >= self.ingest.ingest_chunk_max_tokens
         {
             return Err(anyhow!(
                 "--ingest-chunk-min-tokens must be greater than zero and less than --ingest-chunk-max-tokens (got {} >= {})",
-                self.ingest_chunk_min_tokens,
-                self.ingest_chunk_max_tokens
+                self.ingest.ingest_chunk_min_tokens,
+                self.ingest.ingest_chunk_max_tokens
             ));
         }
 
-        if self.ingest_chunk_overlap_tokens >= self.ingest_chunk_min_tokens {
+        if self.ingest.ingest_chunk_overlap_tokens >= self.ingest.ingest_chunk_min_tokens {
             return Err(anyhow!(
                 "--ingest-chunk-overlap-tokens ({}) must be less than --ingest-chunk-min-tokens ({})",
-                self.ingest_chunk_overlap_tokens,
-                self.ingest_chunk_min_tokens
+                self.ingest.ingest_chunk_overlap_tokens,
+                self.ingest.ingest_chunk_min_tokens
             ));
         }
 

@@ -26,10 +26,10 @@ use uuid::Uuid;
 
 use crate::{
     datasets::{ConvertedDataset, ConvertedParagraph, ConvertedQuestion},
-    slices::{self, ResolvedSlice, SliceParagraphKind},
+    slice::{self, ResolvedSlice, SliceParagraphKind},
 };
 
-use crate::ingest::{
+use crate::corpus::{
     CorpusCacheConfig, CorpusHandle, CorpusManifest, CorpusMetadata, CorpusQuestion,
     EmbeddedKnowledgeEntity, EmbeddedTextChunk, ParagraphShard, ParagraphShardStore,
     MANIFEST_VERSION,
@@ -58,12 +58,12 @@ impl<'a> IngestRequest<'a> {
     fn from_entry(
         slot: usize,
         paragraph: &'a ConvertedParagraph,
-        entry: &'a slices::SliceParagraphEntry,
+        entry: &'a slice::SliceParagraphEntry,
     ) -> Result<Self> {
         let shard_path = entry
             .shard_path
             .clone()
-            .unwrap_or_else(|| slices::default_shard_path(&entry.id));
+            .unwrap_or_else(|| slice::default_shard_path(&entry.id));
         let question_refs = match &entry.kind {
             SliceParagraphKind::Positive { question_ids } => question_ids
                 .iter()
@@ -94,7 +94,7 @@ impl<'a> IngestRequest<'a> {
 
 struct ParagraphPlan<'a> {
     slot: usize,
-    entry: &'a slices::SliceParagraphEntry,
+    entry: &'a slice::SliceParagraphEntry,
     paragraph: &'a ConvertedParagraph,
 }
 
@@ -109,7 +109,7 @@ struct IngestionStats {
 pub async fn ensure_corpus(
     dataset: &ConvertedDataset,
     slice: &ResolvedSlice<'_>,
-    window: &slices::SliceWindow<'_>,
+    window: &slice::SliceWindow<'_>,
     cache: &CorpusCacheConfig,
     embedding: Arc<common::utils::embedding::EmbeddingProvider>,
     openai: Arc<OpenAIClient>,
@@ -189,7 +189,7 @@ pub async fn ensure_corpus(
             .entry
             .shard_path
             .clone()
-            .unwrap_or_else(|| slices::default_shard_path(&plan_entry.entry.id));
+            .unwrap_or_else(|| slice::default_shard_path(&plan_entry.entry.id));
         let shard = if cache.force_refresh {
             None
         } else {
@@ -683,7 +683,7 @@ mod tests {
     use super::*;
     use crate::{
         datasets::{ConvertedDataset, ConvertedParagraph, ConvertedQuestion, DatasetKind},
-        slices::{CaseRef, SliceCaseEntry, SliceManifest, SliceParagraphEntry, SliceParagraphKind},
+        slice::{CaseRef, SliceCaseEntry, SliceManifest, SliceParagraphEntry, SliceParagraphKind},
     };
     use chrono::Utc;
 
