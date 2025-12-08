@@ -20,7 +20,7 @@ datasets:
     category: "Natural Questions"
     entity_suffix: "Natural Questions"
     source_prefix: "nq"
-    raw: "data/raw/nq/dev-all.jsonl"
+    raw: "data/raw/nq-dev/dev-all.jsonl"
     converted: "data/converted/nq-dev-minne.json"
     include_unanswerable: true
     slices:
@@ -42,7 +42,7 @@ datasets:
     slices:
       - id: beir-mix-600
         label: "BEIR mix (600)"
-        description: "Balanced slice across FEVER, FiQA, HotpotQA, NFCorpus, Quora, TREC-COVID"
+        description: "Balanced slice across FEVER, FiQA, HotpotQA, NFCorpus, Quora, TREC-COVID, SciFact, NQ-BEIR"
         limit: 600
         corpus_limit: 6000
         seed: 0x5eed2025
@@ -132,6 +132,36 @@ datasets:
     slices:
       - id: trec-covid-test-200
         label: "TREC-COVID test (200)"
+        description: "200-case slice from BEIR test qrels"
+        limit: 200
+        corpus_limit: 5000
+        seed: 0x5eed2025
+  - id: scifact
+    label: "SciFact (BEIR)"
+    category: "SciFact"
+    entity_suffix: "SciFact"
+    source_prefix: "scifact"
+    raw: "data/raw/scifact"
+    converted: "data/converted/scifact-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: scifact-test-200
+        label: "SciFact test (200)"
+        description: "200-case slice from BEIR test qrels"
+        limit: 200
+        corpus_limit: 3000
+        seed: 0x5eed2025
+  - id: nq-beir
+    label: "Natural Questions (BEIR)"
+    category: "Natural Questions"
+    entity_suffix: "Natural Questions"
+    source_prefix: "nq-beir"
+    raw: "data/raw/nq"
+    converted: "data/converted/nq-beir-minne.json"
+    include_unanswerable: false
+    slices:
+      - id: nq-beir-test-200
+        label: "NQ (BEIR) test (200)"
         description: "200-case slice from BEIR test qrels"
         limit: 200
         corpus_limit: 5000

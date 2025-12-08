@@ -84,6 +84,26 @@ pub struct RetrievalSettings {
     #[arg(long, default_value_t = 5)]
     pub chunk_result_cap: usize,
 
+    /// Reciprocal rank fusion k value for revised chunk merging
+    #[arg(long)]
+    pub chunk_rrf_k: Option<f32>,
+
+    /// Weight for vector ranks in revised RRF
+    #[arg(long)]
+    pub chunk_rrf_vector_weight: Option<f32>,
+
+    /// Weight for chunk FTS ranks in revised RRF
+    #[arg(long)]
+    pub chunk_rrf_fts_weight: Option<f32>,
+
+    /// Include vector ranks in revised RRF (default: true)
+    #[arg(long)]
+    pub chunk_rrf_use_vector: Option<bool>,
+
+    /// Include chunk FTS ranks in revised RRF (default: true)
+    #[arg(long)]
+    pub chunk_rrf_use_fts: Option<bool>,
+
     /// Require verified chunks (disable with --llm-mode)
     #[arg(skip = true)]
     pub require_verified_chunks: bool,
@@ -104,6 +124,11 @@ impl Default for RetrievalSettings {
             rerank_pool_size: 4,
             rerank_keep_top: 10,
             chunk_result_cap: 5,
+            chunk_rrf_k: None,
+            chunk_rrf_vector_weight: None,
+            chunk_rrf_fts_weight: None,
+            chunk_rrf_use_vector: None,
+            chunk_rrf_use_fts: None,
             require_verified_chunks: true,
             strategy: RetrievalStrategy::Initial,
         }
@@ -374,6 +399,28 @@ impl Config {
             return Err(anyhow!(
                 "--rerank-pool must be greater than zero when reranking is enabled"
             ));
+        }
+
+        if let Some(k) = self.retrieval.chunk_rrf_k {
+            if k <= 0.0 || !k.is_finite() {
+                return Err(anyhow!(
+                    "--chunk-rrf-k must be a positive, finite number (got {k})"
+                ));
+            }
+        }
+        if let Some(weight) = self.retrieval.chunk_rrf_vector_weight {
+            if weight < 0.0 || !weight.is_finite() {
+                return Err(anyhow!(
+                    "--chunk-rrf-vector-weight must be a non-negative, finite number (got {weight})"
+                ));
+            }
+        }
+        if let Some(weight) = self.retrieval.chunk_rrf_fts_weight {
+            if weight < 0.0 || !weight.is_finite() {
+                return Err(anyhow!(
+                    "--chunk-rrf-fts-weight must be a non-negative, finite number (got {weight})"
+                ));
+            }
         }
 
         if self.concurrency == 0 {

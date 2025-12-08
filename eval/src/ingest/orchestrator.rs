@@ -373,6 +373,20 @@ pub async fn ensure_corpus(
     let reused_ingestion = ingested_count == 0 && !cache.force_refresh;
     let reused_embeddings = reused_ingestion && !cache.refresh_embeddings_only;
 
+    info!(
+        dataset = %dataset.metadata.id,
+        slice = %slice.manifest.slice_id,
+        fingerprint = %ingestion_fingerprint,
+        reused_ingestion,
+        reused_embeddings,
+        positive_reused = stats.positive_reused,
+        positive_ingested = stats.positive_ingested,
+        negative_reused = stats.negative_reused,
+        negative_ingested = stats.negative_ingested,
+        shard_dir = %base_dir.display(),
+        "Corpus cache outcome"
+    );
+
     let handle = CorpusHandle {
         manifest,
         path: base_dir,
