@@ -4,7 +4,7 @@ mod state;
 
 use anyhow::Result;
 
-use crate::{args::Config, datasets::ConvertedDataset, eval::EvaluationSummary};
+use crate::{args::Config, datasets::ConvertedDataset, types::EvaluationSummary};
 
 use context::EvaluationContext;
 

@@ -1,16 +1,20 @@
 mod args;
 mod cache;
+mod cases;
+mod corpus;
 mod datasets;
 mod db_helpers;
 mod eval;
-mod ingest;
 mod inspection;
+mod namespace;
 mod openai;
 mod perf;
+mod pipeline;
 mod report;
+mod settings;
 mod slice;
-mod slices;
 mod snapshot;
+mod types;
 
 use anyhow::Context;
 use tokio::runtime::Builder;

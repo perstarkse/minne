@@ -3,7 +3,7 @@ use std::time::Instant;
 use anyhow::Context;
 use tracing::info;
 
-use crate::{eval::can_reuse_namespace, ingest, slice, snapshot};
+use crate::{eval::can_reuse_namespace, corpus, slice, snapshot};
 
 use super::super::{
     context::{EvalStage, EvaluationContext},
@@ -23,7 +23,7 @@ pub(crate) async fn prepare_corpus(
     let started = Instant::now();
 
     let config = ctx.config();
-    let cache_settings = ingest::CorpusCacheConfig::from(config);
+    let cache_settings = corpus::CorpusCacheConfig::from(config);
     let embedding_provider = ctx.embedding_provider().clone();
     let openai_client = ctx.openai_client();
     let slice = ctx.slice();
@@ -31,14 +31,14 @@ pub(crate) async fn prepare_corpus(
         .context("selecting slice window for corpus preparation")?;
 
     let descriptor = snapshot::Descriptor::new(config, slice, ctx.embedding_provider());
-    let ingestion_config = ingest::make_ingestion_config(config);
-    let expected_fingerprint = ingest::compute_ingestion_fingerprint(
+    let ingestion_config = corpus::make_ingestion_config(config);
+    let expected_fingerprint = corpus::compute_ingestion_fingerprint(
         ctx.dataset(),
         slice,
         config.converted_dataset_path.as_path(),
         &ingestion_config,
     )?;
-    let base_dir = ingest::cached_corpus_dir(
+    let base_dir = corpus::cached_corpus_dir(
         &cache_settings,
         ctx.dataset().metadata.id.as_str(),
         slice.manifest.slice_id.as_str(),
@@ -58,14 +58,14 @@ pub(crate) async fn prepare_corpus(
         )
         .await?
         {
-            if let Some(manifest) = ingest::load_cached_manifest(&base_dir)? {
+            if let Some(manifest) = corpus::load_cached_manifest(&base_dir)? {
                 info!(
                     cache = %base_dir.display(),
                     namespace = ctx.namespace.as_str(),
                     database = ctx.database.as_str(),
                     "Namespace already seeded; reusing cached corpus manifest"
                 );
-                let corpus_handle = ingest::corpus_handle_from_manifest(manifest, base_dir);
+                let corpus_handle = corpus::corpus_handle_from_manifest(manifest, base_dir);
                 ctx.corpus_handle = Some(corpus_handle);
                 ctx.expected_fingerprint = Some(expected_fingerprint);
                 ctx.ingestion_duration_ms = 0;
@@ -94,7 +94,7 @@ pub(crate) async fn prepare_corpus(
     let eval_user_id = "eval-user".to_string();
     let ingestion_timer = Instant::now();
     let corpus_handle = {
-        ingest::ensure_corpus(
+        corpus::ensure_corpus(
             ctx.dataset(),
             slice,
             &window,

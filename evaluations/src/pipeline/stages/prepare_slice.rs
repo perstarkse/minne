@@ -43,11 +43,15 @@ pub(crate) async fn prepare_slice(
     ctx.window_length = window.length;
     ctx.window_total_cases = window.total_cases;
 
-    ctx.namespace = ctx.config().db_namespace.clone().unwrap_or_else(|| {
-        default_namespace(ctx.dataset().metadata.id.as_str(), ctx.config().limit)
-    });
+    ctx.namespace = ctx
+        .config()
+        .database
+        .db_namespace
+        .clone()
+        .unwrap_or_else(|| default_namespace(ctx.dataset().metadata.id.as_str(), ctx.config().limit));
     ctx.database = ctx
         .config()
+        .database
         .db_database
         .clone()
         .unwrap_or_else(default_database);

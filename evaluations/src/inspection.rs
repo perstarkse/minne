@@ -7,7 +7,7 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use common::storage::{db::SurrealDbClient, types::text_chunk::TextChunk};
 
-use crate::{args::Config, eval::connect_eval_db, ingest, snapshot::DbSnapshotState};
+use crate::{args::Config, eval::connect_eval_db, corpus, snapshot::DbSnapshotState};
 
 pub async fn inspect_question(config: &Config) -> Result<()> {
     let question_id = config
@@ -65,6 +65,7 @@ pub async fn inspect_question(config: &Config) -> Result<()> {
     }
 
     let db_state_path = config
+        .database
         .inspect_db_state
         .clone()
         .unwrap_or_else(|| default_state_path(config, &manifest));
@@ -109,14 +110,14 @@ struct ChunkEntry {
     snippet: String,
 }
 
-fn load_manifest(path: &Path) -> Result<ingest::CorpusManifest> {
+fn load_manifest(path: &Path) -> Result<corpus::CorpusManifest> {
     let bytes =
         fs::read(path).with_context(|| format!("reading ingestion manifest {}", path.display()))?;
     serde_json::from_slice(&bytes)
         .with_context(|| format!("parsing ingestion manifest {}", path.display()))
 }
 
-fn build_chunk_lookup(manifest: &ingest::CorpusManifest) -> HashMap<String, ChunkEntry> {
+fn build_chunk_lookup(manifest: &corpus::CorpusManifest) -> HashMap<String, ChunkEntry> {
     let mut lookup = HashMap::new();
     for paragraph in &manifest.paragraphs {
         for chunk in &paragraph.chunks {
@@ -139,7 +140,7 @@ fn build_chunk_lookup(manifest: &ingest::CorpusManifest) -> HashMap<String, Chun
     lookup
 }
 
-fn default_state_path(config: &Config, manifest: &ingest::CorpusManifest) -> PathBuf {
+fn default_state_path(config: &Config, manifest: &corpus::CorpusManifest) -> PathBuf {
     config
         .cache_dir
         .join("snapshots")
