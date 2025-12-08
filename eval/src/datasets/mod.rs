@@ -262,6 +262,10 @@ pub enum DatasetKind {
     Quora,
     #[value(name = "trec-covid", alias = "treccovid", alias = "trec_covid")]
     TrecCovid,
+    #[value(name = "scifact")]
+    Scifact,
+    #[value(name = "nq-beir", alias = "natural-questions-beir")]
+    NqBeir,
 }
 
 impl DatasetKind {
@@ -276,6 +280,8 @@ impl DatasetKind {
             Self::Nfcorpus => "nfcorpus",
             Self::Quora => "quora",
             Self::TrecCovid => "trec-covid",
+            Self::Scifact => "scifact",
+            Self::NqBeir => "nq-beir",
         }
     }
 
@@ -290,6 +296,8 @@ impl DatasetKind {
             Self::Nfcorpus => "NFCorpus (BEIR)",
             Self::Quora => "Quora (IR)",
             Self::TrecCovid => "TREC-COVID (BEIR)",
+            Self::Scifact => "SciFact (BEIR)",
+            Self::NqBeir => "Natural Questions (BEIR)",
         }
     }
 
@@ -304,6 +312,8 @@ impl DatasetKind {
             Self::Nfcorpus => "NFCorpus",
             Self::Quora => "Quora",
             Self::TrecCovid => "TREC-COVID",
+            Self::Scifact => "SciFact",
+            Self::NqBeir => "Natural Questions",
         }
     }
 
@@ -318,6 +328,8 @@ impl DatasetKind {
             Self::Nfcorpus => "NFCorpus",
             Self::Quora => "Quora",
             Self::TrecCovid => "TREC-COVID",
+            Self::Scifact => "SciFact",
+            Self::NqBeir => "Natural Questions",
         }
     }
 
@@ -332,6 +344,8 @@ impl DatasetKind {
             Self::Nfcorpus => "nfcorpus",
             Self::Quora => "quora",
             Self::TrecCovid => "trec-covid",
+            Self::Scifact => "scifact",
+            Self::NqBeir => "nq-beir",
         }
     }
 
@@ -376,20 +390,24 @@ impl FromStr for DatasetKind {
             "nfcorpus" | "nf-corpus" => Ok(Self::Nfcorpus),
             "quora" => Ok(Self::Quora),
             "trec-covid" | "treccovid" | "trec_covid" => Ok(Self::TrecCovid),
+            "scifact" => Ok(Self::Scifact),
+            "nq-beir" | "natural-questions-beir" => Ok(Self::NqBeir),
             other => {
-                anyhow::bail!("unknown dataset '{other}'. Expected one of: squad, natural-questions, beir, fever, fiqa, hotpotqa, nfcorpus, quora, trec-covid.")
+                anyhow::bail!("unknown dataset '{other}'. Expected one of: squad, natural-questions, beir, fever, fiqa, hotpotqa, nfcorpus, quora, trec-covid, scifact, nq-beir.")
             }
         }
     }
 }
 
-pub const BEIR_DATASETS: [DatasetKind; 6] = [
+pub const BEIR_DATASETS: [DatasetKind; 8] = [
     DatasetKind::Fever,
     DatasetKind::Fiqa,
     DatasetKind::HotpotQa,
     DatasetKind::Nfcorpus,
     DatasetKind::Quora,
     DatasetKind::TrecCovid,
+    DatasetKind::Scifact,
+    DatasetKind::NqBeir,
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -481,12 +499,27 @@ pub fn convert(
         | DatasetKind::HotpotQa
         | DatasetKind::Nfcorpus
         | DatasetKind::Quora
-        | DatasetKind::TrecCovid => beir::convert_beir(raw_path, dataset)?,
+        | DatasetKind::TrecCovid
+        | DatasetKind::Scifact
+        | DatasetKind::NqBeir => beir::convert_beir(raw_path, dataset)?,
     };
 
     let metadata_limit = match dataset {
         DatasetKind::NaturalQuestions => None,
         _ => context_token_limit,
+    };
+
+    let generated_at = match dataset {
+        DatasetKind::Beir
+        | DatasetKind::Fever
+        | DatasetKind::Fiqa
+        | DatasetKind::HotpotQa
+        | DatasetKind::Nfcorpus
+        | DatasetKind::Quora
+        | DatasetKind::TrecCovid
+        | DatasetKind::Scifact
+        | DatasetKind::NqBeir => base_timestamp(),
+        _ => Utc::now(),
     };
 
     let source_label = match dataset {
@@ -495,7 +528,7 @@ pub fn convert(
     };
 
     Ok(ConvertedDataset {
-        generated_at: Utc::now(),
+        generated_at,
         metadata: DatasetMetadata::for_kind(dataset, include_unanswerable, metadata_limit),
         source: source_label,
         paragraphs,

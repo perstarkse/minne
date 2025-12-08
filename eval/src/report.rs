@@ -88,6 +88,16 @@ pub struct RetrievalSection {
     pub rerank_pool_size: Option<usize>,
     pub rerank_keep_top: usize,
     pub chunk_result_cap: usize,
+    #[serde(default = "default_chunk_rrf_k")]
+    pub chunk_rrf_k: f32,
+    #[serde(default = "default_chunk_rrf_weight")]
+    pub chunk_rrf_vector_weight: f32,
+    #[serde(default = "default_chunk_rrf_weight")]
+    pub chunk_rrf_fts_weight: f32,
+    #[serde(default = "default_chunk_rrf_use")]
+    pub chunk_rrf_use_vector: bool,
+    #[serde(default = "default_chunk_rrf_use")]
+    pub chunk_rrf_use_fts: bool,
     #[serde(default)]
     pub chunk_vector_take: usize,
     #[serde(default)]
@@ -96,6 +106,18 @@ pub struct RetrievalSection {
     pub ingest_chunk_max_tokens: usize,
     pub ingest_chunk_overlap_tokens: usize,
     pub ingest_chunks_only: bool,
+}
+
+const fn default_chunk_rrf_k() -> f32 {
+    60.0
+}
+
+const fn default_chunk_rrf_weight() -> f32 {
+    1.0
+}
+
+const fn default_chunk_rrf_use() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,6 +228,11 @@ impl EvaluationReport {
             rerank_pool_size: summary.rerank_pool_size,
             rerank_keep_top: summary.rerank_keep_top,
             chunk_result_cap: summary.chunk_result_cap,
+            chunk_rrf_k: summary.chunk_rrf_k,
+            chunk_rrf_vector_weight: summary.chunk_rrf_vector_weight,
+            chunk_rrf_fts_weight: summary.chunk_rrf_fts_weight,
+            chunk_rrf_use_vector: summary.chunk_rrf_use_vector,
+            chunk_rrf_use_fts: summary.chunk_rrf_use_fts,
             chunk_vector_take: summary.chunk_vector_take,
             chunk_fts_take: summary.chunk_fts_take,
             ingest_chunk_min_tokens: summary.ingest_chunk_min_tokens,
@@ -856,6 +883,11 @@ fn convert_legacy_entry(entry: LegacyHistoryEntry) -> EvaluationReport {
         rerank_pool_size: entry.rerank_pool_size,
         rerank_keep_top: entry.rerank_keep_top,
         chunk_result_cap: entry.chunk_result_cap.unwrap_or(5),
+        chunk_rrf_k: default_chunk_rrf_k(),
+        chunk_rrf_vector_weight: default_chunk_rrf_weight(),
+        chunk_rrf_fts_weight: default_chunk_rrf_weight(),
+        chunk_rrf_use_vector: default_chunk_rrf_use(),
+        chunk_rrf_use_fts: default_chunk_rrf_use(),
         chunk_vector_take: 0,
         chunk_fts_take: 0,
         ingest_chunk_min_tokens: entry.ingest_chunk_min_tokens.unwrap_or(256),
@@ -1098,6 +1130,11 @@ mod tests {
             detailed_report: true,
             retrieval_strategy: "initial".into(),
             chunk_result_cap: 5,
+            chunk_rrf_k: 60.0,
+            chunk_rrf_vector_weight: 1.0,
+            chunk_rrf_fts_weight: 1.0,
+            chunk_rrf_use_vector: true,
+            chunk_rrf_use_fts: true,
             ingest_chunk_min_tokens: 256,
             ingest_chunk_max_tokens: 512,
             ingest_chunk_overlap_tokens: 50,

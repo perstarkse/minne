@@ -22,7 +22,7 @@ use common::storage::{
 use serde::Deserialize;
 use serde::Serialize;
 use surrealdb::sql::Thing;
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::datasets::{ConvertedParagraph, ConvertedQuestion};
 
@@ -440,6 +440,12 @@ impl ParagraphShardStore {
             .with_context(|| format!("parsing shard {}", path.display()))?;
 
         if shard.ingestion_fingerprint != fingerprint {
+            debug!(
+                path = %path.display(),
+                expected = fingerprint,
+                found = shard.ingestion_fingerprint,
+                "Shard fingerprint mismatch; will rebuild"
+            );
             return Ok(None);
         }
         if shard.version != PARAGRAPH_SHARD_VERSION {

@@ -72,6 +72,21 @@ pub struct RetrievalTuning {
     pub normalize_vector_scores: bool,
     /// Normalize FTS (BM25) scores before fusion (default: true)
     pub normalize_fts_scores: bool,
+    /// Reciprocal rank fusion k value for chunk merging in Revised strategy.
+    #[serde(default = "default_chunk_rrf_k")]
+    pub chunk_rrf_k: f32,
+    /// Weight applied to vector ranks in RRF.
+    #[serde(default = "default_chunk_rrf_vector_weight")]
+    pub chunk_rrf_vector_weight: f32,
+    /// Weight applied to chunk FTS ranks in RRF.
+    #[serde(default = "default_chunk_rrf_fts_weight")]
+    pub chunk_rrf_fts_weight: f32,
+    /// Whether to include vector rankings in RRF.
+    #[serde(default = "default_chunk_rrf_use_vector")]
+    pub chunk_rrf_use_vector: bool,
+    /// Whether to include chunk FTS rankings in RRF.
+    #[serde(default = "default_chunk_rrf_use_fts")]
+    pub chunk_rrf_use_fts: bool,
 }
 
 impl Default for RetrievalTuning {
@@ -102,6 +117,11 @@ impl Default for RetrievalTuning {
             normalize_vector_scores: false,
             // FTS scores (BM25) are unbounded, normalization helps more
             normalize_fts_scores: true,
+            chunk_rrf_k: default_chunk_rrf_k(),
+            chunk_rrf_vector_weight: default_chunk_rrf_vector_weight(),
+            chunk_rrf_fts_weight: default_chunk_rrf_fts_weight(),
+            chunk_rrf_use_vector: default_chunk_rrf_use_vector(),
+            chunk_rrf_use_fts: default_chunk_rrf_use_fts(),
         }
     }
 }
@@ -155,4 +175,24 @@ impl Default for RetrievalConfig {
             tuning: RetrievalTuning::default(),
         }
     }
+}
+
+const fn default_chunk_rrf_k() -> f32 {
+    60.0
+}
+
+const fn default_chunk_rrf_vector_weight() -> f32 {
+    1.0
+}
+
+const fn default_chunk_rrf_fts_weight() -> f32 {
+    1.0
+}
+
+const fn default_chunk_rrf_use_vector() -> bool {
+    true
+}
+
+const fn default_chunk_rrf_use_fts() -> bool {
+    true
 }

@@ -63,6 +63,21 @@ pub(crate) async fn run_queries(
     if let Some(value) = config.retrieval.chunk_fts_take {
         retrieval_config.tuning.chunk_fts_take = value;
     }
+    if let Some(value) = config.retrieval.chunk_rrf_k {
+        retrieval_config.tuning.chunk_rrf_k = value;
+    }
+    if let Some(value) = config.retrieval.chunk_rrf_vector_weight {
+        retrieval_config.tuning.chunk_rrf_vector_weight = value;
+    }
+    if let Some(value) = config.retrieval.chunk_rrf_fts_weight {
+        retrieval_config.tuning.chunk_rrf_fts_weight = value;
+    }
+    if let Some(value) = config.retrieval.chunk_rrf_use_vector {
+        retrieval_config.tuning.chunk_rrf_use_vector = value;
+    }
+    if let Some(value) = config.retrieval.chunk_rrf_use_fts {
+        retrieval_config.tuning.chunk_rrf_use_fts = value;
+    }
     if let Some(value) = config.retrieval.chunk_avg_chars_per_token {
         retrieval_config.tuning.avg_chars_per_token = value;
     }
@@ -93,6 +108,11 @@ pub(crate) async fn run_queries(
         rerank_keep_top = config.retrieval.rerank_keep_top,
         chunk_vector_take = effective_chunk_vector,
         chunk_fts_take = effective_chunk_fts,
+        chunk_rrf_k = active_tuning.chunk_rrf_k,
+        chunk_rrf_vector_weight = active_tuning.chunk_rrf_vector_weight,
+        chunk_rrf_fts_weight = active_tuning.chunk_rrf_fts_weight,
+        chunk_rrf_use_vector = active_tuning.chunk_rrf_use_vector,
+        chunk_rrf_use_fts = active_tuning.chunk_rrf_use_fts,
         embedding_backend = ctx.embedding_provider().backend_label(),
         embedding_model = ctx
             .embedding_provider()
