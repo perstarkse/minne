@@ -65,8 +65,7 @@ impl KnowledgeRelationship {
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
         let query = format!(
-            "DELETE knowledge_entity -> relates_to WHERE metadata.source_id = '{}'",
-            source_id
+            "DELETE knowledge_entity -> relates_to WHERE metadata.source_id = '{source_id}'"
         );
 
         db_client.query(query).await?;
@@ -81,15 +80,14 @@ impl KnowledgeRelationship {
     ) -> Result<(), AppError> {
         let mut authorized_result = db_client
             .query(format!(
-                "SELECT * FROM relates_to WHERE id = relates_to:`{}` AND metadata.user_id = '{}'",
-                id, user_id
+                "SELECT * FROM relates_to WHERE id = relates_to:`{id}` AND metadata.user_id = '{user_id}'"
             ))
             .await?;
         let authorized: Vec<KnowledgeRelationship> = authorized_result.take(0).unwrap_or_default();
 
         if authorized.is_empty() {
             let mut exists_result = db_client
-                .query(format!("SELECT * FROM relates_to:`{}`", id))
+                .query(format!("SELECT * FROM relates_to:`{id}`"))
                 .await?;
             let existing: Option<KnowledgeRelationship> = exists_result.take(0)?;
 
@@ -98,11 +96,11 @@ impl KnowledgeRelationship {
                     "Not authorized to delete relationship".into(),
                 ))
             } else {
-                Err(AppError::NotFound(format!("Relationship {} not found", id)))
+                Err(AppError::NotFound(format!("Relationship {id} not found")))
             }
         } else {
             db_client
-                .query(format!("DELETE relates_to:`{}`", id))
+                .query(format!("DELETE relates_to:`{id}`"))
                 .await?;
             Ok(())
         }

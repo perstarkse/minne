@@ -183,7 +183,7 @@ impl StorageManager {
 
         while current.starts_with(base) && current.as_path() != base.as_path() {
             match tokio::fs::remove_dir(&current).await {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(err) => match err.kind() {
                     ErrorKind::NotFound => {}
                     ErrorKind::DirectoryNotEmpty => break,

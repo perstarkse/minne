@@ -17,9 +17,7 @@ use std::time::{Duration, Instant};
 use tracing::info;
 
 use stages::PipelineContext;
-use strategies::{
-    IngestionDriver, InitialStrategyDriver, RelationshipSuggestionDriver, RevisedStrategyDriver,
-};
+use strategies::{DefaultStrategyDriver, IngestionDriver, RelationshipSuggestionDriver};
 
 // Export StrategyOutput publicly from this module
 // (it's defined in lib.rs but we re-export it here)
@@ -132,25 +130,8 @@ pub async fn run_pipeline(
     );
 
     match config.strategy {
-        RetrievalStrategy::Initial => {
-            let driver = InitialStrategyDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                None,
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
-            Ok(StrategyOutput::Entities(run.results))
-        }
-        RetrievalStrategy::Revised => {
-            let driver = RevisedStrategyDriver::new();
+        RetrievalStrategy::Default => {
+            let driver = DefaultStrategyDriver::new();
             let run = execute_strategy(
                 driver,
                 db_client,
@@ -214,25 +195,8 @@ pub async fn run_pipeline_with_embedding(
     reranker: Option<RerankerLease>,
 ) -> Result<StrategyOutput, AppError> {
     match config.strategy {
-        RetrievalStrategy::Initial => {
-            let driver = InitialStrategyDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
-            Ok(StrategyOutput::Entities(run.results))
-        }
-        RetrievalStrategy::Revised => {
-            let driver = RevisedStrategyDriver::new();
+        RetrievalStrategy::Default => {
+            let driver = DefaultStrategyDriver::new();
             let run = execute_strategy(
                 driver,
                 db_client,
@@ -301,29 +265,8 @@ pub async fn run_pipeline_with_embedding_with_metrics(
     reranker: Option<RerankerLease>,
 ) -> Result<PipelineRunOutput<StrategyOutput>, AppError> {
     match config.strategy {
-        RetrievalStrategy::Initial => {
-            let driver = InitialStrategyDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
-            Ok(PipelineRunOutput {
-                results: StrategyOutput::Entities(run.results),
-                diagnostics: run.diagnostics,
-                stage_timings: run.stage_timings,
-            })
-        }
-        RetrievalStrategy::Revised => {
-            let driver = RevisedStrategyDriver::new();
+        RetrievalStrategy::Default => {
+            let driver = DefaultStrategyDriver::new();
             let run = execute_strategy(
                 driver,
                 db_client,
@@ -361,29 +304,8 @@ pub async fn run_pipeline_with_embedding_with_diagnostics(
     reranker: Option<RerankerLease>,
 ) -> Result<PipelineRunOutput<StrategyOutput>, AppError> {
     match config.strategy {
-        RetrievalStrategy::Initial => {
-            let driver = InitialStrategyDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                true,
-            )
-            .await?;
-            Ok(PipelineRunOutput {
-                results: StrategyOutput::Entities(run.results),
-                diagnostics: run.diagnostics,
-                stage_timings: run.stage_timings,
-            })
-        }
-        RetrievalStrategy::Revised => {
-            let driver = RevisedStrategyDriver::new();
+        RetrievalStrategy::Default => {
+            let driver = DefaultStrategyDriver::new();
             let run = execute_strategy(
                 driver,
                 db_client,

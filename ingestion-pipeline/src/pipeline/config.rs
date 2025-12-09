@@ -31,17 +31,8 @@ impl Default for IngestionTuning {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct IngestionConfig {
     pub tuning: IngestionTuning,
     pub chunk_only: bool,
-}
-
-impl Default for IngestionConfig {
-    fn default() -> Self {
-        Self {
-            tuning: IngestionTuning::default(),
-            chunk_only: false,
-        }
-    }
 }

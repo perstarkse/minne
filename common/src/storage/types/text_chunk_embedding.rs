@@ -110,6 +110,11 @@ impl TextChunkEmbedding {
         source_id: &str,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
+        #[allow(clippy::missing_docs_in_private_items)]
+        #[derive(Deserialize)]
+        struct IdRow {
+            id: RecordId,
+        }
         let ids_query = format!(
             "SELECT id FROM {} WHERE source_id = $source_id",
             TextChunk::table_name()
@@ -120,10 +125,6 @@ impl TextChunkEmbedding {
             .bind(("source_id", source_id.to_owned()))
             .await
             .map_err(AppError::Database)?;
-        #[derive(Deserialize)]
-        struct IdRow {
-            id: RecordId,
-        }
         let ids: Vec<IdRow> = res.take(0).map_err(AppError::Database)?;
 
         if ids.is_empty() {

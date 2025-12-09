@@ -1,3 +1,14 @@
+#![allow(
+    clippy::missing_docs_in_private_items,
+    clippy::module_name_repetitions,
+    clippy::match_same_arms,
+    clippy::format_push_string,
+    clippy::uninlined_format_args,
+    clippy::explicit_iter_loop,
+    clippy::items_after_statements,
+    clippy::get_first,
+    clippy::redundant_closure_for_method_calls
+)]
 use std::collections::HashMap;
 
 use crate::{

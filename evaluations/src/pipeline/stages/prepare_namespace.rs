@@ -119,7 +119,7 @@ pub(crate) async fn prepare_namespace(
         corpus::seed_manifest_into_db(ctx.db(), &manifest_for_seed)
             .await
             .context("seeding ingestion corpus from manifest")?;
-        namespace_seed_ms = Some(seed_start.elapsed().as_millis() as u128);
+        namespace_seed_ms = Some(seed_start.elapsed().as_millis());
 
         // Recreate indexes AFTER data is loaded (correct bulk loading pattern)
         if indexes_disabled {

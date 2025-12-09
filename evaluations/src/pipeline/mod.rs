@@ -21,9 +21,7 @@ pub async fn run_evaluation(
     let machine = stages::prepare_namespace(machine, &mut ctx).await?;
     let machine = stages::run_queries(machine, &mut ctx).await?;
     let machine = stages::summarize(machine, &mut ctx).await?;
-    let machine = stages::finalize(machine, &mut ctx).await?;
-
-    drop(machine);
+    let _ = stages::finalize(machine, &mut ctx).await?;
 
     Ok(ctx.into_summary())
 }

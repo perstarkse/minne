@@ -1,3 +1,8 @@
+#![allow(
+    clippy::missing_docs_in_private_items,
+    clippy::result_large_err
+)]
+
 pub mod pipeline;
 pub mod utils;
 

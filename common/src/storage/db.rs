@@ -13,12 +13,14 @@ use surrealdb::{
 use surrealdb_migrations::MigrationRunner;
 use tracing::debug;
 
+/// Embedded SurrealDB migration directory packaged with the crate.
 static MIGRATIONS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/");
 
 #[derive(Clone)]
 pub struct SurrealDbClient {
     pub client: Surreal<Any>,
 }
+#[allow(clippy::module_name_repetitions)]
 pub trait ProvidesDb {
     fn db(&self) -> &Arc<SurrealDbClient>;
 }

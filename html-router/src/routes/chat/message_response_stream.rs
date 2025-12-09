@@ -15,7 +15,10 @@ use futures::{
 use json_stream_parser::JsonStreamParser;
 use minijinja::Value;
 use retrieval_pipeline::{
-    answer_retrieval::{create_chat_request, create_user_message_with_history, LLMResponseFormat},
+    answer_retrieval::{
+        chunks_to_chat_context, create_chat_request, create_user_message_with_history,
+        LLMResponseFormat,
+    },
     retrieved_entities_to_json,
 };
 use serde::{Deserialize, Serialize};
@@ -126,7 +129,7 @@ pub async fn get_response_stream(
     let strategy = state.retrieval_strategy();
     let config = retrieval_pipeline::RetrievalConfig::for_chat(strategy);
 
-    let entities = match retrieval_pipeline::retrieve_entities(
+    let retrieval_result = match retrieval_pipeline::retrieve_entities(
         &state.db,
         &state.openai_client,
         &user_message.content,
@@ -136,19 +139,21 @@ pub async fn get_response_stream(
     )
     .await
     {
-        Ok(retrieval_pipeline::StrategyOutput::Entities(entities)) => entities,
-        Ok(retrieval_pipeline::StrategyOutput::Chunks(_chunks)) => {
-            return Sse::new(create_error_stream("Chat retrieval currently only supports Entity-based strategies (Initial). Revised strategy returns Chunks which are not yet supported by this handler."));
-        }
+        Ok(result) => result,
         Err(_e) => {
-            return Sse::new(create_error_stream("Failed to retrieve knowledge entities"));
+            return Sse::new(create_error_stream("Failed to retrieve knowledge"));
         }
     };
 
-    // 3. Create the OpenAI request
-    let entities_json = retrieved_entities_to_json(&entities);
+    // 3. Create the OpenAI request with appropriate context format
+    let context_json = match retrieval_result {
+        retrieval_pipeline::StrategyOutput::Chunks(chunks) => chunks_to_chat_context(&chunks),
+        retrieval_pipeline::StrategyOutput::Entities(entities) => {
+            retrieved_entities_to_json(&entities)
+        }
+    };
     let formatted_user_message =
-        create_user_message_with_history(&entities_json, &history, &user_message.content);
+        create_user_message_with_history(&context_json, &history, &user_message.content);
     let settings = match SystemSettings::get_current(&state.db).await {
         Ok(s) => s,
         Err(_) => {

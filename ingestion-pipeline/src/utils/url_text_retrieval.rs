@@ -50,7 +50,7 @@ pub async fn extract_text_from_url(
     )?;
 
     let mut tmp_file = NamedTempFile::new()?;
-    let temp_path_str = format!("{:?}", tmp_file.path());
+    let temp_path_str = tmp_file.path().display().to_string();
 
     tmp_file.write_all(&screenshot)?;
     tmp_file.as_file().sync_all()?;
@@ -108,14 +108,11 @@ fn ensure_ingestion_url_allowed(url: &url::Url) -> Result<String, AppError> {
         }
     }
 
-    let host = match url.host_str() {
-        Some(host) => host,
-        None => {
-            warn!(%url, "Rejected ingestion URL missing host");
-            return Err(AppError::Validation(
-                "URL is missing a host component".to_string(),
-            ));
-        }
+    let Some(host) = url.host_str() else {
+        warn!(%url, "Rejected ingestion URL missing host");
+        return Err(AppError::Validation(
+            "URL is missing a host component".to_string(),
+        ));
     };
 
     if host.eq_ignore_ascii_case("localhost") {

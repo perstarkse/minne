@@ -138,7 +138,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 storage.clone(),
                 embedding_provider,
             )
-            .await
             .unwrap(),
         );
 

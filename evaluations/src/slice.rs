@@ -436,8 +436,8 @@ pub fn full_window<'a>(resolved: &'a ResolvedSlice<'a>) -> Result<SliceWindow<'a
     select_window(resolved, 0, None)
 }
 
-fn load_explicit_slice<'a>(
-    dataset: &'a ConvertedDataset,
+fn load_explicit_slice(
+    dataset: &ConvertedDataset,
     index: &DatasetIndex,
     config: &SliceConfig<'_>,
     slice_arg: &str,

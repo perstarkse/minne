@@ -36,13 +36,14 @@ pub async fn reset_namespace(db: &SurrealDbClient, namespace: &str, database: &s
     Ok(())
 }
 
-// Test helper to force index dimension change
-pub async fn change_embedding_length_in_hnsw_indexes(
-    db: &SurrealDbClient,
-    dimension: usize,
-) -> Result<()> {
-    recreate_indexes(db, dimension).await
-}
+// // Test helper to force index dimension change
+// #[allow(dead_code)]
+// pub async fn change_embedding_length_in_hnsw_indexes(
+//     db: &SurrealDbClient,
+//     dimension: usize,
+// ) -> Result<()> {
+//     recreate_indexes(db, dimension).await
+// }
 
 #[cfg(test)]
 mod tests {

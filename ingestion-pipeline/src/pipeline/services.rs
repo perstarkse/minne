@@ -228,7 +228,7 @@ impl PipelineServices for DefaultPipelineServices {
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         analysis
             .to_database_entities(
-                &content.get_id(),
+                content.get_id(),
                 &content.user_id,
                 &self.openai_client,
                 &self.db,
@@ -327,13 +327,13 @@ fn truncate_for_embedding(text: &str, max_chars: usize) -> String {
         return text.to_string();
     }
 
-    let mut truncated = String::with_capacity(max_chars + 3);
+    let mut truncated = String::with_capacity(max_chars.saturating_add(3));
     for (idx, ch) in text.chars().enumerate() {
         if idx >= max_chars {
             break;
         }
         truncated.push(ch);
     }
-    truncated.push_str("…");
+    truncated.push('…');
     truncated
 }

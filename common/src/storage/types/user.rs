@@ -1,4 +1,5 @@
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
+use anyhow::anyhow;
 use async_trait::async_trait;
 use axum_session_auth::Authentication;
 use chrono_tz::Tz;
@@ -17,12 +18,16 @@ use super::{
 use chrono::Duration;
 use futures::try_join;
 
+/// Result row for returning user category.
 #[derive(Deserialize)]
 pub struct CategoryResponse {
+    /// Category name tied to the user.
     category: String,
 }
 
-stored_object!(User, "user", {
+stored_object!(
+    #[allow(clippy::unsafe_derive_deserialize)]
+    User, "user", {
     email: String,
     password: String,
     anonymous: bool,
@@ -35,11 +40,11 @@ stored_object!(User, "user", {
 #[async_trait]
 impl Authentication<User, String, Surreal<Any>> for User {
     async fn load_user(userid: String, db: Option<&Surreal<Any>>) -> Result<User, anyhow::Error> {
-        let db = db.unwrap();
+        let db = db.ok_or_else(|| anyhow!("Database handle missing"))?;
         Ok(db
             .select((Self::table_name(), userid.as_str()))
             .await?
-            .unwrap())
+            .ok_or_else(|| anyhow!("User {userid} not found"))?)
     }
 
     fn is_authenticated(&self) -> bool {
@@ -55,14 +60,14 @@ impl Authentication<User, String, Surreal<Any>> for User {
     }
 }
 
+/// Ensures a timezone string parses, defaulting to UTC when invalid.
 fn validate_timezone(input: &str) -> String {
-    match input.parse::<Tz>() {
-        Ok(_) => input.to_owned(),
-        Err(_) => {
-            tracing::warn!("Invalid timezone '{}' received, defaulting to UTC", input);
-            "UTC".to_owned()
-        }
+    if input.parse::<Tz>().is_ok() {
+        return input.to_owned();
     }
+
+    tracing::warn!("Invalid timezone '{}' received, defaulting to UTC", input);
+    "UTC".to_owned()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -77,12 +82,15 @@ pub struct DashboardStats {
     pub new_text_chunks_week: i64,
 }
 
+/// Helper for aggregating `SurrealDB` count responses.
 #[derive(Deserialize)]
 struct CountResult {
+    /// Row count returned by the query.
     count: i64,
 }
 
 impl User {
+    /// Counts all objects of a given type belonging to the user.
     async fn count_total<T: crate::storage::types::StoredObject>(
         db: &SurrealDbClient,
         user_id: &str,
@@ -94,9 +102,10 @@ impl User {
             .bind(("user_id", user_id.to_string()))
             .await?
             .take(0)?;
-        Ok(result.map(|r| r.count).unwrap_or(0))
+        Ok(result.map_or(0, |r| r.count))
     }
 
+    /// Counts objects of a given type created after a specific timestamp.
     async fn count_since<T: crate::storage::types::StoredObject>(
         db: &SurrealDbClient,
         user_id: &str,
@@ -112,14 +121,16 @@ impl User {
             .bind(("since", surrealdb::Datetime::from(since)))
             .await?
             .take(0)?;
-        Ok(result.map(|r| r.count).unwrap_or(0))
+        Ok(result.map_or(0, |r| r.count))
     }
 
     pub async fn get_dashboard_stats(
         user_id: &str,
         db: &SurrealDbClient,
     ) -> Result<DashboardStats, AppError> {
-        let since = chrono::Utc::now() - Duration::days(7);
+        let since = chrono::Utc::now()
+            .checked_sub_signed(Duration::days(7))
+            .unwrap_or_else(chrono::Utc::now);
 
         let (
             total_documents,
@@ -261,7 +272,7 @@ impl User {
 
     pub async fn set_api_key(id: &str, db: &SurrealDbClient) -> Result<String, AppError> {
         // Generate a secure random API key
-        let api_key = format!("sk_{}", Uuid::new_v4().to_string().replace("-", ""));
+        let api_key = format!("sk_{}", Uuid::new_v4().to_string().replace('-', ""));
 
         // Update the user record with the new API key
         let user: Option<Self> = db
@@ -341,6 +352,7 @@ impl User {
     ) -> Result<Vec<String>, AppError> {
         #[derive(Deserialize)]
         struct EntityTypeResponse {
+            /// Raw entity type value from the database.
             entity_type: String,
         }
 
@@ -358,7 +370,7 @@ impl User {
             .into_iter()
             .map(|item| {
                 let normalized = KnowledgeEntityType::from(item.entity_type);
-                format!("{:?}", normalized)
+                format!("{normalized:?}")
             })
             .collect();
 

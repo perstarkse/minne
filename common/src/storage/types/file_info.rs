@@ -3,12 +3,10 @@ use bytes;
 use mime_guess::from_path;
 use object_store::Error as ObjectStoreError;
 use sha2::{Digest, Sha256};
-use std::{
-    io::{BufReader, Read},
-    path::Path,
-};
+use std::{io::{BufReader, Read}, path::Path};
 use tempfile::NamedTempFile;
 use thiserror::Error;
+use tokio::task;
 use tracing::info;
 use uuid::Uuid;
 
@@ -71,21 +69,29 @@ impl FileInfo {
     ///
     /// # Returns
     /// * `Result<String, FileError>` - The SHA256 hash as a hex string or an error.
+    #[allow(clippy::indexing_slicing)]
     async fn get_sha(file: &NamedTempFile) -> Result<String, FileError> {
-        let mut reader = BufReader::new(file.as_file());
-        let mut hasher = Sha256::new();
-        let mut buffer = [0u8; 8192]; // 8KB buffer
+        let mut file_clone = file.as_file().try_clone()?;
 
-        loop {
-            let n = reader.read(&mut buffer)?;
-            if n == 0 {
-                break;
+        let digest = task::spawn_blocking(move || -> Result<_, std::io::Error> {
+            let mut reader = BufReader::new(&mut file_clone);
+            let mut hasher = Sha256::new();
+            let mut buffer = [0u8; 8192]; // 8KB buffer
+
+            loop {
+                let n = reader.read(&mut buffer)?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..n]);
             }
-            hasher.update(&buffer[..n]);
-        }
 
-        let digest = hasher.finalize();
-        Ok(format!("{:x}", digest))
+            Ok::<_, std::io::Error>(hasher.finalize())
+        })
+        .await
+        .map_err(std::io::Error::other)??;
+
+        Ok(format!("{digest:x}"))
     }
 
     /// Sanitizes the file name to prevent security vulnerabilities like directory traversal.
@@ -103,7 +109,7 @@ impl FileInfo {
                     }
                 })
                 .collect();
-            format!("{}{}", sanitized_name, ext)
+            format!("{sanitized_name}{ext}")
         } else {
             // No extension
             file_name
@@ -292,7 +298,7 @@ impl FileInfo {
         storage: &StorageManager,
     ) -> Result<String, FileError> {
         // Logical object location relative to the store root
-        let location = format!("{}/{}/{}", user_id, uuid, file_name);
+        let location = format!("{user_id}/{uuid}/{file_name}");
         info!("Persisting to object location: {}", location);
 
         let bytes = tokio::fs::read(file.path()).await?;

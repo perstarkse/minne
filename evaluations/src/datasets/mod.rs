@@ -245,8 +245,9 @@ fn dataset_entry_for_kind(kind: DatasetKind) -> Result<&'static DatasetEntry> {
     catalog.dataset(kind.id())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
 pub enum DatasetKind {
+    #[default]
     SquadV2,
     NaturalQuestions,
     Beir,
@@ -365,12 +366,6 @@ impl DatasetKind {
 impl std::fmt::Display for DatasetKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.id())
-    }
-}
-
-impl Default for DatasetKind {
-    fn default() -> Self {
-        Self::SquadV2
     }
 }
 

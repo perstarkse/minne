@@ -71,6 +71,7 @@ impl Analytics {
         // We need to use a direct query for COUNT aggregation
         #[derive(Debug, Deserialize)]
         struct CountResult {
+            /// Total user count.
             count: i64,
         }
 
@@ -81,7 +82,7 @@ impl Analytics {
             .await?
             .take(0)?;
 
-        Ok(result.map(|r| r.count).unwrap_or(0))
+        Ok(result.map_or(0, |r| r.count))
     }
 }
 

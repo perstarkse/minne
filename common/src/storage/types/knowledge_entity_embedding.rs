@@ -72,7 +72,7 @@ impl KnowledgeEntityEmbedding {
             return Ok(HashMap::new());
         }
 
-        let ids_list: Vec<RecordId> = entity_ids.iter().cloned().collect();
+        let ids_list: Vec<RecordId> = entity_ids.to_vec();
 
         let query = format!(
             "SELECT * FROM {} WHERE entity_id INSIDE $entity_ids",
@@ -110,6 +110,7 @@ impl KnowledgeEntityEmbedding {
     }
 
     /// Delete embeddings by source_id (via joining to knowledge_entity table)
+    #[allow(clippy::items_after_statements)]
     pub async fn delete_by_source_id(
         source_id: &str,
         db: &SurrealDbClient,
@@ -121,6 +122,7 @@ impl KnowledgeEntityEmbedding {
             .bind(("source_id", source_id.to_owned()))
             .await
             .map_err(AppError::Database)?;
+        #[allow(clippy::missing_docs_in_private_items)]
         #[derive(Deserialize)]
         struct IdRow {
             id: RecordId,

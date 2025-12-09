@@ -14,13 +14,13 @@ pub use store::{
 };
 
 pub fn make_ingestion_config(config: &crate::args::Config) -> ingestion_pipeline::IngestionConfig {
-    let mut tuning = ingestion_pipeline::IngestionTuning::default();
-    tuning.chunk_min_tokens = config.ingest.ingest_chunk_min_tokens;
-    tuning.chunk_max_tokens = config.ingest.ingest_chunk_max_tokens;
-    tuning.chunk_overlap_tokens = config.ingest.ingest_chunk_overlap_tokens;
-
     ingestion_pipeline::IngestionConfig {
-        tuning,
+        tuning: ingestion_pipeline::IngestionTuning {
+            chunk_min_tokens: config.ingest.ingest_chunk_min_tokens,
+            chunk_max_tokens: config.ingest.ingest_chunk_max_tokens,
+            chunk_overlap_tokens: config.ingest.ingest_chunk_overlap_tokens,
+            ..Default::default()
+        },
         chunk_only: config.ingest.ingest_chunks_only,
     }
 }
