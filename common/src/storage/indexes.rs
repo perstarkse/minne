@@ -14,11 +14,11 @@ use anyhow::{Context, Result};
 use futures::future::try_join_all;
 use serde::Deserialize;
 use serde_json::Value;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::{error::AppError, storage::db::SurrealDbClient};
 
-const INDEX_POLL_INTERVAL: Duration = Duration::from_secs(2);
+const INDEX_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const FTS_ANALYZER_NAME: &str = "app_en_fts_analyzer";
 
 #[derive(Clone, Copy)]
@@ -314,7 +314,7 @@ async fn create_index_with_polling(
         }
     }
 
-    info!(
+    debug!(
         index = %index_name,
         table = %table,
         expected_rows = ?expected_total,
@@ -356,7 +356,7 @@ async fn poll_index_build_status(
         };
 
         match snapshot.progress_pct {
-            Some(pct) => info!(
+            Some(pct) => debug!(
                 index = %index_name,
                 table = %table,
                 status = snapshot.status,
@@ -368,7 +368,7 @@ async fn poll_index_build_status(
                 progress_pct = format_args!("{pct:.1}"),
                 "Index build status"
             ),
-            None => info!(
+            None => debug!(
                 index = %index_name,
                 table = %table,
                 status = snapshot.status,
@@ -381,7 +381,7 @@ async fn poll_index_build_status(
         }
 
         if snapshot.is_ready() {
-            info!(
+            debug!(
                 index = %index_name,
                 table = %table,
                 elapsed = ?started_at.elapsed(),
