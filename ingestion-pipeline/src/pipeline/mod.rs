@@ -8,6 +8,7 @@ mod state;
 
 pub use config::{IngestionConfig, IngestionTuning};
 pub use enrichment_result::{LLMEnrichmentResult, LLMKnowledgeEntity, LLMRelationship};
+#[allow(clippy::module_name_repetitions)]
 pub use services::{DefaultPipelineServices, PipelineServices};
 
 use std::{
@@ -37,6 +38,7 @@ use self::{
     state::ready,
 };
 
+#[allow(clippy::module_name_repetitions)]
 pub struct IngestionPipeline {
     db: Arc<SurrealDbClient>,
     pipeline_config: IngestionConfig,
@@ -44,7 +46,7 @@ pub struct IngestionPipeline {
 }
 
 impl IngestionPipeline {
-    pub async fn new(
+    pub fn new(
         db: Arc<SurrealDbClient>,
         openai_client: Arc<Client<async_openai::config::OpenAIConfig>>,
         config: AppConfig,
@@ -61,10 +63,9 @@ impl IngestionPipeline {
             embedding_provider,
             IngestionConfig::default(),
         )
-        .await
     }
 
-    pub async fn new_with_config(
+    pub fn new_with_config(
         db: Arc<SurrealDbClient>,
         openai_client: Arc<Client<async_openai::config::OpenAIConfig>>,
         config: AppConfig,
@@ -74,9 +75,9 @@ impl IngestionPipeline {
         pipeline_config: IngestionConfig,
     ) -> Result<Self, AppError> {
         let services = DefaultPipelineServices::new(
-            db.clone(),
-            openai_client.clone(),
-            config.clone(),
+            Arc::clone(&db),
+            openai_client,
+            config,
             reranker_pool,
             storage,
             embedding_provider,
@@ -181,9 +182,15 @@ impl IngestionPipeline {
             .saturating_sub(1)
             .min(tuning.retry_backoff_cap_exponent);
         let multiplier = 2_u64.pow(capped_attempt);
-        let delay = tuning.retry_base_delay_secs * multiplier;
+        let delay = tuning
+            .retry_base_delay_secs
+            .saturating_mul(multiplier);
 
         Duration::from_secs(delay.min(tuning.retry_max_delay_secs))
+    }
+
+    fn duration_millis(duration: Duration) -> u64 {
+        u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
     }
 
     #[tracing::instrument(
@@ -231,14 +238,14 @@ impl IngestionPipeline {
         let persist_duration = stage_start.elapsed();
 
         let total_duration = pipeline_started.elapsed();
-        let prepare_ms = prepare_duration.as_millis() as u64;
-        let retrieve_ms = retrieve_duration.as_millis() as u64;
-        let enrich_ms = enrich_duration.as_millis() as u64;
-        let persist_ms = persist_duration.as_millis() as u64;
+        let prepare_ms = Self::duration_millis(prepare_duration);
+        let retrieve_ms = Self::duration_millis(retrieve_duration);
+        let enrich_ms = Self::duration_millis(enrich_duration);
+        let persist_ms = Self::duration_millis(persist_duration);
         info!(
             task_id = %ctx.task_id,
             attempt = ctx.attempt,
-            total_ms = total_duration.as_millis() as u64,
+            total_ms = Self::duration_millis(total_duration),
             prepare_ms,
             retrieve_ms,
             enrich_ms,

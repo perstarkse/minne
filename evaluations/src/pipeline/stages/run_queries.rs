@@ -50,8 +50,10 @@ pub(crate) async fn run_queries(
         None
     };
 
-    let mut retrieval_config = RetrievalConfig::default();
-    retrieval_config.strategy = config.retrieval.strategy;
+    let mut retrieval_config = RetrievalConfig {
+        strategy: config.retrieval.strategy,
+        ..Default::default()
+    };
     retrieval_config.tuning.rerank_keep_top = config.retrieval.rerank_keep_top;
     if retrieval_config.tuning.fallback_min_results < config.retrieval.rerank_keep_top {
         retrieval_config.tuning.fallback_min_results = config.retrieval.rerank_keep_top;
@@ -213,7 +215,7 @@ pub(crate) async fn run_queries(
                     .with_context(|| format!("running pipeline for question {}", question_id))?;
                     (outcome.results, None, outcome.stage_timings)
                 };
-                let query_latency = query_start.elapsed().as_millis() as u128;
+                let query_latency = query_start.elapsed().as_millis();
 
                 let candidates = adapt_strategy_output(result_output);
                 let mut retrieved = Vec::new();

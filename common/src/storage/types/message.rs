@@ -1,3 +1,4 @@
+#![allow(clippy::module_name_repetitions)]
 use uuid::Uuid;
 
 use crate::stored_object;
@@ -56,7 +57,7 @@ impl fmt::Display for Message {
 pub fn format_history(history: &[Message]) -> String {
     history
         .iter()
-        .map(|msg| format!("{}", msg))
+        .map(|msg| format!("{msg}"))
         .collect::<Vec<String>>()
         .join("\n")
 }

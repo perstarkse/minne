@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             storage,
             embedding_provider,
         )
-        .await?,
+        ?,
     );
 
     run_worker_loop(db, ingestion_pipeline).await

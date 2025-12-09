@@ -52,7 +52,7 @@ impl LLMEnrichmentResult {
         entity_concurrency: usize,
         embedding_provider: Option<&EmbeddingProvider>,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
-        let mapper = Arc::new(self.create_mapper()?);
+        let mapper = Arc::new(self.create_mapper());
 
         let entities = self
             .process_entities(
@@ -66,21 +66,22 @@ impl LLMEnrichmentResult {
             )
             .await?;
 
-        let relationships = self.process_relationships(source_id, user_id, Arc::clone(&mapper))?;
+        let relationships = self.process_relationships(source_id, user_id, mapper.as_ref())?;
 
         Ok((entities, relationships))
     }
 
-    fn create_mapper(&self) -> Result<GraphMapper, AppError> {
+    fn create_mapper(&self) -> GraphMapper {
         let mut mapper = GraphMapper::new();
 
         for entity in &self.knowledge_entities {
             mapper.assign_id(&entity.key);
         }
 
-        Ok(mapper)
+        mapper
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn process_entities(
         &self,
         source_id: &str,
@@ -91,7 +92,7 @@ impl LLMEnrichmentResult {
         entity_concurrency: usize,
         embedding_provider: Option<&EmbeddingProvider>,
     ) -> Result<Vec<EmbeddedKnowledgeEntity>, AppError> {
-        stream::iter(self.knowledge_entities.iter().cloned().map(|entity| {
+        stream::iter(self.knowledge_entities.clone().into_iter().map(|entity| {
             let mapper = Arc::clone(&mapper);
             let openai_client = openai_client.clone();
             let source_id = source_id.to_string();
@@ -120,7 +121,7 @@ impl LLMEnrichmentResult {
         &self,
         source_id: &str,
         user_id: &str,
-        mapper: Arc<GraphMapper>,
+        mapper: &GraphMapper,
     ) -> Result<Vec<KnowledgeRelationship>, AppError> {
         self.relationships
             .iter()
@@ -170,9 +171,9 @@ async fn create_single_entity(
         id: assigned_id,
         created_at: now,
         updated_at: now,
-        name: llm_entity.name.to_string(),
-        description: llm_entity.description.to_string(),
-        entity_type: KnowledgeEntityType::from(llm_entity.entity_type.to_string()),
+        name: llm_entity.name.clone(),
+        description: llm_entity.description.clone(),
+        entity_type: KnowledgeEntityType::from(llm_entity.entity_type.clone()),
         source_id: source_id.to_string(),
         metadata: None,
         user_id: user_id.into(),

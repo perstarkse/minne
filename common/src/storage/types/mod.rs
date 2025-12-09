@@ -1,3 +1,4 @@
+#![allow(clippy::unsafe_derive_deserialize)]
 use serde::{Deserialize, Serialize};
 pub mod analytics;
 pub mod conversation;
@@ -23,7 +24,7 @@ pub trait StoredObject: Serialize + for<'de> Deserialize<'de> {
 
 #[macro_export]
 macro_rules! stored_object {
-    ($name:ident, $table:expr, {$($(#[$attr:meta])* $field:ident: $ty:ty),*}) => {
+    ($(#[$struct_attr:meta])* $name:ident, $table:expr, {$($(#[$field_attr:meta])* $field:ident: $ty:ty),*}) => {
         use serde::{Deserialize, Deserializer, Serialize};
         use surrealdb::sql::Thing;
         use $crate::storage::types::StoredObject;
@@ -87,6 +88,7 @@ macro_rules! stored_object {
         }
 
         #[allow(dead_code)]
+        #[allow(clippy::ref_option)]
         fn serialize_option_datetime<S>(
             date: &Option<DateTime<Utc>>,
             serializer: S,
@@ -102,6 +104,7 @@ macro_rules! stored_object {
         }
 
         #[allow(dead_code)]
+        #[allow(clippy::ref_option)]
         fn deserialize_option_datetime<'de, D>(
             deserializer: D,
         ) -> Result<Option<DateTime<Utc>>, D::Error>
@@ -113,6 +116,7 @@ macro_rules! stored_object {
         }
 
 
+        $(#[$struct_attr])* 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
         pub struct $name {
             #[serde(deserialize_with = "deserialize_flexible_id")]
@@ -121,7 +125,7 @@ macro_rules! stored_object {
             pub created_at: DateTime<Utc>,
             #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime", default)]
             pub updated_at: DateTime<Utc>,
-            $( $(#[$attr])* pub $field: $ty),*
+            $( $(#[$field_attr])* pub $field: $ty),*
         }
 
         impl StoredObject for $name {

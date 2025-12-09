@@ -10,54 +10,17 @@ use common::storage::{
     },
 };
 
-/// Retrieves database entries that match a specific source identifier.
+/// Find entities related to the given entity via graph relationships.
 ///
-/// This function queries the database for all records in a specified table that have
-/// a matching `source_id` field. It's commonly used to find related entities or
-/// track the origin of database entries.
+/// Queries the `relates_to` edge table for all relationships involving the entity,
+/// then fetches and returns the neighboring entities.
 ///
 /// # Arguments
-///
-/// * `source_id` - The identifier to search for in the database
-/// * `table_name` - The name of the table to search in
-/// * `db_client` - The `SurrealDB` client instance for database operations
-///
-/// # Type Parameters
-///
-/// * `T` - The type to deserialize the query results into. Must implement `serde::Deserialize`
-///
-/// # Returns
-///
-/// Returns a `Result` containing either:
-/// * `Ok(Vec<T>)` - A vector of matching records deserialized into type `T`
-/// * `Err(Error)` - An error if the database query fails
-///
-/// # Errors
-///
-/// This function will return a `Error` if:
-/// * The database query fails to execute
-/// * The results cannot be deserialized into type `T`
-pub async fn find_entities_by_source_ids<T>(
-    source_ids: Vec<String>,
-    table_name: &str,
-    user_id: &str,
-    db: &SurrealDbClient,
-) -> Result<Vec<T>, Error>
-where
-    T: for<'de> serde::Deserialize<'de>,
-{
-    let query =
-        "SELECT * FROM type::table($table) WHERE source_id IN $source_ids AND user_id = $user_id";
+/// * `db` - Database client
+/// * `entity_id` - ID of the entity to find neighbors for
+/// * `user_id` - User ID for access control
+/// * `limit` - Maximum number of neighbors to return
 
-    db.query(query)
-        .bind(("table", table_name.to_owned()))
-        .bind(("source_ids", source_ids))
-        .bind(("user_id", user_id.to_owned()))
-        .await?
-        .take(0)
-}
-
-/// Find entities by their relationship to the id
 pub async fn find_entities_by_relationship_by_id(
     db: &SurrealDbClient,
     entity_id: &str,
@@ -153,154 +116,8 @@ mod tests {
     use super::*;
     use common::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
     use common::storage::types::knowledge_relationship::KnowledgeRelationship;
-    use common::storage::types::StoredObject;
     use uuid::Uuid;
 
-    #[tokio::test]
-    async fn test_find_entities_by_source_ids() {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
-
-        // Create some test entities with different source_ids
-        let source_id1 = "source123".to_string();
-        let source_id2 = "source456".to_string();
-        let source_id3 = "source789".to_string();
-
-        let entity_type = KnowledgeEntityType::Document;
-        let user_id = "user123".to_string();
-
-        // Entity with source_id1
-        let entity1 = KnowledgeEntity::new(
-            source_id1.clone(),
-            "Entity 1".to_string(),
-            "Description 1".to_string(),
-            entity_type.clone(),
-            None,
-            user_id.clone(),
-        );
-
-        // Entity with source_id2
-        let entity2 = KnowledgeEntity::new(
-            source_id2.clone(),
-            "Entity 2".to_string(),
-            "Description 2".to_string(),
-            entity_type.clone(),
-            None,
-            user_id.clone(),
-        );
-
-        // Another entity with source_id1
-        let entity3 = KnowledgeEntity::new(
-            source_id1.clone(),
-            "Entity 3".to_string(),
-            "Description 3".to_string(),
-            entity_type.clone(),
-            None,
-            user_id.clone(),
-        );
-
-        // Entity with source_id3
-        let entity4 = KnowledgeEntity::new(
-            source_id3.clone(),
-            "Entity 4".to_string(),
-            "Description 4".to_string(),
-            entity_type.clone(),
-            None,
-            user_id.clone(),
-        );
-
-        // Store all entities
-        db.store_item(entity1.clone())
-            .await
-            .expect("Failed to store entity 1");
-        db.store_item(entity2.clone())
-            .await
-            .expect("Failed to store entity 2");
-        db.store_item(entity3.clone())
-            .await
-            .expect("Failed to store entity 3");
-        db.store_item(entity4.clone())
-            .await
-            .expect("Failed to store entity 4");
-
-        // Test finding entities by multiple source_ids
-        let source_ids = vec![source_id1.clone(), source_id2.clone()];
-        let found_entities: Vec<KnowledgeEntity> =
-            find_entities_by_source_ids(source_ids, KnowledgeEntity::table_name(), &user_id, &db)
-                .await
-                .expect("Failed to find entities by source_ids");
-
-        // Should find 3 entities (2 with source_id1, 1 with source_id2)
-        assert_eq!(
-            found_entities.len(),
-            3,
-            "Should find 3 entities with the specified source_ids"
-        );
-
-        // Check that entities with source_id1 and source_id2 are found
-        let found_source_ids: Vec<String> =
-            found_entities.iter().map(|e| e.source_id.clone()).collect();
-        assert!(
-            found_source_ids.contains(&source_id1),
-            "Should find entities with source_id1"
-        );
-        assert!(
-            found_source_ids.contains(&source_id2),
-            "Should find entities with source_id2"
-        );
-        assert!(
-            !found_source_ids.contains(&source_id3),
-            "Should not find entities with source_id3"
-        );
-
-        // Test finding entities by a single source_id
-        let single_source_id = vec![source_id1.clone()];
-        let found_entities: Vec<KnowledgeEntity> = find_entities_by_source_ids(
-            single_source_id,
-            KnowledgeEntity::table_name(),
-            &user_id,
-            &db,
-        )
-        .await
-        .expect("Failed to find entities by single source_id");
-
-        // Should find 2 entities with source_id1
-        assert_eq!(
-            found_entities.len(),
-            2,
-            "Should find 2 entities with source_id1"
-        );
-
-        // Check that all found entities have source_id1
-        for entity in found_entities {
-            assert_eq!(
-                entity.source_id, source_id1,
-                "All found entities should have source_id1"
-            );
-        }
-
-        // Test finding entities with non-existent source_id
-        let non_existent_source_id = vec!["non_existent_source".to_string()];
-        let found_entities: Vec<KnowledgeEntity> = find_entities_by_source_ids(
-            non_existent_source_id,
-            KnowledgeEntity::table_name(),
-            &user_id,
-            &db,
-        )
-        .await
-        .expect("Failed to find entities by non-existent source_id");
-
-        // Should find 0 entities
-        assert_eq!(
-            found_entities.len(),
-            0,
-            "Should find 0 entities with non-existent source_id"
-        );
-    }
 
     #[tokio::test]
     async fn test_find_entities_by_relationship_by_id() {

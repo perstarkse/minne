@@ -106,6 +106,7 @@ struct IngestionStats {
     negative_ingested: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn ensure_corpus(
     dataset: &ConvertedDataset,
     slice: &ResolvedSlice<'_>,
@@ -337,11 +338,9 @@ pub async fn ensure_corpus(
         });
     }
 
-    for record in &mut records {
-        if let Some(ref mut entry) = record {
-            if entry.dirty {
-                store.persist(&entry.shard)?;
-            }
+    for entry in records.iter_mut().flatten() {
+        if entry.dirty {
+            store.persist(&entry.shard)?;
         }
     }
 
@@ -403,6 +402,7 @@ pub async fn ensure_corpus(
     Ok(handle)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn ingest_paragraph_batch(
     dataset: &ConvertedDataset,
     targets: &[IngestRequest<'_>],
@@ -430,8 +430,10 @@ async fn ingest_paragraph_batch(
         .await
         .context("applying migrations for ingestion")?;
 
-    let mut app_config = AppConfig::default();
-    app_config.storage = StorageKind::Memory;
+    let app_config = AppConfig {
+        storage: StorageKind::Memory,
+        ..Default::default()
+    };
     let backend: DynStore = Arc::new(InMemory::new());
     let storage = StorageManager::with_backend(backend, StorageKind::Memory);
 
@@ -444,8 +446,7 @@ async fn ingest_paragraph_batch(
         storage,
         embedding.clone(),
         pipeline_config,
-    )
-    .await?;
+    )?;
     let pipeline = Arc::new(pipeline);
 
     let mut shards = Vec::with_capacity(targets.len());
@@ -454,7 +455,7 @@ async fn ingest_paragraph_batch(
         info!(
             batch = batch_index,
             batch_size = batch.len(),
-            total_batches = (targets.len() + batch_size - 1) / batch_size,
+            total_batches = targets.len().div_ceil(batch_size),
             "Ingesting paragraph batch"
         );
         let model_clone = embedding_model.clone();
@@ -486,6 +487,7 @@ async fn ingest_paragraph_batch(
     Ok(shards)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn ingest_single_paragraph(
     pipeline: Arc<IngestionPipeline>,
     request: IngestRequest<'_>,

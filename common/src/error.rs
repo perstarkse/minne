@@ -5,6 +5,7 @@ use tokio::task::JoinError;
 use crate::storage::types::file_info::FileError;
 
 // Core internal errors
+#[allow(clippy::module_name_repetitions)]
 #[derive(Error, Debug)]
 pub enum AppError {
     #[error("Database error: {0}")]

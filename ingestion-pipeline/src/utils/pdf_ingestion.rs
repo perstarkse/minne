@@ -116,6 +116,7 @@ async fn load_page_numbers(pdf_bytes: Vec<u8>) -> Result<Vec<u32>, AppError> {
 }
 
 /// Uses the existing headless Chrome dependency to rasterize the requested PDF pages into PNGs.
+#[allow(clippy::too_many_lines)]
 async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>>, AppError> {
     let file_url = url::Url::from_file_path(file_path)
         .map_err(|()| AppError::Processing("Unable to construct PDF file URL".into()))?;
@@ -148,7 +149,7 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
                 loaded = true;
                 break;
             }
-            if attempt + 1 < NAVIGATION_RETRY_ATTEMPTS {
+            if attempt < NAVIGATION_RETRY_ATTEMPTS.saturating_sub(1) {
                 sleep(Duration::from_millis(NAVIGATION_RETRY_INTERVAL_MS)).await;
             }
         }
@@ -172,7 +173,7 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
                     break;
                 }
                 Ok(None) => {
-                    if attempt + 1 < CANVAS_VIEWPORT_ATTEMPTS {
+                    if attempt < CANVAS_VIEWPORT_ATTEMPTS.saturating_sub(1) {
                         tokio::time::sleep(Duration::from_millis(CANVAS_VIEWPORT_WAIT_MS)).await;
                     }
                 }
@@ -260,6 +261,7 @@ fn create_browser() -> Result<Browser, AppError> {
 }
 
 /// Sends one or more rendered pages to the configured multimodal model and stitches the resulting Markdown chunks together.
+#[allow(clippy::too_many_lines)]
 async fn vision_markdown(
     rendered_pages: Vec<Vec<u8>>,
     db: &SurrealDbClient,
@@ -303,10 +305,11 @@ async fn vision_markdown(
 
         let mut batch_markdown: Option<String> = None;
 
+        let last_attempt = MAX_VISION_ATTEMPTS.saturating_sub(1);
         for attempt in 0..MAX_VISION_ATTEMPTS {
             let prompt_text = prompt_for_attempt(attempt, prompt);
 
-            let mut content_parts = Vec::with_capacity(encoded_images.len() + 1);
+            let mut content_parts = Vec::with_capacity(encoded_images.len().saturating_add(1));
             content_parts.push(
                 ChatCompletionRequestMessageContentPartTextArgs::default()
                     .text(prompt_text)
@@ -375,7 +378,7 @@ async fn vision_markdown(
                     batch = batch_idx,
                     attempt, "Vision model returned low quality response"
                 );
-                if attempt + 1 == MAX_VISION_ATTEMPTS {
+                if attempt == last_attempt {
                     return Err(AppError::Processing(
                         "Vision model failed to transcribe PDF page contents".into(),
                     ));
@@ -400,6 +403,7 @@ async fn vision_markdown(
 }
 
 /// Heuristic that determines whether the fast-path text looks like well-formed prose.
+#[allow(clippy::cast_precision_loss)]
 fn looks_good_enough(text: &str) -> bool {
     if text.len() < FAST_PATH_MIN_LEN {
         return false;

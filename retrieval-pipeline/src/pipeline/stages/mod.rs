@@ -12,13 +12,13 @@ use fastembed::RerankResult;
 use futures::{stream::FuturesUnordered, StreamExt};
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
 };
 use tracing::{debug, instrument, warn};
 
 use crate::{
-    fts::find_items_by_fts,
-    graph::{find_entities_by_relationship_by_id, find_entities_by_source_ids},
+
+    graph::find_entities_by_relationship_by_id,
     reranking::RerankerLease,
     scoring::{
         clamp_unit, fuse_scores, merge_scored_by_id, min_max_normalize, reciprocal_rank_fusion,
@@ -45,7 +45,6 @@ pub struct PipelineContext<'a> {
     pub config: RetrievalConfig,
     pub query_embedding: Option<Vec<f32>>,
     pub entity_candidates: HashMap<String, Scored<KnowledgeEntity>>,
-    pub chunk_candidates: HashMap<String, Scored<TextChunk>>,
     pub filtered_entities: Vec<Scored<KnowledgeEntity>>,
     pub chunk_values: Vec<Scored<TextChunk>>,
     pub revised_chunk_values: Vec<Scored<TextChunk>>,
@@ -75,7 +74,6 @@ impl<'a> PipelineContext<'a> {
             config,
             query_embedding: None,
             entity_candidates: HashMap::new(),
-            chunk_candidates: HashMap::new(),
             filtered_entities: Vec::new(),
             chunk_values: Vec::new(),
             revised_chunk_values: Vec::new(),
@@ -210,20 +208,6 @@ impl PipelineStage for GraphExpansionStage {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ChunkAttachStage;
-
-#[async_trait]
-impl PipelineStage for ChunkAttachStage {
-    fn kind(&self) -> StageKind {
-        StageKind::ChunkAttach
-    }
-
-    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
-        attach_chunks(ctx).await
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct RerankStage;
 
 #[async_trait]
@@ -324,75 +308,68 @@ pub async fn collect_candidates(ctx: &mut PipelineContext<'_>) -> Result<(), App
 
     let weights = FusionWeights::default();
 
-    let (vector_entity_results, vector_chunk_results, mut fts_entities, mut fts_chunks) = tokio::try_join!(
+    let (vector_entity_results, fts_entity_results) = tokio::try_join!(
         KnowledgeEntity::vector_search(
             tuning.entity_vector_take,
-            embedding.clone(),
-            ctx.db_client,
-            &ctx.user_id,
-        ),
-        TextChunk::vector_search(
-            tuning.chunk_vector_take,
             embedding,
             ctx.db_client,
             &ctx.user_id,
         ),
-        find_items_by_fts(
-            tuning.entity_fts_take,
-            &ctx.input_text,
+        KnowledgeEntity::search(
             ctx.db_client,
-            "knowledge_entity",
+            &ctx.input_text,
             &ctx.user_id,
-        ),
-        find_items_by_fts(
-            tuning.chunk_fts_take,
-            &ctx.input_text,
-            ctx.db_client,
-            "text_chunk",
-            &ctx.user_id
-        ),
+            tuning.entity_fts_take,
+        )
     )?;
 
+    #[allow(clippy::useless_conversion)]
     let vector_entities: Vec<Scored<KnowledgeEntity>> = vector_entity_results
         .into_iter()
         .map(|row| Scored::new(row.entity).with_vector_score(row.score))
         .collect();
-    let vector_chunks: Vec<Scored<TextChunk>> = vector_chunk_results
+
+    let mut fts_entities: Vec<Scored<KnowledgeEntity>> = fts_entity_results
         .into_iter()
-        .map(|row| Scored::new(row.chunk).with_vector_score(row.score))
+        .map(|res| {
+            let entity = KnowledgeEntity {
+                id: res.id,
+                created_at: res.created_at,
+                updated_at: res.updated_at,
+                source_id: res.source_id,
+                name: res.name,
+                description: res.description,
+                entity_type: res.entity_type,
+                metadata: res.metadata,
+                user_id: res.user_id,
+            };
+            Scored::new(entity).with_fts_score(res.score)
+        })
         .collect();
 
     debug!(
         vector_entities = vector_entities.len(),
-        vector_chunks = vector_chunks.len(),
         fts_entities = fts_entities.len(),
-        fts_chunks = fts_chunks.len(),
         "Hybrid retrieval initial candidate counts"
     );
 
     if ctx.diagnostics_enabled() {
         ctx.record_collect_candidates(CollectCandidatesStats {
             vector_entity_candidates: vector_entities.len(),
-            vector_chunk_candidates: vector_chunks.len(),
+            vector_chunk_candidates: 0,
             fts_entity_candidates: fts_entities.len(),
-            fts_chunk_candidates: fts_chunks.len(),
-            vector_chunk_scores: sample_scores(&vector_chunks, |chunk| {
-                chunk.scores.vector.unwrap_or(0.0)
-            }),
-            fts_chunk_scores: sample_scores(&fts_chunks, |chunk| chunk.scores.fts.unwrap_or(0.0)),
+            fts_chunk_candidates: 0,
+            vector_chunk_scores: Vec::new(),
+            fts_chunk_scores: Vec::new(),
         });
     }
 
     normalize_fts_scores(&mut fts_entities);
-    normalize_fts_scores(&mut fts_chunks);
 
     merge_scored_by_id(&mut ctx.entity_candidates, vector_entities);
     merge_scored_by_id(&mut ctx.entity_candidates, fts_entities);
-    merge_scored_by_id(&mut ctx.chunk_candidates, vector_chunks);
-    merge_scored_by_id(&mut ctx.chunk_candidates, fts_chunks);
 
     apply_fusion(&mut ctx.entity_candidates, weights);
-    apply_fusion(&mut ctx.chunk_candidates, weights);
 
     Ok(())
 }
@@ -467,82 +444,6 @@ pub async fn expand_graph(ctx: &mut PipelineContext<'_>) -> Result<(), AppError>
     Ok(())
 }
 
-#[instrument(level = "trace", skip_all)]
-pub async fn attach_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
-    debug!("Attaching chunks to surviving entities");
-    let tuning = &ctx.config.tuning;
-    let weights = FusionWeights::default();
-
-    let chunk_by_source = group_chunks_by_source(&ctx.chunk_candidates);
-    let chunk_candidates_before = ctx.chunk_candidates.len();
-    let chunk_sources_considered = chunk_by_source.len();
-
-    backfill_entities_from_chunks(
-        &mut ctx.entity_candidates,
-        &chunk_by_source,
-        ctx.db_client,
-        &ctx.user_id,
-        weights,
-    )
-    .await?;
-
-    boost_entities_with_chunks(&mut ctx.entity_candidates, &chunk_by_source, weights);
-
-    let mut entity_results: Vec<Scored<KnowledgeEntity>> =
-        ctx.entity_candidates.values().cloned().collect();
-    sort_by_fused_desc(&mut entity_results);
-
-    let mut filtered_entities: Vec<Scored<KnowledgeEntity>> = entity_results
-        .iter()
-        .filter(|candidate| candidate.fused >= tuning.score_threshold)
-        .cloned()
-        .collect();
-
-    if filtered_entities.len() < tuning.fallback_min_results {
-        filtered_entities = entity_results
-            .into_iter()
-            .take(tuning.fallback_min_results)
-            .collect();
-    }
-
-    ctx.filtered_entities = filtered_entities;
-
-    let mut chunk_results: Vec<Scored<TextChunk>> =
-        ctx.chunk_candidates.values().cloned().collect();
-    sort_by_fused_desc(&mut chunk_results);
-
-    let mut chunk_by_id: HashMap<String, Scored<TextChunk>> = HashMap::new();
-    for chunk in chunk_results {
-        chunk_by_id.insert(chunk.item.id.clone(), chunk);
-    }
-
-    enrich_chunks_from_entities(
-        &mut chunk_by_id,
-        &ctx.filtered_entities,
-        ctx.db_client,
-        &ctx.user_id,
-        weights,
-    )
-    .await?;
-
-    let mut chunk_values: Vec<Scored<TextChunk>> = chunk_by_id.into_values().collect();
-    sort_by_fused_desc(&mut chunk_values);
-
-    if ctx.diagnostics_enabled() {
-        ctx.record_chunk_enrichment(ChunkEnrichmentStats {
-            filtered_entity_count: ctx.filtered_entities.len(),
-            fallback_min_results: tuning.fallback_min_results,
-            chunk_sources_considered,
-            chunk_candidates_before_enrichment: chunk_candidates_before,
-            chunk_candidates_after_enrichment: chunk_values.len(),
-            top_chunk_scores: sample_scores(&chunk_values, |chunk| chunk.fused),
-        });
-    }
-
-    ctx.chunk_values = chunk_values;
-
-    Ok(())
-}
 
 #[instrument(level = "trace", skip_all)]
 pub async fn rerank(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
@@ -958,142 +859,6 @@ where
         let fused = fuse_scores(&candidate.scores, weights);
         candidate.update_fused(fused);
     }
-}
-
-fn group_chunks_by_source(
-    chunks: &HashMap<String, Scored<TextChunk>>,
-) -> HashMap<String, Vec<Scored<TextChunk>>> {
-    let mut by_source: HashMap<String, Vec<Scored<TextChunk>>> = HashMap::new();
-
-    for chunk in chunks.values() {
-        by_source
-            .entry(chunk.item.source_id.clone())
-            .or_default()
-            .push(chunk.clone());
-    }
-    by_source
-}
-
-async fn backfill_entities_from_chunks(
-    entity_candidates: &mut HashMap<String, Scored<KnowledgeEntity>>,
-    chunk_by_source: &HashMap<String, Vec<Scored<TextChunk>>>,
-    db_client: &SurrealDbClient,
-    user_id: &str,
-    weights: FusionWeights,
-) -> Result<(), AppError> {
-    let mut missing_sources = Vec::new();
-
-    for source_id in chunk_by_source.keys() {
-        if !entity_candidates
-            .values()
-            .any(|entity| entity.item.source_id == *source_id)
-        {
-            missing_sources.push(source_id.clone());
-        }
-    }
-
-    if missing_sources.is_empty() {
-        return Ok(());
-    }
-
-    let related_entities: Vec<KnowledgeEntity> = find_entities_by_source_ids(
-        missing_sources.clone(),
-        "knowledge_entity",
-        user_id,
-        db_client,
-    )
-    .await
-    .unwrap_or_default();
-
-    if related_entities.is_empty() {
-        warn!("expected related entities for missing chunk sources, but none were found");
-    }
-
-    for entity in related_entities {
-        if let Some(chunks) = chunk_by_source.get(&entity.source_id) {
-            let best_chunk_score = chunks
-                .iter()
-                .map(|chunk| chunk.fused)
-                .fold(0.0f32, f32::max);
-
-            let mut scored = Scored::new(entity.clone()).with_vector_score(best_chunk_score);
-            let fused = fuse_scores(&scored.scores, weights);
-            scored.update_fused(fused);
-            entity_candidates.insert(entity.id.clone(), scored);
-        }
-    }
-
-    Ok(())
-}
-
-fn boost_entities_with_chunks(
-    entity_candidates: &mut HashMap<String, Scored<KnowledgeEntity>>,
-    chunk_by_source: &HashMap<String, Vec<Scored<TextChunk>>>,
-    weights: FusionWeights,
-) {
-    for entity in entity_candidates.values_mut() {
-        if let Some(chunks) = chunk_by_source.get(&entity.item.source_id) {
-            let best_chunk_score = chunks
-                .iter()
-                .map(|chunk| chunk.fused)
-                .fold(0.0f32, f32::max);
-
-            if best_chunk_score > 0.0 {
-                let boosted = entity.scores.vector.unwrap_or(0.0).max(best_chunk_score);
-                entity.scores.vector = Some(boosted);
-                let fused = fuse_scores(&entity.scores, weights);
-                entity.update_fused(fused);
-            }
-        }
-    }
-}
-
-async fn enrich_chunks_from_entities(
-    chunk_candidates: &mut HashMap<String, Scored<TextChunk>>,
-    entities: &[Scored<KnowledgeEntity>],
-    db_client: &SurrealDbClient,
-    user_id: &str,
-    weights: FusionWeights,
-) -> Result<(), AppError> {
-    let mut source_ids: HashSet<String> = HashSet::new();
-    for entity in entities {
-        source_ids.insert(entity.item.source_id.clone());
-    }
-
-    if source_ids.is_empty() {
-        return Ok(());
-    }
-
-    let chunks = find_entities_by_source_ids::<TextChunk>(
-        source_ids.into_iter().collect(),
-        "text_chunk",
-        user_id,
-        db_client,
-    )
-    .await?;
-
-    let mut entity_score_lookup: HashMap<String, f32> = HashMap::new();
-    for entity in entities {
-        entity_score_lookup.insert(entity.item.source_id.clone(), entity.fused);
-    }
-
-    for chunk in chunks {
-        let entry = chunk_candidates
-            .entry(chunk.id.clone())
-            .or_insert_with(|| Scored::new(chunk.clone()).with_vector_score(0.0));
-
-        let entity_score = entity_score_lookup
-            .get(&chunk.source_id)
-            .copied()
-            .unwrap_or(0.0);
-
-        entry.scores.vector = Some(entry.scores.vector.unwrap_or(0.0).max(entity_score * 0.8));
-        let fused = fuse_scores(&entry.scores, weights);
-        entry.update_fused(fused);
-        entry.item = chunk;
-    }
-
-    Ok(())
 }
 
 fn build_rerank_documents(ctx: &PipelineContext<'_>, max_chunks_per_entity: usize) -> Vec<String> {

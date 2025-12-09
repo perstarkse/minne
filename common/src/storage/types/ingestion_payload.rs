@@ -1,3 +1,9 @@
+#![allow(
+    clippy::result_large_err,
+    clippy::needless_pass_by_value,
+    clippy::implicit_clone,
+    clippy::semicolon_if_nothing_returned
+)]
 use crate::{error::AppError, storage::types::file_info::FileInfo};
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -38,6 +44,7 @@ impl IngestionPayload {
     /// # Returns
     /// * `Result<Vec<IngestionPayload>, AppError>` - On success, returns a vector of ingress objects
     ///   (one per file/content type). On failure, returns an `AppError`.
+    #[allow(clippy::similar_names)]
     pub fn create_ingestion_payload(
         content: Option<String>,
         context: String,

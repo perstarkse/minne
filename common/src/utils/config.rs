@@ -9,6 +9,7 @@ pub enum StorageKind {
     Memory,
 }
 
+/// Default storage backend when none is configured.
 fn default_storage_kind() -> StorageKind {
     StorageKind::Local
 }
@@ -23,10 +24,13 @@ pub enum PdfIngestMode {
     LlmFirst,
 }
 
+/// Default PDF ingestion mode when unset.
 fn default_pdf_ingest_mode() -> PdfIngestMode {
     PdfIngestMode::LlmFirst
 }
 
+/// Application configuration loaded from files and environment variables.
+#[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Deserialize, Debug)]
 pub struct AppConfig {
     pub openai_api_key: String,
@@ -58,14 +62,17 @@ pub struct AppConfig {
     pub retrieval_strategy: Option<String>,
 }
 
+/// Default data directory for persisted assets.
 fn default_data_dir() -> String {
     "./data".to_string()
 }
 
+/// Default base URL used for OpenAI-compatible APIs.
 fn default_base_url() -> String {
     "https://api.openai.com/v1".to_string()
 }
 
+/// Whether reranking is enabled by default.
 fn default_reranking_enabled() -> bool {
     false
 }
@@ -124,6 +131,8 @@ impl Default for AppConfig {
     }
 }
 
+/// Loads the application configuration from the environment and optional config file.
+#[allow(clippy::module_name_repetitions)]
 pub fn get_config() -> Result<AppConfig, ConfigError> {
     ensure_ort_path();
 

@@ -86,6 +86,7 @@ pub(crate) async fn namespace_has_corpus(db: &SurrealDbClient) -> Result<bool> {
 }
 
 /// Determine if we can reuse an existing namespace based on cached state.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn can_reuse_namespace(
     db: &SurrealDbClient,
     descriptor: &snapshot::Descriptor,
@@ -213,7 +214,7 @@ pub(crate) async fn ensure_eval_user(db: &SurrealDbClient) -> Result<User> {
         timezone: "UTC".to_string(),
     };
 
-    if let Some(existing) = db.get_item::<User>(&user.get_id()).await? {
+    if let Some(existing) = db.get_item::<User>(user.get_id()).await? {
         return Ok(existing);
     }
 

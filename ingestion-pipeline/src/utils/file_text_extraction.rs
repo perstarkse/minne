@@ -65,7 +65,7 @@ fn infer_extension(file_info: &FileInfo) -> Option<String> {
     Path::new(&file_info.path)
         .extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_string())
+        .map(std::string::ToString::to_string)
 }
 
 pub async fn extract_text_from_file(

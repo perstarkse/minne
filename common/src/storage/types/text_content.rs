@@ -5,6 +5,7 @@ use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 
 use super::file_info::FileInfo;
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TextContentSearchResult {
     #[serde(deserialize_with = "deserialize_flexible_id")]

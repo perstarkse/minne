@@ -154,7 +154,7 @@ impl<'a> EvaluationContext<'a> {
     }
 
     pub fn record_stage_duration(&mut self, stage: EvalStage, duration: Duration) {
-        let elapsed = duration.as_millis() as u128;
+        let elapsed = duration.as_millis();
         match stage {
             EvalStage::PrepareSlice => self.stage_timings.prepare_slice_ms += elapsed,
             EvalStage::PrepareDb => self.stage_timings.prepare_db_ms += elapsed,

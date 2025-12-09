@@ -20,6 +20,22 @@ use super::{
     state::{ContentPrepared, Enriched, IngestionMachine, Persisted, Ready, Retrieved},
 };
 
+const STORE_RELATIONSHIPS: &str = r"
+    BEGIN TRANSACTION;
+    LET $relationships = $relationships;
+
+    FOR $relationship IN $relationships {
+        LET $in_node = type::thing('knowledge_entity', $relationship.in);
+        LET $out_node = type::thing('knowledge_entity', $relationship.out);
+        RELATE $in_node->relates_to->$out_node CONTENT {
+            id: type::thing('relates_to', $relationship.id),
+            metadata: $relationship.metadata
+        };
+    };
+
+    COMMIT TRANSACTION;
+";
+
 #[instrument(
     level = "trace",
     skip_all,
@@ -40,8 +56,7 @@ pub async fn prepare_content(
     let context_len = text_content
         .context
         .as_ref()
-        .map(|c| c.chars().count())
-        .unwrap_or(0);
+        .map_or(0, |c| c.chars().count());
 
     tracing::info!(
         task_id = %ctx.task_id,
@@ -65,7 +80,7 @@ pub async fn prepare_content(
 
     machine
         .prepare()
-        .map_err(|(_, guard)| map_guard_error("prepare", guard))
+        .map_err(|(_, guard)| map_guard_error("prepare", &guard))
 }
 
 #[instrument(
@@ -80,7 +95,7 @@ pub async fn retrieve_related(
     if ctx.pipeline_config.chunk_only {
         return machine
             .retrieve()
-            .map_err(|(_, guard)| map_guard_error("retrieve", guard));
+            .map_err(|(_, guard)| map_guard_error("retrieve", &guard));
     }
 
     let content = ctx.text_content()?;
@@ -97,7 +112,7 @@ pub async fn retrieve_related(
 
     machine
         .retrieve()
-        .map_err(|(_, guard)| map_guard_error("retrieve", guard))
+        .map_err(|(_, guard)| map_guard_error("retrieve", &guard))
 }
 
 #[instrument(
@@ -116,7 +131,7 @@ pub async fn enrich(
         });
         return machine
             .enrich()
-            .map_err(|(_, guard)| map_guard_error("enrich", guard));
+        .map_err(|(_, guard)| map_guard_error("enrich", &guard));
     }
 
     let content = ctx.text_content()?;
@@ -137,7 +152,7 @@ pub async fn enrich(
 
     machine
         .enrich()
-        .map_err(|(_, guard)| map_guard_error("enrich", guard))
+        .map_err(|(_, guard)| map_guard_error("enrich", &guard))
 }
 
 #[instrument(
@@ -182,10 +197,10 @@ pub async fn persist(
 
     machine
         .persist()
-        .map_err(|(_, guard)| map_guard_error("persist", guard))
+        .map_err(|(_, guard)| map_guard_error("persist", &guard))
 }
 
-fn map_guard_error(event: &str, guard: GuardError) -> AppError {
+fn map_guard_error(event: &str, guard: &GuardError) -> AppError {
     AppError::InternalError(format!(
         "invalid ingestion pipeline transition during {event}: {guard:?}"
     ))
@@ -206,43 +221,31 @@ async fn store_graph_entities(
         return Ok(());
     }
 
-    const STORE_RELATIONSHIPS: &str = r"
-        BEGIN TRANSACTION;
-        LET $relationships = $relationships;
-
-        FOR $relationship IN $relationships {
-            LET $in_node = type::thing('knowledge_entity', $relationship.in);
-            LET $out_node = type::thing('knowledge_entity', $relationship.out);
-            RELATE $in_node->relates_to->$out_node CONTENT {
-                id: type::thing('relates_to', $relationship.id),
-                metadata: $relationship.metadata
-            };
-        };
-
-        COMMIT TRANSACTION;
-    ";
-
     let relationships = Arc::new(relationships);
 
     let mut backoff_ms = tuning.graph_initial_backoff_ms;
+    let last_attempt = tuning.graph_store_attempts.saturating_sub(1);
 
     for attempt in 0..tuning.graph_store_attempts {
         let result = db
             .client
             .query(STORE_RELATIONSHIPS)
-            .bind(("relationships", relationships.clone()))
+            .bind(("relationships", Arc::clone(&relationships)))
             .await;
 
         match result {
             Ok(_) => return Ok(()),
             Err(err) => {
-                if is_retryable_conflict(&err) && attempt + 1 < tuning.graph_store_attempts {
+                if is_retryable_conflict(&err) && attempt < last_attempt {
+                    let next_attempt = attempt.saturating_add(1);
                     warn!(
-                        attempt = attempt + 1,
+                        attempt = next_attempt,
                         "Transient SurrealDB conflict while storing graph data; retrying"
                     );
                     sleep(Duration::from_millis(backoff_ms)).await;
-                    backoff_ms = (backoff_ms * 2).min(tuning.graph_max_backoff_ms);
+                    backoff_ms = backoff_ms
+                        .saturating_mul(2)
+                        .min(tuning.graph_max_backoff_ms);
                     continue;
                 }
 

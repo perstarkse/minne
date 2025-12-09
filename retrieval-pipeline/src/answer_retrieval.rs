@@ -51,6 +51,24 @@ pub fn create_user_message(entities_json: &Value, query: &str) -> String {
     )
 }
 
+/// Convert chunk-based retrieval results to JSON format for LLM context
+pub fn chunks_to_chat_context(chunks: &[crate::RetrievedChunk]) -> Value {
+    fn round_score(value: f32) -> f64 {
+        (f64::from(value) * 1000.0).round() / 1000.0
+    }
+
+    serde_json::json!(chunks
+        .iter()
+        .map(|chunk| {
+            serde_json::json!({
+                "content": chunk.chunk.chunk,
+                "source_id": chunk.chunk.source_id,
+                "score": round_score(chunk.score),
+            })
+        })
+        .collect::<Vec<_>>())
+}
+
 pub fn create_user_message_with_history(
     entities_json: &Value,
     history: &[Message],

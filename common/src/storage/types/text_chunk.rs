@@ -1,4 +1,6 @@
+#![allow(clippy::missing_docs_in_private_items, clippy::uninlined_format_args)]
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
@@ -18,6 +20,7 @@ stored_object!(TextChunk, "text_chunk", {
 });
 
 /// Search result including hydrated chunk.
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct TextChunkSearchResult {
     pub chunk: TextChunk,
@@ -98,6 +101,7 @@ impl TextChunk {
         db: &SurrealDbClient,
         user_id: &str,
     ) -> Result<Vec<TextChunkSearchResult>, AppError> {
+        #[allow(clippy::missing_docs_in_private_items)]
         #[derive(Deserialize)]
         struct Row {
             chunk_id: TextChunk,
@@ -160,6 +164,8 @@ impl TextChunk {
             score: f32,
         }
 
+        let limit = i64::try_from(take).unwrap_or(i64::MAX);
+
         let sql = format!(
             r#"
             SELECT
@@ -183,7 +189,7 @@ impl TextChunk {
             .query(&sql)
             .bind(("terms", terms.to_owned()))
             .bind(("user_id", user_id.to_owned()))
-            .bind(("limit", take as i64))
+            .bind(("limit", limit))
             .await
             .map_err(|e| AppError::InternalError(format!("Surreal query failed: {e}")))?;
 
@@ -245,7 +251,7 @@ impl TextChunk {
         // Generate all new embeddings in memory
         let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
         info!("Generating new embeddings for all chunks...");
-        for chunk in all_chunks.iter() {
+        for chunk in &all_chunks {
             let retry_strategy = ExponentialBackoff::from_millis(100).map(jitter).take(3);
 
             let embedding = Retry::spawn(retry_strategy, || {
@@ -283,12 +289,13 @@ impl TextChunk {
                 "[{}]",
                 embedding
                     .iter()
-                    .map(|f| f.to_string())
+                    .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(",")
             );
             // Use the chunk id as the embedding record id to keep a 1:1 mapping
-            transaction_query.push_str(&format!(
+            write!(
+                &mut transaction_query,
                 "UPSERT type::thing('text_chunk_embedding', '{id}') SET \
                     chunk_id = type::thing('text_chunk', '{id}'), \
                     source_id = '{source_id}', \
@@ -300,13 +307,16 @@ impl TextChunk {
                 embedding = embedding_str,
                 user_id = user_id,
                 source_id = source_id
-            ));
+            )
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
 
-        transaction_query.push_str(&format!(
+        write!(
+            &mut transaction_query,
             "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {};",
             new_dimensions
-        ));
+        )
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 

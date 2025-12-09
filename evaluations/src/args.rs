@@ -28,17 +28,12 @@ fn default_ingestion_cache_dir() -> PathBuf {
 
 pub const DEFAULT_SLICE_SEED: u64 = 0x5eed_2025;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
 #[value(rename_all = "lowercase")]
 pub enum EmbeddingBackend {
     Hashed,
+    #[default]
     FastEmbed,
-}
-
-impl Default for EmbeddingBackend {
-    fn default() -> Self {
-        Self::FastEmbed
-    }
 }
 
 impl std::fmt::Display for EmbeddingBackend {
@@ -109,7 +104,7 @@ pub struct RetrievalSettings {
     pub require_verified_chunks: bool,
 
     /// Select the retrieval pipeline strategy
-    #[arg(long, default_value_t = RetrievalStrategy::Initial)]
+    #[arg(long, default_value_t = RetrievalStrategy::Default)]
     pub strategy: RetrievalStrategy,
 }
 
@@ -130,7 +125,7 @@ impl Default for RetrievalSettings {
             chunk_rrf_use_vector: None,
             chunk_rrf_use_fts: None,
             require_verified_chunks: true,
-            strategy: RetrievalStrategy::Initial,
+            strategy: RetrievalStrategy::Default,
         }
     }
 }
@@ -378,11 +373,7 @@ impl Config {
         self.summary_sample = self.sample.max(1);
 
         // Handle retrieval settings
-        if self.llm_mode {
-            self.retrieval.require_verified_chunks = false;
-        } else {
-            self.retrieval.require_verified_chunks = true;
-        }
+        self.retrieval.require_verified_chunks = !self.llm_mode;
 
         if self.dataset == DatasetKind::Beir {
             self.negative_multiplier = 9.0;

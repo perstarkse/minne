@@ -4,6 +4,7 @@ pub use minijinja_contrib;
 pub use minijinja_embed;
 use std::sync::Arc;
 
+#[allow(clippy::module_name_repetitions)]
 pub trait ProvidesTemplateEngine {
     fn template_engine(&self) -> &Arc<TemplateEngine>;
 }

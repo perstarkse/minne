@@ -113,7 +113,7 @@ pub(crate) async fn prepare_corpus(
         .metadata
         .ingestion_fingerprint
         .clone();
-    let ingestion_duration_ms = ingestion_timer.elapsed().as_millis() as u128;
+    let ingestion_duration_ms = ingestion_timer.elapsed().as_millis();
     info!(
         cache = %corpus_handle.path.display(),
         reused_ingestion = corpus_handle.reused_ingestion,

@@ -6,15 +6,17 @@ use crate::scoring::FusionWeights;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum RetrievalStrategy {
-    Initial,
-    Revised,
+    /// Primary hybrid chunk retrieval for search/chat (formerly Revised)
+    Default,
+    /// Entity retrieval for suggesting relationships when creating manual entities
     RelationshipSuggestion,
+    /// Entity retrieval for context during content ingestion
     Ingestion,
 }
 
 impl Default for RetrievalStrategy {
     fn default() -> Self {
-        Self::Initial
+        Self::Default
     }
 }
 
@@ -23,8 +25,16 @@ impl std::str::FromStr for RetrievalStrategy {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.to_ascii_lowercase().as_str() {
-            "initial" => Ok(Self::Initial),
-            "revised" => Ok(Self::Revised),
+            "default" => Ok(Self::Default),
+            // Backward compatibility: treat "initial" and "revised" as "default"
+            "initial" | "revised" => {
+                tracing::warn!(
+                    "Retrieval strategy '{}' is deprecated. Use 'default' instead. \
+                     The 'initial' strategy has been removed in favor of the simpler hybrid chunk retrieval.",
+                    value
+                );
+                Ok(Self::Default)
+            }
             "relationship_suggestion" => Ok(Self::RelationshipSuggestion),
             "ingestion" => Ok(Self::Ingestion),
             other => Err(format!("unknown retrieval strategy '{other}'")),
@@ -35,8 +45,7 @@ impl std::str::FromStr for RetrievalStrategy {
 impl fmt::Display for RetrievalStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let label = match self {
-            RetrievalStrategy::Initial => "initial",
-            RetrievalStrategy::Revised => "revised",
+            RetrievalStrategy::Default => "default",
             RetrievalStrategy::RelationshipSuggestion => "relationship_suggestion",
             RetrievalStrategy::Ingestion => "ingestion",
         };
@@ -136,7 +145,7 @@ pub struct RetrievalConfig {
 impl RetrievalConfig {
     pub fn new(tuning: RetrievalTuning) -> Self {
         Self {
-            strategy: RetrievalStrategy::Initial,
+            strategy: RetrievalStrategy::Default,
             tuning,
         }
     }

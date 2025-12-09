@@ -1,3 +1,13 @@
+#![allow(
+    clippy::missing_docs_in_private_items,
+    clippy::module_name_repetitions,
+    clippy::items_after_statements,
+    clippy::arithmetic_side_effects,
+    clippy::cast_precision_loss,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::uninlined_format_args
+)]
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -234,12 +244,25 @@ async fn create_fts_analyzer(db: &SurrealDbClient) -> Result<()> {
         analyzer = FTS_ANALYZER_NAME
     );
 
-    db.client
+    let res = db
+        .client
         .query(fallback_query)
         .await
-        .context("creating fallback FTS analyzer")?
-        .check()
-        .context("failed to create fallback FTS analyzer")?;
+        .context("creating fallback FTS analyzer")?;
+
+    if let Err(err) = res.check() {
+        warn!(
+            error = %err,
+            "Fallback analyzer creation failed; FTS will run without snowball/ascii analyzer ({})",
+            FTS_ANALYZER_NAME
+        );
+        return Err(err).context("failed to create fallback FTS analyzer");
+    }
+
+    warn!(
+        "Snowball analyzer unavailable; using fallback analyzer ({}) with lowercase+ascii only",
+        FTS_ANALYZER_NAME
+    );
 
     Ok(())
 }
@@ -466,7 +489,7 @@ async fn count_table_rows(db: &SurrealDbClient, table: &str) -> Result<u64> {
     let rows: Vec<CountRow> = response
         .take(0)
         .context("failed to deserialize count() response")?;
-    Ok(rows.first().map(|r| r.count).unwrap_or(0))
+    Ok(rows.first().map_or(0, |r| r.count))
 }
 
 async fn index_exists(db: &SurrealDbClient, table: &str, index_name: &str) -> Result<bool> {

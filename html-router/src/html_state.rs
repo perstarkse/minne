@@ -46,7 +46,7 @@ impl HtmlState {
             .retrieval_strategy
             .as_deref()
             .and_then(|value| value.parse().ok())
-            .unwrap_or(RetrievalStrategy::Initial)
+            .unwrap_or(RetrievalStrategy::Default)
     }
 }
 impl ProvidesDb for HtmlState {

@@ -481,6 +481,7 @@ impl ParagraphShardStore {
 }
 
 impl ParagraphShard {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         paragraph: &ConvertedParagraph,
         shard_path: String,
@@ -674,10 +675,8 @@ async fn execute_batched_inserts<T: Clone + Serialize + 'static>(
 
         let slice = &batches[start..group_end];
         let mut query = db.client.query("BEGIN TRANSACTION;");
-        let mut bind_index = 0usize;
-        for batch in slice {
+        for (bind_index, batch) in slice.iter().enumerate() {
             let name = format!("{prefix}{bind_index}");
-            bind_index += 1;
             query = query
                 .query(format!("{} ${};", statement.as_ref(), name))
                 .bind((name, batch.items.clone()));
@@ -702,7 +701,7 @@ async fn execute_batched_inserts<T: Clone + Serialize + 'static>(
 pub async fn seed_manifest_into_db(db: &SurrealDbClient, manifest: &CorpusManifest) -> Result<()> {
     let batches = build_manifest_batches(manifest).context("preparing manifest batches")?;
 
-    let result = (|| async {
+    let result = async {
         execute_batched_inserts(
             db,
             format!("INSERT INTO {}", TextContent::table_name()),
@@ -752,7 +751,7 @@ pub async fn seed_manifest_into_db(db: &SurrealDbClient, manifest: &CorpusManife
         .await?;
 
         Ok(())
-    })()
+    }
     .await;
 
     if result.is_err() {
@@ -778,7 +777,6 @@ pub async fn seed_manifest_into_db(db: &SurrealDbClient, manifest: &CorpusManife
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db_helpers::change_embedding_length_in_hnsw_indexes;
     use chrono::Utc;
     use common::storage::types::knowledge_entity::KnowledgeEntityType;
     use uuid::Uuid;
@@ -905,9 +903,6 @@ mod tests {
         db.apply_migrations()
             .await
             .expect("apply migrations for memory db");
-        change_embedding_length_in_hnsw_indexes(&db, 3)
-            .await
-            .expect("set embedding index dimension for test");
 
         let manifest = build_manifest();
         seed_manifest_into_db(&db, &manifest)

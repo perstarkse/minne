@@ -1,3 +1,12 @@
+#![allow(
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::arithmetic_side_effects,
+    clippy::cast_sign_loss,
+    clippy::missing_docs_in_private_items,
+    clippy::trivially_copy_pass_by_ref,
+    clippy::expect_used
+)]
 use std::time::Duration;
 
 use chrono::Duration as ChronoDuration;

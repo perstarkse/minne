@@ -16,17 +16,14 @@ use crate::{
     storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Supported embedding backends.
+#[allow(clippy::module_name_repetitions)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EmbeddingBackend {
     OpenAI,
+    #[default]
     FastEmbed,
     Hashed,
-}
-
-impl Default for EmbeddingBackend {
-    fn default() -> Self {
-        Self::FastEmbed
-    }
 }
 
 impl std::str::FromStr for EmbeddingBackend {
@@ -44,24 +41,38 @@ impl std::str::FromStr for EmbeddingBackend {
     }
 }
 
+/// Wrapper around the chosen embedding backend.
+#[allow(clippy::module_name_repetitions)]
 #[derive(Clone)]
 pub struct EmbeddingProvider {
+    /// Concrete backend implementation.
     inner: EmbeddingInner,
 }
 
+/// Concrete embedding implementations.
 #[derive(Clone)]
 enum EmbeddingInner {
+    /// Uses an `OpenAI`-compatible API.
     OpenAI {
+        /// Client used to issue embedding requests.
         client: Arc<Client<async_openai::config::OpenAIConfig>>,
+        /// Model identifier for the API.
         model: String,
+        /// Expected output dimensions.
         dimensions: u32,
     },
+    /// Generates deterministic hashed embeddings without external calls.
     Hashed {
+        /// Output vector length.
         dimension: usize,
     },
+    /// Uses `FastEmbed` running locally.
     FastEmbed {
+        /// Shared `FastEmbed` model.
         model: Arc<Mutex<TextEmbedding>>,
+        /// Model metadata used for info logging.
         model_name: EmbeddingModel,
+        /// Output vector length.
         dimension: usize,
     },
 }
@@ -77,8 +88,9 @@ impl EmbeddingProvider {
 
     pub fn dimension(&self) -> usize {
         match &self.inner {
-            EmbeddingInner::Hashed { dimension } => *dimension,
-            EmbeddingInner::FastEmbed { dimension, .. } => *dimension,
+            EmbeddingInner::Hashed { dimension } | EmbeddingInner::FastEmbed { dimension, .. } => {
+                *dimension
+            }
             EmbeddingInner::OpenAI { dimensions, .. } => *dimensions as usize,
         }
     }
@@ -172,12 +184,12 @@ impl EmbeddingProvider {
         }
     }
 
-    pub async fn new_openai(
+    pub fn new_openai(
         client: Arc<Client<async_openai::config::OpenAIConfig>>,
         model: String,
         dimensions: u32,
     ) -> Result<Self> {
-        Ok(EmbeddingProvider {
+        Ok(Self {
             inner: EmbeddingInner::OpenAI {
                 client,
                 model,
@@ -226,6 +238,7 @@ impl EmbeddingProvider {
 }
 
 // Helper functions for hashed embeddings
+/// Generates a hashed embedding vector without external dependencies.
 fn hashed_embedding(text: &str, dimension: usize) -> Vec<f32> {
     let dim = dimension.max(1);
     let mut vector = vec![0.0f32; dim];
@@ -233,15 +246,11 @@ fn hashed_embedding(text: &str, dimension: usize) -> Vec<f32> {
         return vector;
     }
 
-    let mut token_count = 0f32;
     for token in tokens(text) {
-        token_count += 1.0;
         let idx = bucket(&token, dim);
-        vector[idx] += 1.0;
-    }
-
-    if token_count == 0.0 {
-        return vector;
+        if let Some(slot) = vector.get_mut(idx) {
+            *slot += 1.0;
+        }
     }
 
     let norm = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
@@ -254,16 +263,22 @@ fn hashed_embedding(text: &str, dimension: usize) -> Vec<f32> {
     vector
 }
 
+/// Tokenizes the text into alphanumeric lowercase tokens.
 fn tokens(text: &str) -> impl Iterator<Item = String> + '_ {
     text.split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|token| !token.is_empty())
-        .map(|token| token.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
 }
 
+/// Buckets a token into the hashed embedding vector.
+#[allow(clippy::arithmetic_side_effects)]
 fn bucket(token: &str, dimension: usize) -> usize {
+    let safe_dimension = dimension.max(1);
     let mut hasher = DefaultHasher::new();
     token.hash(&mut hasher);
-    (hasher.finish() as usize) % dimension
+    usize::try_from(hasher.finish())
+        .unwrap_or_default()
+        % safe_dimension
 }
 
 // Backward compatibility function
@@ -274,15 +289,15 @@ pub async fn generate_embedding_with_provider(
     provider.embed(input).await.map_err(AppError::from)
 }
 
-/// Generates an embedding vector for the given input text using OpenAI's embedding model.
+/// Generates an embedding vector for the given input text using `OpenAI`'s embedding model.
 ///
 /// This function takes a text input and converts it into a numerical vector representation (embedding)
-/// using OpenAI's text-embedding-3-small model. These embeddings can be used for semantic similarity
+/// using `OpenAI`'s text-embedding-3-small model. These embeddings can be used for semantic similarity
 /// comparisons, vector search, and other natural language processing tasks.
 ///
 /// # Arguments
 ///
-/// * `client`: The OpenAI client instance used to make API requests.
+/// * `client`: The `OpenAI` client instance used to make API requests.
 /// * `input`: The text string to generate embeddings for.
 ///
 /// # Returns
@@ -294,9 +309,10 @@ pub async fn generate_embedding_with_provider(
 /// # Errors
 ///
 /// This function can return a `AppError` in the following cases:
-/// * If the OpenAI API request fails
+/// * If the `OpenAI` API request fails
 /// * If the request building fails
 /// * If no embedding data is received in the response
+#[allow(clippy::module_name_repetitions)]
 pub async fn generate_embedding(
     client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     input: &str,
