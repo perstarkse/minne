@@ -97,26 +97,6 @@ impl SurrealDbClient {
         Ok(())
     }
 
-    /// Operation to rebuild indexes
-    pub async fn rebuild_indexes(&self) -> Result<(), AppError> {
-        debug!("Rebuilding indexes");
-        let rebuild_sql = r#"
-            REBUILD INDEX IF EXISTS text_content_fts_idx ON text_content;
-            REBUILD INDEX IF EXISTS knowledge_entity_fts_name_idx ON knowledge_entity;
-            REBUILD INDEX IF EXISTS knowledge_entity_fts_description_idx ON knowledge_entity;
-            REBUILD INDEX IF EXISTS text_chunk_fts_chunk_idx ON text_chunk;
-            REBUILD INDEX IF EXISTS idx_embedding_text_chunk_embedding ON text_chunk_embedding;
-            REBUILD INDEX IF EXISTS idx_embedding_knowledge_entity_embedding ON knowledge_entity_embedding;
-        "#;
-
-        self.client
-            .query(rebuild_sql)
-            .await
-            .map_err(|e| AppError::InternalError(e.to_string()))?;
-
-        Ok(())
-    }
-
     /// Operation to store a object in SurrealDB, requires the struct to implement StoredObject
     ///
     /// # Arguments

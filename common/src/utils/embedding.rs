@@ -20,8 +20,8 @@ use crate::{
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EmbeddingBackend {
-    OpenAI,
     #[default]
+    OpenAI,
     FastEmbed,
     Hashed,
 }
@@ -276,9 +276,7 @@ fn bucket(token: &str, dimension: usize) -> usize {
     let safe_dimension = dimension.max(1);
     let mut hasher = DefaultHasher::new();
     token.hash(&mut hasher);
-    usize::try_from(hasher.finish())
-        .unwrap_or_default()
-        % safe_dimension
+    usize::try_from(hasher.finish()).unwrap_or_default() % safe_dimension
 }
 
 // Backward compatibility function

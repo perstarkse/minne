@@ -1,19 +1,9 @@
-#![allow(
-    clippy::missing_docs_in_private_items,
-    clippy::module_name_repetitions,
-    clippy::items_after_statements,
-    clippy::arithmetic_side_effects,
-    clippy::cast_precision_loss,
-    clippy::redundant_closure_for_method_calls,
-    clippy::single_match_else,
-    clippy::uninlined_format_args
-)]
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use futures::future::try_join_all;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tracing::{debug, info, warn};
 
 use crate::{error::AppError, storage::db::SurrealDbClient};
@@ -26,6 +16,82 @@ struct HnswIndexSpec {
     index_name: &'static str,
     table: &'static str,
     options: &'static str,
+}
+
+const fn hnsw_index_specs() -> [HnswIndexSpec; 2] {
+    [
+        HnswIndexSpec {
+            index_name: "idx_embedding_text_chunk_embedding",
+            table: "text_chunk_embedding",
+            options: "DIST COSINE TYPE F32 EFC 100 M 8 CONCURRENTLY",
+        },
+        HnswIndexSpec {
+            index_name: "idx_embedding_knowledge_entity_embedding",
+            table: "knowledge_entity_embedding",
+            options: "DIST COSINE TYPE F32 EFC 100 M 8 CONCURRENTLY",
+        },
+    ]
+}
+
+const fn fts_index_specs() -> [FtsIndexSpec; 8] {
+    [
+        FtsIndexSpec {
+            index_name: "text_content_fts_idx",
+            table: "text_content",
+            field: "text",
+            analyzer: Some(FTS_ANALYZER_NAME),
+            method: "BM25",
+        },
+        FtsIndexSpec {
+            index_name: "text_content_context_fts_idx",
+            table: "text_content",
+            field: "context",
+            analyzer: Some(FTS_ANALYZER_NAME),
+            method: "BM25",
+        },
+        FtsIndexSpec {
+            index_name: "text_content_file_name_fts_idx",
+            table: "text_content",
+            field: "file_info.file_name",
+            analyzer: Some(FTS_ANALYZER_NAME),
+            method: "BM25",
+        },
+        FtsIndexSpec {
+            index_name: "text_content_url_fts_idx",
+            table: "text_content",
+            field: "url_info.url",
+            analyzer: Some(FTS_ANALYZER_NAME),
+            method: "BM25",
+        },
+        FtsIndexSpec {
+            index_name: "text_content_url_title_fts_idx",
+            table: "text_content",
+            field: "url_info.title",
+            analyzer: Some(FTS_ANALYZER_NAME),
+            method: "BM25",
+        },
+        FtsIndexSpec {
+            index_name: "knowledge_entity_fts_name_idx",
+            table: "knowledge_entity",
+            field: "name",
+            analyzer: Some(FTS_ANALYZER_NAME),
+            method: "BM25",
+        },
+        FtsIndexSpec {
+            index_name: "knowledge_entity_fts_description_idx",
+            table: "knowledge_entity",
+            field: "description",
+            analyzer: Some(FTS_ANALYZER_NAME),
+            method: "BM25",
+        },
+        FtsIndexSpec {
+            index_name: "text_chunk_fts_chunk_idx",
+            table: "text_chunk",
+            field: "chunk",
+            analyzer: Some(FTS_ANALYZER_NAME),
+            method: "BM25",
+        },
+    ]
 }
 
 impl HnswIndexSpec {
@@ -75,6 +141,20 @@ impl FtsIndexSpec {
             field = self.field,
         )
     }
+
+    fn overwrite_definition(&self) -> String {
+        let analyzer_clause = self
+            .analyzer
+            .map(|analyzer| format!(" SEARCH ANALYZER {analyzer} {}", self.method))
+            .unwrap_or_default();
+
+        format!(
+            "DEFINE INDEX OVERWRITE {index} ON TABLE {table} FIELDS {field}{analyzer_clause} CONCURRENTLY;",
+            index = self.index_name,
+            table = self.table,
+            field = self.field,
+        )
+    }
 }
 
 /// Build runtime Surreal indexes (FTS + HNSW) using concurrent creation with readiness polling.
@@ -84,6 +164,13 @@ pub async fn ensure_runtime_indexes(
     embedding_dimension: usize,
 ) -> Result<(), AppError> {
     ensure_runtime_indexes_inner(db, embedding_dimension)
+        .await
+        .map_err(|err| AppError::InternalError(err.to_string()))
+}
+
+/// Rebuild known FTS and HNSW indexes, skipping any that are not yet defined.
+pub async fn rebuild_indexes(db: &SurrealDbClient) -> Result<(), AppError> {
+    rebuild_indexes_inner(db)
         .await
         .map_err(|err| AppError::InternalError(err.to_string()))
 }
@@ -147,32 +234,68 @@ async fn ensure_runtime_indexes_inner(
     Ok(())
 }
 
-async fn hnsw_index_state(
+async fn rebuild_indexes_inner(db: &SurrealDbClient) -> Result<()> {
+    debug!("Rebuilding indexes with concurrent definitions");
+    create_fts_analyzer(db).await?;
+
+    for spec in fts_index_specs() {
+        if !index_exists(db, spec.table, spec.index_name).await? {
+            debug!(
+                index = spec.index_name,
+                table = spec.table,
+                "Skipping FTS rebuild because index is missing"
+            );
+            continue;
+        }
+
+        create_index_with_polling(
+            db,
+            spec.overwrite_definition(),
+            spec.index_name,
+            spec.table,
+            Some(spec.table),
+        )
+        .await?;
+    }
+
+    let hnsw_tasks = hnsw_index_specs().into_iter().map(|spec| async move {
+        if !index_exists(db, spec.table, spec.index_name).await? {
+            debug!(
+                index = spec.index_name,
+                table = spec.table,
+                "Skipping HNSW rebuild because index is missing"
+            );
+            return Ok(());
+        }
+
+        let Some(dimension) = existing_hnsw_dimension(db, &spec).await? else {
+            warn!(
+                index = spec.index_name,
+                table = spec.table,
+                "HNSW index missing dimension; skipping rebuild"
+            );
+            return Ok(());
+        };
+
+        create_index_with_polling(
+            db,
+            spec.definition_overwrite(dimension),
+            spec.index_name,
+            spec.table,
+            Some(spec.table),
+        )
+        .await
+    });
+
+    try_join_all(hnsw_tasks).await.map(|_| ())
+}
+
+async fn existing_hnsw_dimension(
     db: &SurrealDbClient,
     spec: &HnswIndexSpec,
-    expected_dimension: usize,
-) -> Result<HnswIndexState> {
-    let info_query = format!("INFO FOR TABLE {table};", table = spec.table);
-    let mut response = db
-        .client
-        .query(info_query)
-        .await
-        .with_context(|| format!("fetching table info for {}", spec.table))?;
-
-    let info: surrealdb::Value = response
-        .take(0)
-        .context("failed to take table info response")?;
-
-    let info_json: Value =
-        serde_json::to_value(info).context("serializing table info to JSON for parsing")?;
-
-    let Some(indexes) = info_json
-        .get("Object")
-        .and_then(|o| o.get("indexes"))
-        .and_then(|i| i.get("Object"))
-        .and_then(|i| i.as_object())
-    else {
-        return Ok(HnswIndexState::Missing);
+) -> Result<Option<usize>> {
+    let Some(indexes) = table_index_definitions(db, spec.table).await? else {
+        return Ok(None);
     };
 
     let Some(definition) = indexes
@@ -180,17 +303,23 @@ async fn hnsw_index_state(
         .and_then(|details| details.get("Strand"))
         .and_then(|v| v.as_str())
     else {
-        return Ok(HnswIndexState::Missing);
+        return Ok(None);
     };
 
-    let Some(current_dimension) = extract_dimension(definition) else {
-        return Ok(HnswIndexState::Missing);
-    };
+    Ok(extract_dimension(definition).and_then(|d| usize::try_from(d).ok()))
+}
 
-    if current_dimension == expected_dimension as u64 {
-        Ok(HnswIndexState::Matches)
-    } else {
-        Ok(HnswIndexState::Different(current_dimension))
+async fn hnsw_index_state(
+    db: &SurrealDbClient,
+    spec: &HnswIndexSpec,
+    expected_dimension: usize,
+) -> Result<HnswIndexState> {
+    match existing_hnsw_dimension(db, spec).await? {
+        None => Ok(HnswIndexState::Missing),
+        Some(current_dimension) if current_dimension == expected_dimension => {
+            Ok(HnswIndexState::Matches)
+        }
+        Some(current_dimension) => Ok(HnswIndexState::Different(current_dimension as u64)),
     }
 }
 
@@ -492,7 +621,10 @@ async fn count_table_rows(db: &SurrealDbClient, table: &str) -> Result<u64> {
     Ok(rows.first().map_or(0, |r| r.count))
 }
 
-async fn index_exists(db: &SurrealDbClient, table: &str, index_name: &str) -> Result<bool> {
+async fn table_index_definitions(
+    db: &SurrealDbClient,
+    table: &str,
+) -> Result<Option<Map<String, Value>>> {
     let info_query = format!("INFO FOR TABLE {table};");
     let mut response = db
         .client
@@ -507,92 +639,20 @@ async fn index_exists(db: &SurrealDbClient, table: &str, index_name: &str) -> Re
     let info_json: Value =
         serde_json::to_value(info).context("serializing table info to JSON for parsing")?;
 
-    let Some(indexes) = info_json
+    Ok(info_json
         .get("Object")
         .and_then(|o| o.get("indexes"))
         .and_then(|i| i.get("Object"))
         .and_then(|i| i.as_object())
-    else {
+        .cloned())
+}
+
+async fn index_exists(db: &SurrealDbClient, table: &str, index_name: &str) -> Result<bool> {
+    let Some(indexes) = table_index_definitions(db, table).await? else {
         return Ok(false);
     };
 
     Ok(indexes.contains_key(index_name))
-}
-
-const fn hnsw_index_specs() -> [HnswIndexSpec; 2] {
-    [
-        HnswIndexSpec {
-            index_name: "idx_embedding_text_chunk_embedding",
-            table: "text_chunk_embedding",
-            options: "DIST COSINE TYPE F32 EFC 100 M 8 CONCURRENTLY",
-        },
-        HnswIndexSpec {
-            index_name: "idx_embedding_knowledge_entity_embedding",
-            table: "knowledge_entity_embedding",
-            options: "DIST COSINE TYPE F32 EFC 100 M 8 CONCURRENTLY",
-        },
-    ]
-}
-
-const fn fts_index_specs() -> [FtsIndexSpec; 8] {
-    [
-        FtsIndexSpec {
-            index_name: "text_content_fts_idx",
-            table: "text_content",
-            field: "text",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-        FtsIndexSpec {
-            index_name: "text_content_context_fts_idx",
-            table: "text_content",
-            field: "context",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-        FtsIndexSpec {
-            index_name: "text_content_file_name_fts_idx",
-            table: "text_content",
-            field: "file_info.file_name",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-        FtsIndexSpec {
-            index_name: "text_content_url_fts_idx",
-            table: "text_content",
-            field: "url_info.url",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-        FtsIndexSpec {
-            index_name: "text_content_url_title_fts_idx",
-            table: "text_content",
-            field: "url_info.title",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-        FtsIndexSpec {
-            index_name: "knowledge_entity_fts_name_idx",
-            table: "knowledge_entity",
-            field: "name",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-        FtsIndexSpec {
-            index_name: "knowledge_entity_fts_description_idx",
-            table: "knowledge_entity",
-            field: "description",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-        FtsIndexSpec {
-            index_name: "text_chunk_fts_chunk_idx",
-            table: "text_chunk",
-            field: "chunk",
-            analyzer: Some(FTS_ANALYZER_NAME),
-            method: "BM25",
-        },
-    ]
 }
 
 #[cfg(test)]

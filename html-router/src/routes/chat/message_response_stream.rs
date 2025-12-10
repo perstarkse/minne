@@ -151,6 +151,10 @@ pub async fn get_response_stream(
         retrieval_pipeline::StrategyOutput::Entities(entities) => {
             retrieved_entities_to_json(&entities)
         }
+        retrieval_pipeline::StrategyOutput::Search(search_result) => {
+            // For chat, use chunks from the search result
+            chunks_to_chat_context(&search_result.chunks)
+        }
     };
     let formatted_user_message =
         create_user_message_with_history(&context_json, &history, &user_message.content);
