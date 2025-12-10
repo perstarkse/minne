@@ -61,35 +61,33 @@ impl TextChunk {
         embedding: Vec<f32>,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        let emb = TextChunkEmbedding::new(
-            &chunk.id,
-            chunk.source_id.clone(),
-            embedding,
-            chunk.user_id.clone(),
-        );
+        let chunk_id = chunk.id.clone();
+        let source_id = chunk.source_id.clone();
+        let user_id = chunk.user_id.clone();
 
-        // Create both records in a single query
-        let query = format!(
-            "
-            BEGIN TRANSACTION;
-              CREATE type::thing('{chunk_table}', $chunk_id) CONTENT $chunk;
-              CREATE type::thing('{emb_table}', $emb_id) CONTENT $emb;
-            COMMIT TRANSACTION;
-            ",
-            chunk_table = Self::table_name(),
-            emb_table = TextChunkEmbedding::table_name(),
-        );
+        let emb = TextChunkEmbedding::new(&chunk_id, source_id.clone(), embedding, user_id.clone());
 
-        db.client
-            .query(query)
-            .bind(("chunk_id", chunk.id.clone()))
+        // Create both records in a single transaction so we don't orphan embeddings or chunks
+        let response = db
+            .client
+            .query("BEGIN TRANSACTION;")
+            .query(format!(
+                "CREATE type::thing('{chunk_table}', $chunk_id) CONTENT $chunk;",
+                chunk_table = Self::table_name(),
+            ))
+            .query(format!(
+                "CREATE type::thing('{emb_table}', $emb_id) CONTENT $emb;",
+                emb_table = TextChunkEmbedding::table_name(),
+            ))
+            .query("COMMIT TRANSACTION;")
+            .bind(("chunk_id", chunk_id.clone()))
             .bind(("chunk", chunk))
             .bind(("emb_id", emb.id.clone()))
             .bind(("emb", emb))
             .await
-            .map_err(AppError::Database)?
-            .check()
             .map_err(AppError::Database)?;
+
+        response.check().map_err(AppError::Database)?;
 
         Ok(())
     }
@@ -330,6 +328,7 @@ impl TextChunk {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::indexes::{ensure_runtime_indexes, rebuild_indexes};
     use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
     use surrealdb::RecordId;
     use uuid::Uuid;
@@ -525,6 +524,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_store_with_embedding_with_runtime_indexes() {
+        let namespace = "test_ns_runtime";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.expect("migrations");
+
+        // Ensure runtime indexes are built with the expected dimension.
+        let embedding_dimension = 3usize;
+        ensure_runtime_indexes(&db, embedding_dimension)
+            .await
+            .expect("ensure runtime indexes");
+
+        let chunk = TextChunk::new(
+            "runtime_src".to_string(),
+            "runtime chunk body".to_string(),
+            "runtime_user".to_string(),
+        );
+
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
+            .await
+            .expect("store with embedding");
+
+        let stored_chunk: Option<TextChunk> = db.get_item(&chunk.id).await.unwrap();
+        assert!(stored_chunk.is_some(), "chunk should be stored");
+
+        let rid = RecordId::from_table_key(TextChunk::table_name(), &chunk.id);
+        let embedding = TextChunkEmbedding::get_by_chunk_id(&rid, &db)
+            .await
+            .expect("get embedding");
+        assert!(embedding.is_some(), "embedding should exist");
+        assert_eq!(
+            embedding.unwrap().embedding.len(),
+            embedding_dimension,
+            "embedding dimension should match runtime index"
+        );
+    }
+
+    #[tokio::test]
     async fn test_vector_search_returns_empty_when_no_embeddings() {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
@@ -625,7 +664,7 @@ mod tests {
             .expect("Failed to start in-memory surrealdb");
         db.apply_migrations().await.expect("migrations");
         ensure_chunk_fts_index(&db).await;
-        db.rebuild_indexes().await.expect("rebuild indexes");
+        rebuild_indexes(&db).await.expect("rebuild indexes");
 
         let results = TextChunk::fts_search(5, "hello", &db, "user")
             .await
@@ -651,7 +690,7 @@ mod tests {
             user_id.to_string(),
         );
         db.store_item(chunk.clone()).await.expect("store chunk");
-        db.rebuild_indexes().await.expect("rebuild indexes");
+        rebuild_indexes(&db).await.expect("rebuild indexes");
 
         let results = TextChunk::fts_search(3, "rust", &db, user_id)
             .await
@@ -698,7 +737,7 @@ mod tests {
         db.store_item(other_user_chunk)
             .await
             .expect("store other user chunk");
-        db.rebuild_indexes().await.expect("rebuild indexes");
+        rebuild_indexes(&db).await.expect("rebuild indexes");
 
         let results = TextChunk::fts_search(3, "apple", &db, user_id)
             .await

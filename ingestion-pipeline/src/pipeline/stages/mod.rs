@@ -4,6 +4,7 @@ use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
+        indexes::rebuild_indexes,
         types::{
             ingestion_payload::IngestionPayload, knowledge_entity::KnowledgeEntity,
             knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
@@ -131,7 +132,7 @@ pub async fn enrich(
         });
         return machine
             .enrich()
-        .map_err(|(_, guard)| map_guard_error("enrich", &guard));
+            .map_err(|(_, guard)| map_guard_error("enrich", &guard));
     }
 
     let content = ctx.text_content()?;
@@ -173,18 +174,24 @@ pub async fn persist(
     let entity_count = entities.len();
     let relationship_count = relationships.len();
 
-    let ((), chunk_count) = tokio::try_join!(
-        store_graph_entities(ctx.db, &ctx.pipeline_config.tuning, entities, relationships),
-        store_vector_chunks(
-            ctx.db,
-            ctx.task_id.as_str(),
-            &chunks,
-            &ctx.pipeline_config.tuning
-        )
-    )?;
+    debug!("Were storing chunks");
+    let chunk_count = store_vector_chunks(
+        ctx.db,
+        ctx.task_id.as_str(),
+        &chunks,
+        &ctx.pipeline_config.tuning,
+    )
+    .await?;
+
+    debug!("We stored chunks");
+    store_graph_entities(ctx.db, &ctx.pipeline_config.tuning, entities, relationships).await?;
+
+    debug!("Stored graph entities");
 
     ctx.db.store_item(text_content).await?;
-    ctx.db.rebuild_indexes().await?;
+
+    debug!("stored item");
+    rebuild_indexes(ctx.db).await?;
 
     debug!(
         task_id = %ctx.task_id,
@@ -268,17 +275,9 @@ async fn store_vector_chunks(
     let chunk_count = chunks.len();
 
     let batch_size = tuning.chunk_insert_concurrency.max(1);
-    for embedded in chunks {
-        debug!(
-            task_id = %task_id,
-            chunk_id = %embedded.chunk.id,
-            chunk_len = embedded.chunk.chunk.chars().count(),
-            "chunk persisted"
-        );
-    }
 
     for batch in chunks.chunks(batch_size) {
-        store_chunk_batch(db, batch, tuning).await?;
+        store_chunk_batch(db, batch, tuning, task_id).await?;
     }
 
     Ok(chunk_count)
@@ -294,14 +293,25 @@ async fn store_chunk_batch(
     db: &SurrealDbClient,
     batch: &[EmbeddedTextChunk],
     _tuning: &super::config::IngestionTuning,
+    task_id: &str,
 ) -> Result<(), AppError> {
     if batch.is_empty() {
         return Ok(());
     }
 
     for embedded in batch {
-        TextChunk::store_with_embedding(embedded.chunk.clone(), embedded.embedding.clone(), db)
-            .await?;
+        TextChunk::store_with_embedding(
+            embedded.chunk.to_owned(),
+            embedded.embedding.to_owned(),
+            db,
+        )
+        .await?;
+        debug!(
+            task_id = %task_id,
+            chunk_id = %embedded.chunk.id,
+            chunk_len = embedded.chunk.chunk.chars().count(),
+            "chunk persisted"
+        );
     }
 
     Ok(())

@@ -17,8 +17,11 @@ pub type DynStore = Arc<dyn ObjectStore>;
 /// Storage manager with persistent state and proper lifecycle management.
 #[derive(Clone)]
 pub struct StorageManager {
+    // Store from objectstore wrapped as dyn
     store: DynStore,
+    // Simple enum to track which kind
     backend_kind: StorageKind,
+    // Where on disk
     local_base: Option<PathBuf>,
 }
 

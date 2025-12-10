@@ -2,7 +2,9 @@ use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
 use common::{
     storage::{
-        db::SurrealDbClient, indexes::ensure_runtime_indexes, store::StorageManager,
+        db::SurrealDbClient,
+        indexes::ensure_runtime_indexes,
+        store::StorageManager,
         types::system_settings::SystemSettings,
     },
     utils::config::get_config,
@@ -112,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await
             .unwrap(),
         );
-        let _settings = SystemSettings::get_current(&worker_db)
+        let settings = SystemSettings::get_current(&worker_db)
             .await
             .expect("failed to load system settings");
 
@@ -125,9 +127,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Create embedding provider for ingestion
         let embedding_provider = Arc::new(
-            common::utils::embedding::EmbeddingProvider::new_fastembed(None)
-                .await
-                .expect("failed to create embedding provider"),
+            common::utils::embedding::EmbeddingProvider::new_openai(
+                openai_client.clone(),
+                settings.embedding_model,
+                settings.embedding_dimensions,
+            )
+            .expect("failed to create embedding provider"),
         );
         let ingestion_pipeline = Arc::new(
             IngestionPipeline::new(

@@ -184,7 +184,8 @@ impl PipelineServices for DefaultPipelineServices {
             None => None,
         };
 
-        let config = retrieval_pipeline::RetrievalConfig::for_ingestion();
+        let config =
+            retrieval_pipeline::RetrievalConfig::for_search(retrieval_pipeline::SearchTarget::EntitiesOnly);
         match retrieval_pipeline::retrieve_entities(
             &self.db,
             &self.openai_client,
@@ -197,6 +198,16 @@ impl PipelineServices for DefaultPipelineServices {
         .await
         {
             Ok(retrieval_pipeline::StrategyOutput::Entities(entities)) => Ok(entities),
+            Ok(retrieval_pipeline::StrategyOutput::Search(search)) => {
+                let chunk_count = search.chunks.len();
+                let entities = search.entities;
+                tracing::debug!(
+                    chunk_count,
+                    entity_count = entities.len(),
+                    "ingestion search results returned entities"
+                );
+                Ok(entities)
+            }
             Ok(retrieval_pipeline::StrategyOutput::Chunks(_)) => Err(AppError::InternalError(
                 "Ingestion retrieval should return entities".into(),
             )),

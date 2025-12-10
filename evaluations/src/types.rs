@@ -215,16 +215,30 @@ impl EvaluationCandidate {
     }
 }
 
+fn candidates_from_entities(entities: Vec<RetrievedEntity>) -> Vec<EvaluationCandidate> {
+    entities
+        .into_iter()
+        .map(EvaluationCandidate::from_entity)
+        .collect()
+}
+
+fn candidates_from_chunks(chunks: Vec<RetrievedChunk>) -> Vec<EvaluationCandidate> {
+    chunks
+        .into_iter()
+        .map(EvaluationCandidate::from_chunk)
+        .collect()
+}
+
 pub fn adapt_strategy_output(output: StrategyOutput) -> Vec<EvaluationCandidate> {
     match output {
-        StrategyOutput::Entities(entities) => entities
-            .into_iter()
-            .map(EvaluationCandidate::from_entity)
-            .collect(),
-        StrategyOutput::Chunks(chunks) => chunks
-            .into_iter()
-            .map(EvaluationCandidate::from_chunk)
-            .collect(),
+        StrategyOutput::Entities(entities) => candidates_from_entities(entities),
+        StrategyOutput::Chunks(chunks) => candidates_from_chunks(chunks),
+        StrategyOutput::Search(search_result) => {
+            let mut candidates = candidates_from_entities(search_result.entities);
+            candidates.extend(candidates_from_chunks(search_result.chunks));
+            candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
+            candidates
+        }
     }
 }
 

@@ -10,8 +10,8 @@ result
 data
 database
 
-eval/cache/
-eval/reports/
+evaluations/cache/
+evaluations/reports/
 
 # Devenv
 .devenv*
