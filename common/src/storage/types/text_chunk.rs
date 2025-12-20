@@ -323,6 +323,106 @@ impl TextChunk {
         info!("Re-embedding process for text chunks completed successfully.");
         Ok(())
     }
+
+    /// Re-creates embeddings for all text chunks using an `EmbeddingProvider`.
+    ///
+    /// This variant uses the application's configured embedding provider (FastEmbed, OpenAI, etc.)
+    /// instead of directly calling OpenAI. Used during startup when embedding configuration changes.
+    pub async fn update_all_embeddings_with_provider(
+        db: &SurrealDbClient,
+        provider: &crate::utils::embedding::EmbeddingProvider,
+    ) -> Result<(), AppError> {
+        let new_dimensions = provider.dimension();
+        info!(
+            dimensions = new_dimensions,
+            backend = provider.backend_label(),
+            "Starting re-embedding process for all text chunks"
+        );
+
+        // Fetch all chunks first
+        let all_chunks: Vec<TextChunk> = db.select(Self::table_name()).await?;
+        let total_chunks = all_chunks.len();
+        if total_chunks == 0 {
+            info!("No text chunks to update. Just updating the index.");
+            TextChunkEmbedding::redefine_hnsw_index(db, new_dimensions).await?;
+            return Ok(());
+        }
+        info!(chunks = total_chunks, "Found chunks to process");
+
+        // Generate all new embeddings in memory
+        let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
+        info!("Generating new embeddings for all chunks...");
+        
+        for (i, chunk) in all_chunks.iter().enumerate() {
+            if i > 0 && i % 100 == 0 {
+                info!(progress = i, total = total_chunks, "Re-embedding progress");
+            }
+            
+            let embedding = provider
+                .embed(&chunk.chunk)
+                .await
+                .map_err(|e| AppError::InternalError(format!("Embedding failed: {e}")))?;
+
+            // Safety check: ensure the generated embedding has the correct dimension.
+            if embedding.len() != new_dimensions {
+                let err_msg = format!(
+                    "CRITICAL: Generated embedding for chunk {} has incorrect dimension ({}). Expected {}. Aborting.",
+                    chunk.id, embedding.len(), new_dimensions
+                );
+                error!("{}", err_msg);
+                return Err(AppError::InternalError(err_msg));
+            }
+            new_embeddings.insert(
+                chunk.id.clone(),
+                (embedding, chunk.user_id.clone(), chunk.source_id.clone()),
+            );
+        }
+        info!("Successfully generated all new embeddings.");
+
+        // Perform DB updates in a single transaction against the embedding table
+        info!("Applying embedding updates in a transaction...");
+        let mut transaction_query = String::from("BEGIN TRANSACTION;");
+
+        for (id, (embedding, user_id, source_id)) in new_embeddings {
+            let embedding_str = format!(
+                "[{}]",
+                embedding
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+            write!(
+                &mut transaction_query,
+                "UPSERT type::thing('text_chunk_embedding', '{id}') SET \
+                    chunk_id = type::thing('text_chunk', '{id}'), \
+                    source_id = '{source_id}', \
+                    embedding = {embedding}, \
+                    user_id = '{user_id}', \
+                    created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
+                    updated_at = time::now();",
+                id = id,
+                embedding = embedding_str,
+                user_id = user_id,
+                source_id = source_id
+            )
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
+        }
+
+        write!(
+            &mut transaction_query,
+            "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {};",
+            new_dimensions
+        )
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
+
+        transaction_query.push_str("COMMIT TRANSACTION;");
+
+        db.query(transaction_query).await?;
+
+        info!("Re-embedding process for text chunks completed successfully.");
+        Ok(())
+    }
 }
 
 #[cfg(test)]

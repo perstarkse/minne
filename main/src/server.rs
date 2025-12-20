@@ -3,7 +3,8 @@ use std::sync::Arc;
 use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
 use common::{
-    storage::db::SurrealDbClient, storage::store::StorageManager, utils::config::get_config,
+    storage::{db::SurrealDbClient, store::StorageManager, types::system_settings::SystemSettings},
+    utils::{config::get_config, embedding::EmbeddingProvider},
 };
 use html_router::{html_routes, html_state::HtmlState};
 use retrieval_pipeline::reranking::RerankerPool;
@@ -49,6 +50,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create global storage manager
     let storage = StorageManager::new(&config).await?;
 
+    // Create embedding provider based on config
+    let embedding_provider = Arc::new(
+        EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?,
+    );
+    info!(
+        embedding_backend = ?config.embedding_backend,
+        embedding_dimension = embedding_provider.dimension(),
+        "Embedding provider initialized"
+    );
+
+    // Sync SystemSettings with provider's dimensions/backend for visibility
+    let (_settings, _dimensions_changed) =
+        SystemSettings::sync_from_embedding_provider(&db, &embedding_provider).await?;
+
     let html_state = HtmlState::new_with_resources(
         db,
         openai_client,
@@ -56,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         storage.clone(),
         config.clone(),
         reranker_pool,
+        embedding_provider,
     )
     .await?;
 

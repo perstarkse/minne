@@ -189,7 +189,7 @@ impl PipelineServices for DefaultPipelineServices {
         match retrieval_pipeline::retrieve_entities(
             &self.db,
             &self.openai_client,
-            // embedding_provider_ref,
+            Some(&*self.embedding_provider),
             &input_text,
             &content.user_id,
             config,

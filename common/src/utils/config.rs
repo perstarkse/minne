@@ -2,6 +2,19 @@ use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::env;
 
+/// Selects the embedding backend for vector generation.
+#[derive(Clone, Deserialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingBackend {
+    /// Use OpenAI-compatible API for embeddings.
+    OpenAI,
+    /// Use FastEmbed local embeddings (default).
+    #[default]
+    FastEmbed,
+    /// Use deterministic hashed embeddings (for testing).
+    Hashed,
+}
+
 #[derive(Clone, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageKind {
@@ -60,6 +73,8 @@ pub struct AppConfig {
     pub fastembed_max_length: Option<usize>,
     #[serde(default)]
     pub retrieval_strategy: Option<String>,
+    #[serde(default)]
+    pub embedding_backend: EmbeddingBackend,
 }
 
 /// Default data directory for persisted assets.
@@ -127,6 +142,7 @@ impl Default for AppConfig {
             fastembed_show_download_progress: None,
             fastembed_max_length: None,
             retrieval_strategy: None,
+            embedding_backend: EmbeddingBackend::default(),
         }
     }
 }

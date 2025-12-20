@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use common::{
-    storage::db::SurrealDbClient, storage::store::StorageManager, utils::config::get_config,
+    storage::db::SurrealDbClient, storage::store::StorageManager,
+    utils::{config::get_config, embedding::EmbeddingProvider},
 };
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use retrieval_pipeline::reranking::RerankerPool;
+use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
@@ -37,9 +39,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let reranker_pool = RerankerPool::maybe_from_config(&config)?;
 
-    // Create embedding provider for ingestion
-    let embedding_provider =
-        Arc::new(common::utils::embedding::EmbeddingProvider::new_fastembed(None).await?);
+    // Create embedding provider based on config
+    let embedding_provider = Arc::new(
+        EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?,
+    );
+    info!(
+        embedding_backend = ?config.embedding_backend,
+        "Embedding provider initialized for worker"
+    );
 
     // Create global storage manager
     let storage = StorageManager::new(&config).await?;

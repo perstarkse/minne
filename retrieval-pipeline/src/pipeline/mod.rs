@@ -3,7 +3,7 @@ mod diagnostics;
 mod stages;
 mod strategies;
 
-pub use config::{RetrievalConfig, RetrievalStrategy, RetrievalTuning};
+pub use config::{RetrievalConfig, RetrievalStrategy, RetrievalTuning, SearchTarget};
 pub use diagnostics::{
     AssembleStats, ChunkEnrichmentStats, CollectCandidatesStats, EntityAssemblyTrace,
     PipelineDiagnostics,
@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use tracing::info;
 
 use stages::PipelineContext;
-use strategies::{DefaultStrategyDriver, IngestionDriver, RelationshipSuggestionDriver};
+use strategies::{DefaultStrategyDriver, IngestionDriver, RelationshipSuggestionDriver, SearchStrategyDriver};
 
 // Export StrategyOutput publicly from this module
 // (it's defined in lib.rs but we re-export it here)
@@ -181,6 +181,24 @@ pub async fn run_pipeline(
             .await?;
             Ok(StrategyOutput::Entities(run.results))
         }
+        RetrievalStrategy::Search => {
+            let search_target = config.search_target;
+            let driver = SearchStrategyDriver::new(search_target);
+            let run = execute_strategy(
+                driver,
+                db_client,
+                openai_client,
+                embedding_provider,
+                None,
+                input_text,
+                user_id,
+                config,
+                reranker,
+                false,
+            )
+            .await?;
+            Ok(StrategyOutput::Search(run.results))
+        }
     }
 }
 
@@ -245,6 +263,24 @@ pub async fn run_pipeline_with_embedding(
             )
             .await?;
             Ok(StrategyOutput::Entities(run.results))
+        }
+        RetrievalStrategy::Search => {
+            let search_target = config.search_target;
+            let driver = SearchStrategyDriver::new(search_target);
+            let run = execute_strategy(
+                driver,
+                db_client,
+                openai_client,
+                embedding_provider,
+                Some(query_embedding),
+                input_text,
+                user_id,
+                config,
+                reranker,
+                false,
+            )
+            .await?;
+            Ok(StrategyOutput::Search(run.results))
         }
     }
 }

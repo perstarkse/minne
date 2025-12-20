@@ -22,7 +22,7 @@
     </div>
 
     <div class="flex-1 min-w-0">
-      <h3 class="text-lg font-extrabold mb-1 leading-snug">
+      <h3 class="text-lg font-extrabold mb-2 leading-snug">
         <a hx-get="/content/{{ tc.id }}/read" hx-target="#modal" hx-swap="innerHTML" class="nb-link">
           {% set title_text = tc.highlighted_url_title
           | default(tc.url_info.title if tc.url_info else none, true)
@@ -72,6 +72,44 @@
         </span>
       </div>
     </div>
+    {% elif result.result_type == "text_chunk" %}
+    {% set chunk = result.text_chunk %}
+    <div
+      class="w-10 h-10 flex-shrink-0 self-start mt-1 grid place-items-center border-2 border-neutral bg-base-100 shadow-[4px_4px_0_0_#000]">
+      <div class="tooltip tooltip-right" data-tip="Text Chunk">
+        {% include "icons/bars_icon.html" %}
+      </div>
+    </div>
+
+    <div class="flex-1 min-w-0">
+      <h3 class="text-lg font-extrabold mb-1 leading-snug">
+        <a hx-get="/content/{{ chunk.source_id }}/read" hx-target="#modal" hx-swap="innerHTML" class="nb-link">
+          Chunk from {{ chunk.source_label }}
+        </a>
+      </h3>
+
+      <div class="markdown-content prose-tufte-compact text-base-content/80 mb-4 overflow-hidden line-clamp-6"
+        data-content="{{ chunk.chunk | escape }}">
+        {{ chunk.chunk | escape }}
+      </div>
+
+      <div class="text-xs flex flex-wrap gap-x-4 gap-y-2 items-center">
+        <a hx-get="/content/{{ chunk.source_id }}/read" hx-target="#modal" hx-swap="innerHTML"
+          class="nb-link uppercase tracking-wide">
+          View full document
+        </a>
+
+        <span class="inline-flex items-center min-w-0">
+          <span class="uppercase tracking-wide opacity-60 mr-2">Source</span>
+          <span class="nb-badge truncate max-w-xs" title="{{ chunk.source_label }}">{{ chunk.source_label }}</span>
+        </span>
+
+        <span class="inline-flex items-center">
+          <span class="uppercase tracking-wide opacity-60 mr-2">Score</span>
+          <span class="nb-badge">{{ result.score | round(3) }}</span>
+        </span>
+      </div>
+    </div>
     {% elif result.result_type == "knowledge_entity" %}
     {% set entity = result.knowledge_entity %}
     <div
@@ -84,15 +122,12 @@
     <div class="flex-1 min-w-0">
       <h3 class="text-lg font-extrabold mb-1 leading-snug">
         <a hx-get="/knowledge-entity/{{ entity.id }}" hx-target="#modal" hx-swap="innerHTML" class="nb-link">
-          {% set entity_title = entity.highlighted_name | default(entity.name, true) %}
-          {{ entity_title }}
+          {{ entity.name }}
         </a>
       </h3>
 
       <div class="prose prose-tufte-compact text-base-content/80 mb-3 overflow-hidden line-clamp-6">
-        {% if entity.highlighted_description %}
-        {{ entity.highlighted_description }}
-        {% elif entity.description %}
+        {% if entity.description %}
         {{ entity.description | escape }}
         {% else %}
         <span class="italic opacity-60">No description available.</span>
@@ -107,14 +142,14 @@
 
         {% if entity.source_id %}
         <span class="inline-flex items-center min-w-0">
-          <span class="uppercase tracking-wide opacity-60 mr-2">Source ID</span>
-          <span class="nb-badge truncate max-w-xs" title="{{ entity.source_id }}">{{ entity.source_id }}</span>
+          <span class="uppercase tracking-wide opacity-60 mr-2">Source</span>
+          <span class="nb-badge truncate max-w-xs" title="{{ entity.source_label }}">{{ entity.source_label }}</span>
         </span>
         {% endif %}
 
         <span class="inline-flex items-center">
           <span class="uppercase tracking-wide opacity-60 mr-2">Score</span>
-          <span class="nb-badge">{{ result.score }}</span>
+          <span class="nb-badge">{{ result.score | round(3) }}</span>
         </span>
       </div>
     </div>
