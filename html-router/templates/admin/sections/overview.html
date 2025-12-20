@@ -1,0 +1,57 @@
+{% if analytics %}
+<section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  <div class="nb-stat">
+    <div class="text-xs opacity-70">Page Loads</div>
+    <div class="text-3xl font-extrabold">{{ analytics.page_loads }}</div>
+    <div class="text-xs opacity-60">Total load events seen by Minne</div>
+  </div>
+  <div class="nb-stat">
+    <div class="text-xs opacity-70">Unique Visitors</div>
+    <div class="text-3xl font-extrabold">{{ analytics.visitors }}</div>
+    <div class="text-xs opacity-60">Distinct users by fingerprint</div>
+  </div>
+  <div class="nb-stat">
+    <div class="text-xs opacity-70">Users</div>
+    <div class="text-3xl font-extrabold">{{ users or 0 }}</div>
+    <div class="text-xs opacity-60">Registered accounts</div>
+  </div>
+</section>
+{% else %}
+<section class="nb-panel p-4">
+  <div class="text-sm font-semibold mb-2">Analytics unavailable</div>
+  <p class="text-xs opacity-70">We could not fetch analytics for this view. Reload or check the monitoring pipeline.</p>
+</section>
+{% endif %}
+
+<section class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+  {% block system_prompt_section %}
+  <div id="system_prompt_section" class="nb-panel p-4">
+    <div class="flex items-start justify-between gap-2 mb-3">
+      <div>
+        <div class="text-sm font-semibold">System Prompts</div>
+        <p class="text-xs opacity-70">Adjust the prompts that power retrieval, ingestion analysis, and image processing flows.</p>
+      </div>
+      <span class="text-[10px] uppercase tracking-wide opacity-60">LLM</span>
+    </div>
+    <div class="flex gap-2 flex-col sm:flex-row">
+      <button type="button" class="nb-btn btn-sm" hx-get="/edit-query-prompt" hx-target="#modal" hx-swap="innerHTML">Edit Query Prompt</button>
+      <button type="button" class="nb-btn btn-sm" hx-get="/edit-ingestion-prompt" hx-target="#modal" hx-swap="innerHTML">Edit Ingestion Prompt</button>
+      <button type="button" class="nb-btn btn-sm" hx-get="/edit-image-prompt" hx-target="#modal" hx-swap="innerHTML">Edit Image Prompt</button>
+    </div>
+  </div>
+  {% endblock %}
+
+  <div class="nb-panel p-4">
+    <div class="text-sm font-semibold mb-2">Registration</div>
+    <p class="text-xs opacity-60 mb-3">Toggle whether new people can sign up without an invite.</p>
+    <label class="flex items-center gap-3">
+      {% block registration_status_input %}
+      <form hx-patch="/toggle-registrations" hx-swap="outerHTML" hx-trigger="change">
+        <input name="registration_open" type="checkbox" class="nb-checkbox" {% if settings.registrations_enabled %}checked{% endif %} />
+      </form>
+      {% endblock %}
+      <span class="text-sm">Enable Registrations</span>
+    </label>
+    <div id="registration-status" class="text-xs opacity-70 mt-2"></div>
+  </div>
+</section>
