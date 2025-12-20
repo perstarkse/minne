@@ -26,6 +26,7 @@
           src = ./.;
           filter = let
             extraPaths = [
+              (toString ./Cargo.lock)
               (toString ./common/migrations)
               (toString ./common/schemas)
               (toString ./html-router/templates)

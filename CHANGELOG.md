@@ -5,6 +5,10 @@
 - Embeddings stored on own table
 - Refactored retrieval pipeline to use the new, faster and more accurate strategy. Read [blog post](https://blog.stark.pub/posts/eval-retrieval-refactor/) for more details.
 
+## Version 0.2.7 (2025-12-04)
+- Improved admin page, now only loads models when specifically requested. Groundwork for coming configuration features.
+- Fix: timezone aware info in scratchpad
+
 ## Version 0.2.6 (2025-10-29)
 - Added an opt-in FastEmbed-based reranking stage behind `reranking_enabled`. It improves retrieval accuracy by re-scoring hybrid results.
 - Fix: default name for relationships harmonized across application
