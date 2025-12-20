@@ -1,8 +1,9 @@
 # Changelog
 ## Unreleased
 - Added a benchmarks create for evaluating the retrieval process
-- Added fastembed embedding support, enables the use of local CPU generated embeddings
+- Added fastembed embedding support, enables the use of local CPU generated embeddings, greatly improved latency if machine can handle it. Quick search has vastly better accuracy and is much faster, 50ms latency when testing compared to minimum 300ms.
 - Embeddings stored on own table
+- Refactored retrieval pipeline to use the new, faster and more accurate strategy. Read [blog post](https://blog.stark.pub/posts/eval-retrieval-refactor/) for more details.
 
 ## Version 0.2.6 (2025-10-29)
 - Added an opt-in FastEmbed-based reranking stage behind `reranking_enabled`. It improves retrieval accuracy by re-scoring hybrid results.
