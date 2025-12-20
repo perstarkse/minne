@@ -151,21 +151,46 @@ pub async fn update_model_settings(
 
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
-    // Determine if re-embedding is required
-    let reembedding_needed = input
-        .embedding_dimensions
-        .is_some_and(|new_dims| new_dims != current_settings.embedding_dimensions);
+    // Check if using FastEmbed - if so, embedding model/dimensions cannot be changed via UI
+    let uses_local_embeddings = current_settings
+        .embedding_backend
+        .as_deref()
+        .is_some_and(|b| b == "fastembed" || b == "hashed");
+
+    // For local embeddings, ignore any embedding model/dimension changes from the form
+    let (final_embedding_model, final_embedding_dimensions, reembedding_needed) =
+        if uses_local_embeddings {
+            // Keep current values - they're controlled by config, not the admin UI
+            info!(
+                backend = ?current_settings.embedding_backend,
+                "Embedding model/dimensions controlled by config, ignoring form input"
+            );
+            (
+                current_settings.embedding_model.clone(),
+                current_settings.embedding_dimensions,
+                false,
+            )
+        } else {
+            // OpenAI backend - allow changes from form
+            let reembedding_needed = input
+                .embedding_dimensions
+                .is_some_and(|new_dims| new_dims != current_settings.embedding_dimensions);
+            (
+                input.embedding_model,
+                input
+                    .embedding_dimensions
+                    .unwrap_or(current_settings.embedding_dimensions),
+                reembedding_needed,
+            )
+        };
 
     let new_settings = SystemSettings {
         query_model: input.query_model,
         processing_model: input.processing_model,
         image_processing_model: input.image_processing_model,
         voice_processing_model: input.voice_processing_model,
-        embedding_model: input.embedding_model,
-        // Use new dimensions if provided, otherwise retain the current ones.
-        embedding_dimensions: input
-            .embedding_dimensions
-            .unwrap_or(current_settings.embedding_dimensions),
+        embedding_model: final_embedding_model,
+        embedding_dimensions: final_embedding_dimensions,
         ..current_settings.clone()
     };
 

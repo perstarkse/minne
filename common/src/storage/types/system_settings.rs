@@ -13,6 +13,9 @@ pub struct SystemSettings {
     pub processing_model: String,
     pub embedding_model: String,
     pub embedding_dimensions: u32,
+    /// Active embedding backend ("openai", "fastembed", "hashed"). Read-only, synced from config.
+    #[serde(default)]
+    pub embedding_backend: Option<String>,
     pub query_system_prompt: String,
     pub ingestion_system_prompt: String,
     pub image_processing_model: String,
@@ -48,6 +51,57 @@ impl SystemSettings {
         updated.ok_or(AppError::Validation(
             "Something went wrong updating the settings".into(),
         ))
+    }
+
+    /// Syncs SystemSettings with the active embedding provider's properties.
+    /// Updates embedding_backend, embedding_model, and embedding_dimensions if they differ.
+    /// Returns true if any settings were changed.
+    pub async fn sync_from_embedding_provider(
+        db: &SurrealDbClient,
+        provider: &crate::utils::embedding::EmbeddingProvider,
+    ) -> Result<(Self, bool), AppError> {
+        let mut settings = Self::get_current(db).await?;
+        let mut needs_update = false;
+
+        let backend_label = provider.backend_label().to_string();
+        let provider_dimensions = provider.dimension() as u32;
+        let provider_model = provider.model_code();
+
+        // Sync backend label
+        if settings.embedding_backend.as_deref() != Some(&backend_label) {
+            settings.embedding_backend = Some(backend_label);
+            needs_update = true;
+        }
+
+        // Sync dimensions
+        if settings.embedding_dimensions != provider_dimensions {
+            tracing::info!(
+                old_dimensions = settings.embedding_dimensions,
+                new_dimensions = provider_dimensions,
+                "Embedding dimensions changed, updating SystemSettings"
+            );
+            settings.embedding_dimensions = provider_dimensions;
+            needs_update = true;
+        }
+
+        // Sync model if provider has one
+        if let Some(model) = provider_model {
+            if settings.embedding_model != model {
+                tracing::info!(
+                    old_model = %settings.embedding_model,
+                    new_model = %model,
+                    "Embedding model changed, updating SystemSettings"
+                );
+                settings.embedding_model = model;
+                needs_update = true;
+            }
+        }
+
+        if needs_update {
+            settings = Self::update(db, settings).await?;
+        }
+
+        Ok((settings, needs_update))
     }
 }
 

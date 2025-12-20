@@ -2,18 +2,19 @@ use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
 use common::{
     storage::{
-        db::SurrealDbClient,
-        indexes::ensure_runtime_indexes,
-        store::StorageManager,
-        types::system_settings::SystemSettings,
+        db::SurrealDbClient, indexes::ensure_runtime_indexes, store::StorageManager,
+        types::{
+            knowledge_entity::KnowledgeEntity, system_settings::SystemSettings,
+            text_chunk::TextChunk,
+        },
     },
-    utils::config::get_config,
+    utils::{config::get_config, embedding::EmbeddingProvider},
 };
 use html_router::{html_routes, html_state::HtmlState};
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use retrieval_pipeline::reranking::RerankerPool;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use tokio::task::LocalSet;
@@ -44,8 +45,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Ensure db is initialized
     db.apply_migrations().await?;
-    let settings = SystemSettings::get_current(&db).await?;
-    ensure_runtime_indexes(&db, settings.embedding_dimensions as usize).await?;
 
     let session_store = Arc::new(db.create_session_store().await?);
     let openai_client = Arc::new(async_openai::Client::with_config(
@@ -53,6 +52,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_api_key(&config.openai_api_key)
             .with_api_base(&config.openai_base_url),
     ));
+
+    // Create embedding provider based on config before syncing settings.
+    let embedding_provider =
+        Arc::new(EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?);
+    info!(
+        embedding_backend = ?config.embedding_backend,
+        embedding_dimension = embedding_provider.dimension(),
+        "Embedding provider initialized"
+    );
+
+    // Sync SystemSettings with provider's dimensions/model/backend
+    let (settings, dimensions_changed) =
+        SystemSettings::sync_from_embedding_provider(&db, &embedding_provider).await?;
+
+    // Now ensure runtime indexes with the correct (synced) dimensions
+    ensure_runtime_indexes(&db, settings.embedding_dimensions as usize).await?;
+
+    // If dimensions changed, re-embed existing data to keep queries working.
+    if dimensions_changed {
+        warn!(
+            new_dimensions = settings.embedding_dimensions,
+            "Embedding configuration changed; re-embedding existing data"
+        );
+
+        // Re-embed text chunks
+        info!("Re-embedding TextChunks");
+        if let Err(e) = TextChunk::update_all_embeddings_with_provider(
+            &db,
+            &embedding_provider,
+        )
+        .await
+        {
+            error!("Failed to re-embed TextChunks: {}. Search results may be stale.", e);
+        }
+
+        // Re-embed knowledge entities
+        info!("Re-embedding KnowledgeEntities");
+        if let Err(e) = KnowledgeEntity::update_all_embeddings_with_provider(
+            &db,
+            &embedding_provider,
+        )
+        .await
+        {
+            error!(
+                "Failed to re-embed KnowledgeEntities: {}. Search results may be stale.",
+                e
+            );
+        }
+
+        info!("Re-embedding complete.");
+    }
 
     let reranker_pool = RerankerPool::maybe_from_config(&config)?;
 
@@ -66,6 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         storage.clone(),
         config.clone(),
         reranker_pool.clone(),
+        embedding_provider.clone(),
     )
     .await?;
 
@@ -114,9 +165,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await
             .unwrap(),
         );
-        let settings = SystemSettings::get_current(&worker_db)
-            .await
-            .expect("failed to load system settings");
 
         // Initialize worker components
         let openai_client = Arc::new(async_openai::Client::with_config(
@@ -125,14 +173,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_api_base(&config.openai_base_url),
         ));
 
-        // Create embedding provider for ingestion
+        // Create embedding provider based on config
         let embedding_provider = Arc::new(
-            common::utils::embedding::EmbeddingProvider::new_openai(
-                openai_client.clone(),
-                settings.embedding_model,
-                settings.embedding_dimensions,
-            )
-            .expect("failed to create embedding provider"),
+            EmbeddingProvider::from_config(&config, Some(openai_client.clone()))
+                .await
+                .expect("failed to create embedding provider"),
         );
         let ingestion_pipeline = Arc::new(
             IngestionPipeline::new(
@@ -226,6 +271,12 @@ mod tests {
             .await
             .expect("failed to build storage manager");
 
+        // Use hashed embeddings for tests to avoid external dependencies
+        let embedding_provider = Arc::new(
+            common::utils::embedding::EmbeddingProvider::new_hashed(384)
+                .expect("failed to create hashed embedding provider"),
+        );
+
         let html_state = HtmlState::new_with_resources(
             db.clone(),
             openai_client,
@@ -233,6 +284,7 @@ mod tests {
             storage.clone(),
             config.clone(),
             None,
+            embedding_provider,
         )
         .await
         .expect("failed to build html state");

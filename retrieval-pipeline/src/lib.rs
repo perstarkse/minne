@@ -21,11 +21,29 @@ use tracing::instrument;
 pub enum StrategyOutput {
     Entities(Vec<RetrievedEntity>),
     Chunks(Vec<RetrievedChunk>),
+    Search(SearchResult),
+}
+
+/// Unified search result containing both chunks and entities
+#[derive(Debug, Clone)]
+pub struct SearchResult {
+    pub chunks: Vec<RetrievedChunk>,
+    pub entities: Vec<RetrievedEntity>,
+}
+
+impl SearchResult {
+    pub fn new(chunks: Vec<RetrievedChunk>, entities: Vec<RetrievedEntity>) -> Self {
+        Self { chunks, entities }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.chunks.is_empty() && self.entities.is_empty()
+    }
 }
 
 pub use pipeline::{
     retrieved_entities_to_json, PipelineDiagnostics, PipelineStageTimings, RetrievalConfig,
-    RetrievalStrategy, RetrievalTuning,
+    RetrievalStrategy, RetrievalTuning, SearchTarget,
 };
 
 // Captures a supporting chunk plus its fused retrieval score for downstream prompts.
@@ -48,6 +66,7 @@ pub struct RetrievedEntity {
 pub async fn retrieve_entities(
     db_client: &SurrealDbClient,
     openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
+    embedding_provider: Option<&common::utils::embedding::EmbeddingProvider>,
     input_text: &str,
     user_id: &str,
     config: RetrievalConfig,
@@ -56,7 +75,7 @@ pub async fn retrieve_entities(
     pipeline::run_pipeline(
         db_client,
         openai_client,
-        None,
+        embedding_provider,
         input_text,
         user_id,
         config,
@@ -250,6 +269,51 @@ mod tests {
                 .iter()
                 .any(|entry| entry.chunk.chunk.contains("Tokio")),
             "Chunk results should contain relevant snippets"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_search_strategy_returns_search_result() {
+        let db = setup_test_db().await;
+        let user_id = "search_user";
+        let chunk = TextChunk::new(
+            "search_src".into(),
+            "Async Rust programming uses Tokio runtime for concurrent tasks.".into(),
+            user_id.into(),
+        );
+
+        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db)
+            .await
+            .expect("Failed to store chunk");
+
+        let config = RetrievalConfig::for_search(pipeline::SearchTarget::Both);
+        let openai_client = Client::new();
+        let results = pipeline::run_pipeline_with_embedding(
+            &db,
+            &openai_client,
+            None,
+            test_embedding(),
+            "async rust programming",
+            user_id,
+            config,
+            None,
+        )
+        .await
+        .expect("Search strategy retrieval failed");
+
+        let search_result = match results {
+            StrategyOutput::Search(sr) => sr,
+            other => panic!("expected Search output, got {:?}", other),
+        };
+
+        // Should return chunks (entities may be empty if none stored)
+        assert!(
+            !search_result.chunks.is_empty(),
+            "Search strategy should return chunks"
+        );
+        assert!(
+            search_result.chunks.iter().any(|c| c.chunk.chunk.contains("Tokio")),
+            "Search results should contain relevant chunks"
         );
     }
 }

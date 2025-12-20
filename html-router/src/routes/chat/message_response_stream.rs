@@ -132,6 +132,7 @@ pub async fn get_response_stream(
     let retrieval_result = match retrieval_pipeline::retrieve_entities(
         &state.db,
         &state.openai_client,
+        Some(&*state.embedding_provider),
         &user_message.content,
         &user.id,
         config,

@@ -1,4 +1,5 @@
 use common::storage::{db::SurrealDbClient, store::StorageManager};
+use common::utils::embedding::EmbeddingProvider;
 use common::utils::template_engine::{ProvidesTemplateEngine, TemplateEngine};
 use common::{create_template_engine, storage::db::ProvidesDb, utils::config::AppConfig};
 use retrieval_pipeline::{reranking::RerankerPool, RetrievalStrategy};
@@ -16,6 +17,7 @@ pub struct HtmlState {
     pub config: AppConfig,
     pub storage: StorageManager,
     pub reranker_pool: Option<Arc<RerankerPool>>,
+    pub embedding_provider: Arc<EmbeddingProvider>,
 }
 
 impl HtmlState {
@@ -26,6 +28,7 @@ impl HtmlState {
         storage: StorageManager,
         config: AppConfig,
         reranker_pool: Option<Arc<RerankerPool>>,
+        embedding_provider: Arc<EmbeddingProvider>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let template_engine = create_template_engine!("templates");
         debug!("Template engine created for html_router.");
@@ -38,6 +41,7 @@ impl HtmlState {
             config,
             storage,
             reranker_pool,
+            embedding_provider,
         })
     }
 

@@ -7,7 +7,7 @@ members = [
   "ingestion-pipeline",
   "retrieval-pipeline",
   "json-stream-parser",
-  "eval"
+  "evaluations"
 ]
 resolver = "2"
 
@@ -80,7 +80,7 @@ implicit_clone = "warn"
 redundant_clone = "warn"
 
 # Security-focused lints
-integer_arithmetic = "warn"
+arithmetic_side_effects = "warn"
 indexing_slicing = "warn"
 unwrap_used = "warn"
 expect_used = "warn"
@@ -90,7 +90,7 @@ todo = "warn"
 
 # Async/Network lints
 async_yields_async = "warn"
-await_holding_invalid_state = "warn"
+await_holding_invalid_type = "warn"
 rc_buffer = "warn"
 
 # Maintainability-focused lints
@@ -109,6 +109,8 @@ wildcard_dependencies = "warn"
 missing_docs_in_private_items = "warn"
 
 # Allow noisy lints that don't add value for this project
-manual_must_use = "allow"
 needless_raw_string_hashes = "allow"
 multiple_bound_locations = "allow"
+cargo_common_metadata = "allow"
+multiple-crate-versions = "allow"
+module_name_repetition = "allow"

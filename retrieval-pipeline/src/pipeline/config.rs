@@ -12,6 +12,21 @@ pub enum RetrievalStrategy {
     RelationshipSuggestion,
     /// Entity retrieval for context during content ingestion
     Ingestion,
+    /// Unified search returning both chunks and entities
+    Search,
+}
+
+/// Configures which result types to include in Search strategy
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchTarget {
+    /// Return only text chunks
+    ChunksOnly,
+    /// Return only knowledge entities
+    EntitiesOnly,
+    /// Return both chunks and entities (default)
+    #[default]
+    Both,
 }
 
 impl Default for RetrievalStrategy {
@@ -37,6 +52,7 @@ impl std::str::FromStr for RetrievalStrategy {
             }
             "relationship_suggestion" => Ok(Self::RelationshipSuggestion),
             "ingestion" => Ok(Self::Ingestion),
+            "search" => Ok(Self::Search),
             other => Err(format!("unknown retrieval strategy '{other}'")),
         }
     }
@@ -48,6 +64,7 @@ impl fmt::Display for RetrievalStrategy {
             RetrievalStrategy::Default => "default",
             RetrievalStrategy::RelationshipSuggestion => "relationship_suggestion",
             RetrievalStrategy::Ingestion => "ingestion",
+            RetrievalStrategy::Search => "search",
         };
         f.write_str(label)
     }
@@ -140,6 +157,8 @@ impl Default for RetrievalTuning {
 pub struct RetrievalConfig {
     pub strategy: RetrievalStrategy,
     pub tuning: RetrievalTuning,
+    /// Target for Search strategy (chunks, entities, or both)
+    pub search_target: SearchTarget,
 }
 
 impl RetrievalConfig {
@@ -147,6 +166,7 @@ impl RetrievalConfig {
         Self {
             strategy: RetrievalStrategy::Default,
             tuning,
+            search_target: SearchTarget::default(),
         }
     }
 
@@ -154,11 +174,16 @@ impl RetrievalConfig {
         Self {
             strategy,
             tuning: RetrievalTuning::default(),
+            search_target: SearchTarget::default(),
         }
     }
 
     pub fn with_tuning(strategy: RetrievalStrategy, tuning: RetrievalTuning) -> Self {
-        Self { strategy, tuning }
+        Self {
+            strategy,
+            tuning,
+            search_target: SearchTarget::default(),
+        }
     }
 
     /// Create config for chat retrieval with strategy selection support
@@ -175,6 +200,15 @@ impl RetrievalConfig {
     pub fn for_ingestion() -> Self {
         Self::with_strategy(RetrievalStrategy::Ingestion)
     }
+
+    /// Create config for unified search (chunks and/or entities)
+    pub fn for_search(target: SearchTarget) -> Self {
+        Self {
+            strategy: RetrievalStrategy::Search,
+            tuning: RetrievalTuning::default(),
+            search_target: target,
+        }
+    }
 }
 
 impl Default for RetrievalConfig {
@@ -182,6 +216,7 @@ impl Default for RetrievalConfig {
         Self {
             strategy: RetrievalStrategy::default(),
             tuning: RetrievalTuning::default(),
+            search_target: SearchTarget::default(),
         }
     }
 }

@@ -235,6 +235,34 @@ impl EmbeddingProvider {
             },
         })
     }
+
+    /// Creates an embedding provider based on application configuration.
+    ///
+    /// Dispatches to the appropriate constructor based on `config.embedding_backend`:
+    /// - `OpenAI`: Requires a valid OpenAI client
+    /// - `FastEmbed`: Uses local embedding model
+    /// - `Hashed`: Uses deterministic hashed embeddings (for testing)
+    pub async fn from_config(
+        config: &crate::utils::config::AppConfig,
+        openai_client: Option<Arc<Client<async_openai::config::OpenAIConfig>>>,
+    ) -> Result<Self> {
+        use crate::utils::config::EmbeddingBackend;
+
+        match config.embedding_backend {
+            EmbeddingBackend::OpenAI => {
+                let client = openai_client.ok_or_else(|| {
+                    anyhow!("OpenAI embedding backend requires an OpenAI client")
+                })?;
+                // Use defaults that match SystemSettings initial values
+                Self::new_openai(client, "text-embedding-3-small".to_string(), 1536)
+            }
+            EmbeddingBackend::FastEmbed => {
+                // Use nomic-embed-text-v1.5 as the default FastEmbed model
+                Self::new_fastembed(Some("nomic-ai/nomic-embed-text-v1.5".to_string())).await
+            }
+            EmbeddingBackend::Hashed => Self::new_hashed(384),
+        }
+    }
 }
 
 // Helper functions for hashed embeddings

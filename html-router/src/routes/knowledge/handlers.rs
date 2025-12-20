@@ -288,6 +288,7 @@ pub async fn suggest_knowledge_relationships(
             retrieval_pipeline::retrieve_entities(
                 &state.db,
                 &state.openai_client,
+                Some(&*state.embedding_provider),
                 &query,
                 &user.id,
                 config,

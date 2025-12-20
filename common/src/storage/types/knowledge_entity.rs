@@ -428,6 +428,103 @@ impl KnowledgeEntity {
         info!("Re-embedding process for knowledge entities completed successfully.");
         Ok(())
     }
+
+    /// Re-creates embeddings for all knowledge entities using an `EmbeddingProvider`.
+    ///
+    /// This variant uses the application's configured embedding provider (FastEmbed, OpenAI, etc.)
+    /// instead of directly calling OpenAI. Used during startup when embedding configuration changes.
+    pub async fn update_all_embeddings_with_provider(
+        db: &SurrealDbClient,
+        provider: &crate::utils::embedding::EmbeddingProvider,
+    ) -> Result<(), AppError> {
+        let new_dimensions = provider.dimension();
+        info!(
+            dimensions = new_dimensions,
+            backend = provider.backend_label(),
+            "Starting re-embedding process for all knowledge entities"
+        );
+
+        // Fetch all entities first
+        let all_entities: Vec<KnowledgeEntity> = db.select(Self::table_name()).await?;
+        let total_entities = all_entities.len();
+        if total_entities == 0 {
+            info!("No knowledge entities to update. Just updating the index.");
+            KnowledgeEntityEmbedding::redefine_hnsw_index(db, new_dimensions).await?;
+            return Ok(());
+        }
+        info!(entities = total_entities, "Found entities to process");
+
+        // Generate all new embeddings in memory
+        let mut new_embeddings: HashMap<String, (Vec<f32>, String)> = HashMap::new();
+        info!("Generating new embeddings for all entities...");
+
+        for (i, entity) in all_entities.iter().enumerate() {
+            if i > 0 && i % 100 == 0 {
+                info!(progress = i, total = total_entities, "Re-embedding progress");
+            }
+
+            let embedding_input = format!(
+                "name: {}, description: {}, type: {:?}",
+                entity.name, entity.description, entity.entity_type
+            );
+
+            let embedding = provider
+                .embed(&embedding_input)
+                .await
+                .map_err(|e| AppError::InternalError(format!("Embedding failed: {e}")))?;
+
+            // Safety check: ensure the generated embedding has the correct dimension.
+            if embedding.len() != new_dimensions {
+                let err_msg = format!(
+                    "CRITICAL: Generated embedding for entity {} has incorrect dimension ({}). Expected {}. Aborting.",
+                    entity.id, embedding.len(), new_dimensions
+                );
+                error!("{}", err_msg);
+                return Err(AppError::InternalError(err_msg));
+            }
+            new_embeddings.insert(entity.id.clone(), (embedding, entity.user_id.clone()));
+        }
+        info!("Successfully generated all new embeddings.");
+
+        // Perform DB updates in a single transaction
+        info!("Applying embedding updates in a transaction...");
+        let mut transaction_query = String::from("BEGIN TRANSACTION;");
+
+        for (id, (embedding, user_id)) in new_embeddings {
+            let embedding_str = format!(
+                "[{}]",
+                embedding
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+            transaction_query.push_str(&format!(
+                "UPSERT type::thing('knowledge_entity_embedding', '{id}') SET \
+                    entity_id = type::thing('knowledge_entity', '{id}'), \
+                    embedding = {embedding}, \
+                    user_id = '{user_id}', \
+                    created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
+                    updated_at = time::now();",
+                id = id,
+                embedding = embedding_str,
+                user_id = user_id
+            ));
+        }
+
+        transaction_query.push_str(&format!(
+            "DEFINE INDEX OVERWRITE idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION {};",
+            new_dimensions
+        ));
+
+        transaction_query.push_str("COMMIT TRANSACTION;");
+
+        // Execute the entire atomic operation
+        db.query(transaction_query).await?;
+
+        info!("Re-embedding process for knowledge entities completed successfully.");
+        Ok(())
+    }
 }
 
 #[cfg(test)]
