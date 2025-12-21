@@ -70,16 +70,46 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <div class="text-sm opacity-80 mb-1">Embedding Model</div>
+          {% if settings.embedding_backend == "fastembed" or settings.embedding_backend == "hashed" %}
+          <input
+            type="text"
+            name="embedding_model"
+            class="nb-input w-full opacity-60 cursor-not-allowed"
+            value="{{ settings.embedding_model }}"
+            disabled
+          />
+          <p class="text-xs opacity-70 mt-1">
+            Model: <span class="font-mono">{{ settings.embedding_model }} ({{ settings.embedding_dimensions }} dims)</span>
+          </p>
+          <p class="text-xs text-info mt-1">
+            Info: Embedding model is controlled by config when using <span class="font-mono">{{ settings.embedding_backend }}</span> backend.
+          </p>
+          {% else %}
           <select name="embedding_model" class="nb-select w-full">
             {% for model in available_models.data %}
             <option value="{{ model.id }}" {% if settings.embedding_model == model.id %}selected{% endif %}>{{ model.id }}</option>
             {% endfor %}
           </select>
           <p class="text-xs opacity-70 mt-1">Current: <span class="font-mono">{{ settings.embedding_model }}</span></p>
+          {% endif %}
         </div>
 
         <div>
           <div class="text-sm opacity-80 mb-1" for="embedding_dimensions">Embedding Dimensions</div>
+          {% if settings.embedding_backend == "fastembed" or settings.embedding_backend == "hashed" %}
+          <input
+            type="number"
+            id="embedding_dimensions"
+            name="embedding_dimensions"
+            class="nb-input w-full opacity-60 cursor-not-allowed"
+            value="{{ settings.embedding_dimensions }}"
+            disabled
+          />
+          <p class="text-xs text-info mt-1">
+            Info: Dimensions are fixed for <span class="font-mono">{{ settings.embedding_backend }}</span> backend. Set
+            <span class="font-mono">EMBEDDING_BACKEND=openai</span> to use OpenAI embeddings.
+          </p>
+          {% else %}
           <input
             type="number"
             id="embedding_dimensions"
@@ -90,20 +120,24 @@
             min="1"
           />
           <p class="text-xs opacity-70 mt-1">Changing dimensions will trigger a background re-embedding.</p>
+          {% endif %}
         </div>
       </div>
 
+      {% if settings.embedding_backend != "fastembed" and settings.embedding_backend != "hashed" %}
       <div id="embedding-change-alert" class="nb-panel p-3 bg-warning/20 hidden">
         <div class="text-sm">
           <strong>Warning:</strong> Changing dimensions recreates embeddings for text chunks and knowledge entities. Confirm the target model requires the new value.
         </div>
       </div>
+      {% endif %}
 
       <div class="flex justify-end gap-2">
         <button type="submit" class="nb-btn nb-cta btn-sm">Save Model Settings</button>
       </div>
     </form>
 
+    {% if settings.embedding_backend != "fastembed" and settings.embedding_backend != "hashed" %}
     <script>
       (() => {
         const dimensionInput = document.getElementById('embedding_dimensions');
@@ -120,6 +154,7 @@
         }
       })();
     </script>
+    {% endif %}
     {% endblock %}
   {% else %}
     <div class="nb-panel p-4 bg-warning/10 border border-warning/40">
