@@ -572,27 +572,7 @@ pub async fn collect_vector_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), 
     //     .filter(|c| c.scores.vector.is_some() && c.scores.fts.is_some())
     //     .count();
 
-    // If we have very low overlap (few chunks with both signals), drop FTS-only chunks.
-    // These are often noisy on keyword-heavy datasets and dilute strong vector hits.
-    // Keep vector-only and “golden” (vector+FTS) chunks.
-    let fts_only_count = vector_chunks
-        .iter()
-        .filter(|c| c.scores.vector.is_none())
-        .count();
-    let both_count = vector_chunks
-        .iter()
-        .filter(|c| c.scores.vector.is_some() && c.scores.fts.is_some())
-        .count();
-    if fts_only_count > 0 && both_count < 3 {
-        let before_filter = vector_chunks.len();
-        vector_chunks.retain(|c| c.scores.vector.is_some());
-        let after_filter = vector_chunks.len();
-        debug!(
-            fts_only_filtered = before_filter - after_filter,
-            both_signals_preserved = both_count,
-            "Filtered out FTS-only chunks due to low overlap, preserved golden chunks"
-        );
-    }
+
 
     debug!(
         top_fused_scores = ?vector_chunks.iter().take(5).map(|c| c.fused).collect::<Vec<_>>(),
