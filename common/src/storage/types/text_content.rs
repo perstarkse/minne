@@ -51,8 +51,11 @@ pub struct TextContentSearchResult {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct UrlInfo {
+    #[serde(default)]
     pub url: String,
+    #[serde(default)]
     pub title: String,
+    #[serde(default)]
     pub image_id: String,
 }
 
