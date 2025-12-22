@@ -485,6 +485,29 @@ impl KnowledgeEntity {
             new_embeddings.insert(entity.id.clone(), (embedding, entity.user_id.clone()));
         }
         info!("Successfully generated all new embeddings.");
+        info!("Successfully generated all new embeddings.");
+
+        // Clear existing embeddings and index first to prevent SurrealDB panics and dimension conflicts.
+        info!("Removing old index and clearing embeddings...");
+        
+        // Explicitly remove the index first. This prevents background HNSW maintenance from crashing
+        // when we delete/replace data, dealing with a known SurrealDB panic.
+        db.client
+            .query(format!(
+                "REMOVE INDEX idx_embedding_knowledge_entity_embedding ON TABLE {};", 
+                KnowledgeEntityEmbedding::table_name()
+            ))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
+
+        db.client
+            .query(format!("DELETE FROM {};", KnowledgeEntityEmbedding::table_name()))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
 
         // Perform DB updates in a single transaction
         info!("Applying embedding updates in a transaction...");
@@ -500,11 +523,11 @@ impl KnowledgeEntity {
                     .join(",")
             );
             transaction_query.push_str(&format!(
-                "UPSERT type::thing('knowledge_entity_embedding', '{id}') SET \
+                "CREATE type::thing('knowledge_entity_embedding', '{id}') SET \
                     entity_id = type::thing('knowledge_entity', '{id}'), \
                     embedding = {embedding}, \
                     user_id = '{user_id}', \
-                    created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
+                    created_at = time::now(), \
                     updated_at = time::now();",
                 id = id,
                 embedding = embedding_str,
@@ -520,7 +543,12 @@ impl KnowledgeEntity {
         transaction_query.push_str("COMMIT TRANSACTION;");
 
         // Execute the entire atomic operation
-        db.query(transaction_query).await?;
+        db.client
+            .query(transaction_query)
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
 
         info!("Re-embedding process for knowledge entities completed successfully.");
         Ok(())
