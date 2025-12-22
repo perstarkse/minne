@@ -8,42 +8,29 @@
     <section class="nb-panel p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h1 class="text-xl font-extrabold tracking-tight">Admin Controls</h1>
-        <p class="text-sm opacity-70 max-w-2xl">
-          Stay on top of analytics and manage AI integrations without waiting on long-running model calls.
-        </p>
       </div>
       <div class="text-xs opacity-60 sm:text-right">
         Signed in as <span class="font-medium">{{ user.email }}</span>
       </div>
     </section>
 
-    <nav
-      class="nb-panel p-2 flex flex-wrap gap-2 text-sm"
-      hx-boost="true"
-      hx-target="#admin-shell"
-      hx-select="#admin-shell"
-      hx-swap="outerHTML"
-      hx-push-url="true"
-    >
-      <a
-        href="/admin?section=overview"
-        class="nb-btn btn-sm px-4 {% if current_section == 'overview' %}nb-cta{% else %}btn-ghost{% endif %}"
-      >
+    <nav class="nb-panel p-2 flex flex-wrap gap-2 text-sm" hx-boost="true" hx-target="#admin-shell"
+      hx-select="#admin-shell" hx-swap="outerHTML" hx-push-url="true">
+      <a href="/admin?section=overview"
+        class="nb-btn btn-sm px-4 {% if current_section == 'overview' %}nb-cta{% else %}btn-ghost{% endif %}">
         Overview
       </a>
-      <a
-        href="/admin?section=models"
-        class="nb-btn btn-sm px-4 {% if current_section == 'models' %}nb-cta{% else %}btn-ghost{% endif %}"
-      >
+      <a href="/admin?section=models"
+        class="nb-btn btn-sm px-4 {% if current_section == 'models' %}nb-cta{% else %}btn-ghost{% endif %}">
         Models
       </a>
     </nav>
 
     <div id="admin-content" class="flex flex-col gap-4">
       {% if current_section == 'models' %}
-        {% include 'admin/sections/models.html' %}
+      {% include 'admin/sections/models.html' %}
       {% else %}
-        {% include 'admin/sections/overview.html' %}
+      {% include 'admin/sections/overview.html' %}
       {% endif %}
     </div>
   </div>
