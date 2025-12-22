@@ -379,6 +379,28 @@ impl TextChunk {
         }
         info!("Successfully generated all new embeddings.");
 
+        // Clear existing embeddings and index first to prevent SurrealDB panics and dimension conflicts.
+        info!("Removing old index and clearing embeddings...");
+        
+        // Explicitly remove the index first. This prevents background HNSW maintenance from crashing
+        // when we delete/replace data, dealing with a known SurrealDB panic.
+        db.client
+            .query(format!(
+                "REMOVE INDEX idx_embedding_text_chunk_embedding ON TABLE {};", 
+                TextChunkEmbedding::table_name()
+            ))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
+
+        db.client
+            .query(format!("DELETE FROM {};", TextChunkEmbedding::table_name()))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
+
         // Perform DB updates in a single transaction against the embedding table
         info!("Applying embedding updates in a transaction...");
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
@@ -394,12 +416,12 @@ impl TextChunk {
             );
             write!(
                 &mut transaction_query,
-                "UPSERT type::thing('text_chunk_embedding', '{id}') SET \
+                "CREATE type::thing('text_chunk_embedding', '{id}') SET \
                     chunk_id = type::thing('text_chunk', '{id}'), \
                     source_id = '{source_id}', \
                     embedding = {embedding}, \
                     user_id = '{user_id}', \
-                    created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
+                    created_at = time::now(), \
                     updated_at = time::now();",
                 id = id,
                 embedding = embedding_str,
@@ -418,7 +440,12 @@ impl TextChunk {
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 
-        db.query(transaction_query).await?;
+        db.client
+            .query(transaction_query)
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
 
         info!("Re-embedding process for text chunks completed successfully.");
         Ok(())

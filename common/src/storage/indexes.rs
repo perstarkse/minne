@@ -208,7 +208,26 @@ async fn ensure_runtime_indexes_inner(
                 )
                 .await
             }
-            HnswIndexState::Matches => Ok(()),
+            HnswIndexState::Matches => {
+                let status = get_index_status(db, spec.index_name, spec.table).await?;
+                if status.eq_ignore_ascii_case("error") {
+                    warn!(
+                        index = spec.index_name,
+                        table = spec.table,
+                        "HNSW index found in error state; triggering rebuild"
+                    );
+                    create_index_with_polling(
+                        db,
+                        spec.definition_overwrite(embedding_dimension),
+                        spec.index_name,
+                        spec.table,
+                        Some(spec.table),
+                    )
+                    .await
+                } else {
+                    Ok(())
+                }
+            }
             HnswIndexState::Different(existing) => {
                 info!(
                     index = spec.index_name,
@@ -232,6 +251,34 @@ async fn ensure_runtime_indexes_inner(
     try_join_all(hnsw_tasks).await.map(|_| ())?;
 
     Ok(())
+}
+
+async fn get_index_status(
+    db: &SurrealDbClient,
+    index_name: &str,
+    table: &str,
+) -> Result<String> {
+    let info_query = format!("INFO FOR INDEX {index_name} ON TABLE {table};");
+    let mut info_res = db
+        .client
+        .query(info_query)
+        .await
+        .context("checking index status")?;
+    let info: Option<Value> = info_res.take(0).context("failed to take info result")?;
+
+    let info = match info {
+        Some(i) => i,
+        None => return Ok("unknown".to_string()),
+    };
+
+    let building = info.get("building");
+    let status = building
+        .and_then(|b| b.get("status"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("ready")
+        .to_string();
+
+    Ok(status)
 }
 
 async fn rebuild_indexes_inner(db: &SurrealDbClient) -> Result<()> {
