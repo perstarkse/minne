@@ -66,9 +66,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (settings, dimensions_changed) =
         SystemSettings::sync_from_embedding_provider(&db, &embedding_provider).await?;
 
-    // Now ensure runtime indexes with the correct (synced) dimensions
-    ensure_runtime_indexes(&db, settings.embedding_dimensions as usize).await?;
-
     // If dimensions changed, re-embed existing data to keep queries working.
     if dimensions_changed {
         warn!(
@@ -103,6 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         info!("Re-embedding complete.");
     }
+
+    // Now ensure runtime indexes with the correct (synced) dimensions
+    ensure_runtime_indexes(&db, settings.embedding_dimensions as usize).await?;
 
     let reranker_pool = RerankerPool::maybe_from_config(&config)?;
 
