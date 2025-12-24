@@ -13,6 +13,7 @@ Minne can be configured via environment variables or a `config.yaml` file. Envir
 | `SURREALDB_DATABASE` | Database name | `minne_db` |
 | `SURREALDB_NAMESPACE` | Namespace | `minne_ns` |
 
+
 ## Optional Settings
 
 | Variable | Description | Default |
@@ -21,14 +22,20 @@ Minne can be configured via environment variables or a `config.yaml` file. Envir
 | `DATA_DIR` | Local data directory | `./data` |
 | `OPENAI_BASE_URL` | Custom AI provider URL | OpenAI default |
 | `RUST_LOG` | Logging level | `info` |
+| `STORAGE` | Storage backend (`local`, `memory`) | `local` |
+| `PDF_INGEST_MODE` | PDF ingestion strategy (`classic`, `llm-first`) | `llm-first` |
+| `RETRIEVAL_STRATEGY` | Default retrieval strategy | - |
+| `EMBEDDING_BACKEND` | Embedding provider (`openai`, `fastembed`, `hashed`) | `fastembed` |
+| `FASTEMBED_CACHE_DIR` | Model cache directory | `<data_dir>/fastembed` |
+| `FASTEMBED_SHOW_DOWNLOAD_PROGRESS` | Show progress bar for model downloads | `false` |
+| `FASTEMBED_MAX_LENGTH` | Max sequence length for FastEmbed models | - |
 
 ### Reranking (Optional)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RERANKING_ENABLED` | Enable FastEmbed reranking | `false` |
-| `RERANKING_POOL_SIZE` | Concurrent reranker workers | `2` |
-| `FASTEMBED_CACHE_DIR` | Model cache directory | `<data_dir>/fastembed/reranker` |
+| `RERANKING_POOL_SIZE` | Concurrent reranker workers | - |
 
 > [!NOTE]
 > Enabling reranking downloads ~1.1 GB of model data on first startup.
@@ -44,6 +51,11 @@ surrealdb_namespace: "minne_ns"
 openai_api_key: "sk-your-key-here"
 data_dir: "./minne_data"
 http_port: 3000
+
+# New settings
+storage: "local"
+pdf_ingest_mode: "llm-first"
+embedding_backend: "fastembed"
 
 # Optional reranking
 reranking_enabled: true
