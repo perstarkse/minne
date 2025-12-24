@@ -47,7 +47,7 @@ Content In → Ingestion Pipeline → SurrealDB
 
 Query → Retrieval Pipeline → Results
               ↓
-       Vector Search + FTS + Graph
+       Vector Search + FTS
               ↓
        RRF Fusion → (Optional Rerank) → Response
 ```
@@ -70,5 +70,5 @@ Embeddings are stored in dedicated tables with HNSW indexes for fast vector sear
 1. **Collect candidates** — Vector similarity + full-text search
 2. **Merge ranks** — Reciprocal Rank Fusion (RRF)
 3. **Attach context** — Link chunks to parent entities
-4. **Rerank** (optional) — Cross-encoder rescoring
+4. **Rerank** (optional) — Cross-encoder reranking
 5. **Return** — Top-k results with metadata
