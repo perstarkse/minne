@@ -250,9 +250,8 @@ impl EmbeddingProvider {
 
         match config.embedding_backend {
             EmbeddingBackend::OpenAI => {
-                let client = openai_client.ok_or_else(|| {
-                    anyhow!("OpenAI embedding backend requires an OpenAI client")
-                })?;
+                let client = openai_client
+                    .ok_or_else(|| anyhow!("OpenAI embedding backend requires an OpenAI client"))?;
                 // Use defaults that match SystemSettings initial values
                 Self::new_openai(client, "text-embedding-3-small".to_string(), 1536)
             }

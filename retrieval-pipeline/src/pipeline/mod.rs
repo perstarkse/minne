@@ -17,7 +17,9 @@ use std::time::{Duration, Instant};
 use tracing::info;
 
 use stages::PipelineContext;
-use strategies::{DefaultStrategyDriver, IngestionDriver, RelationshipSuggestionDriver, SearchStrategyDriver};
+use strategies::{
+    DefaultStrategyDriver, IngestionDriver, RelationshipSuggestionDriver, SearchStrategyDriver,
+};
 
 // Export StrategyOutput publicly from this module
 // (it's defined in lib.rs but we re-export it here)

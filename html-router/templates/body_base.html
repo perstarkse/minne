@@ -2,8 +2,8 @@
 
 {% block body %}
 
-<body class="relative" hx-ext="head-support">
-  <div class="drawer lg:drawer-open">
+<body class="relative">
+  <div id="main-content-wrapper" class="drawer lg:drawer-open">
     <input id="my-drawer" type="checkbox" class="drawer-toggle" />
     <!-- Page Content -->
     <div class="drawer-content flex flex-col h-screen">
@@ -14,6 +14,7 @@
         {% block main %}{% endblock %}
         <div class="p32 min-h-[10px]"></div>
       </main>
+      {% block overlay %}{% endblock %}
     </div>
     <!-- Sidebar -->
     {% if user %}

@@ -48,7 +48,9 @@ pub(crate) async fn prepare_slice(
         .database
         .db_namespace
         .clone()
-        .unwrap_or_else(|| default_namespace(ctx.dataset().metadata.id.as_str(), ctx.config().limit));
+        .unwrap_or_else(|| {
+            default_namespace(ctx.dataset().metadata.id.as_str(), ctx.config().limit)
+        });
     ctx.database = ctx
         .config()
         .database

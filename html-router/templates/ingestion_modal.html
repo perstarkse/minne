@@ -1,41 +1,78 @@
 {% extends "modal_base.html" %}
+
+{% block modal_class %}max-w-3xl{% endblock %}
+
 {% block form_attributes %}
 hx-post="/ingress-form"
 enctype="multipart/form-data"
 {% endblock %}
+
 {% block modal_content %}
-<h3 class="text-xl font-extrabold tracking-tight">Add New Content</h3>
-<div class="flex flex-col gap-3">
+<h3 class="text-xl font-extrabold tracking-tight pr-8">Add New Content</h3>
+
+<div class="flex flex-col">
+  <!-- Content Source -->
   <label class="w-full">
-    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Content</div>
-    <textarea name="content" class="nb-input w-full min-h-28"
+    <div class="nb-label mb-1">Content</div>
+    <textarea name="content" class="nb-input w-full" rows="4" autofocus
       placeholder="Paste a URL or type/paste text to ingest…">{{ content }}</textarea>
   </label>
 
-  <label class="w-full">
-    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Context</div>
-    <textarea name="context" class="nb-input w-full min-h-24"
-      placeholder="Optional: add context to guide how the content should be interpreted…">{{ context }}</textarea>
+  <!-- Context (Optional) -->
+  <label class="w-full mt-6">
+    <div class="nb-label mb-1 flex justify-between items-center">
+      <span>Context</span>
+      <!-- Tufte-style annotation: clean, small caps, structural -->
+      <span class="text-[10px] tracking-widest uppercase border border-neutral px-1.5 py-px bg-transparent opacity-60">Optional</span>
+    </div>
+    <textarea name="context" class="nb-input w-full" rows="2"
+      placeholder="Guide how this content should be interpreted…">{{ context }}</textarea>
   </label>
 
-  <label class="w-full">
-    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Category</div>
-    <input type="text" name="category" class="nb-input validator w-full" value="{{ category }}" list="category-list" required />
-    <datalist id="category-list">
-      {% for category in user_categories %}
-      <option value="{{ category }}" />
-      {% endfor %}
-    </datalist>
-    <div class="validator-hint hidden text-xs opacity-70 mt-1">Category is required</div>
-  </label>
+  <!-- Metadata Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-8 items-start mt-6">
+    
+    <!-- Category -->
+    <label class="w-full">
+      <div class="nb-label mb-1">Category <span class="text-error font-bold" title="Required">*</span></div>
+      <div class="relative">
+        <input type="text" name="category" class="nb-input validator w-full pr-8" value="{{ category }}" list="category-list" required placeholder="Select or type..." />
+        <div class="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
+          {% include "icons/chevron_icon.html" %}
+        </div>
+      </div>
+      <datalist id="category-list">
+        {% for category in user_categories %}
+        <option value="{{ category }}" />
+        {% endfor %}
+      </datalist>
+      <div class="validator-hint hidden text-xs opacity-70 mt-1 text-error">Category is required</div>
+    </label>
 
-  <label class="w-full">
-    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Files</div>
-    <input type="file" name="files" multiple class="file-input w-full rounded-none border-2 border-neutral" />
-  </label>
+    <!-- Dimensional File Drop Zone -->
+    <div class="w-full">
+      <div class="nb-label mb-1">Files</div>
+      <!-- "Card" style dropzone: solid border, hard shadow, lift on hover -->
+      <div class="relative w-full h-32 group bg-base-100 border-2 border-neutral shadow-[4px_4px_0_0_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[6px_6px_0_0_#000] transition-all duration-150">
+        <!-- Visual Facade -->
+        <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm font-medium text-neutral pointer-events-none">
+          <div class="p-2 border-2 border-neutral rounded-none bg-base-200 group-hover:bg-base-100 transition-colors">
+            <span class="w-6 h-6 block">{% include "icons/document_icon.html" %}</span>
+          </div>
+          <span id="file-label-text" class="text-center px-4 text-xs uppercase tracking-wide">Drop files or click</span>
+        </div>
+        <!-- Actual Input -->
+        <input type="file" name="files" multiple 
+               class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+               onchange="const count = this.files.length; document.getElementById('file-label-text').innerText = count > 0 ? count + ' FILE' + (count !== 1 ? 'S' : '') + ' SELECTED' : 'DROP FILES OR CLICK';" />
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <div id="error-message" class="text-error text-center {% if not error %}hidden{% endif %}">{{ error }}</div>
+
 <script>
   (function () {
     const form = document.getElementById('modal_form');
@@ -51,8 +88,9 @@ enctype="multipart/form-data"
   })();
 </script>
 {% endblock %}
+
 {% block primary_actions %}
-<button type="submit" class="nb-btn nb-cta">
+<button type="submit" class="nb-btn nb-cta w-full sm:w-auto">
   Add Content
 </button>
 {% endblock %}

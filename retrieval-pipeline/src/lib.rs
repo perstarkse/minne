@@ -301,9 +301,14 @@ mod tests {
         .await
         .expect("Search strategy retrieval failed");
 
+        assert!(
+            matches!(results, StrategyOutput::Search(_)),
+            "expected Search output, got {:?}",
+            results
+        );
         let search_result = match results {
             StrategyOutput::Search(sr) => sr,
-            other => panic!("expected Search output, got {:?}", other),
+            _ => unreachable!(),
         };
 
         // Should return chunks (entities may be empty if none stored)
@@ -312,7 +317,10 @@ mod tests {
             "Search strategy should return chunks"
         );
         assert!(
-            search_result.chunks.iter().any(|c| c.chunk.chunk.contains("Tokio")),
+            search_result
+                .chunks
+                .iter()
+                .any(|c| c.chunk.chunk.contains("Tokio")),
             "Search results should contain relevant chunks"
         );
     }

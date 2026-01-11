@@ -5,12 +5,12 @@ use common::storage::types::system_settings::SystemSettings;
 use tracing::{info, warn};
 
 use crate::{
+    corpus,
     db_helpers::{recreate_indexes, remove_all_indexes, reset_namespace},
     eval::{
         can_reuse_namespace, cases_from_manifest, enforce_system_settings, ensure_eval_user,
         record_namespace_state, warm_hnsw_cache,
     },
-    corpus,
 };
 
 use super::super::{

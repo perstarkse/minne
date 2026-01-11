@@ -118,7 +118,6 @@ mod tests {
     use common::storage::types::knowledge_relationship::KnowledgeRelationship;
     use uuid::Uuid;
 
-
     #[tokio::test]
     async fn test_find_entities_by_relationship_by_id() {
         // Setup in-memory database for testing

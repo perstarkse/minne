@@ -2,7 +2,9 @@ use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{extract::FromRef, Router};
 use common::{
     storage::{
-        db::SurrealDbClient, indexes::ensure_runtime_indexes, store::StorageManager,
+        db::SurrealDbClient,
+        indexes::ensure_runtime_indexes,
+        store::StorageManager,
         types::{
             knowledge_entity::KnowledgeEntity, system_settings::SystemSettings,
             text_chunk::TextChunk,
@@ -75,22 +77,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Re-embed text chunks
         info!("Re-embedding TextChunks");
-        if let Err(e) = TextChunk::update_all_embeddings_with_provider(
-            &db,
-            &embedding_provider,
-        )
-        .await
+        if let Err(e) =
+            TextChunk::update_all_embeddings_with_provider(&db, &embedding_provider).await
         {
-            error!("Failed to re-embed TextChunks: {}. Search results may be stale.", e);
+            error!(
+                "Failed to re-embed TextChunks: {}. Search results may be stale.",
+                e
+            );
         }
 
         // Re-embed knowledge entities
         info!("Re-embedding KnowledgeEntities");
-        if let Err(e) = KnowledgeEntity::update_all_embeddings_with_provider(
-            &db,
-            &embedding_provider,
-        )
-        .await
+        if let Err(e) =
+            KnowledgeEntity::update_all_embeddings_with_provider(&db, &embedding_provider).await
         {
             error!(
                 "Failed to re-embed KnowledgeEntities: {}. Search results may be stale.",

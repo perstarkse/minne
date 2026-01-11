@@ -6,7 +6,7 @@
 
 {% block modal_content %}
 <h3 class="text-xl font-extrabold tracking-tight">
-  <div class="flex items-center gap-2" id="title-container">
+  <div class="flex items-center gap-2 {% if is_editing_title %}hidden{% endif %}" id="title-container">
     <span class="font-semibold text-lg flex-1 truncate" id="title-display">{{ scratchpad.title }}</span>
     <button type="button" onclick="editTitle()" class="nb-btn nb-btn-sm btn-ghost">
       {% include "icons/edit_icon.html" %} Edit title
@@ -15,9 +15,9 @@
 
   <!-- Hidden title form -->
   <form id="title-form" hx-patch="/scratchpad/{{ scratchpad.id }}/title" hx-target="#body_modal" hx-swap="outerHTML"
-    class="hidden flex items-center gap-2">
+    class="{% if not is_editing_title %}hidden{% endif %} flex items-center gap-2">
     <input type="text" name="title" value="{{ scratchpad.title }}"
-           class="nb-input nb-input-sm font-semibold text-lg flex-1" id="title-input">
+           class="nb-input nb-input-sm font-semibold text-lg flex-1" id="title-input" {% if is_editing_title %}autofocus{% endif %}>
     <button type="submit" class="nb-btn nb-btn-sm">{% include "icons/check_icon.html" %}</button>
     <button type="button" onclick="cancelEditTitle()" class="nb-btn nb-btn-sm btn-ghost">{% include "icons/x_icon.html" %}</button>
   </form>

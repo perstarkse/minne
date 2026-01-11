@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use common::{
-    storage::db::SurrealDbClient, storage::store::StorageManager,
+    storage::db::SurrealDbClient,
+    storage::store::StorageManager,
     utils::{config::get_config, embedding::EmbeddingProvider},
 };
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
@@ -40,9 +41,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reranker_pool = RerankerPool::maybe_from_config(&config)?;
 
     // Create embedding provider based on config
-    let embedding_provider = Arc::new(
-        EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?,
-    );
+    let embedding_provider =
+        Arc::new(EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?);
     info!(
         embedding_backend = ?config.embedding_backend,
         "Embedding provider initialized for worker"
@@ -51,17 +51,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create global storage manager
     let storage = StorageManager::new(&config).await?;
 
-    let ingestion_pipeline = Arc::new(
-        IngestionPipeline::new(
-            db.clone(),
-            openai_client.clone(),
-            config,
-            reranker_pool,
-            storage,
-            embedding_provider,
-        )
-        ?,
-    );
+    let ingestion_pipeline = Arc::new(IngestionPipeline::new(
+        db.clone(),
+        openai_client.clone(),
+        config,
+        reranker_pool,
+        storage,
+        embedding_provider,
+    )?);
 
     run_worker_loop(db, ingestion_pipeline).await
 }

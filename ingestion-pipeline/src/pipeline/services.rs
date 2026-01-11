@@ -184,8 +184,9 @@ impl PipelineServices for DefaultPipelineServices {
             None => None,
         };
 
-        let config =
-            retrieval_pipeline::RetrievalConfig::for_search(retrieval_pipeline::SearchTarget::EntitiesOnly);
+        let config = retrieval_pipeline::RetrievalConfig::for_search(
+            retrieval_pipeline::SearchTarget::EntitiesOnly,
+        );
         match retrieval_pipeline::retrieve_entities(
             &self.db,
             &self.openai_client,
