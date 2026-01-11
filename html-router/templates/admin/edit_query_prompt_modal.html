@@ -1,5 +1,7 @@
 {% extends "modal_base.html" %}
 
+{% block modal_class %}max-w-3xl{% endblock %}
+
 {% block form_attributes %}
 hx-patch="/update-query-prompt"
 hx-target="#system_prompt_section"

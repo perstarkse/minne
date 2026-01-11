@@ -7,7 +7,7 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use common::storage::{db::SurrealDbClient, types::text_chunk::TextChunk};
 
-use crate::{args::Config, eval::connect_eval_db, corpus, snapshot::DbSnapshotState};
+use crate::{args::Config, corpus, eval::connect_eval_db, snapshot::DbSnapshotState};
 
 pub async fn inspect_question(config: &Config) -> Result<()> {
     let question_id = config

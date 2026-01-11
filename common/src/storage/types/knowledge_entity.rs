@@ -460,7 +460,11 @@ impl KnowledgeEntity {
 
         for (i, entity) in all_entities.iter().enumerate() {
             if i > 0 && i % 100 == 0 {
-                info!(progress = i, total = total_entities, "Re-embedding progress");
+                info!(
+                    progress = i,
+                    total = total_entities,
+                    "Re-embedding progress"
+                );
             }
 
             let embedding_input = format!(
@@ -489,12 +493,12 @@ impl KnowledgeEntity {
 
         // Clear existing embeddings and index first to prevent SurrealDB panics and dimension conflicts.
         info!("Removing old index and clearing embeddings...");
-        
+
         // Explicitly remove the index first. This prevents background HNSW maintenance from crashing
         // when we delete/replace data, dealing with a known SurrealDB panic.
         db.client
             .query(format!(
-                "REMOVE INDEX idx_embedding_knowledge_entity_embedding ON TABLE {};", 
+                "REMOVE INDEX idx_embedding_knowledge_entity_embedding ON TABLE {};",
                 KnowledgeEntityEmbedding::table_name()
             ))
             .await
@@ -503,7 +507,10 @@ impl KnowledgeEntity {
             .map_err(AppError::Database)?;
 
         db.client
-            .query(format!("DELETE FROM {};", KnowledgeEntityEmbedding::table_name()))
+            .query(format!(
+                "DELETE FROM {};",
+                KnowledgeEntityEmbedding::table_name()
+            ))
             .await
             .map_err(AppError::Database)?
             .check()

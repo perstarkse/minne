@@ -16,11 +16,15 @@
 
   <!-- Scripts -->
   <script src="/assets/htmx.min.js" defer></script>
+  <script src="/assets/htmx-ext-sse.js" defer></script>
   <script src="/assets/theme-toggle.js" defer></script>
   <script src="/assets/toast.js" defer></script>
-  <script src="/assets/htmx-head-ext.js" defer></script>
   <script src="/assets/marked.min.js" defer></script>
   <script src="/assets/knowledge-graph.js" defer></script>
+  <script src="/assets/design-polish.js" defer></script>
+
+  <!-- Global View Transition -->
+  <meta name="view-transition" content="same-origin" />
 
   <!-- Icons -->
   <link rel="icon" href="/assets/icon/favicon.ico">
@@ -38,6 +42,7 @@
   (function wait_for_htmx() {
     if (window.htmx) {
       htmx.config.globalViewTransitions = true;
+      htmx.config.selfRequestsOnly = false;
     } else {
       setTimeout(wait_for_htmx, 50);
     }

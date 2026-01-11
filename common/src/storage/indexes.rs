@@ -253,11 +253,7 @@ async fn ensure_runtime_indexes_inner(
     Ok(())
 }
 
-async fn get_index_status(
-    db: &SurrealDbClient,
-    index_name: &str,
-    table: &str,
-) -> Result<String> {
+async fn get_index_status(db: &SurrealDbClient, index_name: &str, table: &str) -> Result<String> {
     let info_query = format!("INFO FOR INDEX {index_name} ON TABLE {table};");
     let mut info_res = db
         .client

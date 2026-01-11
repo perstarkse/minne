@@ -182,9 +182,7 @@ impl IngestionPipeline {
             .saturating_sub(1)
             .min(tuning.retry_backoff_cap_exponent);
         let multiplier = 2_u64.pow(capped_attempt);
-        let delay = tuning
-            .retry_base_delay_secs
-            .saturating_mul(multiplier);
+        let delay = tuning.retry_base_delay_secs.saturating_mul(multiplier);
 
         Duration::from_secs(delay.min(tuning.retry_max_delay_secs))
     }

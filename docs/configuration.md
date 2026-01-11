@@ -25,7 +25,7 @@ Minne can be configured via environment variables or a `config.yaml` file. Envir
 | `STORAGE` | Storage backend (`local`, `memory`) | `local` |
 | `PDF_INGEST_MODE` | PDF ingestion strategy (`classic`, `llm-first`) | `llm-first` |
 | `RETRIEVAL_STRATEGY` | Default retrieval strategy | - |
-| `EMBEDDING_BACKEND` | Embedding provider (`openai`, `fastembed`, `hashed`) | `fastembed` |
+| `EMBEDDING_BACKEND` | Embedding provider (`openai`, `fastembed`) | `fastembed` |
 | `FASTEMBED_CACHE_DIR` | Model cache directory | `<data_dir>/fastembed` |
 | `FASTEMBED_SHOW_DOWNLOAD_PROGRESS` | Show progress bar for model downloads | `false` |
 | `FASTEMBED_MAX_LENGTH` | Max sequence length for FastEmbed models | - |

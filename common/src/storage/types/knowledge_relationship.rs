@@ -55,7 +55,7 @@ impl KnowledgeRelationship {
             relationship_type = self.metadata.relationship_type.as_str()
         );
 
-        db_client.query(query).await?;
+        db_client.query(query).await?.check()?;
 
         Ok(())
     }
@@ -99,9 +99,7 @@ impl KnowledgeRelationship {
                 Err(AppError::NotFound(format!("Relationship {id} not found")))
             }
         } else {
-            db_client
-                .query(format!("DELETE relates_to:`{id}`"))
-                .await?;
+            db_client.query(format!("DELETE relates_to:`{id}`")).await?;
             Ok(())
         }
     }
@@ -161,13 +159,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_store_relationship() {
+    async fn test_store_and_verify_by_source_id() {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .expect("Failed to start in-memory surrealdb");
+
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
 
         // Create two entities to relate
         let entity1_id = create_test_entity("Entity 1", &db).await;
@@ -209,7 +211,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_delete_relationship_by_id() {
+    async fn test_store_and_delete_relationship() {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
@@ -234,7 +236,7 @@ mod tests {
             relationship_type,
         );
 
-        // Store the relationship
+        // Store relationship
         relationship
             .store_relationship(&db)
             .await
@@ -255,12 +257,12 @@ mod tests {
             "Relationship should exist before deletion"
         );
 
-        // Delete the relationship by ID
+        // Delete relationship by ID
         KnowledgeRelationship::delete_relationship_by_id(&relationship.id, &user_id, &db)
             .await
             .expect("Failed to delete relationship by ID");
 
-        // Query to verify the relationship was deleted
+        // Query to verify relationship was deleted
         let mut result = db
             .query(format!(
                 "SELECT * FROM relates_to WHERE metadata.user_id = '{}' AND metadata.source_id = '{}'",
@@ -270,7 +272,7 @@ mod tests {
             .expect("Query failed");
         let results: Vec<KnowledgeRelationship> = result.take(0).unwrap_or_default();
 
-        // Verify the relationship no longer exists
+        // Verify relationship no longer exists
         assert!(results.is_empty(), "Relationship should be deleted");
     }
 
@@ -342,7 +344,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_delete_relationships_by_source_id() {
+    async fn test_store_relationship_exists() {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();

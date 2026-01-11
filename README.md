@@ -1,6 +1,6 @@
 # Minne
 
-**A graph-powered personal knowledge base that remembers for you.**
+**A graph-powered personal knowledge base that makes storing easy.**
 
 Capture content effortlessly, let AI discover connections, and explore your knowledge visually. Self-hosted and privacy-focused.
 

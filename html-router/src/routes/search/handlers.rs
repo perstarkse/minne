@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt, str::FromStr,
+    fmt,
+    str::FromStr,
 };
 
 use axum::{
@@ -198,59 +199,60 @@ pub async fn search_result_handler(
     }
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
-    let (search_results_for_template, final_query_param_for_template) =
-        if let Some(actual_query) = params.query {
-            let trimmed_query = actual_query.trim();
-            if trimmed_query.is_empty() {
-                (Vec::<SearchResultForTemplate>::new(), String::new())
+    let (search_results_for_template, final_query_param_for_template) = if let Some(actual_query) =
+        params.query
+    {
+        let trimmed_query = actual_query.trim();
+        if trimmed_query.is_empty() {
+            (Vec::<SearchResultForTemplate>::new(), String::new())
+        } else {
+            // Use retrieval pipeline Search strategy
+            let config = RetrievalConfig::for_search(SearchTarget::Both);
+
+            // Checkout a reranker lease if pool is available
+            let reranker_lease = match &state.reranker_pool {
+                Some(pool) => Some(pool.checkout().await),
+                None => None,
+            };
+
+            let result = retrieval_pipeline::pipeline::run_pipeline(
+                &state.db,
+                &state.openai_client,
+                Some(&state.embedding_provider),
+                trimmed_query,
+                &user.id,
+                config,
+                reranker_lease,
+            )
+            .await?;
+
+            let search_result = match result {
+                StrategyOutput::Search(sr) => sr,
+                _ => SearchResult::new(vec![], vec![]),
+            };
+
+            let mut source_ids = HashSet::new();
+            for chunk_result in &search_result.chunks {
+                source_ids.insert(chunk_result.chunk.source_id.clone());
+            }
+            for entity_result in &search_result.entities {
+                source_ids.insert(entity_result.entity.source_id.clone());
+            }
+
+            let source_label_map = if source_ids.is_empty() {
+                HashMap::new()
             } else {
-                // Use retrieval pipeline Search strategy
-                let config = RetrievalConfig::for_search(SearchTarget::Both);
-
-                // Checkout a reranker lease if pool is available
-                let reranker_lease = match &state.reranker_pool {
-                    Some(pool) => Some(pool.checkout().await),
-                    None => None,
-                };
-                
-                let result = retrieval_pipeline::pipeline::run_pipeline(
-                    &state.db,
-                    &state.openai_client,
-                    Some(&state.embedding_provider),
-                    trimmed_query,
-                    &user.id,
-                    config,
-                    reranker_lease,
-                )
-                .await?;
-
-                let search_result = match result {
-                    StrategyOutput::Search(sr) => sr,
-                    _ => SearchResult::new(vec![], vec![]),
-                };
-
-                let mut source_ids = HashSet::new();
-                for chunk_result in &search_result.chunks {
-                    source_ids.insert(chunk_result.chunk.source_id.clone());
-                }
-                for entity_result in &search_result.entities {
-                    source_ids.insert(entity_result.entity.source_id.clone());
-                }
-
-                let source_label_map = if source_ids.is_empty() {
-                    HashMap::new()
-                } else {
-                    let record_ids: Vec<RecordId> = source_ids
-                        .iter()
-                        .filter_map(|id| {
-                            if id.contains(':') {
-                                RecordId::from_str(id).ok()
-                            } else {
-                                Some(RecordId::from_table_key(TextContent::table_name(), id))
-                            }
-                        })
-                        .collect();
-                    let mut response = state
+                let record_ids: Vec<RecordId> = source_ids
+                    .iter()
+                    .filter_map(|id| {
+                        if id.contains(':') {
+                            RecordId::from_str(id).ok()
+                        } else {
+                            Some(RecordId::from_table_key(TextContent::table_name(), id))
+                        }
+                    })
+                    .collect();
+                let mut response = state
                         .db
                         .client
                         .query(
@@ -260,84 +262,84 @@ pub async fn search_result_handler(
                         .bind(("user_id", user.id.clone()))
                         .bind(("record_ids", record_ids))
                         .await?;
-                    let contents: Vec<SourceLabelRow> = response.take(0)?;
+                let contents: Vec<SourceLabelRow> = response.take(0)?;
 
-                    tracing::debug!(
-                        source_id_count = source_ids.len(),
-                        label_row_count = contents.len(),
-                        "Resolved search source labels"
+                tracing::debug!(
+                    source_id_count = source_ids.len(),
+                    label_row_count = contents.len(),
+                    "Resolved search source labels"
+                );
+
+                let mut labels = HashMap::new();
+                for content in contents {
+                    let label = build_source_label(&content);
+                    labels.insert(content.id.clone(), label.clone());
+                    labels.insert(
+                        format!("{}:{}", TextContent::table_name(), content.id),
+                        label,
                     );
+                }
 
-                    let mut labels = HashMap::new();
-                    for content in contents {
-                        let label = build_source_label(&content);
-                        labels.insert(content.id.clone(), label.clone());
-                        labels.insert(
-                            format!("{}:{}", TextContent::table_name(), content.id),
-                            label,
-                        );
-                    }
+                labels
+            };
 
-                    labels
-                };
+            let mut combined_results: Vec<SearchResultForTemplate> =
+                Vec::with_capacity(search_result.chunks.len() + search_result.entities.len());
 
-                let mut combined_results: Vec<SearchResultForTemplate> =
-                    Vec::with_capacity(search_result.chunks.len() + search_result.entities.len());
-
-                // Add chunk results
-                for chunk_result in search_result.chunks {
-                    let source_label = source_label_map
-                        .get(&chunk_result.chunk.source_id)
-                        .cloned()
-                        .unwrap_or_else(|| fallback_source_label(&chunk_result.chunk.source_id));
-                    combined_results.push(SearchResultForTemplate {
-                        result_type: "text_chunk".to_string(),
+            // Add chunk results
+            for chunk_result in search_result.chunks {
+                let source_label = source_label_map
+                    .get(&chunk_result.chunk.source_id)
+                    .cloned()
+                    .unwrap_or_else(|| fallback_source_label(&chunk_result.chunk.source_id));
+                combined_results.push(SearchResultForTemplate {
+                    result_type: "text_chunk".to_string(),
+                    score: chunk_result.score,
+                    text_chunk: Some(TextChunkForTemplate {
+                        id: chunk_result.chunk.id,
+                        source_id: chunk_result.chunk.source_id,
+                        source_label,
+                        chunk: chunk_result.chunk.chunk,
                         score: chunk_result.score,
-                        text_chunk: Some(TextChunkForTemplate {
-                            id: chunk_result.chunk.id,
-                            source_id: chunk_result.chunk.source_id,
-                            source_label,
-                            chunk: chunk_result.chunk.chunk,
-                            score: chunk_result.score,
-                        }),
-                        knowledge_entity: None,
-                    });
-                }
-
-                // Add entity results
-                for entity_result in search_result.entities {
-                    let source_label = source_label_map
-                        .get(&entity_result.entity.source_id)
-                        .cloned()
-                        .unwrap_or_else(|| fallback_source_label(&entity_result.entity.source_id));
-                    combined_results.push(SearchResultForTemplate {
-                        result_type: "knowledge_entity".to_string(),
-                        score: entity_result.score,
-                        text_chunk: None,
-                        knowledge_entity: Some(KnowledgeEntityForTemplate {
-                            id: entity_result.entity.id,
-                            name: entity_result.entity.name,
-                            description: entity_result.entity.description,
-                            entity_type: format!("{:?}", entity_result.entity.entity_type),
-                            source_id: entity_result.entity.source_id,
-                            source_label,
-                            score: entity_result.score,
-                        }),
-                    });
-                }
-
-                // Sort by score descending
-                combined_results.sort_by(|a, b| b.score.total_cmp(&a.score));
-
-                // Limit results
-                const TOTAL_LIMIT: usize = 10;
-                combined_results.truncate(TOTAL_LIMIT);
-
-                (combined_results, trimmed_query.to_string())
+                    }),
+                    knowledge_entity: None,
+                });
             }
-        } else {
-            (Vec::<SearchResultForTemplate>::new(), String::new())
-        };
+
+            // Add entity results
+            for entity_result in search_result.entities {
+                let source_label = source_label_map
+                    .get(&entity_result.entity.source_id)
+                    .cloned()
+                    .unwrap_or_else(|| fallback_source_label(&entity_result.entity.source_id));
+                combined_results.push(SearchResultForTemplate {
+                    result_type: "knowledge_entity".to_string(),
+                    score: entity_result.score,
+                    text_chunk: None,
+                    knowledge_entity: Some(KnowledgeEntityForTemplate {
+                        id: entity_result.entity.id,
+                        name: entity_result.entity.name,
+                        description: entity_result.entity.description,
+                        entity_type: format!("{:?}", entity_result.entity.entity_type),
+                        source_id: entity_result.entity.source_id,
+                        source_label,
+                        score: entity_result.score,
+                    }),
+                });
+            }
+
+            // Sort by score descending
+            combined_results.sort_by(|a, b| b.score.total_cmp(&a.score));
+
+            // Limit results
+            const TOTAL_LIMIT: usize = 10;
+            combined_results.truncate(TOTAL_LIMIT);
+
+            (combined_results, trimmed_query.to_string())
+        }
+    } else {
+        (Vec::<SearchResultForTemplate>::new(), String::new())
+    };
 
     Ok(TemplateResponse::new_template(
         "search/base.html",
