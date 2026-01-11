@@ -3,7 +3,7 @@ use std::time::Instant;
 use anyhow::Context;
 use tracing::info;
 
-use crate::{eval::can_reuse_namespace, corpus, slice, snapshot};
+use crate::{corpus, eval::can_reuse_namespace, slice, snapshot};
 
 use super::super::{
     context::{EvalStage, EvaluationContext},

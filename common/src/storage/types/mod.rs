@@ -116,7 +116,7 @@ macro_rules! stored_object {
         }
 
 
-        $(#[$struct_attr])* 
+        $(#[$struct_attr])*
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
         pub struct $name {
             #[serde(deserialize_with = "deserialize_flexible_id")]

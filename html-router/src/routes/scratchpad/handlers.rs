@@ -41,6 +41,7 @@ pub struct ScratchpadDetailData {
     user: User,
     scratchpad: ScratchpadDetail,
     conversation_archive: Vec<Conversation>,
+    is_editing_title: bool,
 }
 
 #[derive(Serialize)]
@@ -180,8 +181,8 @@ pub async fn show_scratchpad_modal(
 
     let scratchpad_detail = ScratchpadDetail::from(&scratchpad);
 
-    // Handle edit_title query parameter if needed in future
-    let _ = query.edit_title.unwrap_or(false);
+    // Handle edit_title query parameter
+    let is_editing_title = query.edit_title.unwrap_or(false);
 
     Ok(TemplateResponse::new_template(
         "scratchpad/editor_modal.html",
@@ -189,6 +190,7 @@ pub async fn show_scratchpad_modal(
             user,
             scratchpad: scratchpad_detail,
             conversation_archive,
+            is_editing_title,
         },
     ))
 }
@@ -263,6 +265,7 @@ pub async fn update_scratchpad_title(
             user,
             scratchpad: ScratchpadDetail::from(&scratchpad),
             conversation_archive,
+            is_editing_title: false,
         },
     ))
 }

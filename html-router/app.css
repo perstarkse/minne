@@ -608,7 +608,7 @@
     line-height: inherit;
   }
 
-  .markdown-content :not(pre) > code {
+  .markdown-content :not(pre)>code {
     background-color: rgba(0, 0, 0, 0.05);
     color: var(--color-base-content);
     padding: 0.15em 0.4em;
@@ -662,7 +662,7 @@
     color: var(--color-base-content);
   }
 
-  [data-theme="dark"] .markdown-content :not(pre) > code {
+  [data-theme="dark"] .markdown-content :not(pre)>code {
     background-color: rgba(255, 255, 255, 0.12);
     color: var(--color-base-content);
   }
@@ -676,6 +676,136 @@
     position: fixed;
     z-index: 9999;
     box-shadow: var(--nb-shadow);
+  }
+
+  /* .nb-label: Uppercase, bold, tracking-wide, text-xs for section headers */
+  .nb-label {
+    @apply uppercase font-bold tracking-wide text-xs;
+  }
+
+  /* .nb-data: JetBrains Mono, tabular-nums for timestamps, IDs, badges */
+  .nb-data {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The Stamp: Button :active state pushes into page */
+  .nb-btn:active {
+    transform: translate(2px, 2px) !important;
+    box-shadow: 2px 2px 0 0 #000 !important;
+  }
+
+  /* Staggered Card Dealing Animation */
+  @keyframes deal-in {
+    0% {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Staggered deal-in animation - STRICTLY SCOPED to main content area */
+  main .nb-card,
+  main .nb-panel {
+    animation: deal-in 300ms var(--ease-mechanical, cubic-bezier(0.25, 1, 0.5, 1)) backwards;
+  }
+
+  /* Exclude elements that shouldn't animate even inside main */
+  main nav.nb-panel,
+  main .no-animation {
+    animation: none;
+  }
+
+  /* Apply staggered delays only to direct children of grids/lists or top-level containers */
+  main .nb-masonry>.nb-card:nth-child(1),
+  main .grid>.nb-panel:nth-child(1) {
+    animation-delay: 0ms;
+  }
+
+  main .nb-masonry>.nb-card:nth-child(2),
+  main .grid>.nb-panel:nth-child(2) {
+    animation-delay: 50ms;
+  }
+
+  main .nb-masonry>.nb-card:nth-child(3),
+  main .grid>.nb-panel:nth-child(3) {
+    animation-delay: 100ms;
+  }
+
+  main .nb-masonry>.nb-card:nth-child(4),
+  main .grid>.nb-panel:nth-child(4) {
+    animation-delay: 150ms;
+  }
+
+  main .nb-masonry>.nb-card:nth-child(5),
+  main .grid>.nb-panel:nth-child(5) {
+    animation-delay: 200ms;
+  }
+
+  main .nb-masonry>.nb-card:nth-child(6),
+  main .grid>.nb-panel:nth-child(6) {
+    animation-delay: 250ms;
+  }
+
+  main .nb-masonry>.nb-card:nth-child(7),
+  main .grid>.nb-panel:nth-child(7) {
+    animation-delay: 300ms;
+  }
+
+  main .nb-masonry>.nb-card:nth-child(8),
+  main .grid>.nb-panel:nth-child(8) {
+    animation-delay: 350ms;
+  }
+
+  main .nb-masonry>.nb-card:nth-child(n+9),
+  main .grid>.nb-panel:nth-child(n+9) {
+    animation-delay: 400ms;
+  }
+
+  /* HTMX Swap Fade-Up Animation */
+  @keyframes fade-up {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-up {
+    animation: fade-up 200ms var(--ease-mechanical, cubic-bezier(0.25, 1, 0.5, 1)) forwards;
+  }
+
+  /* Kinetic Input: Chat Armed State */
+  #chat-input:not(:placeholder-shown)~button {
+    filter: saturate(1.3) brightness(1.1);
+  }
+
+  #chat-input:not(:placeholder-shown) {
+    border-color: var(--color-accent);
+  }
+
+  /* Evidence Frame for images (Tufte treatment) */
+  .nb-evidence-frame {
+    @apply border-2 border-neutral m-2 bg-base-200;
+  }
+
+  .nb-evidence-frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .nb-evidence-frame figcaption {
+    @apply text-xs px-2 py-1 border-t-2 border-neutral;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
   }
 }
 
@@ -691,6 +821,31 @@
     color: rgba(255, 255, 255, 0.78) !important;
     opacity: 0.85;
   }
+
+  /* === DESIGN POLISHING: Receding Reality === */
+  /* Modal opens → background scales and blurs */
+  body:has(dialog[open]) #main-content-wrapper,
+  body.modal-open #main-content-wrapper {
+    transform: scale(0.98);
+    filter: blur(2px);
+    transition: transform 250ms var(--ease-mechanical, cubic-bezier(0.25, 1, 0.5, 1)),
+      filter 250ms var(--ease-mechanical, cubic-bezier(0.25, 1, 0.5, 1));
+  }
+
+  #main-content-wrapper {
+    transform: scale(1);
+    filter: blur(0);
+    transition: transform 250ms var(--ease-mechanical, cubic-bezier(0.25, 1, 0.5, 1)),
+      filter 250ms var(--ease-mechanical, cubic-bezier(0.25, 1, 0.5, 1));
+  }
+
+  /* === DESIGN POLISHING: Scroll-Linked Navbar Shadow === */
+  nav {
+    --scroll-depth: 0;
+    box-shadow: 4px calc(4px + var(--scroll-depth) * 4px) 0 0 #000;
+    transition: box-shadow 150ms ease;
+  }
+
 }
 
 /* satoshi.css */
@@ -711,6 +866,15 @@
     url('fonts/Satoshi-VariableItalic.ttf') format('truetype');
   font-weight: 300 900;
   font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('fonts/JetBrainsMono-Regular.woff2') format('woff2'),
+    url('fonts/JetBrainsMono-Variable.ttf') format('truetype');
+  font-weight: 400 700;
+  font-style: normal;
   font-display: swap;
 }
 

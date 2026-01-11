@@ -8,8 +8,6 @@ use super::{
 use crate::{RetrievedChunk, RetrievedEntity};
 use common::error::AppError;
 
-
-
 pub struct DefaultStrategyDriver;
 
 impl DefaultStrategyDriver {
@@ -89,8 +87,8 @@ impl StrategyDriver for IngestionDriver {
     }
 }
 
-use crate::SearchResult;
 use super::config::SearchTarget;
+use crate::SearchResult;
 
 /// Search strategy driver that retrieves both chunks and entities
 pub struct SearchStrategyDriver {

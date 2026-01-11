@@ -51,9 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage = StorageManager::new(&config).await?;
 
     // Create embedding provider based on config
-    let embedding_provider = Arc::new(
-        EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?,
-    );
+    let embedding_provider =
+        Arc::new(EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?);
     info!(
         embedding_backend = ?config.embedding_backend,
         embedding_dimension = embedding_provider.dimension(),

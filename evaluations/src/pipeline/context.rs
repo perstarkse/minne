@@ -20,9 +20,10 @@ use retrieval_pipeline::{
 use crate::{
     args::Config,
     cache::EmbeddingCache,
+    corpus,
     datasets::ConvertedDataset,
     eval::{CaseDiagnostics, CaseSummary, EvaluationStageTimings, EvaluationSummary, SeededCase},
-    corpus, slice, snapshot,
+    slice, snapshot,
 };
 
 pub(super) struct EvaluationContext<'a> {

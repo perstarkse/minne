@@ -3,7 +3,10 @@ use bytes;
 use mime_guess::from_path;
 use object_store::Error as ObjectStoreError;
 use sha2::{Digest, Sha256};
-use std::{io::{BufReader, Read}, path::Path};
+use std::{
+    io::{BufReader, Read},
+    path::Path,
+};
 use tempfile::NamedTempFile;
 use thiserror::Error;
 use tokio::task;

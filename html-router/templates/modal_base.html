@@ -1,15 +1,24 @@
 <dialog id="body_modal" class="modal">
   <div
-    class="modal-box rounded-none border-2 border-neutral bg-base-100 shadow-[8px_8px_0_0_#000] {% block modal_class %}{% endblock %}">
+    class="modal-box relative rounded-none border-2 border-neutral bg-base-100 shadow-[8px_8px_0_0_#000] p-6 {% block modal_class %}max-w-lg{% endblock %}">
+    
+    <!-- God Level UX: Explicit Escape Hatch -->
+    <button type="button" 
+            class="btn btn-sm btn-square btn-ghost absolute right-2 top-2 z-10" 
+            onclick="document.getElementById('body_modal').close()"
+            aria-label="Close modal">
+      {% include "icons/x_icon.html" %}
+    </button>
+
     <form id="modal_form" {% block form_attributes %}{% endblock %}>
-      <div class="flex flex-col flex-1 gap-4">
+      <div class="flex flex-col flex-1 gap-5">
         {% block modal_content %}{% endblock %}
       </div>
 
-      <div class="u-hairline mt-4 pt-3 flex flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
-        <!-- Close button (always visible) -->
-        <button type="button" class="nb-btn w-full sm:w-auto" onclick="document.getElementById('body_modal').close()">
-          Close
+      <div class="mt-8 pt-2 flex flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
+        <!-- Secondary Action: Ghost style to reduce noise -->
+        <button type="button" class="btn btn-ghost rounded-none w-full sm:w-auto hover:bg-neutral/10" onclick="document.getElementById('body_modal').close()">
+          Cancel
         </button>
 
         <!-- Primary actions block -->

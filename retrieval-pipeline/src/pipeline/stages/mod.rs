@@ -10,14 +10,10 @@ use common::{
 };
 use fastembed::RerankResult;
 use futures::{stream::FuturesUnordered, StreamExt};
-use std::{
-    cmp::Ordering,
-    collections::HashMap,
-};
+use std::{cmp::Ordering, collections::HashMap};
 use tracing::{debug, instrument, warn};
 
 use crate::{
-
     graph::find_entities_by_relationship_by_id,
     reranking::RerankerLease,
     scoring::{
@@ -444,7 +440,6 @@ pub async fn expand_graph(ctx: &mut PipelineContext<'_>) -> Result<(), AppError>
     Ok(())
 }
 
-
 #[instrument(level = "trace", skip_all)]
 pub async fn rerank(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     let mut applied = false;
@@ -571,8 +566,6 @@ pub async fn collect_vector_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), 
     //     .iter()
     //     .filter(|c| c.scores.vector.is_some() && c.scores.fts.is_some())
     //     .count();
-
-
 
     debug!(
         top_fused_scores = ?vector_chunks.iter().take(5).map(|c| c.fused).collect::<Vec<_>>(),

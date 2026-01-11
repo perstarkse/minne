@@ -352,12 +352,12 @@ impl TextChunk {
         // Generate all new embeddings in memory
         let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
         info!("Generating new embeddings for all chunks...");
-        
+
         for (i, chunk) in all_chunks.iter().enumerate() {
             if i > 0 && i % 100 == 0 {
                 info!(progress = i, total = total_chunks, "Re-embedding progress");
             }
-            
+
             let embedding = provider
                 .embed(&chunk.chunk)
                 .await
@@ -381,12 +381,12 @@ impl TextChunk {
 
         // Clear existing embeddings and index first to prevent SurrealDB panics and dimension conflicts.
         info!("Removing old index and clearing embeddings...");
-        
+
         // Explicitly remove the index first. This prevents background HNSW maintenance from crashing
         // when we delete/replace data, dealing with a known SurrealDB panic.
         db.client
             .query(format!(
-                "REMOVE INDEX idx_embedding_text_chunk_embedding ON TABLE {};", 
+                "REMOVE INDEX idx_embedding_text_chunk_embedding ON TABLE {};",
                 TextChunkEmbedding::table_name()
             ))
             .await
