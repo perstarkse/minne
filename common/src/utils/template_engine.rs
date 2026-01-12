@@ -21,19 +21,49 @@ pub enum TemplateEngine {
 
 #[macro_export]
 macro_rules! create_template_engine {
-    // Macro takes the relative path to the templates dir as input
-    ($relative_path:expr) => {{
+    // Single path argument
+    ($relative_path:expr) => {
+        $crate::create_template_engine!($relative_path, Option::<&str>::None)
+    };
+
+    // Path + Fallback argument
+    ($relative_path:expr, $fallback_path:expr) => {{
         // Code for debug builds (AutoReload)
         #[cfg(debug_assertions)]
         {
             // These lines execute in the CALLING crate's context
             let crate_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let template_path = crate_dir.join($relative_path);
+            let fallback_path = $fallback_path.map(|p| crate_dir.join(p));
+
             let reloader = $crate::utils::template_engine::AutoReloader::new(move |notifier| {
                 let mut env = $crate::utils::template_engine::Environment::new();
-                env.set_loader($crate::utils::template_engine::path_loader(&template_path));
+
+                let loader_primary = $crate::utils::template_engine::path_loader(&template_path);
+
+                // Clone fallback_path for the closure
+                let fallback = fallback_path.clone();
+
+                env.set_loader(move |name| match loader_primary(name) {
+                    Ok(Some(tmpl)) => Ok(Some(tmpl)),
+                    Ok(None) => {
+                        if let Some(ref fb_path) = fallback {
+                            let loader_fallback =
+                                $crate::utils::template_engine::path_loader(fb_path);
+                            loader_fallback(name)
+                        } else {
+                            Ok(None)
+                        }
+                    }
+                    Err(e) => Err(e),
+                });
+
                 notifier.set_fast_reload(true);
                 notifier.watch_path(&template_path, true);
+                if let Some(ref fb) = fallback_path {
+                    notifier.watch_path(fb, true);
+                }
+
                 // Add contrib filters/functions
                 $crate::utils::template_engine::minijinja_contrib::add_to_environment(&mut env);
                 Ok(env)
