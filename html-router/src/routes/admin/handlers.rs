@@ -172,7 +172,7 @@ pub struct ModelSettingsInput {
     processing_model: String,
     image_processing_model: String,
     voice_processing_model: String,
-    embedding_model: String,
+    embedding_model: Option<String>,
     embedding_dimensions: Option<u32>,
 }
 
@@ -219,7 +219,9 @@ pub async fn update_model_settings(
                 .embedding_dimensions
                 .is_some_and(|new_dims| new_dims != current_settings.embedding_dimensions);
             (
-                input.embedding_model,
+                input
+                    .embedding_model
+                    .unwrap_or_else(|| current_settings.embedding_model.clone()),
                 input
                     .embedding_dimensions
                     .unwrap_or(current_settings.embedding_dimensions),
