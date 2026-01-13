@@ -1,119 +1,52 @@
-{% macro icon(name) %}
-{% if name == "home" %}
-{% include "icons/home_icon.html" %}
-{% elif name == "book" %}
-{% include "icons/book_icon.html" %}
-{% elif name == "document" %}
-{% include "icons/document_icon.html" %}
-{% elif name == "chat" %}
-{% include "icons/chat_icon.html" %}
-{% elif name == "search" %}
-{% include "icons/search_icon.html" %}
-{% elif name == "scratchpad" %}
-{% include "icons/scratchpad_icon.html" %}
-{% endif %}
-{% endmacro %}
+{% extends "components/_sidebar_layout.html" %}
+{% from "components/_icon_macro.html" import icon %}
 
-<div class="drawer-side z-20" style="view-transition-name: sidebar; contain: layout;">
-  <label for="my-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+{% block sidebar_nav_items %}
+  {% for url, name, label in [
+  ("/", "home", "Dashboard"),
+  ("/knowledge", "book", "Knowledge"),
+  ("/content", "document", "Content"),
+  ("/chat", "chat", "Chat"),
+  ("/search", "search", "Search"),
+  ("/scratchpad", "scratchpad", "Scratchpad")
+  ] %}
+  <li>
+    <a hx-boost="true" href="{{ url }}" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
+      {{ icon(name) }}
+      <span class="uppercase tracking-wide">{{ label }}</span>
+    </a>
+  </li>
+  {% endfor %}
+  <li>
+    <button class="nb-btn nb-cta w-full flex items-center gap-3 justify-start mt-2" hx-get="/ingress-form"
+      hx-target="#modal" hx-swap="innerHTML">{% include "icons/send_icon.html" %} Add
+      Content</button>
+  </li>
+  <div class="u-hairline mt-4"></div>
+{% endblock %}
 
-  <ul class="menu p-0 w-72 h-full nb-canvas text-base-content flex flex-col border-r-2 border-neutral">
-    <!-- <a class="px-4 py-4 text-2xl font-extrabold tracking-tight text-primary border-b-2 border-neutral bg-base-100 nb-shadow" -->
-    <!-- href="/" hx-boost="true">Minne</a> -->
-
-    <!-- === TOP FIXED SECTION === -->
-    <div class="px-2 mt-4 space-y-3">
-      {% for url, name, label in [
-      ("/", "home", "Dashboard"),
-      ("/knowledge", "book", "Knowledge"),
-      ("/content", "document", "Content"),
-      ("/chat", "chat", "Chat"),
-      ("/search", "search", "Search"),
-      ("/scratchpad", "scratchpad", "Scratchpad")
-      ] %}
-      <li>
-        <a hx-boost="true" href="{{ url }}" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
-          {{ icon(name) }}
-          <span class="uppercase tracking-wide">{{ label }}</span>
-        </a>
-      </li>
-      {% endfor %}
-      <li>
-        <button class="nb-btn nb-cta w-full flex items-center gap-3 justify-start mt-2" hx-get="/ingress-form"
-          hx-target="#modal" hx-swap="innerHTML">{% include "icons/send_icon.html" %} Add
-          Content</button>
-      </li>
-      <div class="u-hairline mt-4"></div>
-    </div>
-
-    <!-- === MIDDLE SCROLLABLE SECTION === -->
-    <span class="px-4 py-2 nb-label">Recent Chats</span>
-    <div class="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
-      {% if conversation_archive is defined and conversation_archive %}
-      {% for conversation in conversation_archive %}
-      <li id="conversation-{{ conversation.id }}">
-        {% if edit_conversation_id == conversation.id %}
-        <!-- Edit mode -->
-        <form hx-patch="/chat/{{ conversation.id }}/title" hx-target=".drawer-side" hx-swap="outerHTML"
-          class="flex items-center gap-1 px-2 py-2 max-w-72 relative">
-          <input type="text" name="title" value="{{ conversation.title }}" class="nb-input nb-input-sm max-w-52" />
-          <div class="flex gap-0.5 absolute right-2">
-            <button type="submit" class="btn btn-ghost btn-xs !p-0">{% include "icons/check_icon.html" %}</button>
-            <button type="button" hx-get="/chat/sidebar" hx-target=".drawer-side" hx-swap="outerHTML"
-              class="btn btn-ghost btn-xs !p-0">
-              {% include "icons/x_icon.html" %}
-            </button>
-          </div>
-        </form>
-        {% else %}
-        <!-- View mode -->
-        <div class="flex w-full pl-4 pr-2 py-2">
-          <a hx-boost="true" href="/chat/{{ conversation.id }}" class="flex-grow text-sm truncate">
-            <span>{{ conversation.title }}</span>
-          </a>
-          <div class="flex items-center gap-0.5 ml-2">
-            <button hx-get="/chat/{{ conversation.id }}/title" hx-target=".drawer-side" hx-swap="outerHTML"
-              class="btn btn-ghost btn-xs">
-              {% include "icons/edit_icon.html" %}
-            </button>
-            <button hx-delete="/chat/{{ conversation.id }}" hx-target=".drawer-side" hx-swap="outerHTML"
-              hx-confirm="Are you sure you want to delete this chat?" class="btn btn-ghost btn-xs">
-              {% include "icons/delete_icon.html" %}
-            </button>
-          </div>
-        </div>
-        {% endif %}
-      </li>
-      {% endfor %}
-      {% else %}
-      {% endif %}
-    </div>
-
-    <!-- === BOTTOM FIXED SECTION === -->
-    <div class="px-2 pb-4 space-y-3">
-      <li>
-        <a hx-boost="true" href="/account"
-          class="nb-btn w-full justify-start items-center gap-3 bg-base-100 hover:bg-base-200">
-          {% include "icons/user_icon.html" %}
-          <span class="uppercase tracking-wide">Account</span>
-        </a>
-      </li>
-      {% if user.admin %}
-      <li>
-        <a hx-boost="true" href="/admin"
-          class="nb-btn w-full justify-start items-center gap-3 bg-base-100 hover:bg-base-200">
-          {% include "icons/wrench_screwdriver_icon.html" %}
-          <span class="uppercase tracking-wide">Admin</span>
-        </a>
-      </li>
-      {% endif %}
-      <li>
-        <a hx-boost="true" href="/signout"
-          class="nb-btn w-full justify-start items-center gap-3  bg-base-100 hover:bg-base-200 border-error text-error">
-          {% include "icons/logout_icon.html" %}
-          <span class="uppercase tracking-wide">Logout</span>
-        </a>
-      </li>
-    </div>
-  </ul>
-</div>
+{% block sidebar_bottom_actions %}
+  <li>
+    <a hx-boost="true" href="/account"
+      class="nb-btn w-full justify-start items-center gap-3 bg-base-100 hover:bg-base-200">
+      {% include "icons/user_icon.html" %}
+      <span class="uppercase tracking-wide">Account</span>
+    </a>
+  </li>
+  {% if user.admin %}
+  <li>
+    <a hx-boost="true" href="/admin"
+      class="nb-btn w-full justify-start items-center gap-3 bg-base-100 hover:bg-base-200">
+      {% include "icons/wrench_screwdriver_icon.html" %}
+      <span class="uppercase tracking-wide">Admin</span>
+    </a>
+  </li>
+  {% endif %}
+  <li>
+    <a hx-boost="true" href="/signout"
+      class="nb-btn w-full justify-start items-center gap-3  bg-base-100 hover:bg-base-200 border-error text-error">
+      {% include "icons/logout_icon.html" %}
+      <span class="uppercase tracking-wide">Logout</span>
+    </a>
+  </li>
+{% endblock %}

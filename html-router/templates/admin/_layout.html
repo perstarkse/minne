@@ -1,0 +1,29 @@
+{% extends 'body_base.html' %}
+
+{% block title %}Minne - Admin{% endblock %}
+
+{% block main %}
+<div id="admin-shell" class="flex justify-center grow mt-2 sm:mt-4 pb-4">
+  <div class="container flex flex-col gap-4">
+    <section class="nb-panel p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-xl font-extrabold tracking-tight">Admin Controls</h1>
+      </div>
+      <div class="text-xs opacity-60 sm:text-right">
+        Signed in as <span class="font-medium">{{ user.email }}</span>
+      </div>
+    </section>
+
+    <nav class="nb-panel p-2 flex flex-wrap gap-2 text-sm" hx-boost="true" hx-target="#admin-shell"
+      hx-select="#admin-shell" hx-swap="outerHTML" hx-push-url="true">
+      {% block admin_navigation %}
+      {% endblock %}
+    </nav>
+
+    <div id="admin-content" class="flex flex-col gap-4">
+      {% block admin_content %}
+      {% endblock %}
+    </div>
+  </div>
+</div>
+{% endblock %}

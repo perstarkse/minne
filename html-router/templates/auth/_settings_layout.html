@@ -1,0 +1,32 @@
+{% extends "body_base.html" %}
+
+{% block title %}Minne - Account{% endblock %}
+
+{% block main %}
+<div class="flex justify-center grow mt-2 sm:mt-4 pb-4">
+  <div class="container">
+    <section class="mb-4">
+      <div class="nb-panel p-3 flex items-center justify-between">
+        {% block settings_header %}
+        {% endblock %}
+      </div>
+    </section>
+
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 space-y-2">
+      <!-- Left column -->
+      <div class="nb-panel p-4 space-y-2 flex flex-col">
+        {% block settings_left_column %}
+        {% endblock %}
+      </div>
+
+      <!-- Right column -->
+      <div class="nb-panel p-4 space-y-2">
+        {% block settings_right_column %}
+        {% endblock %}
+      </div>
+    </section>
+
+    <div id="account-result" class="mt-4"></div>
+  </div>
+</div>
+{% endblock %}

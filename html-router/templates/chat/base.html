@@ -1,81 +1,14 @@
-{% extends 'body_base.html' %}
+{% extends "chat/_layout.html" %}
 
-{% block title %}Minne - Chat{% endblock %}
+{% block chat_header_actions %}
+  <h1 class="text-xl font-extrabold tracking-tight">Chat</h1>
+  <div class="text-xs opacity-70">Converse with your knowledge</div>
+{% endblock %}
 
-{% block main %}
-<div class="flex grow relative justify-center mt-2 sm:mt-4">
-  <div class="container">
-    <section class="mb-3">
-      <div class="nb-panel p-3 flex items-center justify-between">
-        <h1 class="text-xl font-extrabold tracking-tight">Chat</h1>
-        <div class="text-xs opacity-70">Converse with your knowledge</div>
-      </div>
-    </section>
-    <div id="chat-scroll-container" class="overflow-auto hide-scrollbar">
-      {% include "chat/history.html" %}
-    </div>
-  </div>
-</div>
-
-<script>
-  function doScrollChatToBottom() {
-    const mainScroll = document.querySelector('main');
-    if (mainScroll) mainScroll.scrollTop = mainScroll.scrollHeight;
-
-    const chatScroll = document.getElementById('chat-scroll-container');
-    if (chatScroll) chatScroll.scrollTop = chatScroll.scrollHeight;
-
-    const chatContainer = document.getElementById('chat_container');
-    if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
-
-    window.scrollTo(0, document.body.scrollHeight);
-  }
-
-  function scrollChatToBottom() {
-    if (!window.location.pathname.startsWith('/chat')) return;
-    requestAnimationFrame(doScrollChatToBottom);
-  }
-
-  window.scrollChatToBottom = scrollChatToBottom;
-
-  // Delay initial scroll to avoid interfering with view transition
-  document.addEventListener('DOMContentLoaded', () => setTimeout(scrollChatToBottom, 350));
-
-  function handleChatSwap(e) {
-    if (!window.location.pathname.startsWith('/chat')) return;
-    // Full page swap: delay for view transition; partial swap: immediate
-    if (e.detail && e.detail.target && e.detail.target.tagName === 'BODY') {
-      setTimeout(scrollChatToBottom, 350);
-    } else {
-      scrollChatToBottom();
-    }
-  }
-
-  function cleanupChatListeners(e) {
-    if (e.detail && e.detail.target && e.detail.target.tagName === 'BODY') {
-      document.body.removeEventListener('htmx:afterSwap', window._chatEventHandlers.afterSwap);
-      document.body.removeEventListener('htmx:afterSettle', window._chatEventHandlers.afterSettle);
-      document.body.removeEventListener('htmx:beforeSwap', window._chatEventHandlers.beforeSwap);
-      delete window._chatEventHandlers;
-      window._chatListenersAttached = false;
-    }
-  }
-
-  window._chatEventHandlers = {
-    afterSwap: handleChatSwap,
-    afterSettle: handleChatSwap,
-    beforeSwap: cleanupChatListeners
-  };
-
-  if (!window._chatListenersAttached) {
-    document.body.addEventListener('htmx:afterSwap', window._chatEventHandlers.afterSwap);
-    document.body.addEventListener('htmx:afterSettle', window._chatEventHandlers.afterSettle);
-    document.body.addEventListener('htmx:beforeSwap', window._chatEventHandlers.beforeSwap);
-    window._chatListenersAttached = true;
-  }
-</script>
+{% block chat_content %}
+  {% include "chat/history.html" %}
 {% endblock %}
 
 {% block overlay %}
-{% include "chat/new_message_form.html" %}
+  {% include "chat/new_message_form.html" %}
 {% endblock %}

@@ -1,0 +1,24 @@
+{% extends 'body_base.html' %}
+
+{% block title %}Minne - Scratchpad{% endblock %}
+
+{% block main %}
+<main id="main_section" class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10 w-full">
+  <div class="container">
+    {% block scratchpad_header %}
+    {% endblock %}
+
+    {% block scratchpad_content %}
+    {% endblock %}
+
+    {% block scratchpad_archived %}
+    {% endblock %}
+  </div>
+</main>
+
+{% if new_scratchpad %}
+<div hx-swap-oob="innerHTML:#modal">
+  <div hx-get="/scratchpad/{{ new_scratchpad.id }}/modal" hx-trigger="load" hx-target="#modal" hx-swap="innerHTML"></div>
+</div>
+{% endif %}
+{% endblock %}

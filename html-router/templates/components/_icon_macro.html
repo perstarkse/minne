@@ -1,0 +1,15 @@
+{% macro icon(name) %}
+{% if name == "home" %}
+{% include "icons/home_icon.html" %}
+{% elif name == "book" %}
+{% include "icons/book_icon.html" %}
+{% elif name == "document" %}
+{% include "icons/document_icon.html" %}
+{% elif name == "chat" %}
+{% include "icons/chat_icon.html" %}
+{% elif name == "search" %}
+{% include "icons/search_icon.html" %}
+{% elif name == "scratchpad" %}
+{% include "icons/scratchpad_icon.html" %}
+{% endif %}
+{% endmacro %}

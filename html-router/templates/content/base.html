@@ -1,29 +1,23 @@
-{% extends 'body_base.html' %}
+{% extends 'content/_layout.html' %}
 
-{% block title %}Minne - Content{% endblock %}
-
-{% block main %}
-<main id="main_section" class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10 w-full">
-  <div class="container">
-    <div class="nb-panel p-3 mb-4 flex items-center justify-between">
-      <h2 class="text-xl font-extrabold tracking-tight">Content</h2>
-      <form hx-get="/content" hx-target="#main_section" hx-swap="outerHTML" hx-push-url="true"
-        class="flex items-center gap-2 mt-2 sm:mt-0">
-        <input type="hidden" name="page" value="1" />
-        <div>
-          <select name="category" class="nb-select">
-            <option value="">All Categories</option>
-            {% for category in categories %}
-            <option value="{{ category }}" {% if selected_category==category %}selected{% endif %}>{{ category }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-        <button type="submit" class="nb-btn btn-sm">Filter</button>
-      </form>
+{% block content_header %}
+  <h2 class="text-xl font-extrabold tracking-tight">Content</h2>
+  <form hx-get="/content" hx-target="#main_section" hx-swap="outerHTML" hx-push-url="true"
+    class="flex items-center gap-2 mt-2 sm:mt-0">
+    <input type="hidden" name="page" value="1" />
+    <div>
+      <select name="category" class="nb-select">
+        <option value="">All Categories</option>
+        {% for category in categories %}
+        <option value="{{ category }}" {% if selected_category==category %}selected{% endif %}>{{ category }}
+        </option>
+        {% endfor %}
+      </select>
     </div>
+    <button type="submit" class="nb-btn btn-sm">Filter</button>
+  </form>
+{% endblock %}
 
-    {% include "content/content_list.html" %}
-  </div>
-</main>
+{% block content_list %}
+  {% include "content/content_list.html" %}
 {% endblock %}

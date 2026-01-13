@@ -1,0 +1,17 @@
+{% extends 'body_base.html' %}
+
+{% block title %}Minne - Content{% endblock %}
+
+{% block main %}
+<main id="main_section" class="flex justify-center grow mt-2 sm:mt-4 gap-6 mb-10 w-full">
+  <div class="container">
+    <div class="nb-panel p-3 mb-4 flex items-center justify-between">
+      {% block content_header %}
+      {% endblock %}
+    </div>
+
+    {% block content_list %}
+    {% endblock %}
+  </div>
+</main>
+{% endblock %}

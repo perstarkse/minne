@@ -29,15 +29,17 @@ impl HtmlState {
         config: AppConfig,
         reranker_pool: Option<Arc<RerankerPool>>,
         embedding_provider: Arc<EmbeddingProvider>,
+        template_engine: Option<Arc<TemplateEngine>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let template_engine = create_template_engine!("templates");
-        debug!("Template engine created for html_router.");
+        let templates =
+            template_engine.unwrap_or_else(|| Arc::new(create_template_engine!("templates")));
+        debug!("Template engine configured for html_router.");
 
         Ok(Self {
             db,
             openai_client,
             session_store,
-            templates: Arc::new(template_engine),
+            templates,
             config,
             storage,
             reranker_pool,

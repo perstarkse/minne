@@ -71,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.clone(),
         reranker_pool,
         embedding_provider,
+        None,
     )
     .await?;
 

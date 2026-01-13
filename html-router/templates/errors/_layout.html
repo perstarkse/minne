@@ -1,0 +1,9 @@
+{% extends 'body_base.html' %}
+{% block main %}
+<main class="container justify-center flex-grow flex mx-auto mt-4">
+  <div class="flex flex-col space-y-4 text-center justify-center">
+    {% block error_content %}
+    {% endblock %}
+  </div>
+</main>
+{% endblock %}

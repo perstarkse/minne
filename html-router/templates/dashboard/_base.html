@@ -1,0 +1,15 @@
+{% extends "dashboard/_layout.html" %}
+
+{% block dashboard_header %}
+  <h1 class="text-xl font-extrabold tracking-tight">Dashboard</h1>
+  <button class="nb-btn nb-cta" hx-get="/ingress-form" hx-target="#modal" hx-swap="innerHTML">
+    {% include "icons/send_icon.html" %}
+    <span class="ml-2">Add Content</span>
+  </button>
+{% endblock %}
+
+{% block dashboard_widgets %}
+  {% include "dashboard/statistics.html" %}
+  {% include "dashboard/recent_content.html" %}
+  {% include "dashboard/active_jobs.html" %}
+{% endblock %}
