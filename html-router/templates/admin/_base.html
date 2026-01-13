@@ -1,0 +1,20 @@
+{% extends 'admin/_layout.html' %}
+
+{% block admin_navigation %}
+  <a href="/admin?section=overview"
+    class="nb-btn btn-sm px-4 {% if current_section == 'overview' %}nb-cta{% else %}btn-ghost{% endif %}">
+    Overview
+  </a>
+  <a href="/admin?section=models"
+    class="nb-btn btn-sm px-4 {% if current_section == 'models' %}nb-cta{% else %}btn-ghost{% endif %}">
+    Models
+  </a>
+{% endblock %}
+
+{% block admin_content %}
+  {% if current_section == 'models' %}
+  {% include 'admin/sections/models.html' %}
+  {% else %}
+  {% include 'admin/sections/overview.html' %}
+  {% endif %}
+{% endblock %}

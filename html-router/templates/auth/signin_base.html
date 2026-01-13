@@ -1,9 +1,7 @@
-{% extends "head_base.html" %}
+{% extends "auth/_layout.html" %}
 
 {% block title %}Minne - Sign in{% endblock %}
 
-{% block body %}
-<div class="min-h-[100dvh] flex">
+{% block auth_content %}
   {% include "auth/signin_form.html" %}
-</div>
 {% endblock %}

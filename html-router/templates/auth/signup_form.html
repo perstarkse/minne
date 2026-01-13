@@ -1,9 +1,8 @@
-{% extends "head_base.html" %}
+{% extends "auth/_layout.html" %}
 
 {% block title %}Minne - Sign up{% endblock %}
 
-{% block body %}
-<div class="min-h-[100dvh] flex items-center">
+{% block auth_content %}
   <div class="container mx-auto px-4 sm:max-w-md">
     <div class="nb-card p-5">
       <div class="flex items-center justify-between mb-3">
@@ -46,10 +45,9 @@
       </div>
     </div>
   </div>
-</div>
-<script>
-  // Detect timezone and set hidden input
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  document.getElementById("timezone").value = timezone;
-</script>
+  <script>
+    // Detect timezone and set hidden input
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    document.getElementById("timezone").value = timezone;
+  </script>
 {% endblock %}

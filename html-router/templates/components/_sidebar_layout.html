@@ -1,0 +1,60 @@
+<div class="drawer-side z-20">
+  <label for="my-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+
+  <ul class="menu p-0 w-72 h-full nb-canvas text-base-content flex flex-col border-r-2 border-neutral">
+    <!-- === TOP FIXED SECTION === -->
+    <div class="px-2 mt-4 space-y-3">
+      {% block sidebar_nav_items %}
+      {% endblock %}
+    </div>
+
+    <!-- === MIDDLE SCROLLABLE SECTION === -->
+    <span class="px-4 py-2 nb-label">Recent Chats</span>
+    <div class="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+      {% if conversation_archive is defined and conversation_archive %}
+      {% for conversation in conversation_archive %}
+      <li id="conversation-{{ conversation.id }}">
+        {% if edit_conversation_id == conversation.id %}
+        <!-- Edit mode -->
+        <form hx-patch="/chat/{{ conversation.id }}/title" hx-target=".drawer-side" hx-swap="outerHTML"
+          class="flex items-center gap-1 px-2 py-2 max-w-72 relative">
+          <input type="text" name="title" value="{{ conversation.title }}" class="nb-input nb-input-sm max-w-52" />
+          <div class="flex gap-0.5 absolute right-2">
+            <button type="submit" class="btn btn-ghost btn-xs !p-0">{% include "icons/check_icon.html" %}</button>
+            <button type="button" hx-get="/chat/sidebar" hx-target=".drawer-side" hx-swap="outerHTML"
+              class="btn btn-ghost btn-xs !p-0">
+              {% include "icons/x_icon.html" %}
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <!-- View mode -->
+        <div class="flex w-full pl-4 pr-2 py-2">
+          <a hx-boost="true" href="/chat/{{ conversation.id }}" class="flex-grow text-sm truncate">
+            <span>{{ conversation.title }}</span>
+          </a>
+          <div class="flex items-center gap-0.5 ml-2">
+            <button hx-get="/chat/{{ conversation.id }}/title" hx-target=".drawer-side" hx-swap="outerHTML"
+              class="btn btn-ghost btn-xs">
+              {% include "icons/edit_icon.html" %}
+            </button>
+            <button hx-delete="/chat/{{ conversation.id }}" hx-target=".drawer-side" hx-swap="outerHTML"
+              hx-confirm="Are you sure you want to delete this chat?" class="btn btn-ghost btn-xs">
+              {% include "icons/delete_icon.html" %}
+            </button>
+          </div>
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+      {% else %}
+      {% endif %}
+    </div>
+
+    <!-- === BOTTOM FIXED SECTION === -->
+    <div class="px-2 pb-4 space-y-3">
+      {% block sidebar_bottom_actions %}
+      {% endblock %}
+    </div>
+  </ul>
+</div>

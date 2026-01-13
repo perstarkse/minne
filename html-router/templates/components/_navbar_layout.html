@@ -1,0 +1,14 @@
+<nav class="sticky top-0 z-10 nb-panel nb-panel-canvas border-t-0">
+  <div class="container mx-auto navbar">
+    <div class="mr-2 flex-1">
+      {% block navbar_search %}
+      {% endblock %}
+    </div>
+    <div class="flex-none">
+      <ul class="menu menu-horizontal px-2 gap-2 items-center">
+        {% block navbar_actions %}
+        {% endblock %}
+      </ul>
+    </div>
+  </div>
+</nav>

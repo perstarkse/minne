@@ -1,0 +1,17 @@
+{% extends 'body_base.html' %}
+
+{% block title %}Minne - Knowledge{% endblock %}
+
+{% block main %}
+<div id="knowledge_pane" class="flex justify-center grow mt-2 sm:mt-4 gap-6">
+  <div class="container">
+    <div class="nb-panel p-3 mb-4 space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:justify-between sm:items-center">
+      {% block knowledge_header %}
+      {% endblock %}
+    </div>
+
+    {% block knowledge_content %}
+    {% endblock %}
+  </div>
+</div>
+{% endblock %}

@@ -116,6 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.clone(),
         reranker_pool.clone(),
         embedding_provider.clone(),
+        None,
     )
     .await?;
 
@@ -284,6 +285,7 @@ mod tests {
             config.clone(),
             None,
             embedding_provider,
+            None,
         )
         .await
         .expect("failed to build html state");

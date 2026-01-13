@@ -1,52 +1,46 @@
-{% extends 'body_base.html' %}
+{% extends 'knowledge/_layout.html' %}
 
-{% block title %}Minne - Knowledge{% endblock %}
-
-{% block main %}
-<div id="knowledge_pane" class="flex justify-center grow mt-2 sm:mt-4 gap-6">
-  <div class="container">
-    <div class="nb-panel p-3 mb-4 space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:justify-between sm:items-center">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <h2 class="text-xl font-extrabold tracking-tight">Knowledge Entities</h2>
-        <button type="button" class="nb-btn nb-cta btn-sm mr-2" hx-get="/knowledge-entity/new" hx-target="#modal"
-          hx-swap="innerHTML">
-          New Entity
-        </button>
-      </div>
-      <form hx-get="/knowledge" hx-target="#knowledge_pane" hx-push-url="true" hx-swap="outerHTML"
-        class="flex items-center gap-2 mt-2 sm:mt-0">
-        <input type="hidden" name="page" value="1" />
-        <div>
-          <select name="entity_type" class="nb-select">
-            <option value="">All Types</option>
-            {% for type in entity_types %}
-            <option value="{{ type }}" {% if selected_entity_type==type %}selected{% endif %}>{{ type }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <select name="content_category" class="nb-select">
-            <option value="">All Categories</option>
-            {% for category in content_categories %}
-            <option value="{{ category }}" {% if selected_content_category==category %}selected{% endif %}>{{ category
-              }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <button type="submit" class="nb-btn btn-sm">Filter</button>
-      </form>
-    </div>
-
-    <h2 class="text-2xl font-bold mb-2 mt-10 ">Graph</h2>
-    <div class="nb-card mt-4 p-2">
-      <div id="knowledge-graph" class="w-full" style="height: 640px;"
-        data-entity-type="{{ selected_entity_type | default(value='') }}"
-        data-content-category="{{ selected_content_category | default(value='') }}">
-      </div>
-    </div>
-    {% include "knowledge/entity_list.html" %}
-    <h2 class="text-2xl font-bold mb-2 mt-2">Relationships</h2>
-    {% include "knowledge/relationship_table.html" %}
+{% block knowledge_header %}
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+    <h2 class="text-xl font-extrabold tracking-tight">Knowledge Entities</h2>
+    <button type="button" class="nb-btn nb-cta btn-sm mr-2" hx-get="/knowledge-entity/new" hx-target="#modal"
+      hx-swap="innerHTML">
+      New Entity
+    </button>
   </div>
-</div>
+  <form hx-get="/knowledge" hx-target="#knowledge_pane" hx-push-url="true" hx-swap="outerHTML"
+    class="flex items-center gap-2 mt-2 sm:mt-0">
+    <input type="hidden" name="page" value="1" />
+    <div>
+      <select name="entity_type" class="nb-select">
+        <option value="">All Types</option>
+        {% for type in entity_types %}
+        <option value="{{ type }}" {% if selected_entity_type==type %}selected{% endif %}>{{ type }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="content_category" class="nb-select">
+        <option value="">All Categories</option>
+        {% for category in content_categories %}
+        <option value="{{ category }}" {% if selected_content_category==category %}selected{% endif %}>{{ category
+          }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="nb-btn btn-sm">Filter</button>
+  </form>
+{% endblock %}
+
+{% block knowledge_content %}
+  <h2 class="text-2xl font-bold mb-2 mt-10 ">Graph</h2>
+  <div class="nb-card mt-4 p-2">
+    <div id="knowledge-graph" class="w-full" style="height: 640px;"
+      data-entity-type="{{ selected_entity_type | default(value='') }}"
+      data-content-category="{{ selected_content_category | default(value='') }}">
+    </div>
+  </div>
+  {% include "knowledge/entity_list.html" %}
+  <h2 class="text-2xl font-bold mb-2 mt-2">Relationships</h2>
+  {% include "knowledge/relationship_table.html" %}
 {% endblock %}

@@ -1,17 +1,10 @@
-{% extends "body_base.html" %}
+{% extends "search/_layout.html" %}
 
-{% block title %}Minne - Search{% endblock %}
+{% block search_header %}
+  <h1 class="text-xl font-extrabold tracking-tight">Search</h1>
+  <div class="text-xs opacity-70">Find documents, entities, and snippets</div>
+{% endblock %}
 
-{% block main %}
-<div class="flex justify-center grow mt-2 sm:mt-4">
-  <div class="container">
-    <section class="mb-4">
-      <div class="nb-panel p-3 flex items-center justify-between">
-        <h1 class="text-xl font-extrabold tracking-tight">Search</h1>
-        <div class="text-xs opacity-70">Find documents, entities, and snippets</div>
-      </div>
-    </section>
-    {% include "search/response.html" %}
-  </div>
-</div>
+{% block search_results %}
+  {% include "search/response.html" %}
 {% endblock %}
