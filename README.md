@@ -2,7 +2,7 @@
 
 **A graph-powered personal knowledge base that makes storing easy.**
 
-Capture content effortlessly, let AI discover connections, and explore your knowledge visually. Self-hosted and privacy-focused.
+Capture content effortlessly, let AI discover connections, and explore your knowledge through search, chat and visually. Self-hosted and privacy-focused.
 
 [![Release Status](https://github.com/perstarkse/minne/actions/workflows/release.yml/badge.svg)](https://github.com/perstarkse/minne/actions/workflows/release.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
