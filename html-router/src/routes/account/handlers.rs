@@ -18,6 +18,7 @@ pub struct AccountPageData {
     user: User,
     timezones: Vec<String>,
     conversation_archive: Vec<Conversation>,
+    theme_options: Vec<String>,
 }
 
 pub async fn show_account_page(
@@ -28,6 +29,11 @@ pub async fn show_account_page(
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
+    let theme_options = vec![
+        "light".to_string(),
+        "dark".to_string(),
+        "system".to_string(),
+    ];
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -36,6 +42,7 @@ pub async fn show_account_page(
             user,
             timezones,
             conversation_archive,
+            theme_options,
         },
     ))
 }
@@ -65,6 +72,7 @@ pub async fn set_api_key(
             user: updated_user,
             timezones: vec![],
             conversation_archive: vec![],
+            theme_options: vec![],
         },
     ))
 }
@@ -118,6 +126,47 @@ pub async fn update_timezone(
             user: updated_user,
             timezones,
             conversation_archive: vec![],
+            theme_options: vec![],
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateThemeForm {
+    theme: String,
+}
+
+pub async fn update_theme(
+    State(state): State<HtmlState>,
+    RequireUser(user): RequireUser,
+    auth: AuthSessionType,
+    Form(form): Form<UpdateThemeForm>,
+) -> Result<impl IntoResponse, HtmlError> {
+    User::update_theme(&user.id, &form.theme, &state.db).await?;
+
+    // Clear the cache
+    auth.cache_clear_user(user.id.to_string());
+
+    // Update the user's theme
+    let updated_user = User {
+        theme: form.theme,
+        ..user.clone()
+    };
+
+    let theme_options = vec![
+        "light".to_string(),
+        "dark".to_string(),
+        "system".to_string(),
+    ];
+
+    Ok(TemplateResponse::new_partial(
+        "auth/account_settings.html",
+        "theme_section",
+        AccountPageData {
+            user: updated_user,
+            timezones: vec![],
+            conversation_archive: vec![],
+            theme_options,
         },
     ))
 }

@@ -8,5 +8,7 @@
   <label for="my-drawer" aria-label="open sidebar" class="hover:cursor-pointer lg:hidden">
     {% include "icons/hamburger_icon.html" %}
   </label>
+  {% if not is_authenticated %}
   {% include "theme_toggle.html" %}
+  {% endif %}
 {% endblock %}

@@ -16,6 +16,7 @@ where
         .route("/account", get(handlers::show_account_page))
         .route("/set-api-key", post(handlers::set_api_key))
         .route("/update-timezone", patch(handlers::update_timezone))
+        .route("/update-theme", patch(handlers::update_theme))
         .route(
             "/change-password",
             get(handlers::show_change_password).patch(handlers::change_password),

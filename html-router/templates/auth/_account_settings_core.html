@@ -55,6 +55,20 @@
     </select>
     {% endblock %}
   </label>
+
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Theme</div>
+    {% block theme_section %}
+    <select name="theme" class="nb-select w-full" hx-patch="/update-theme" hx-swap="outerHTML">
+      {% for option in theme_options %}
+      <option value="{{ option }}" {% if option==user.theme %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+    <script>
+      document.documentElement.setAttribute('data-theme-preference', '{{ user.theme }}');
+    </script>
+    {% endblock %}
+  </label>
 {% endblock %}
 
 {% block settings_right_column %}
