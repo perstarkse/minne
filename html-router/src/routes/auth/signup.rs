@@ -45,7 +45,15 @@ pub async fn process_signup_and_show_verification(
     auth: AuthSessionType,
     Form(form): Form<SignupParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user = match User::create_new(form.email, form.password, &state.db, form.timezone).await {
+    let user = match User::create_new(
+        form.email,
+        form.password,
+        &state.db,
+        form.timezone,
+        "system".to_string(),
+    )
+    .await
+    {
         Ok(user) => user,
         Err(e) => {
             tracing::error!("{:?}", e);

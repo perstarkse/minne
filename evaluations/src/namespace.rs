@@ -212,6 +212,7 @@ pub(crate) async fn ensure_eval_user(db: &SurrealDbClient) -> Result<User> {
         api_key: None,
         admin: false,
         timezone: "UTC".to_string(),
+        theme: "system".to_string(),
     };
 
     if let Some(existing) = db.get_item::<User>(user.get_id()).await? {

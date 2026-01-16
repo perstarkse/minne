@@ -34,7 +34,9 @@ stored_object!(
     api_key: Option<String>,
     admin: bool,
     #[serde(default)]
-    timezone: String
+    timezone: String,
+    #[serde(default)]
+    theme: String
 });
 
 #[async_trait]
@@ -68,6 +70,14 @@ fn validate_timezone(input: &str) -> String {
 
     tracing::warn!("Invalid timezone '{}' received, defaulting to UTC", input);
     "UTC".to_owned()
+}
+
+/// Ensures a theme string is valid, defaulting to "system" when invalid.
+fn validate_theme(input: &str) -> String {
+    match input {
+        "light" | "dark" | "system" => input.to_owned(),
+        _ => "system".to_owned(),
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -168,6 +178,7 @@ impl User {
         password: String,
         db: &SurrealDbClient,
         timezone: String,
+        theme: String,
     ) -> Result<Self, AppError> {
         // verify that the application allows new creations
         let systemsettings = SystemSettings::get_current(db).await?;
@@ -176,6 +187,7 @@ impl User {
         }
 
         let validated_tz = validate_timezone(&timezone);
+        let validated_theme = validate_theme(&theme);
         let now = Utc::now();
         let id = Uuid::new_v4().to_string();
 
@@ -190,7 +202,8 @@ impl User {
                 anonymous = false,
                 created_at = $created_at,
                 updated_at = $updated_at,
-                timezone = $timezone",
+                timezone = $timezone,
+                theme = $theme",
             )
             .bind(("table", "user"))
             .bind(("id", id))
@@ -199,6 +212,7 @@ impl User {
             .bind(("created_at", surrealdb::Datetime::from(now)))
             .bind(("updated_at", surrealdb::Datetime::from(now)))
             .bind(("timezone", validated_tz))
+            .bind(("theme", validated_theme))
             .await?
             .take(1)?;
 
@@ -468,6 +482,19 @@ impl User {
         Ok(())
     }
 
+    pub async fn update_theme(
+        user_id: &str,
+        theme: &str,
+        db: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        let validated_theme = validate_theme(theme);
+        db.query("UPDATE type::thing('user', $user_id) SET theme = $theme")
+            .bind(("user_id", user_id.to_string()))
+            .bind(("theme", validated_theme))
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_user_categories(
         user_id: &str,
         db: &SurrealDbClient,
@@ -674,6 +701,7 @@ mod tests {
             password.to_string(),
             &db,
             timezone.to_string(),
+            "system".to_string(),
         )
         .await
         .expect("Failed to create user");
@@ -711,6 +739,7 @@ mod tests {
             password.to_string(),
             &db,
             "UTC".to_string(),
+            "system".to_string(),
         )
         .await
         .expect("Failed to create user");
@@ -858,6 +887,7 @@ mod tests {
             password.to_string(),
             &db,
             "UTC".to_string(),
+            "system".to_string(),
         )
         .await
         .expect("Failed to create user");
@@ -892,6 +922,7 @@ mod tests {
             password.to_string(),
             &db,
             "UTC".to_string(),
+            "system".to_string(),
         )
         .await
         .expect("Failed to create user");
@@ -959,6 +990,7 @@ mod tests {
             old_password.to_string(),
             &db,
             "UTC".to_string(),
+            "system".to_string(),
         )
         .await
         .expect("Failed to create user");
@@ -1006,6 +1038,7 @@ mod tests {
             "password".to_string(),
             &db,
             "UTC".to_string(),
+            "system".to_string(),
         )
         .await
         .expect("Failed to create user");
@@ -1115,5 +1148,52 @@ mod tests {
                 "Results are not ordered by created_at descending"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_validate_theme() {
+        assert_eq!(validate_theme("light"), "light");
+        assert_eq!(validate_theme("dark"), "dark");
+        assert_eq!(validate_theme("system"), "system");
+        assert_eq!(validate_theme("invalid"), "system");
+    }
+
+    #[tokio::test]
+    async fn test_theme_update() {
+        let db = setup_test_db().await;
+        let email = "theme_test@example.com";
+        let user = User::create_new(
+            email.to_string(),
+            "password".to_string(),
+            &db,
+            "UTC".to_string(),
+            "system".to_string(),
+        )
+        .await
+        .expect("Failed to create user");
+
+        assert_eq!(user.theme, "system");
+
+        User::update_theme(&user.id, "dark", &db)
+            .await
+            .expect("update theme");
+
+        let updated = db
+            .get_item::<User>(&user.id)
+            .await
+            .expect("get user")
+            .unwrap();
+        assert_eq!(updated.theme, "dark");
+
+        // Invalid theme should default to system (but update_theme calls validate_theme)
+        User::update_theme(&user.id, "invalid", &db)
+            .await
+            .expect("update theme invalid");
+        let updated2 = db
+            .get_item::<User>(&user.id)
+            .await
+            .expect("get user")
+            .unwrap();
+        assert_eq!(updated2.theme, "system");
     }
 }

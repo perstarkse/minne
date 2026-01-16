@@ -1,6 +1,7 @@
 use axum::{
-    extract::State,
+    extract::{Request, State},
     http::{HeaderName, StatusCode},
+    middleware::Next,
     response::{Html, IntoResponse, Redirect, Response},
     Extension,
 };
@@ -10,6 +11,8 @@ use minijinja::{context, Value};
 use serde::Serialize;
 use serde_json::json;
 use tracing::error;
+
+use crate::AuthSessionType;
 
 #[derive(Clone)]
 pub enum TemplateKind {
@@ -98,14 +101,40 @@ impl IntoResponse for TemplateResponse {
     }
 }
 
+#[derive(Serialize)]
+struct ContextWrapper<'a> {
+    user_theme: &'a str,
+    initial_theme: &'a str,
+    is_authenticated: bool,
+    #[serde(flatten)]
+    context: &'a Value,
+}
+
 pub async fn with_template_response<S>(
     State(state): State<S>,
     HxRequest(is_htmx): HxRequest,
-    response: Response<axum::body::Body>,
-) -> Response<axum::body::Body>
+    req: Request,
+    next: Next,
+) -> Response
 where
     S: ProvidesTemplateEngine + Clone + Send + Sync + 'static,
 {
+    // Determine theme context
+    let (user_theme, initial_theme, is_authenticated) =
+        if let Some(auth) = req.extensions().get::<AuthSessionType>() {
+            if let Some(user) = &auth.current_user {
+                let theme = user.theme.as_str();
+                let initial = if theme == "dark" { "dark" } else { "light" };
+                (theme.to_string(), initial.to_string(), true)
+            } else {
+                ("system".to_string(), "light".to_string(), false)
+            }
+        } else {
+            ("system".to_string(), "light".to_string(), false)
+        };
+
+    let response = next.run(req).await;
+
     // Headers to forward from the original response
     const HTMX_HEADERS_TO_FORWARD: &[&str] = &["HX-Push", "HX-Trigger", "HX-Redirect"];
 
@@ -123,9 +152,16 @@ where
             }
         }
 
+        let context = ContextWrapper {
+            user_theme: &user_theme,
+            initial_theme: &initial_theme,
+            is_authenticated,
+            context: &template_response.context,
+        };
+
         match &template_response.template_kind {
             TemplateKind::Full(name) => {
-                match template_engine.render(name, &template_response.context) {
+                match template_engine.render(name, &Value::from_serialize(&context)) {
                     Ok(html) => {
                         let mut final_response = Html(html).into_response();
                         forward_headers(response.headers(), final_response.headers_mut());
@@ -138,7 +174,11 @@ where
                 }
             }
             TemplateKind::Partial(template, block) => {
-                match template_engine.render_block(template, block, &template_response.context) {
+                match template_engine.render_block(
+                    template,
+                    block,
+                    &Value::from_serialize(&context),
+                ) {
                     Ok(html) => {
                         let mut final_response = Html(html).into_response();
                         forward_headers(response.headers(), final_response.headers_mut());
@@ -169,12 +209,15 @@ where
                     let trigger_payload = json!({"toast": {"title": title, "description": description, "type": "error"}});
                     let trigger_value = serde_json::to_string(&trigger_payload).unwrap_or_else(|e| {
                         error!("Failed to serialize HX-Trigger payload: {}", e);
-                        r#"{"toast":{"title":"Error","description":"An unexpected error occurred.", "type":"error"}}"#.to_string()
+                        r#"{"toast":{"title":"Error","description":"An unexpected error occurred.", "type":"error"}}"#
+                            .to_string()
                     });
                     (StatusCode::NO_CONTENT, [(HX_TRIGGER, trigger_value)], "").into_response()
                 } else {
                     // Non-HTMX request: Render the full errors/error.html page
-                    match template_engine.render("errors/error.html", &template_response.context) {
+                    match template_engine
+                        .render("errors/error.html", &Value::from_serialize(&context))
+                    {
                         Ok(html) => (*status, Html(html)).into_response(),
                         Err(e) => {
                             error!("Critical: Failed to render 'errors/error.html': {:?}", e);

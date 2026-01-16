@@ -1,8 +1,4 @@
-use axum::{
-    extract::FromRef,
-    middleware::{from_fn_with_state, map_response_with_state},
-    Router,
-};
+use axum::{extract::FromRef, middleware::from_fn_with_state, Router};
 use axum_session::SessionLayer;
 use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_surreal::SessionSurrealPool;
@@ -181,7 +177,7 @@ where
             self.app_state.clone(),
             analytics_middleware::<HtmlState>,
         ));
-        router = router.layer(map_response_with_state(
+        router = router.layer(from_fn_with_state(
             self.app_state.clone(),
             with_template_response::<HtmlState>,
         ));
