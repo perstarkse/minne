@@ -20,11 +20,16 @@ pub enum EmbeddingBackend {
 pub enum StorageKind {
     Local,
     Memory,
+    S3,
 }
 
 /// Default storage backend when none is configured.
 fn default_storage_kind() -> StorageKind {
     StorageKind::Local
+}
+
+fn default_s3_region() -> Option<String> {
+    Some("us-east-1".to_string())
 }
 
 /// Selects the strategy used for PDF ingestion.
@@ -59,6 +64,12 @@ pub struct AppConfig {
     pub openai_base_url: String,
     #[serde(default = "default_storage_kind")]
     pub storage: StorageKind,
+    #[serde(default)]
+    pub s3_bucket: Option<String>,
+    #[serde(default)]
+    pub s3_endpoint: Option<String>,
+    #[serde(default = "default_s3_region")]
+    pub s3_region: Option<String>,
     #[serde(default = "default_pdf_ingest_mode")]
     pub pdf_ingest_mode: PdfIngestMode,
     #[serde(default = "default_reranking_enabled")]
@@ -135,6 +146,9 @@ impl Default for AppConfig {
             http_port: 0,
             openai_base_url: default_base_url(),
             storage: default_storage_kind(),
+            s3_bucket: None,
+            s3_endpoint: None,
+            s3_region: default_s3_region(),
             pdf_ingest_mode: default_pdf_ingest_mode(),
             reranking_enabled: default_reranking_enabled(),
             reranking_pool_size: None,

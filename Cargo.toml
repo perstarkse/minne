@@ -56,7 +56,7 @@ url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4", "serde"] }
 tokio-retry = "0.3.0"
 base64 = "0.22.1"
-object_store = { version = "0.11.2" }
+object_store = { version = "0.11.2", features = ["aws"] }
 bytes = "1.7.1"
 state-machines = "0.2.0"
 fastembed = { version = "5.2.0", default-features = false, features = ["hf-hub-native-tls", "ort-load-dynamic"] }
