@@ -22,13 +22,25 @@ Minne can be configured via environment variables or a `config.yaml` file. Envir
 | `DATA_DIR` | Local data directory | `./data` |
 | `OPENAI_BASE_URL` | Custom AI provider URL | OpenAI default |
 | `RUST_LOG` | Logging level | `info` |
-| `STORAGE` | Storage backend (`local`, `memory`) | `local` |
+| `STORAGE` | Storage backend (`local`, `memory`, `s3`) | `local` |
 | `PDF_INGEST_MODE` | PDF ingestion strategy (`classic`, `llm-first`) | `llm-first` |
 | `RETRIEVAL_STRATEGY` | Default retrieval strategy | - |
 | `EMBEDDING_BACKEND` | Embedding provider (`openai`, `fastembed`) | `fastembed` |
 | `FASTEMBED_CACHE_DIR` | Model cache directory | `<data_dir>/fastembed` |
 | `FASTEMBED_SHOW_DOWNLOAD_PROGRESS` | Show progress bar for model downloads | `false` |
 | `FASTEMBED_MAX_LENGTH` | Max sequence length for FastEmbed models | - |
+
+### S3 Storage (Optional)
+
+Used when `STORAGE` is set to `s3`.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `S3_BUCKET` | S3 bucket name | - |
+| `S3_ENDPOINT` | Custom endpoint (e.g. MinIO) | AWS default |
+| `S3_REGION` | AWS Region | `us-east-1` |
+| `AWS_ACCESS_KEY_ID` | Access key | - |
+| `AWS_SECRET_ACCESS_KEY` | Secret key | - |
 
 ### Reranking (Optional)
 
@@ -54,6 +66,10 @@ http_port: 3000
 
 # New settings
 storage: "local"
+# storage: "s3"
+# s3_bucket: "my-bucket"
+# s3_endpoint: "http://localhost:9000" # Optional, for MinIO etc.
+# s3_region: "us-east-1"
 pdf_ingest_mode: "llm-first"
 embedding_backend: "fastembed"
 
