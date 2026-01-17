@@ -102,44 +102,19 @@ impl TextChunkEmbedding {
 
     /// Delete all embeddings that belong to chunks with a given `source_id`
     ///
-    /// This uses a subquery to the `text_chunk` table:
-    ///
-    /// DELETE FROM text_chunk_embedding
-    /// WHERE chunk_id IN (SELECT id FROM text_chunk WHERE source_id = $source_id)
+    /// This uses the denormalized `source_id` on the embedding table.
     pub async fn delete_by_source_id(
         source_id: &str,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        #[allow(clippy::missing_docs_in_private_items)]
-        #[derive(Deserialize)]
-        struct IdRow {
-            id: RecordId,
-        }
-        let ids_query = format!(
-            "SELECT id FROM {} WHERE source_id = $source_id",
-            TextChunk::table_name()
-        );
-        let mut res = db
-            .client
-            .query(ids_query)
-            .bind(("source_id", source_id.to_owned()))
-            .await
-            .map_err(AppError::Database)?;
-        let ids: Vec<IdRow> = res.take(0).map_err(AppError::Database)?;
-
-        if ids.is_empty() {
-            return Ok(());
-        }
-        let delete_query = format!(
-            "DELETE FROM {} WHERE chunk_id IN $chunk_ids",
+        let query = format!(
+            "DELETE FROM {} WHERE source_id = $source_id",
             Self::table_name()
         );
+
         db.client
-            .query(delete_query)
-            .bind((
-                "chunk_ids",
-                ids.into_iter().map(|row| row.id).collect::<Vec<_>>(),
-            ))
+            .query(query)
+            .bind(("source_id", source_id.to_owned()))
             .await
             .map_err(AppError::Database)?
             .check()

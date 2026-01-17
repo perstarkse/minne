@@ -44,6 +44,9 @@ impl TextChunk {
         source_id: &str,
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
+        // Delete embeddings first
+        TextChunkEmbedding::delete_by_source_id(source_id, db_client).await?;
+
         let query = format!(
             "DELETE {} WHERE source_id = '{}'",
             Self::table_name(),
@@ -102,7 +105,7 @@ impl TextChunk {
         #[allow(clippy::missing_docs_in_private_items)]
         #[derive(Deserialize)]
         struct Row {
-            chunk_id: TextChunk,
+            chunk_id: Option<TextChunk>,
             score: f32,
         }
 
@@ -134,9 +137,11 @@ impl TextChunk {
 
         Ok(rows
             .into_iter()
-            .map(|r| TextChunkSearchResult {
-                chunk: r.chunk_id,
-                score: r.score,
+            .filter_map(|r| {
+                r.chunk_id.map(|chunk| TextChunkSearchResult {
+                    chunk,
+                    score: r.score,
+                })
             })
             .collect())
     }

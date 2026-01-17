@@ -120,79 +120,80 @@ where
     }
 
     pub fn build(self) -> Router<S> {
-        // Start with an empty router
-        let mut public_router = Router::new();
+        // Build the "App" router (Pages, API interactions, etc.)
+        let mut app_router = Router::new();
 
-        // Merge all public routers
+        // Merge all public routers (pages)
         for router in self.public_routers {
-            public_router = public_router.merge(router);
+            app_router = app_router.merge(router);
         }
 
         // Add nested public routes
         for (path, router) in self.nested_routes {
-            public_router = public_router.nest(&path, router);
+            app_router = app_router.nest(&path, router);
         }
 
-        // Add public assets to public router
-        if let Some(assets_config) = self.public_assets_config {
-            // Call the macro using the stored relative directory path
-            let asset_service = create_asset_service!(&assets_config.directory);
-            // Nest the resulting service under the stored URL path
-            public_router = public_router.nest_service(&assets_config.path, asset_service);
-        }
-
-        // Start with an empty protected router
+        // Build protected router logic...
         let mut protected_router = Router::new();
-
-        // Check if there are any protected routers
         let has_protected_routes =
             !self.protected_routers.is_empty() || !self.nested_protected_routes.is_empty();
 
-        // Merge root-level protected routers
         for router in self.protected_routers {
             protected_router = protected_router.merge(router);
         }
 
-        // Nest protected routers
         for (path, router) in self.nested_protected_routes {
             protected_router = protected_router.nest(&path, router);
         }
 
-        // Apply auth middleware
         if has_protected_routes {
             protected_router = protected_router
                 .route_layer(from_fn_with_state(self.app_state.clone(), require_auth));
         }
 
-        // Combine public and protected routes
-        let mut router = Router::new().merge(public_router).merge(protected_router);
+        // Combine public and protected routes into the App router
+        app_router = app_router.merge(protected_router);
 
-        // Apply custom middleware in order they were added
+        // Apply custom middleware to the App router
         for middleware_fn in self.custom_middleware {
-            router = middleware_fn(router);
+            app_router = middleware_fn(app_router);
         }
 
-        // Apply common middleware
-        router = router.layer(from_fn_with_state(
+        // Apply App-specific Middleware (Analytics, Template, Auth, Session)
+        app_router = app_router.layer(from_fn_with_state(
             self.app_state.clone(),
             analytics_middleware::<HtmlState>,
         ));
-        router = router.layer(from_fn_with_state(
+        app_router = app_router.layer(from_fn_with_state(
             self.app_state.clone(),
             with_template_response::<HtmlState>,
         ));
-        router = router.layer(
+        app_router = app_router.layer(
             AuthSessionLayer::<User, String, SessionSurrealPool<Any>, Surreal<Any>>::new(Some(
                 self.app_state.db.client.clone(),
             ))
             .with_config(AuthConfig::<String>::default()),
         );
-        router = router.layer(SessionLayer::new((*self.app_state.session_store).clone()));
+        app_router = app_router.layer(SessionLayer::new((*self.app_state.session_store).clone()));
 
-        if self.compression_enabled {
-            router = router.layer(compression_layer());
+        // Build the Final router, starting with assets (bypassing app middleware)
+        let mut final_router = Router::new();
+
+        if let Some(assets_config) = self.public_assets_config {
+            // Call the macro using the stored relative directory path
+            let asset_service = create_asset_service!(&assets_config.directory);
+            // Nest the resulting service under the stored URL path
+            final_router = final_router.nest_service(&assets_config.path, asset_service);
         }
 
-        router
+        // Merge the App router
+        final_router = final_router.merge(app_router);
+
+        // Apply Global Middleware (Compression)
+        if self.compression_enabled {
+            final_router = final_router.layer(compression_layer());
+        }
+
+        final_router
     }
 }
