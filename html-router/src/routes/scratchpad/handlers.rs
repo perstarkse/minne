@@ -14,16 +14,13 @@ use crate::middlewares::{
     response_middleware::{HtmlError, TemplateResponse},
 };
 use common::storage::types::{
-    conversation::Conversation, ingestion_payload::IngestionPayload, ingestion_task::IngestionTask,
-    scratchpad::Scratchpad, user::User,
+    ingestion_payload::IngestionPayload, ingestion_task::IngestionTask, scratchpad::Scratchpad,
 };
 
 #[derive(Serialize)]
 pub struct ScratchpadPageData {
-    user: User,
     scratchpads: Vec<ScratchpadListItem>,
     archived_scratchpads: Vec<ScratchpadArchiveItem>,
-    conversation_archive: Vec<Conversation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     new_scratchpad: Option<ScratchpadDetail>,
 }
@@ -38,9 +35,7 @@ pub struct ScratchpadListItem {
 
 #[derive(Serialize)]
 pub struct ScratchpadDetailData {
-    user: User,
     scratchpad: ScratchpadDetail,
-    conversation_archive: Vec<Conversation>,
     is_editing_title: bool,
 }
 
@@ -135,7 +130,6 @@ pub async fn show_scratchpad_page(
 ) -> Result<impl IntoResponse, HtmlError> {
     let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
     let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     let scratchpad_list: Vec<ScratchpadListItem> =
         scratchpads.iter().map(ScratchpadListItem::from).collect();
@@ -149,10 +143,8 @@ pub async fn show_scratchpad_page(
             "scratchpad/base.html",
             "main",
             ScratchpadPageData {
-                user,
                 scratchpads: scratchpad_list,
                 archived_scratchpads: archived_list,
-                conversation_archive,
                 new_scratchpad: None,
             },
         ))
@@ -160,10 +152,8 @@ pub async fn show_scratchpad_page(
         Ok(TemplateResponse::new_template(
             "scratchpad/base.html",
             ScratchpadPageData {
-                user,
                 scratchpads: scratchpad_list,
                 archived_scratchpads: archived_list,
-                conversation_archive,
                 new_scratchpad: None,
             },
         ))
@@ -177,7 +167,6 @@ pub async fn show_scratchpad_modal(
     Query(query): Query<EditTitleQuery>,
 ) -> Result<impl IntoResponse, HtmlError> {
     let scratchpad = Scratchpad::get_by_id(&scratchpad_id, &user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     let scratchpad_detail = ScratchpadDetail::from(&scratchpad);
 
@@ -187,9 +176,7 @@ pub async fn show_scratchpad_modal(
     Ok(TemplateResponse::new_template(
         "scratchpad/editor_modal.html",
         ScratchpadDetailData {
-            user,
             scratchpad: scratchpad_detail,
-            conversation_archive,
             is_editing_title,
         },
     ))
@@ -206,7 +193,6 @@ pub async fn create_scratchpad(
 
     let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
     let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     let scratchpad_list: Vec<ScratchpadListItem> =
         scratchpads.iter().map(ScratchpadListItem::from).collect();
@@ -219,10 +205,8 @@ pub async fn create_scratchpad(
         "scratchpad/base.html",
         "main",
         ScratchpadPageData {
-            user,
             scratchpads: scratchpad_list,
             archived_scratchpads: archived_list,
-            conversation_archive,
             new_scratchpad: Some(ScratchpadDetail::from(&scratchpad)),
         },
     ))
@@ -257,14 +241,11 @@ pub async fn update_scratchpad_title(
     Scratchpad::update_title(&scratchpad_id, &user.id, &form.title, &state.db).await?;
 
     let scratchpad = Scratchpad::get_by_id(&scratchpad_id, &user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "scratchpad/editor_modal.html",
         ScratchpadDetailData {
-            user,
             scratchpad: ScratchpadDetail::from(&scratchpad),
-            conversation_archive,
             is_editing_title: false,
         },
     ))
@@ -279,7 +260,6 @@ pub async fn delete_scratchpad(
 
     // Return the updated main section content
     let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
     let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
 
     let scratchpad_list: Vec<ScratchpadListItem> =
@@ -293,10 +273,8 @@ pub async fn delete_scratchpad(
         "scratchpad/base.html",
         "main",
         ScratchpadPageData {
-            user,
             scratchpads: scratchpad_list,
             archived_scratchpads: archived_list,
-            conversation_archive,
             new_scratchpad: None,
         },
     ))
@@ -350,7 +328,6 @@ pub async fn ingest_scratchpad(
 
     let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
     let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     let scratchpad_list: Vec<ScratchpadListItem> =
         scratchpads.iter().map(ScratchpadListItem::from).collect();
@@ -374,10 +351,8 @@ pub async fn ingest_scratchpad(
         "scratchpad/base.html",
         "main",
         ScratchpadPageData {
-            user,
             scratchpads: scratchpad_list,
             archived_scratchpads: archived_list,
-            conversation_archive,
             new_scratchpad: None,
         },
     );
@@ -399,7 +374,6 @@ pub async fn archive_scratchpad(
 
     let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
     let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     let scratchpad_list: Vec<ScratchpadListItem> =
         scratchpads.iter().map(ScratchpadListItem::from).collect();
@@ -411,13 +385,57 @@ pub async fn archive_scratchpad(
     Ok(TemplateResponse::new_template(
         "scratchpad/base.html",
         ScratchpadPageData {
-            user,
             scratchpads: scratchpad_list,
             archived_scratchpads: archived_list,
-            conversation_archive,
             new_scratchpad: None,
         },
     ))
+}
+
+pub async fn restore_scratchpad(
+    RequireUser(user): RequireUser,
+    State(state): State<HtmlState>,
+    Path(scratchpad_id): Path<String>,
+) -> Result<impl IntoResponse, HtmlError> {
+    Scratchpad::restore(&scratchpad_id, &user.id, &state.db).await?;
+
+    let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
+    let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
+
+    let scratchpad_list: Vec<ScratchpadListItem> =
+        scratchpads.iter().map(ScratchpadListItem::from).collect();
+    let archived_list: Vec<ScratchpadArchiveItem> = archived_scratchpads
+        .iter()
+        .map(ScratchpadArchiveItem::from)
+        .collect();
+
+    let trigger_payload = serde_json::json!({
+        "toast": {
+            "title": "Scratchpad restored",
+            "description": "The scratchpad is back in your active list.",
+            "type": "info"
+        }
+    });
+    let trigger_value = serde_json::to_string(&trigger_payload).unwrap_or_else(|_| {
+        r#"{"toast":{"title":"Scratchpad restored","description":"The scratchpad is back in your active list.","type":"info"}}"#.to_string()
+    });
+
+    let template_response = TemplateResponse::new_partial(
+        "scratchpad/base.html",
+        "main",
+        ScratchpadPageData {
+            scratchpads: scratchpad_list,
+            archived_scratchpads: archived_list,
+            new_scratchpad: None,
+        },
+    );
+
+    let mut response = template_response.into_response();
+    if let Ok(header_value) = HeaderValue::from_str(&trigger_value) {
+        response.headers_mut().insert(HX_TRIGGER, header_value);
+    }
+
+    Ok(response)
 }
 
 #[cfg(test)]
@@ -508,53 +526,4 @@ mod tests {
         assert_eq!(archive_item.archived_at, None);
         assert_eq!(archive_item.ingested_at, None);
     }
-}
-
-pub async fn restore_scratchpad(
-    RequireUser(user): RequireUser,
-    State(state): State<HtmlState>,
-    Path(scratchpad_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
-    Scratchpad::restore(&scratchpad_id, &user.id, &state.db).await?;
-
-    let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
-    let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
-
-    let scratchpad_list: Vec<ScratchpadListItem> =
-        scratchpads.iter().map(ScratchpadListItem::from).collect();
-    let archived_list: Vec<ScratchpadArchiveItem> = archived_scratchpads
-        .iter()
-        .map(ScratchpadArchiveItem::from)
-        .collect();
-
-    let trigger_payload = serde_json::json!({
-        "toast": {
-            "title": "Scratchpad restored",
-            "description": "The scratchpad is back in your active list.",
-            "type": "info"
-        }
-    });
-    let trigger_value = serde_json::to_string(&trigger_payload).unwrap_or_else(|_| {
-        r#"{"toast":{"title":"Scratchpad restored","description":"The scratchpad is back in your active list.","type":"info"}}"#.to_string()
-    });
-
-    let template_response = TemplateResponse::new_partial(
-        "scratchpad/base.html",
-        "main",
-        ScratchpadPageData {
-            user,
-            scratchpads: scratchpad_list,
-            archived_scratchpads: archived_list,
-            conversation_archive,
-            new_scratchpad: None,
-        },
-    );
-
-    let mut response = template_response.into_response();
-    if let Ok(header_value) = HeaderValue::from_str(&trigger_value) {
-        response.headers_mut().insert(HX_TRIGGER, header_value);
-    }
-
-    Ok(response)
 }

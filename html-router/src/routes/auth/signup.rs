@@ -6,7 +6,7 @@ use axum::{
 use axum_htmx::HxBoosted;
 use serde::{Deserialize, Serialize};
 
-use common::storage::types::user::User;
+use common::storage::types::user::{Theme, User};
 
 use crate::{
     html_state::HtmlState,
@@ -50,7 +50,7 @@ pub async fn process_signup_and_show_verification(
         form.password,
         &state.db,
         form.timezone,
-        "system".to_string(),
+        Theme::System.as_str().to_string(),
     )
     .await
     {

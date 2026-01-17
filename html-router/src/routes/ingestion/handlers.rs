@@ -120,13 +120,12 @@ pub async fn process_ingress_form(
 
     #[derive(Serialize)]
     struct NewTasksData {
-        user: User,
         tasks: Vec<IngestionTask>,
     }
 
     Ok(TemplateResponse::new_template(
         "dashboard/current_task.html",
-        NewTasksData { user, tasks },
+        NewTasksData { tasks },
     ))
 }
 

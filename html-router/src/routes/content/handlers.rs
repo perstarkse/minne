@@ -7,8 +7,8 @@ use axum_htmx::{HxBoosted, HxRequest, HxTarget};
 use serde::{Deserialize, Serialize};
 
 use common::storage::types::{
-    conversation::Conversation, file_info::FileInfo, knowledge_entity::KnowledgeEntity,
-    text_chunk::TextChunk, text_content::TextContent, user::User,
+    file_info::FileInfo, knowledge_entity::KnowledgeEntity, text_chunk::TextChunk,
+    text_content::TextContent, user::User,
 };
 
 use crate::{
@@ -26,18 +26,15 @@ const CONTENTS_PER_PAGE: usize = 12;
 
 #[derive(Serialize)]
 pub struct ContentPageData {
-    user: User,
     text_contents: Vec<TextContent>,
     categories: Vec<String>,
     selected_category: Option<String>,
-    conversation_archive: Vec<Conversation>,
     pagination: Pagination,
     page_query: String,
 }
 
 #[derive(Serialize)]
 pub struct RecentTextContentData {
-    pub user: User,
     pub text_contents: Vec<TextContent>,
 }
 
@@ -81,13 +78,10 @@ pub async fn show_content_page(
         })
         .unwrap_or_default();
 
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
     let data = ContentPageData {
-        user,
         text_contents,
         categories,
         selected_category: params.category.clone(),
-        conversation_archive,
         pagination,
         page_query,
     };
@@ -112,13 +106,12 @@ pub async fn show_text_content_edit_form(
 
     #[derive(Serialize)]
     pub struct TextContentEditModal {
-        pub user: User,
         pub text_content: TextContent,
     }
 
     Ok(TemplateResponse::new_template(
         "content/edit_text_content_modal.html",
-        TextContentEditModal { user, text_content },
+        TextContentEditModal { text_content },
     ))
 }
 
@@ -145,10 +138,7 @@ pub async fn patch_text_content(
 
         return Ok(TemplateResponse::new_template(
             "dashboard/recent_content.html",
-            RecentTextContentData {
-                user,
-                text_contents,
-            },
+            RecentTextContentData { text_contents },
         ));
     }
 
@@ -159,17 +149,14 @@ pub async fn patch_text_content(
     );
     let text_contents = truncate_text_contents(page_contents);
     let categories = User::get_user_categories(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_partial(
         "content/base.html",
         "main",
         ContentPageData {
-            user,
             text_contents,
             categories,
             selected_category: None,
-            conversation_archive,
             pagination,
             page_query: String::new(),
         },
@@ -209,16 +196,13 @@ pub async fn delete_text_content(
     );
     let text_contents = truncate_text_contents(page_contents);
     let categories = User::get_user_categories(&user.id, &state.db).await?;
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "content/content_list.html",
         ContentPageData {
-            user,
             text_contents,
             categories,
             selected_category: None,
-            conversation_archive,
             pagination,
             page_query: String::new(),
         },
@@ -234,13 +218,12 @@ pub async fn show_content_read_modal(
     let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
     #[derive(Serialize)]
     pub struct TextContentReadModalData {
-        pub user: User,
         pub text_content: TextContent,
     }
 
     Ok(TemplateResponse::new_template(
         "content/read_content_modal.html",
-        TextContentReadModalData { user, text_content },
+        TextContentReadModalData { text_content },
     ))
 }
 
@@ -253,9 +236,6 @@ pub async fn show_recent_content(
 
     Ok(TemplateResponse::new_template(
         "dashboard/recent_content.html",
-        RecentTextContentData {
-            user,
-            text_contents,
-        },
+        RecentTextContentData { text_contents },
     ))
 }

@@ -45,10 +45,8 @@ where
 
 #[derive(Serialize)]
 pub struct ChatPageData {
-    user: User,
     history: Vec<Message>,
     conversation: Option<Conversation>,
-    conversation_archive: Vec<Conversation>,
 }
 
 pub async fn show_initialized_chat(
@@ -76,16 +74,12 @@ pub async fn show_initialized_chat(
     state.db.store_item(ai_message.clone()).await?;
     state.db.store_item(user_message.clone()).await?;
 
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
-
     let messages = vec![user_message, ai_message];
 
     let mut response = TemplateResponse::new_template(
         "chat/base.html",
         ChatPageData {
             history: messages,
-            user,
-            conversation_archive,
             conversation: Some(conversation.clone()),
         },
     )
@@ -100,17 +94,13 @@ pub async fn show_initialized_chat(
 }
 
 pub async fn show_chat_base(
-    State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
+    State(_state): State<HtmlState>,
+    RequireUser(_user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
-
     Ok(TemplateResponse::new_template(
         "chat/base.html",
         ChatPageData {
             history: vec![],
-            user,
-            conversation_archive,
             conversation: None,
         },
     ))
@@ -126,8 +116,6 @@ pub async fn show_existing_chat(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
-
     let (conversation, messages) =
         Conversation::get_complete_conversation(conversation_id.as_str(), &user.id, &state.db)
             .await?;
@@ -136,9 +124,7 @@ pub async fn show_existing_chat(
         "chat/base.html",
         ChatPageData {
             history: messages,
-            user,
             conversation: Some(conversation),
-            conversation_archive,
         },
     ))
 }
@@ -232,8 +218,6 @@ pub struct PatchConversationTitle {
 
 #[derive(Serialize)]
 pub struct DrawerContext {
-    user: User,
-    conversation_archive: Vec<Conversation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     edit_conversation_id: Option<String>,
 }
@@ -242,20 +226,19 @@ pub async fn show_conversation_editing_title(
     RequireUser(user): RequireUser,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
+    let conversation: Conversation = state
+        .db
+        .get_item(&conversation_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
 
-    let owns = conversation_archive
-        .iter()
-        .any(|c| c.id == conversation_id && c.user_id == user.id);
-    if !owns {
+    if conversation.user_id != user.id {
         return Ok(TemplateResponse::unauthorized().into_response());
     }
 
     Ok(TemplateResponse::new_template(
         "sidebar.html",
         DrawerContext {
-            user,
-            conversation_archive,
             edit_conversation_id: Some(conversation_id),
         },
     )
@@ -270,13 +253,9 @@ pub async fn patch_conversation_title(
 ) -> Result<impl IntoResponse, HtmlError> {
     Conversation::patch_title(&conversation_id, &user.id, &form.title, &state.db).await?;
 
-    let updated_conversations = User::get_user_conversations(&user.id, &state.db).await?;
-
     Ok(TemplateResponse::new_template(
         "sidebar.html",
         DrawerContext {
-            user,
-            conversation_archive: updated_conversations,
             edit_conversation_id: None,
         },
     )
@@ -303,29 +282,21 @@ pub async fn delete_conversation(
         .delete_item::<Conversation>(&conversation_id)
         .await?;
 
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
-
     Ok(TemplateResponse::new_template(
         "sidebar.html",
         DrawerContext {
-            user,
-            conversation_archive,
             edit_conversation_id: None,
         },
     )
     .into_response())
 }
 pub async fn reload_sidebar(
-    State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
+    State(_state): State<HtmlState>,
+    RequireUser(_user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
-
     Ok(TemplateResponse::new_template(
         "sidebar.html",
         DrawerContext {
-            user,
-            conversation_archive,
             edit_conversation_id: None,
         },
     )

@@ -25,6 +25,56 @@ pub struct CategoryResponse {
     category: String,
 }
 
+use std::str::FromStr;
+
+/// Supported UI themes.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum Theme {
+    Light,
+    Dark,
+    WarmPaper,
+    ObsidianPrism,
+    #[default]
+    System,
+}
+
+impl FromStr for Theme {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "light" => Ok(Self::Light),
+            "dark" => Ok(Self::Dark),
+            "warm-paper" => Ok(Self::WarmPaper),
+            "obsidian-prism" => Ok(Self::ObsidianPrism),
+            "system" => Ok(Self::System),
+            _ => Err(()),
+        }
+    }
+}
+
+impl Theme {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+            Self::WarmPaper => "warm-paper",
+            Self::ObsidianPrism => "obsidian-prism",
+            Self::System => "system",
+        }
+    }
+
+    /// Returns the theme that should be initially applied.
+    /// For "system", defaults to "light".
+    pub fn initial_theme(&self) -> &'static str {
+        match self {
+            Self::System => "light",
+            other => other.as_str(),
+        }
+    }
+}
+
 stored_object!(
     #[allow(clippy::unsafe_derive_deserialize)]
     User, "user", {
@@ -36,7 +86,7 @@ stored_object!(
     #[serde(default)]
     timezone: String,
     #[serde(default)]
-    theme: String
+    theme: Theme
 });
 
 #[async_trait]
@@ -73,11 +123,8 @@ fn validate_timezone(input: &str) -> String {
 }
 
 /// Ensures a theme string is valid, defaulting to "system" when invalid.
-fn validate_theme(input: &str) -> String {
-    match input {
-        "light" | "dark" | "system" => input.to_owned(),
-        _ => "system".to_owned(),
-    }
+fn validate_theme(input: &str) -> Theme {
+    Theme::from_str(input).unwrap_or_default()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -212,7 +259,7 @@ impl User {
             .bind(("created_at", surrealdb::Datetime::from(now)))
             .bind(("updated_at", surrealdb::Datetime::from(now)))
             .bind(("timezone", validated_tz))
-            .bind(("theme", validated_theme))
+            .bind(("theme", validated_theme.as_str()))
             .await?
             .take(1)?;
 
@@ -490,7 +537,7 @@ impl User {
         let validated_theme = validate_theme(theme);
         db.query("UPDATE type::thing('user', $user_id) SET theme = $theme")
             .bind(("user_id", user_id.to_string()))
-            .bind(("theme", validated_theme))
+            .bind(("theme", validated_theme.as_str()))
             .await?;
         Ok(())
     }
@@ -1152,10 +1199,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_theme() {
-        assert_eq!(validate_theme("light"), "light");
-        assert_eq!(validate_theme("dark"), "dark");
-        assert_eq!(validate_theme("system"), "system");
-        assert_eq!(validate_theme("invalid"), "system");
+        assert_eq!(validate_theme("light"), Theme::Light);
+        assert_eq!(validate_theme("dark"), Theme::Dark);
+        assert_eq!(validate_theme("system"), Theme::System);
+        assert_eq!(validate_theme("invalid"), Theme::System);
     }
 
     #[tokio::test]
@@ -1172,7 +1219,7 @@ mod tests {
         .await
         .expect("Failed to create user");
 
-        assert_eq!(user.theme, "system");
+        assert_eq!(user.theme, Theme::System);
 
         User::update_theme(&user.id, "dark", &db)
             .await
@@ -1183,7 +1230,7 @@ mod tests {
             .await
             .expect("get user")
             .unwrap();
-        assert_eq!(updated.theme, "dark");
+        assert_eq!(updated.theme, Theme::Dark);
 
         // Invalid theme should default to system (but update_theme calls validate_theme)
         User::update_theme(&user.id, "invalid", &db)
@@ -1194,6 +1241,6 @@ mod tests {
             .await
             .expect("get user")
             .unwrap();
-        assert_eq!(updated2.theme, "system");
+        assert_eq!(updated2.theme, Theme::System);
     }
 }

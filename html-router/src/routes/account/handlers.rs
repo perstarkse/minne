@@ -9,40 +9,36 @@ use crate::{
     },
     AuthSessionType,
 };
-use common::storage::types::{conversation::Conversation, user::User};
+use common::storage::types::user::{Theme, User};
 
 use crate::html_state::HtmlState;
 
 #[derive(Serialize)]
 pub struct AccountPageData {
-    user: User,
     timezones: Vec<String>,
-    conversation_archive: Vec<Conversation>,
     theme_options: Vec<String>,
 }
 
 pub async fn show_account_page(
-    RequireUser(user): RequireUser,
-    State(state): State<HtmlState>,
+    RequireUser(_user): RequireUser,
+    State(_state): State<HtmlState>,
 ) -> Result<impl IntoResponse, HtmlError> {
     let timezones = TZ_VARIANTS
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
     let theme_options = vec![
-        "light".to_string(),
-        "dark".to_string(),
-        "obsidian-prism".to_string(),
-        "system".to_string(),
+        Theme::Light.as_str().to_string(),
+        Theme::Dark.as_str().to_string(),
+        Theme::WarmPaper.as_str().to_string(),
+        Theme::ObsidianPrism.as_str().to_string(),
+        Theme::System.as_str().to_string(),
     ];
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "auth/account_settings.html",
         AccountPageData {
-            user,
             timezones,
-            conversation_archive,
             theme_options,
         },
     ))
@@ -54,25 +50,17 @@ pub async fn set_api_key(
     auth: AuthSessionType,
 ) -> Result<impl IntoResponse, HtmlError> {
     // Generate and set the API key
-    let api_key = User::set_api_key(&user.id, &state.db).await?;
+    User::set_api_key(&user.id, &state.db).await?;
 
     // Clear the cache so new requests have access to the user with api key
     auth.cache_clear_user(user.id.to_string());
-
-    // Update the user's API key
-    let updated_user = User {
-        api_key: Some(api_key),
-        ..user.clone()
-    };
 
     // Render the API key section block
     Ok(TemplateResponse::new_partial(
         "auth/account_settings.html",
         "api_key_section",
         AccountPageData {
-            user: updated_user,
             timezones: vec![],
-            conversation_archive: vec![],
             theme_options: vec![],
         },
     ))
@@ -108,12 +96,6 @@ pub async fn update_timezone(
     // Clear the cache
     auth.cache_clear_user(user.id.to_string());
 
-    // Update the user's API key
-    let updated_user = User {
-        timezone: form.timezone,
-        ..user.clone()
-    };
-
     let timezones = TZ_VARIANTS
         .iter()
         .map(std::string::ToString::to_string)
@@ -124,9 +106,7 @@ pub async fn update_timezone(
         "auth/account_settings.html",
         "timezone_section",
         AccountPageData {
-            user: updated_user,
             timezones,
-            conversation_archive: vec![],
             theme_options: vec![],
         },
     ))
@@ -148,26 +128,19 @@ pub async fn update_theme(
     // Clear the cache
     auth.cache_clear_user(user.id.to_string());
 
-    // Update the user's theme
-    let updated_user = User {
-        theme: form.theme,
-        ..user.clone()
-    };
-
     let theme_options = vec![
-        "light".to_string(),
-        "dark".to_string(),
-        "obsidian-prism".to_string(),
-        "system".to_string(),
+        Theme::Light.as_str().to_string(),
+        Theme::Dark.as_str().to_string(),
+        Theme::WarmPaper.as_str().to_string(),
+        Theme::ObsidianPrism.as_str().to_string(),
+        Theme::System.as_str().to_string(),
     ];
 
     Ok(TemplateResponse::new_partial(
         "auth/account_settings.html",
         "theme_section",
         AccountPageData {
-            user: updated_user,
             timezones: vec![],
-            conversation_archive: vec![],
             theme_options,
         },
     ))

@@ -9,9 +9,7 @@ use axum::{
     response::IntoResponse,
 };
 use common::storage::types::{
-    conversation::Conversation,
     text_content::{deserialize_flexible_id, TextContent},
-    user::User,
     StoredObject,
 };
 use retrieval_pipeline::{RetrievalConfig, SearchResult, SearchTarget, StrategyOutput};
@@ -194,10 +192,7 @@ pub async fn search_result_handler(
     pub struct AnswerData {
         search_result: Vec<SearchResultForTemplate>,
         query_param: String,
-        user: User,
-        conversation_archive: Vec<Conversation>,
     }
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     let (search_results_for_template, final_query_param_for_template) = if let Some(actual_query) =
         params.query
@@ -346,8 +341,6 @@ pub async fn search_result_handler(
         AnswerData {
             search_result: search_results_for_template,
             query_param: final_query_param_for_template,
-            user,
-            conversation_archive,
         },
     ))
 }

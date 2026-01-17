@@ -10,7 +10,6 @@ use common::{
     error::AppError,
     storage::types::{
         analytics::Analytics,
-        conversation::Conversation,
         knowledge_entity::KnowledgeEntity,
         system_prompts::{
             DEFAULT_IMAGE_PROCESSING_PROMPT, DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT,
@@ -18,7 +17,6 @@ use common::{
         },
         system_settings::SystemSettings,
         text_chunk::TextChunk,
-        user::User,
     },
 };
 use tracing::{error, info};
@@ -33,13 +31,11 @@ use crate::{
 
 #[derive(Serialize)]
 pub struct AdminPanelData {
-    user: User,
     settings: SystemSettings,
     analytics: Option<Analytics>,
     users: Option<i64>,
     default_query_prompt: String,
     default_image_prompt: String,
-    conversation_archive: Vec<Conversation>,
     available_models: Option<ListModelResponse>,
     current_section: AdminSection,
 }
@@ -64,7 +60,7 @@ pub struct AdminPanelQuery {
 
 pub async fn show_admin_panel(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
+    RequireUser(_user): RequireUser,
     Query(query): Query<AdminPanelQuery>,
 ) -> Result<impl IntoResponse, HtmlError> {
     let section = match query.section.as_deref() {
@@ -72,10 +68,7 @@ pub async fn show_admin_panel(
         _ => AdminSection::Overview,
     };
 
-    let (settings, conversation_archive) = tokio::try_join!(
-        SystemSettings::get_current(&state.db),
-        User::get_user_conversations(&user.id, &state.db)
-    )?;
+    let settings = SystemSettings::get_current(&state.db).await?;
 
     let (analytics, users) = if section == AdminSection::Overview {
         let (analytics, users) = tokio::try_join!(
@@ -103,14 +96,12 @@ pub async fn show_admin_panel(
     Ok(TemplateResponse::new_template(
         "admin/base.html",
         AdminPanelData {
-            user,
             settings,
             analytics,
             available_models,
             users,
             default_query_prompt: DEFAULT_QUERY_SYSTEM_PROMPT.to_string(),
             default_image_prompt: DEFAULT_IMAGE_PROCESSING_PROMPT.to_string(),
-            conversation_archive,
             current_section: section,
         },
     ))

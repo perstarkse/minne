@@ -21,19 +21,17 @@ use common::storage::types::user::DashboardStats;
 use common::{
     error::AppError,
     storage::types::{
-        conversation::Conversation, file_info::FileInfo, ingestion_task::IngestionTask,
-        knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
-        text_chunk::TextChunk, text_content::TextContent, user::User,
+        file_info::FileInfo, ingestion_task::IngestionTask, knowledge_entity::KnowledgeEntity,
+        knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
+        text_content::TextContent, user::User,
     },
 };
 
 #[derive(Serialize)]
 pub struct IndexPageData {
-    user: Option<User>,
     text_contents: Vec<TextContent>,
     stats: DashboardStats,
     active_jobs: Vec<IngestionTask>,
-    conversation_archive: Vec<Conversation>,
 }
 
 pub async fn index_handler(
@@ -44,7 +42,7 @@ pub async fn index_handler(
         return Ok(TemplateResponse::redirect("/signin"));
     };
 
-    let (text_contents, conversation_archive, stats, active_jobs) = try_join!(
+    let (text_contents, _conversation_archive, stats, active_jobs) = try_join!(
         User::get_latest_text_contents(&user.id, &state.db),
         User::get_user_conversations(&user.id, &state.db),
         User::get_dashboard_stats(&user.id, &state.db),
@@ -56,10 +54,8 @@ pub async fn index_handler(
     Ok(TemplateResponse::new_template(
         "dashboard/base.html",
         IndexPageData {
-            user: Some(user),
             text_contents,
             stats,
-            conversation_archive,
             active_jobs,
         },
     ))
@@ -68,7 +64,6 @@ pub async fn index_handler(
 #[derive(Serialize)]
 pub struct LatestTextContentData {
     text_contents: Vec<TextContent>,
-    user: User,
 }
 
 pub async fn delete_text_content(
@@ -105,10 +100,7 @@ pub async fn delete_text_content(
     Ok(TemplateResponse::new_partial(
         "dashboard/recent_content.html",
         "latest_content_section",
-        LatestTextContentData {
-            user: user.clone(),
-            text_contents,
-        },
+        LatestTextContentData { text_contents },
     ))
 }
 
@@ -136,7 +128,6 @@ async fn get_and_validate_text_content(
 #[derive(Serialize)]
 pub struct ActiveJobsData {
     pub active_jobs: Vec<IngestionTask>,
-    pub user: User,
 }
 
 #[derive(Serialize)]
@@ -161,7 +152,6 @@ struct TaskArchiveEntry {
 
 #[derive(Serialize)]
 struct TaskArchiveData {
-    user: User,
     tasks: Vec<TaskArchiveEntry>,
 }
 
@@ -177,10 +167,7 @@ pub async fn delete_job(
     Ok(TemplateResponse::new_partial(
         "dashboard/active_jobs.html",
         "active_jobs_section",
-        ActiveJobsData {
-            user: user.clone(),
-            active_jobs,
-        },
+        ActiveJobsData { active_jobs },
     ))
 }
 
@@ -192,10 +179,7 @@ pub async fn show_active_jobs(
 
     Ok(TemplateResponse::new_template(
         "dashboard/active_jobs.html",
-        ActiveJobsData {
-            user: user.clone(),
-            active_jobs,
-        },
+        ActiveJobsData { active_jobs },
     ))
 }
 
@@ -233,10 +217,7 @@ pub async fn show_task_archive(
 
     Ok(TemplateResponse::new_template(
         "dashboard/task_archive_modal.html",
-        TaskArchiveData {
-            user,
-            tasks: entries,
-        },
+        TaskArchiveData { tasks: entries },
     ))
 }
 

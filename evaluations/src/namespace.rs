@@ -2,7 +2,11 @@
 
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
-use common::storage::{db::SurrealDbClient, types::user::User, types::StoredObject};
+use common::storage::{
+    db::SurrealDbClient,
+    types::user::{Theme, User},
+    types::StoredObject,
+};
 use serde::Deserialize;
 use tracing::{info, warn};
 
@@ -212,7 +216,7 @@ pub(crate) async fn ensure_eval_user(db: &SurrealDbClient) -> Result<User> {
         api_key: None,
         admin: false,
         timezone: "UTC".to_string(),
-        theme: "system".to_string(),
+        theme: Theme::System,
     };
 
     if let Some(existing) = db.get_item::<User>(user.get_id()).await? {
