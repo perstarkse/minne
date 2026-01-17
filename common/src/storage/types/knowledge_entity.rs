@@ -171,6 +171,9 @@ impl KnowledgeEntity {
         source_id: &str,
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
+        // Delete embeddings first, while we can still look them up via the entity's source_id
+        KnowledgeEntityEmbedding::delete_by_source_id(source_id, db_client).await?;
+
         let query = format!(
             "DELETE {} WHERE source_id = '{}'",
             Self::table_name(),
@@ -224,7 +227,7 @@ impl KnowledgeEntity {
     ) -> Result<Vec<KnowledgeEntityVectorResult>, AppError> {
         #[derive(Deserialize)]
         struct Row {
-            entity_id: KnowledgeEntity,
+            entity_id: Option<KnowledgeEntity>,
             score: f32,
         }
 
@@ -257,9 +260,11 @@ impl KnowledgeEntity {
 
         Ok(rows
             .into_iter()
-            .map(|r| KnowledgeEntityVectorResult {
-                entity: r.entity_id,
-                score: r.score,
+            .filter_map(|r| {
+                r.entity_id.map(|entity| KnowledgeEntityVectorResult {
+                    entity,
+                    score: r.score,
+                })
             })
             .collect())
     }
@@ -913,5 +918,51 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].entity.id, e2.id);
         assert_eq!(results[1].entity.id, e1.id);
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_with_orphaned_embedding() {
+        let namespace = "test_ns_orphan";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
+
+        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("Failed to redefine index length");
+
+        let user_id = "user".to_string();
+        let source_id = "src".to_string();
+        let entity = KnowledgeEntity::new(
+            source_id.clone(),
+            "orphan".to_string(),
+            "orphan desc".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id.clone(),
+        );
+
+        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.1, 0.2, 0.3], &db)
+            .await
+            .expect("store entity with embedding");
+
+        // Manually delete the entity to create an orphan
+        let query = format!("DELETE type::thing('knowledge_entity', '{}')", entity.id);
+        db.client.query(query).await.expect("delete entity");
+
+        // Now search
+        let results = KnowledgeEntity::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
+            .await
+            .expect("search should succeed even with orphans");
+
+        assert!(
+            results.is_empty(),
+            "Should return empty result for orphan, got: {:?}",
+            results
+        );
     }
 }
