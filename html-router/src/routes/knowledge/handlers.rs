@@ -17,7 +17,6 @@ use serde::{
 use common::{
     error::AppError,
     storage::types::{
-        conversation::Conversation,
         knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
         knowledge_relationship::KnowledgeRelationship,
         user::User,
@@ -333,12 +332,10 @@ pub struct KnowledgeBaseData {
     entities: Vec<KnowledgeEntity>,
     visible_entities: Vec<KnowledgeEntity>,
     relationships: Vec<RelationshipTableRow>,
-    user: User,
     entity_types: Vec<String>,
     content_categories: Vec<String>,
     selected_entity_type: Option<String>,
     selected_content_category: Option<String>,
-    conversation_archive: Vec<Conversation>,
     pagination: Pagination,
     page_query: String,
     relationship_type_options: Vec<String>,
@@ -481,18 +478,15 @@ async fn build_knowledge_base_data(
         relationship_type_options,
         default_relationship_type,
     } = build_relationship_table_data(entities.clone(), filtered_relationships);
-    let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
 
     Ok(KnowledgeBaseData {
         entities,
         visible_entities,
         relationships,
-        user: user.clone(),
         entity_types,
         content_categories,
         selected_entity_type: params.entity_type.clone(),
         selected_content_category: params.content_category.clone(),
-        conversation_archive,
         pagination,
         page_query,
         relationship_type_options,
@@ -861,7 +855,6 @@ pub async fn show_edit_knowledge_entity_form(
     pub struct EntityData {
         entity: KnowledgeEntity,
         entity_types: Vec<String>,
-        user: User,
     }
 
     // Get entity types
@@ -878,7 +871,6 @@ pub async fn show_edit_knowledge_entity_form(
         EntityData {
             entity,
             entity_types,
-            user,
         },
     ))
 }
@@ -895,7 +887,6 @@ pub struct PatchKnowledgeEntityParams {
 pub struct EntityListData {
     visible_entities: Vec<KnowledgeEntity>,
     pagination: Pagination,
-    user: User,
     entity_types: Vec<String>,
     content_categories: Vec<String>,
     selected_entity_type: Option<String>,
@@ -943,7 +934,6 @@ pub async fn patch_knowledge_entity(
         EntityListData {
             visible_entities,
             pagination,
-            user,
             entity_types,
             content_categories,
             selected_entity_type: None,
@@ -982,7 +972,6 @@ pub async fn delete_knowledge_entity(
         EntityListData {
             visible_entities,
             pagination,
-            user,
             entity_types,
             content_categories,
             selected_entity_type: None,

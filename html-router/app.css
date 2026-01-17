@@ -97,11 +97,6 @@
     --border: 2px;
   }
 
-  /* ==========================================================================
-     THEME: Obsidian Prism
-     A forward-looking neobrutalist dark theme. Cool obsidian base,
-     prismatic violet shadows, dual-accent system (Signal + Ember).
-     ========================================================================== */
   [data-theme="obsidian-prism"] {
     color-scheme: dark;
 
@@ -149,6 +144,54 @@
     --nb-shadow-hue: 290;
     --nb-shadow: 4px 4px 0 0 oklch(8% 0.06 var(--nb-shadow-hue));
     --nb-shadow-hover: 6px 6px 0 0 oklch(6% 0.08 calc(var(--nb-shadow-hue) + 15));
+  }
+
+  [data-theme="warm-paper"] {
+    color-scheme: light;
+
+    /* --- Canvas & Surfaces: Warm cream paper (more yellow than light) --- */
+    --color-base-100: oklch(97% 0.025 85);
+    --color-base-200: oklch(93% 0.028 83);
+    --color-base-300: oklch(88% 0.032 80);
+    --color-base-content: oklch(18% 0.015 75);
+
+    /* --- Primary: Warm Amber/Gold (the landing page CTA color) --- */
+    --color-primary: oklch(72% 0.16 75);
+    --color-primary-content: oklch(18% 0.02 75);
+
+    /* --- Secondary: Warm Terracotta --- */
+    --color-secondary: oklch(55% 0.14 45);
+    --color-secondary-content: oklch(98% 0.01 85);
+
+    /* --- Accent: Deep Charcoal (for contrast buttons like "View on GitHub") --- */
+    --color-accent: oklch(22% 0.01 80);
+    --color-accent-content: oklch(98% 0.02 85);
+
+    /* --- Neutral: Warm Charcoal --- */
+    --color-neutral: oklch(20% 0.015 75);
+    --color-neutral-content: oklch(96% 0.015 85);
+
+    /* --- Semantic Colors (warmer variants) --- */
+    --color-info: oklch(58% 0.12 230);
+    --color-info-content: oklch(98% 0.01 230);
+    --color-success: oklch(62% 0.15 155);
+    --color-success-content: oklch(98% 0.01 155);
+    --color-warning: oklch(78% 0.16 70);
+    --color-warning-content: oklch(20% 0.04 70);
+    --color-error: oklch(58% 0.20 25);
+    --color-error-content: oklch(98% 0.02 25);
+
+    /* --- Radii (NB Law: Zero) --- */
+    --radius-selector: 0rem;
+    --radius-field: 0rem;
+    --radius-box: 0rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 2px;
+
+    /* --- Classic Black Shadow --- */
+    --nb-shadow: 4px 4px 0 0 #000;
+    --nb-shadow-hover: 6px 6px 0 0 #000;
   }
 
   body {
@@ -956,10 +999,6 @@
   }
 }
 
-/* ==========================================================================
-   OBSIDIAN PRISM: Component Overrides & Delight Features
-   ========================================================================== */
-
 /* Prismatic shadow hue shift on hover */
 [data-theme="obsidian-prism"] .nb-panel:hover,
 [data-theme="obsidian-prism"] .nb-card:hover,
@@ -969,8 +1008,15 @@
 
 /* Focus state: breathing shadow pulse */
 @keyframes shadow-breathe {
-  0%, 100% { box-shadow: 6px 6px 0 0 oklch(8% 0.08 305); }
-  50% { box-shadow: 7px 7px 0 0 oklch(10% 0.10 310); }
+
+  0%,
+  100% {
+    box-shadow: 6px 6px 0 0 oklch(8% 0.08 305);
+  }
+
+  50% {
+    box-shadow: 7px 7px 0 0 oklch(10% 0.10 310);
+  }
 }
 
 [data-theme="obsidian-prism"] .nb-btn:focus-visible,

@@ -65,3 +65,9 @@ impl ProvidesTemplateEngine for HtmlState {
         &self.templates
     }
 }
+
+impl crate::middlewares::response_middleware::ProvidesHtmlState for HtmlState {
+    fn html_state(&self) -> &HtmlState {
+        self
+    }
+}

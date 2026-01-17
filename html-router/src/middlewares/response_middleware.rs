@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     extract::{Request, State},
     http::{HeaderName, StatusCode},
@@ -6,13 +8,24 @@ use axum::{
     Extension,
 };
 use axum_htmx::{HxRequest, HX_TRIGGER};
-use common::{error::AppError, utils::template_engine::ProvidesTemplateEngine};
-use minijinja::{context, Value};
+use common::{
+    error::AppError,
+    utils::template_engine::{ProvidesTemplateEngine, Value},
+};
+use minijinja::context;
 use serde::Serialize;
 use serde_json::json;
 use tracing::error;
 
-use crate::AuthSessionType;
+use crate::{html_state::HtmlState, AuthSessionType};
+use common::storage::types::{
+    conversation::Conversation,
+    user::{Theme, User},
+};
+
+pub trait ProvidesHtmlState {
+    fn html_state(&self) -> &HtmlState;
+}
 
 #[derive(Clone)]
 pub enum TemplateKind {
@@ -106,8 +119,10 @@ struct ContextWrapper<'a> {
     user_theme: &'a str,
     initial_theme: &'a str,
     is_authenticated: bool,
+    user: Option<&'a User>,
+    conversation_archive: Vec<Conversation>,
     #[serde(flatten)]
-    context: &'a Value,
+    context: HashMap<String, Value>,
 }
 
 pub async fn with_template_response<S>(
@@ -117,25 +132,23 @@ pub async fn with_template_response<S>(
     next: Next,
 ) -> Response
 where
-    S: ProvidesTemplateEngine + Clone + Send + Sync + 'static,
+    S: ProvidesTemplateEngine + ProvidesHtmlState + Clone + Send + Sync + 'static,
 {
-    // Determine theme context
-    let (user_theme, initial_theme, is_authenticated) =
+    let mut user_theme = Theme::System.as_str();
+    let mut initial_theme = Theme::System.initial_theme();
+    let mut is_authenticated = false;
+    let mut current_user_id = None;
+
+    {
         if let Some(auth) = req.extensions().get::<AuthSessionType>() {
             if let Some(user) = &auth.current_user {
-                let theme = user.theme.as_str();
-                // For explicit themes (not "system"), use the theme directly as initial_theme
-                let initial = match theme {
-                    "system" => "light",
-                    other => other, // "light", "dark", "obsidian-prism", etc.
-                };
-                (theme.to_string(), initial.to_string(), true)
-            } else {
-                ("system".to_string(), "light".to_string(), false)
+                is_authenticated = true;
+                current_user_id = Some(user.id.clone());
+                user_theme = user.theme.as_str();
+                initial_theme = user.theme.initial_theme();
             }
-        } else {
-            ("system".to_string(), "light".to_string(), false)
-        };
+        }
+    }
 
     let response = next.run(req).await;
 
@@ -144,6 +157,20 @@ where
 
     if let Some(template_response) = response.extensions().get::<TemplateResponse>().cloned() {
         let template_engine = state.template_engine();
+
+        let mut current_user = None;
+        let mut conversation_archive = Vec::new();
+
+        if let Some(user_id) = current_user_id {
+            let html_state = state.html_state();
+            if let Ok(Some(user)) = html_state.db.get_item::<User>(&user_id).await {
+                // Fetch conversation archive globally for authenticated users
+                if let Ok(archive) = User::get_user_conversations(&user.id, &html_state.db).await {
+                    conversation_archive = archive;
+                }
+                current_user = Some(user);
+            }
+        }
 
         // Helper to forward relevant headers
         fn forward_headers(from: &axum::http::HeaderMap, to: &mut axum::http::HeaderMap) {
@@ -156,11 +183,28 @@ where
             }
         }
 
+        // Convert minijinja::Value to HashMap if it's a map, otherwise use empty HashMap
+        let context_map = if template_response.context.kind() == minijinja::value::ValueKind::Map {
+            let mut map = HashMap::new();
+            if let Ok(keys) = template_response.context.try_iter() {
+                for key in keys {
+                    if let Ok(val) = template_response.context.get_item(&key) {
+                        map.insert(key.to_string(), val);
+                    }
+                }
+            }
+            map
+        } else {
+            HashMap::new()
+        };
+
         let context = ContextWrapper {
             user_theme: &user_theme,
             initial_theme: &initial_theme,
             is_authenticated,
-            context: &template_response.context,
+            user: current_user.as_ref(),
+            conversation_archive,
+            context: context_map,
         };
 
         match &template_response.template_kind {
