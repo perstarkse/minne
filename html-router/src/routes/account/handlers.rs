@@ -32,6 +32,7 @@ pub async fn show_account_page(
     let theme_options = vec![
         "light".to_string(),
         "dark".to_string(),
+        "obsidian-prism".to_string(),
         "system".to_string(),
     ];
     let conversation_archive = User::get_user_conversations(&user.id, &state.db).await?;
@@ -156,6 +157,7 @@ pub async fn update_theme(
     let theme_options = vec![
         "light".to_string(),
         "dark".to_string(),
+        "obsidian-prism".to_string(),
         "system".to_string(),
     ];
 

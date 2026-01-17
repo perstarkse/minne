@@ -97,6 +97,60 @@
     --border: 2px;
   }
 
+  /* ==========================================================================
+     THEME: Obsidian Prism
+     A forward-looking neobrutalist dark theme. Cool obsidian base,
+     prismatic violet shadows, dual-accent system (Signal + Ember).
+     ========================================================================== */
+  [data-theme="obsidian-prism"] {
+    color-scheme: dark;
+
+    /* --- Canvas & Surfaces --- */
+    --color-base-100: oklch(12% 0.015 260);
+    --color-base-200: oklch(9% 0.018 262);
+    --color-base-300: oklch(6% 0.02 265);
+    --color-base-content: oklch(95% 0.008 260);
+
+    /* --- Primary: Electric Violet Signal --- */
+    --color-primary: oklch(62% 0.28 290);
+    --color-primary-content: oklch(98% 0.01 290);
+
+    /* --- Secondary: Cyan Edge --- */
+    --color-secondary: oklch(68% 0.18 220);
+    --color-secondary-content: oklch(98% 0.01 220);
+
+    /* --- Accent: Ember (warm counterpoint) --- */
+    --color-accent: oklch(78% 0.19 55);
+    --color-accent-content: oklch(18% 0.04 55);
+
+    /* --- Neutral: Cold Steel --- */
+    --color-neutral: oklch(24% 0.02 260);
+    --color-neutral-content: oklch(92% 0.01 260);
+
+    /* --- Semantic Colors --- */
+    --color-info: oklch(72% 0.14 230);
+    --color-info-content: oklch(25% 0.06 230);
+    --color-success: oklch(74% 0.16 155);
+    --color-success-content: oklch(25% 0.06 155);
+    --color-warning: oklch(82% 0.18 75);
+    --color-warning-content: oklch(25% 0.08 75);
+    --color-error: oklch(68% 0.22 15);
+    --color-error-content: oklch(98% 0.02 15);
+
+    /* --- Radii (NB Law: Zero) --- */
+    --radius-selector: 0rem;
+    --radius-field: 0rem;
+    --radius-box: 0rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 2px;
+
+    /* --- Prismatic Shadow System --- */
+    --nb-shadow-hue: 290;
+    --nb-shadow: 4px 4px 0 0 oklch(8% 0.06 var(--nb-shadow-hue));
+    --nb-shadow-hover: 6px 6px 0 0 oklch(6% 0.08 calc(var(--nb-shadow-hue) + 15));
+  }
+
   body {
     background-color: var(--color-base-100);
     color: var(--color-base-content);
@@ -900,4 +954,109 @@
   .toast-alert-title {
     @apply text-lg font-bold;
   }
+}
+
+/* ==========================================================================
+   OBSIDIAN PRISM: Component Overrides & Delight Features
+   ========================================================================== */
+
+/* Prismatic shadow hue shift on hover */
+[data-theme="obsidian-prism"] .nb-panel:hover,
+[data-theme="obsidian-prism"] .nb-card:hover,
+[data-theme="obsidian-prism"] .nb-btn:hover {
+  --nb-shadow-hue: 305;
+}
+
+/* Focus state: breathing shadow pulse */
+@keyframes shadow-breathe {
+  0%, 100% { box-shadow: 6px 6px 0 0 oklch(8% 0.08 305); }
+  50% { box-shadow: 7px 7px 0 0 oklch(10% 0.10 310); }
+}
+
+[data-theme="obsidian-prism"] .nb-btn:focus-visible,
+[data-theme="obsidian-prism"] .nb-input:focus-visible,
+[data-theme="obsidian-prism"] .nb-select:focus-visible {
+  animation: shadow-breathe 1.5s ease-in-out infinite;
+  outline: 2px solid oklch(62% 0.28 290);
+  outline-offset: 2px;
+}
+
+/* Selection color: Prismatic violet */
+[data-theme="obsidian-prism"] ::selection {
+  background: oklch(62% 0.28 290 / 0.35);
+  color: oklch(98% 0.01 290);
+}
+
+/* Prose adjustments for Obsidian Prism */
+[data-theme="obsidian-prism"] .prose-tufte,
+[data-theme="obsidian-prism"] .prose-tufte-compact {
+  color: var(--color-base-content);
+  --tw-prose-body: oklch(92% 0.008 260);
+  --tw-prose-headings: oklch(98% 0.01 260);
+  --tw-prose-lead: oklch(88% 0.01 260);
+  --tw-prose-links: oklch(78% 0.19 55);
+  --tw-prose-bold: oklch(98% 0.01 260);
+  --tw-prose-counters: oklch(70% 0.01 260);
+  --tw-prose-bullets: oklch(50% 0.01 260);
+  --tw-prose-hr: oklch(24% 0.02 260);
+  --tw-prose-quotes: oklch(88% 0.01 260);
+  --tw-prose-quote-borders: oklch(40% 0.04 290);
+  --tw-prose-captions: oklch(70% 0.01 260);
+  --tw-prose-code: oklch(95% 0.008 260);
+  --tw-prose-pre-code: inherit;
+  --tw-prose-pre-bg: oklch(8% 0.02 262);
+  --tw-prose-th-borders: oklch(30% 0.02 260);
+  --tw-prose-td-borders: oklch(24% 0.02 260);
+}
+
+[data-theme="obsidian-prism"] .prose-tufte a,
+[data-theme="obsidian-prism"] .prose-tufte-compact a {
+  color: oklch(78% 0.19 55);
+}
+
+/* Code blocks: deeper well */
+[data-theme="obsidian-prism"] .markdown-content pre {
+  background-color: oklch(7% 0.018 262);
+  border-color: oklch(20% 0.03 290);
+}
+
+[data-theme="obsidian-prism"] .markdown-content :not(pre)>code {
+  background-color: oklch(18% 0.025 265);
+}
+
+/* Tables in Obsidian Prism */
+[data-theme="obsidian-prism"] .markdown-content th,
+[data-theme="obsidian-prism"] .markdown-content td {
+  border-color: oklch(24% 0.02 260);
+}
+
+/* Blockquotes */
+[data-theme="obsidian-prism"] .markdown-content blockquote {
+  border-color: oklch(40% 0.04 290);
+  color: oklch(85% 0.01 260);
+}
+
+/* HR */
+[data-theme="obsidian-prism"] .markdown-content hr {
+  border-top-color: oklch(24% 0.02 260);
+}
+
+/* Checkbox in Obsidian Prism (white tick) */
+[data-theme="obsidian-prism"] .nb-checkbox:checked {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+}
+
+/* Placeholder text */
+[data-theme="obsidian-prism"] .nb-input::placeholder,
+[data-theme="obsidian-prism"] .input::placeholder,
+[data-theme="obsidian-prism"] .textarea::placeholder,
+[data-theme="obsidian-prism"] textarea::placeholder,
+[data-theme="obsidian-prism"] input::placeholder {
+  color: oklch(70% 0.01 260) !important;
+  opacity: 0.85;
+}
+
+/* Nav shadow uses prismatic color */
+[data-theme="obsidian-prism"] nav {
+  box-shadow: 4px calc(4px + var(--scroll-depth, 0) * 4px) 0 0 oklch(8% 0.06 290);
 }

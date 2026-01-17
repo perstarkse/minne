@@ -7,6 +7,7 @@ const handleSystemThemeChange = (e) => {
     if (themePreference === 'system') {
         document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
     }
+    // For explicit themes like 'obsidian-prism', 'light', 'dark' - do nothing on system change
 };
 
 const initializeTheme = () => {
@@ -57,11 +58,12 @@ const initializeTheme = () => {
                 isSystemListenerAttached = true;
             }
         } else {
+            // Explicit theme: 'light', 'dark', 'obsidian-prism', etc.
             if (isSystemListenerAttached) {
                 systemMediaQuery.removeEventListener('change', handleSystemThemeChange);
                 isSystemListenerAttached = false;
             }
-            // Ensure data-theme matches preference
+            // Ensure data-theme matches preference exactly
             if (themePreference && document.documentElement.getAttribute('data-theme') !== themePreference) {
                 document.documentElement.setAttribute('data-theme', themePreference);
             }

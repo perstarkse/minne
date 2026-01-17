@@ -124,7 +124,11 @@ where
         if let Some(auth) = req.extensions().get::<AuthSessionType>() {
             if let Some(user) = &auth.current_user {
                 let theme = user.theme.as_str();
-                let initial = if theme == "dark" { "dark" } else { "light" };
+                // For explicit themes (not "system"), use the theme directly as initial_theme
+                let initial = match theme {
+                    "system" => "light",
+                    other => other, // "light", "dark", "obsidian-prism", etc.
+                };
                 (theme.to_string(), initial.to_string(), true)
             } else {
                 ("system".to_string(), "light".to_string(), false)
