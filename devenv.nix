@@ -15,6 +15,8 @@
     pkgs.cargo-xwin
     pkgs.clang
     pkgs.onnxruntime
+    pkgs.cargo-watch
+    pkgs.tailwindcss_4
   ];
 
   languages.rust = {
@@ -31,5 +33,7 @@
 
   processes = {
     surreal_db.exec = "docker run --rm --pull always -p 8000:8000 --net=host --user $(id -u) -v $(pwd)/database:/database surrealdb/surrealdb:latest-dev start rocksdb:/database/database.db --user root_user --pass root_password";
+    server.exec = "cargo watch -x 'run --bin main'";
+    tailwind.exec = "cd html-router && npm run tailwind";
   };
 }
