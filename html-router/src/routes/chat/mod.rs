@@ -1,5 +1,6 @@
 mod chat_handlers;
 mod message_response_stream;
+mod reference_validation;
 mod references;
 
 use axum::{
