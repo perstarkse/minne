@@ -85,9 +85,19 @@ stored_object!(
     admin: bool,
     #[serde(default)]
     timezone: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_theme_or_default")]
     theme: Theme
 });
+
+fn deserialize_theme_or_default<'de, D>(deserializer: D) -> Result<Theme, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Option::<String>::deserialize(deserializer)?;
+    Ok(raw
+        .and_then(|value| Theme::from_str(value.as_str()).ok())
+        .unwrap_or_default())
+}
 
 #[async_trait]
 impl Authentication<User, String, Surreal<Any>> for User {
@@ -1020,6 +1030,42 @@ mod tests {
             .await
             .expect("Error searching by API key");
         assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_set_api_key_with_none_theme() {
+        let db = setup_test_db().await;
+
+        let user = User::create_new(
+            "legacy_theme@example.com".to_string(),
+            "apikey_password".to_string(),
+            &db,
+            "UTC".to_string(),
+            "system".to_string(),
+        )
+        .await
+        .expect("Failed to create user");
+
+        db.client
+            .query("UPDATE type::thing('user', $id) SET theme = NONE")
+            .bind(("id", user.id.clone()))
+            .await
+            .expect("Failed to set user theme to NONE");
+
+        let api_key = User::set_api_key(&user.id, &db)
+            .await
+            .expect("set_api_key should tolerate NONE theme");
+
+        assert!(api_key.starts_with("sk_"));
+
+        let updated_user = db
+            .get_item::<User>(&user.id)
+            .await
+            .expect("Failed to retrieve user")
+            .expect("User should still exist");
+
+        assert_eq!(updated_user.theme, Theme::System);
+        assert_eq!(updated_user.api_key, Some(api_key));
     }
 
     #[tokio::test]
