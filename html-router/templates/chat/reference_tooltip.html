@@ -1,3 +1,11 @@
-<div>{{entity.name}}</div>
-<div>{{entity.description}}</div>
-<div>{{entity.updated_at|datetimeformat(format="short", tz=user.timezone)}} </div>
+{% if text_chunk %}
+<div class="font-semibold">Chunk Reference</div>
+<div class="text-sm whitespace-pre-wrap">{{text_chunk.chunk}}</div>
+<div class="text-xs opacity-70">{{text_chunk_updated_at}}</div>
+{% elif entity %}
+<div class="font-semibold">{{entity.name}}</div>
+<div class="text-sm">{{entity.description}}</div>
+<div class="text-xs opacity-70">{{entity_updated_at}}</div>
+{% else %}
+<div class="text-xs opacity-70">Reference unavailable.</div>
+{% endif %}

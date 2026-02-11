@@ -61,8 +61,8 @@ pub fn chunks_to_chat_context(chunks: &[crate::RetrievedChunk]) -> Value {
         .iter()
         .map(|chunk| {
             serde_json::json!({
+                "id": chunk.chunk.id,
                 "content": chunk.chunk.chunk,
-                "source_id": chunk.chunk.source_id,
                 "score": round_score(chunk.score),
             })
         })
@@ -117,7 +117,7 @@ pub fn create_chat_request(
         .build()
 }
 
-pub async fn process_llm_response(
+pub fn process_llm_response(
     response: CreateChatCompletionResponse,
 ) -> Result<LLMResponseFormat, AppError> {
     response
