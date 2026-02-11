@@ -10,7 +10,7 @@
 
 ## Demo deployment
 
-To test _Minne_ out, enter [this](https://minne-demo.stark.pub) read-only demo deployment to view and test functionality out.
+To test _Minne_ out, enter [this](https://minne.stark.pub) and sign in to a read-only demo deployment to view and test functionality out.
 
 ## Noteworthy Features
 
