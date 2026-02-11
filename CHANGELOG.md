@@ -1,4 +1,9 @@
 # Changelog
+## 1.0.1 (2026-02-11)
+- Shipped an S3 storage backend so content can be stored in object storage instead of local disk, with configuration support for S3 deployments.
+- Introduced user theme preferences with the new Obsidian Prism look and improved dark mode styling.
+- Fixed edge cases, including content deletion behavior and compatibility for older user records.
+
 ## 1.0.0 (2026-01-02)
 - **Locally generated embeddings are now default**. If you want to continue using API embeddings, set EMBEDDING_BACKEND to openai. This will download a ONNX model and recreate all embeddings. But in most instances it's very worth it. Removing the network bound call to create embeddings. Creating embeddings on my N100 device is extremely fast. Typically a search response is provided in less than 50ms. 
 - Added a benchmarks create for evaluating the retrieval process
