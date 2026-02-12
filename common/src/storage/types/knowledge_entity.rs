@@ -174,12 +174,15 @@ impl KnowledgeEntity {
         // Delete embeddings first, while we can still look them up via the entity's source_id
         KnowledgeEntityEmbedding::delete_by_source_id(source_id, db_client).await?;
 
-        let query = format!(
-            "DELETE {} WHERE source_id = '{}'",
-            Self::table_name(),
-            source_id
-        );
-        db_client.query(query).await?;
+        db_client
+            .client
+            .query("DELETE FROM type::table($table) WHERE source_id = $source_id")
+            .bind(("table", Self::table_name()))
+            .bind(("source_id", source_id.to_owned()))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
 
         Ok(())
     }
@@ -759,6 +762,69 @@ mod tests {
             "Entity with different source_id should still exist"
         );
         assert_eq!(different_remaining[0].id, different_entity.id);
+    }
+
+    #[tokio::test]
+    async fn test_delete_by_source_id_resists_query_injection() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
+
+        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .expect("Failed to redefine index length");
+
+        let user_id = "user123".to_string();
+
+        let entity1 = KnowledgeEntity::new(
+            "safe_source".to_string(),
+            "Entity 1".to_string(),
+            "Description 1".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id.clone(),
+        );
+
+        let entity2 = KnowledgeEntity::new(
+            "other_source".to_string(),
+            "Entity 2".to_string(),
+            "Description 2".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id,
+        );
+
+        KnowledgeEntity::store_with_embedding(entity1, vec![0.1, 0.2, 0.3], &db)
+            .await
+            .expect("store entity1");
+        KnowledgeEntity::store_with_embedding(entity2, vec![0.3, 0.2, 0.1], &db)
+            .await
+            .expect("store entity2");
+
+        let malicious_source = "safe_source' OR 1=1 --";
+        KnowledgeEntity::delete_by_source_id(malicious_source, &db)
+            .await
+            .expect("delete call should succeed");
+
+        let remaining: Vec<KnowledgeEntity> = db
+            .client
+            .query("SELECT * FROM type::table($table)")
+            .bind(("table", KnowledgeEntity::table_name()))
+            .await
+            .expect("query failed")
+            .take(0)
+            .expect("take failed");
+
+        assert_eq!(
+            remaining.len(),
+            2,
+            "malicious input must not delete unrelated entities"
+        );
     }
 
     #[tokio::test]
