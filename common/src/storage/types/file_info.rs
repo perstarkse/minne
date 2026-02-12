@@ -137,8 +137,12 @@ impl FileInfo {
     /// # Returns
     /// * `Result<Option<FileInfo>, FileError>` - The `FileInfo` or `None` if not found.
     async fn get_by_sha(sha256: &str, db_client: &SurrealDbClient) -> Result<FileInfo, FileError> {
-        let query = format!("SELECT * FROM file WHERE sha256 = '{}'", &sha256);
-        let response: Vec<FileInfo> = db_client.client.query(query).await?.take(0)?;
+        let mut response = db_client
+            .client
+            .query("SELECT * FROM file WHERE sha256 = $sha256 LIMIT 1")
+            .bind(("sha256", sha256.to_owned()))
+            .await?;
+        let response: Vec<FileInfo> = response.take(0)?;
 
         response
             .into_iter()
@@ -663,6 +667,36 @@ mod tests {
             }
             _ => panic!("Expected FileNotFound error"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_by_sha_resists_query_injection() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        let now = Utc::now();
+        let file_info = FileInfo {
+            id: Uuid::new_v4().to_string(),
+            created_at: now,
+            updated_at: now,
+            user_id: "user123".to_string(),
+            sha256: "known_sha_value".to_string(),
+            path: "/path/to/file.txt".to_string(),
+            file_name: "file.txt".to_string(),
+            mime_type: "text/plain".to_string(),
+        };
+
+        db.store_item(file_info)
+            .await
+            .expect("Failed to store test file info");
+
+        let malicious_sha = "known_sha_value' OR true --";
+        let result = FileInfo::get_by_sha(malicious_sha, &db).await;
+
+        assert!(matches!(result, Err(FileError::FileNotFound(_))));
     }
 
     #[tokio::test]

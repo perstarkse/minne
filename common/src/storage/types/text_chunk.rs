@@ -47,12 +47,15 @@ impl TextChunk {
         // Delete embeddings first
         TextChunkEmbedding::delete_by_source_id(source_id, db_client).await?;
 
-        let query = format!(
-            "DELETE {} WHERE source_id = '{}'",
-            Self::table_name(),
-            source_id
-        );
-        db_client.query(query).await?;
+        db_client
+            .client
+            .query("DELETE FROM type::table($table) WHERE source_id = $source_id")
+            .bind(("table", Self::table_name()))
+            .bind(("source_id", source_id.to_owned()))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
 
         Ok(())
     }
@@ -615,6 +618,57 @@ mod tests {
             .take(0)
             .expect("Failed to get query results");
         assert_eq!(remaining.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_by_source_id_resists_query_injection() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+        db.apply_migrations().await.expect("migrations");
+        TextChunkEmbedding::redefine_hnsw_index(&db, 5)
+            .await
+            .expect("redefine index");
+
+        let chunk1 = TextChunk::new(
+            "safe_source".to_string(),
+            "Safe chunk".to_string(),
+            "user123".to_string(),
+        );
+        let chunk2 = TextChunk::new(
+            "other_source".to_string(),
+            "Other chunk".to_string(),
+            "user123".to_string(),
+        );
+
+        TextChunk::store_with_embedding(chunk1.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
+            .await
+            .expect("store chunk1");
+        TextChunk::store_with_embedding(chunk2.clone(), vec![0.5, 0.4, 0.3, 0.2, 0.1], &db)
+            .await
+            .expect("store chunk2");
+
+        let malicious_source = "safe_source' OR 1=1 --";
+        TextChunk::delete_by_source_id(malicious_source, &db)
+            .await
+            .expect("delete call should succeed");
+
+        let remaining: Vec<TextChunk> = db
+            .client
+            .query("SELECT * FROM type::table($table)")
+            .bind(("table", TextChunk::table_name()))
+            .await
+            .expect("query failed")
+            .take(0)
+            .expect("take failed");
+
+        assert_eq!(
+            remaining.len(),
+            2,
+            "malicious input must not delete unrelated rows"
+        );
     }
 
     #[tokio::test]

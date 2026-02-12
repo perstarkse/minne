@@ -40,22 +40,28 @@ impl KnowledgeRelationship {
         }
     }
     pub async fn store_relationship(&self, db_client: &SurrealDbClient) -> Result<(), AppError> {
-        let query = format!(
-            r#"DELETE relates_to:`{rel_id}`;
-            RELATE knowledge_entity:`{in_id}`->relates_to:`{rel_id}`->knowledge_entity:`{out_id}`
-            SET
-                metadata.user_id = '{user_id}',
-                metadata.source_id = '{source_id}',
-                metadata.relationship_type = '{relationship_type}'"#,
-            rel_id = self.id,
-            in_id = self.in_,
-            out_id = self.out,
-            user_id = self.metadata.user_id.as_str(),
-            source_id = self.metadata.source_id.as_str(),
-            relationship_type = self.metadata.relationship_type.as_str()
-        );
-
-        db_client.query(query).await?.check()?;
+        db_client
+            .client
+            .query(
+                r#"BEGIN TRANSACTION;
+                LET $in_entity = type::thing('knowledge_entity', $in_id);
+                LET $out_entity = type::thing('knowledge_entity', $out_id);
+                LET $relation = type::thing('relates_to', $rel_id);
+                DELETE type::thing('relates_to', $rel_id);
+                RELATE $in_entity->$relation->$out_entity SET
+                    metadata.user_id = $user_id,
+                    metadata.source_id = $source_id,
+                    metadata.relationship_type = $relationship_type;
+                COMMIT TRANSACTION;"#,
+            )
+            .bind(("rel_id", self.id.clone()))
+            .bind(("in_id", self.in_.clone()))
+            .bind(("out_id", self.out.clone()))
+            .bind(("user_id", self.metadata.user_id.clone()))
+            .bind(("source_id", self.metadata.source_id.clone()))
+            .bind(("relationship_type", self.metadata.relationship_type.clone()))
+            .await?
+            .check()?;
 
         Ok(())
     }
@@ -64,11 +70,12 @@ impl KnowledgeRelationship {
         source_id: &str,
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        let query = format!(
-            "DELETE knowledge_entity -> relates_to WHERE metadata.source_id = '{source_id}'"
-        );
-
-        db_client.query(query).await?;
+        db_client
+            .client
+            .query("DELETE knowledge_entity -> relates_to WHERE metadata.source_id = $source_id")
+            .bind(("source_id", source_id.to_owned()))
+            .await?
+            .check()?;
 
         Ok(())
     }
@@ -79,15 +86,20 @@ impl KnowledgeRelationship {
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
         let mut authorized_result = db_client
-            .query(format!(
-                "SELECT * FROM relates_to WHERE id = relates_to:`{id}` AND metadata.user_id = '{user_id}'"
-            ))
+            .client
+            .query(
+                "SELECT * FROM relates_to WHERE id = type::thing('relates_to', $id) AND metadata.user_id = $user_id",
+            )
+            .bind(("id", id.to_owned()))
+            .bind(("user_id", user_id.to_owned()))
             .await?;
         let authorized: Vec<KnowledgeRelationship> = authorized_result.take(0).unwrap_or_default();
 
         if authorized.is_empty() {
             let mut exists_result = db_client
-                .query(format!("SELECT * FROM relates_to:`{id}`"))
+                .client
+                .query("SELECT * FROM type::thing('relates_to', $id)")
+                .bind(("id", id.to_owned()))
                 .await?;
             let existing: Option<KnowledgeRelationship> = exists_result.take(0)?;
 
@@ -99,7 +111,12 @@ impl KnowledgeRelationship {
                 Err(AppError::NotFound(format!("Relationship {id} not found")))
             }
         } else {
-            db_client.query(format!("DELETE relates_to:`{id}`")).await?;
+            db_client
+                .client
+                .query("DELETE type::thing('relates_to', $id)")
+                .bind(("id", id.to_owned()))
+                .await?
+                .check()?;
             Ok(())
         }
     }
@@ -207,6 +224,49 @@ mod tests {
         assert!(
             !check_results.is_empty(),
             "Relationship should exist in the database"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_store_relationship_resists_query_injection() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
+
+        let entity1_id = create_test_entity("Entity 1", &db).await;
+        let entity2_id = create_test_entity("Entity 2", &db).await;
+
+        let relationship = KnowledgeRelationship::new(
+            entity1_id,
+            entity2_id,
+            "user'123".to_string(),
+            "source123'; DELETE FROM relates_to; --".to_string(),
+            "references'; UPDATE user SET admin = true; --".to_string(),
+        );
+
+        relationship
+            .store_relationship(&db)
+            .await
+            .expect("store relationship should safely handle quote-containing values");
+
+        let mut res = db
+            .client
+            .query("SELECT * FROM relates_to WHERE id = type::thing('relates_to', $id)")
+            .bind(("id", relationship.id.clone()))
+            .await
+            .expect("query relationship by id failed");
+        let rows: Vec<KnowledgeRelationship> = res.take(0).expect("take rows");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].metadata.source_id,
+            "source123'; DELETE FROM relates_to; --"
         );
     }
 
