@@ -1,4 +1,7 @@
 # Changelog
+## Unreleased
+- Fix: edge case where navigation back to a chat page could trigger a new response generation
+
 ## 1.0.1 (2026-02-11)
 - Shipped an S3 storage backend so content can be stored in object storage instead of local disk, with configuration support for S3 deployments.
 - Introduced user theme preferences with the new Obsidian Prism look and improved dark mode styling.
