@@ -4,7 +4,8 @@
   </div>
 </div>
 <div class="chat chat-start">
-  <div hx-ext="sse" sse-connect="/chat/response-stream?message_id={{user_message.id}}" sse-close="close_stream"
+  <div id="ai-stream-{{user_message.id}}" hx-ext="sse"
+    sse-connect="/chat/response-stream?message_id={{user_message.id}}" sse-close="close_stream"
     hx-swap="beforeend">
     <div class="chat-bubble">
       <span class="loading loading-dots loading-sm loading-id-{{user_message.id}}"></span>
@@ -27,13 +28,22 @@
     el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
     if (typeof window.scrollChatToBottom === "function") window.scrollChatToBottom();
   });
-  document.body.addEventListener('htmx:sseClose', function () {
+  document.body.addEventListener('htmx:sseClose', function (e) {
     const msgId = '{{ user_message.id }}';
+    const streamEl = document.getElementById('ai-stream-' + msgId);
+    if (streamEl && e.target !== streamEl) return;
+
     const el = document.getElementById('ai-message-content-' + msgId);
     if (el && window.markdownBuffer[msgId]) {
       el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
       delete window.markdownBuffer[msgId];
       if (typeof window.scrollChatToBottom === "function") window.scrollChatToBottom();
+    }
+
+    if (streamEl) {
+      streamEl.removeAttribute('sse-connect');
+      streamEl.removeAttribute('sse-close');
+      streamEl.removeAttribute('hx-ext');
     }
   });
 </script>
