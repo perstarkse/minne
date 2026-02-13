@@ -95,7 +95,21 @@ pub async fn process_ingress_form(
         ));
     }
 
-    info!("{:?}", input);
+    let content_bytes = input.content.as_ref().map_or(0, |c| c.len());
+    let has_content = input.content.as_ref().is_some_and(|c| !c.trim().is_empty());
+    let context_bytes = input.context.len();
+    let category_bytes = input.category.len();
+    let file_count = input.files.len();
+
+    info!(
+        user_id = %user.id,
+        has_content,
+        content_bytes,
+        context_bytes,
+        category_bytes,
+        file_count,
+        "Received ingestion form submission"
+    );
 
     let file_infos = try_join_all(input.files.into_iter().map(|file| {
         FileInfo::new_with_storage(file, &state.db, &user.id, &state.storage)
