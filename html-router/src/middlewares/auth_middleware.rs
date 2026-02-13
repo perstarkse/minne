@@ -46,3 +46,14 @@ pub async fn require_auth(auth: AuthSessionType, mut request: Request, next: Nex
         }
     }
 }
+
+pub async fn require_admin(auth: AuthSessionType, mut request: Request, next: Next) -> Response {
+    match auth.current_user {
+        Some(user) if user.admin => {
+            request.extensions_mut().insert(user);
+            next.run(request).await
+        }
+        Some(_) => TemplateResponse::redirect("/").into_response(),
+        None => TemplateResponse::redirect("/signin").into_response(),
+    }
+}

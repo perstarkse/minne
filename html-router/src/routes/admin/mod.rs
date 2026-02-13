@@ -1,6 +1,7 @@
 mod handlers;
 use axum::{
     extract::FromRef,
+    middleware::from_fn,
     routing::{get, patch},
     Router,
 };
@@ -10,7 +11,7 @@ use handlers::{
     toggle_registration_status, update_model_settings,
 };
 
-use crate::html_state::HtmlState;
+use crate::{html_state::HtmlState, middlewares::auth_middleware::require_admin};
 
 pub fn router<S>() -> Router<S>
 where
@@ -27,4 +28,5 @@ where
         .route("/update-ingestion-prompt", patch(patch_ingestion_prompt))
         .route("/edit-image-prompt", get(show_edit_image_prompt))
         .route("/update-image-prompt", patch(patch_image_prompt))
+        .route_layer(from_fn(require_admin))
 }
