@@ -29,8 +29,22 @@ pub async fn ingest_data(
     Extension(user): Extension<User>,
     TypedMultipart(input): TypedMultipart<IngestParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    info!("Received input: {:?}", input);
     let user_id = user.id;
+    let content_bytes = input.content.as_ref().map_or(0, |c| c.len());
+    let has_content = input.content.as_ref().is_some_and(|c| !c.trim().is_empty());
+    let context_bytes = input.context.len();
+    let category_bytes = input.category.len();
+    let file_count = input.files.len();
+
+    info!(
+        user_id = %user_id,
+        has_content,
+        content_bytes,
+        context_bytes,
+        category_bytes,
+        file_count,
+        "Received ingestion request"
+    );
 
     let file_infos = try_join_all(input.files.into_iter().map(|file| {
         FileInfo::new_with_storage(file, &state.db, &user_id, &state.storage)
