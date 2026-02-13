@@ -23,10 +23,7 @@ use tracing::{error, info};
 
 use crate::{
     html_state::HtmlState,
-    middlewares::{
-        auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
-    },
+    middlewares::response_middleware::{HtmlError, TemplateResponse},
 };
 
 #[derive(Serialize)]
@@ -60,7 +57,6 @@ pub struct AdminPanelQuery {
 
 pub async fn show_admin_panel(
     State(state): State<HtmlState>,
-    RequireUser(_user): RequireUser,
     Query(query): Query<AdminPanelQuery>,
 ) -> Result<impl IntoResponse, HtmlError> {
     let section = match query.section.as_deref() {
@@ -131,14 +127,8 @@ pub struct RegistrationToggleData {
 
 pub async fn toggle_registration_status(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
     Form(input): Form<RegistrationToggleInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not admin
-    if !user.admin {
-        return Ok(TemplateResponse::redirect("/"));
-    }
-
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
     let new_settings = SystemSettings {
@@ -175,14 +165,8 @@ pub struct ModelSettingsData {
 
 pub async fn update_model_settings(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
     Form(input): Form<ModelSettingsInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not admin
-    if !user.admin {
-        return Ok(TemplateResponse::redirect("/"));
-    }
-
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
     // Check if using FastEmbed - if so, embedding model/dimensions cannot be changed via UI
@@ -295,13 +279,7 @@ pub struct SystemPromptEditData {
 
 pub async fn show_edit_system_prompt(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not admin
-    if !user.admin {
-        return Ok(TemplateResponse::redirect("/"));
-    }
-
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -325,14 +303,8 @@ pub struct SystemPromptSectionData {
 
 pub async fn patch_query_prompt(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
     Form(input): Form<SystemPromptUpdateInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not admin
-    if !user.admin {
-        return Ok(TemplateResponse::redirect("/"));
-    }
-
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
     let new_settings = SystemSettings {
@@ -359,13 +331,7 @@ pub struct IngestionPromptEditData {
 
 pub async fn show_edit_ingestion_prompt(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not admin
-    if !user.admin {
-        return Ok(TemplateResponse::redirect("/"));
-    }
-
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -384,14 +350,8 @@ pub struct IngestionPromptUpdateInput {
 
 pub async fn patch_ingestion_prompt(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
     Form(input): Form<IngestionPromptUpdateInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not admin
-    if !user.admin {
-        return Ok(TemplateResponse::redirect("/"));
-    }
-
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
     let new_settings = SystemSettings {
@@ -418,13 +378,7 @@ pub struct ImagePromptEditData {
 
 pub async fn show_edit_image_prompt(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not admin
-    if !user.admin {
-        return Ok(TemplateResponse::redirect("/"));
-    }
-
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -443,14 +397,8 @@ pub struct ImagePromptUpdateInput {
 
 pub async fn patch_image_prompt(
     State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
     Form(input): Form<ImagePromptUpdateInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Early return if the user is not admin
-    if !user.admin {
-        return Ok(TemplateResponse::redirect("/"));
-    }
-
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
     let new_settings = SystemSettings {
