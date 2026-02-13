@@ -35,7 +35,9 @@ where
         .add_protected_routes(routes::chat::router())
         .add_protected_routes(routes::content::router())
         .add_protected_routes(routes::knowledge::router())
-        .add_protected_routes(routes::ingestion::router())
+        .add_protected_routes(routes::ingestion::router(
+            app_state.config.ingest_max_body_bytes,
+        ))
         .add_protected_routes(routes::scratchpad::router())
         .with_compression()
         .build()

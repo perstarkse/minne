@@ -29,6 +29,11 @@ Minne can be configured via environment variables or a `config.yaml` file. Envir
 | `FASTEMBED_CACHE_DIR` | Model cache directory | `<data_dir>/fastembed` |
 | `FASTEMBED_SHOW_DOWNLOAD_PROGRESS` | Show progress bar for model downloads | `false` |
 | `FASTEMBED_MAX_LENGTH` | Max sequence length for FastEmbed models | - |
+| `INGEST_MAX_BODY_BYTES` | Max request body size for ingest endpoints | `20000000` |
+| `INGEST_MAX_FILES` | Max files allowed per ingest request | `5` |
+| `INGEST_MAX_CONTENT_BYTES` | Max `content` field size for ingest requests | `262144` |
+| `INGEST_MAX_CONTEXT_BYTES` | Max `context` field size for ingest requests | `16384` |
+| `INGEST_MAX_CATEGORY_BYTES` | Max `category` field size for ingest requests | `128` |
 
 ### S3 Storage (Optional)
 
@@ -76,6 +81,13 @@ embedding_backend: "fastembed"
 # Optional reranking
 reranking_enabled: true
 reranking_pool_size: 2
+
+# Ingest safety limits
+ingest_max_body_bytes: 20000000
+ingest_max_files: 5
+ingest_max_content_bytes: 262144
+ingest_max_context_bytes: 16384
+ingest_max_category_bytes: 128
 ```
 
 ## AI Provider Setup

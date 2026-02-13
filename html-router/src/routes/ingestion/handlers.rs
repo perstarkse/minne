@@ -2,9 +2,10 @@ use std::{pin::Pin, time::Duration};
 
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
     response::{
         sse::{Event, KeepAlive},
-        Html, IntoResponse, Sse,
+        Html, IntoResponse, Response, Sse,
     },
 };
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
@@ -23,6 +24,7 @@ use common::{
         ingestion_task::{IngestionTask, TaskState},
         user::User,
     },
+    utils::ingest_limits::{validate_ingest_input, IngestValidationError},
 };
 
 use crate::{
@@ -34,30 +36,32 @@ use crate::{
     AuthSessionType,
 };
 
-pub async fn show_ingress_form(
+pub async fn show_ingest_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
     let user_categories = User::get_user_categories(&user.id, &state.db).await?;
 
     #[derive(Serialize)]
-    pub struct ShowIngressFormData {
+    pub struct ShowIngestFormData {
         user_categories: Vec<String>,
     }
 
     Ok(TemplateResponse::new_template(
         "ingestion_modal.html",
-        ShowIngressFormData { user_categories },
+        ShowIngestFormData { user_categories },
     ))
 }
 
-pub async fn hide_ingress_form(
+pub async fn hide_ingest_form(
     RequireUser(_user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    Ok(Html(
-        "<a class='btn btn-primary' hx-get='/ingress-form' hx-swap='outerHTML'>Add Content</a>",
+    Ok(
+        Html(
+            "<a class='btn btn-primary' hx-get='/ingest-form' hx-swap='outerHTML'>Add Content</a>",
+        )
+        .into_response(),
     )
-    .into_response())
 }
 
 #[derive(Debug, TryFromMultipart)]
@@ -65,34 +69,22 @@ pub struct IngestionParams {
     pub content: Option<String>,
     pub context: String,
     pub category: String,
-    #[form_data(limit = "10000000")] // Adjust limit as needed
+    #[form_data(limit = "20000000")]
     #[form_data(default)]
     pub files: Vec<FieldData<NamedTempFile>>,
 }
 
-pub async fn process_ingress_form(
+pub async fn process_ingest_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     TypedMultipart(input): TypedMultipart<IngestionParams>,
-) -> Result<impl IntoResponse, HtmlError> {
-    #[derive(Serialize)]
-    pub struct IngressFormData {
-        context: String,
-        content: String,
-        category: String,
-        error: String,
-    }
-
+) -> Result<Response, HtmlError> {
     if input.content.as_ref().is_none_or(|c| c.len() < 2) && input.files.is_empty() {
-        return Ok(TemplateResponse::new_template(
-            "index/signed_in/ingress_form.html",
-            IngressFormData {
-                context: input.context.clone(),
-                content: input.content.clone().unwrap_or_default(),
-                category: input.category.clone(),
-                error: "You need to either add files or content".to_string(),
-            },
-        ));
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            "You need to either add files or content",
+        )
+            .into_response());
     }
 
     let content_bytes = input.content.as_ref().map_or(0, |c| c.len());
@@ -101,6 +93,22 @@ pub async fn process_ingress_form(
     let category_bytes = input.category.len();
     let file_count = input.files.len();
 
+    match validate_ingest_input(
+        &state.config,
+        input.content.as_deref(),
+        &input.context,
+        &input.category,
+        file_count,
+    ) {
+        Ok(()) => {}
+        Err(IngestValidationError::PayloadTooLarge(message)) => {
+            return Ok((StatusCode::PAYLOAD_TOO_LARGE, message).into_response());
+        }
+        Err(IngestValidationError::BadRequest(message)) => {
+            return Ok((StatusCode::BAD_REQUEST, message).into_response());
+        }
+    }
+
     info!(
         user_id = %user.id,
         has_content,
@@ -108,7 +116,7 @@ pub async fn process_ingress_form(
         context_bytes,
         category_bytes,
         file_count,
-        "Received ingestion form submission"
+        "Received ingest form submission"
     );
 
     let file_infos = try_join_all(input.files.into_iter().map(|file| {
@@ -137,10 +145,10 @@ pub async fn process_ingress_form(
         tasks: Vec<IngestionTask>,
     }
 
-    Ok(TemplateResponse::new_template(
-        "dashboard/current_task.html",
-        NewTasksData { tasks },
-    ))
+    Ok(
+        TemplateResponse::new_template("dashboard/current_task.html", NewTasksData { tasks })
+            .into_response(),
+    )
 }
 
 #[derive(Deserialize)]

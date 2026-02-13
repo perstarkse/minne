@@ -1,8 +1,7 @@
 # Changelog
 ## Unreleased
 - Fix: edge case where navigation back to a chat page could trigger a new response generation
-- Security: hardened storage-layer queries by replacing user-influenced string interpolation with bound parameters and adding injection regression tests.
-- Security: removed raw ingestion payload logging from API/HTML ingress handlers and replaced it with metadata-only structured logs.
+- Security: Misc security fixes
 
 ## 1.0.1 (2026-02-11)
 - Shipped an S3 storage backend so content can be stored in object storage instead of local disk, with configuration support for S3 deployments.
