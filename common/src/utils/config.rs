@@ -86,6 +86,16 @@ pub struct AppConfig {
     pub retrieval_strategy: Option<String>,
     #[serde(default)]
     pub embedding_backend: EmbeddingBackend,
+    #[serde(default = "default_ingest_max_body_bytes")]
+    pub ingest_max_body_bytes: usize,
+    #[serde(default = "default_ingest_max_files")]
+    pub ingest_max_files: usize,
+    #[serde(default = "default_ingest_max_content_bytes")]
+    pub ingest_max_content_bytes: usize,
+    #[serde(default = "default_ingest_max_context_bytes")]
+    pub ingest_max_context_bytes: usize,
+    #[serde(default = "default_ingest_max_category_bytes")]
+    pub ingest_max_category_bytes: usize,
 }
 
 /// Default data directory for persisted assets.
@@ -101,6 +111,26 @@ fn default_base_url() -> String {
 /// Whether reranking is enabled by default.
 fn default_reranking_enabled() -> bool {
     false
+}
+
+fn default_ingest_max_body_bytes() -> usize {
+    20_000_000
+}
+
+fn default_ingest_max_files() -> usize {
+    5
+}
+
+fn default_ingest_max_content_bytes() -> usize {
+    262_144
+}
+
+fn default_ingest_max_context_bytes() -> usize {
+    16_384
+}
+
+fn default_ingest_max_category_bytes() -> usize {
+    128
 }
 
 pub fn ensure_ort_path() {
@@ -157,6 +187,11 @@ impl Default for AppConfig {
             fastembed_max_length: None,
             retrieval_strategy: None,
             embedding_backend: EmbeddingBackend::default(),
+            ingest_max_body_bytes: default_ingest_max_body_bytes(),
+            ingest_max_files: default_ingest_max_files(),
+            ingest_max_content_bytes: default_ingest_max_content_bytes(),
+            ingest_max_context_bytes: default_ingest_max_context_bytes(),
+            ingest_max_category_bytes: default_ingest_max_category_bytes(),
         }
     }
 }

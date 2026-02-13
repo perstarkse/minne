@@ -20,6 +20,9 @@ pub enum ApiError {
 
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+
+    #[error("Payload too large: {0}")]
+    PayloadTooLarge(String),
 }
 
 impl From<AppError> for ApiError {
@@ -62,6 +65,13 @@ impl IntoResponse for ApiError {
             ),
             Self::Unauthorized(message) => (
                 StatusCode::UNAUTHORIZED,
+                ErrorResponse {
+                    error: message,
+                    status: "error".to_string(),
+                },
+            ),
+            Self::PayloadTooLarge(message) => (
+                StatusCode::PAYLOAD_TOO_LARGE,
                 ErrorResponse {
                     error: message,
                     status: "error".to_string(),
@@ -132,6 +142,10 @@ mod tests {
         // Test unauthorized status
         let error = ApiError::Unauthorized("not allowed".to_string());
         assert_status_code(error, StatusCode::UNAUTHORIZED);
+
+        // Test payload too large status
+        let error = ApiError::PayloadTooLarge("too big".to_string());
+        assert_status_code(error, StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     // Alternative approach that doesn't try to parse the response body

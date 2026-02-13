@@ -1,4 +1,4 @@
 pub mod categories;
-pub mod ingress;
+pub mod ingest;
 pub mod liveness;
 pub mod readiness;

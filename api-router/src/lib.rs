@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use middleware_api_auth::api_auth;
-use routes::{categories::get_categories, ingress::ingest_data, liveness::live, readiness::ready};
+use routes::{categories::get_categories, ingest::ingest_data, liveness::live, readiness::ready};
 
 pub mod api_state;
 pub mod error;
@@ -26,9 +26,13 @@ where
 
     // Protected API endpoints (require auth)
     let protected = Router::new()
-        .route("/ingress", post(ingest_data))
+        .route(
+            "/ingest",
+            post(ingest_data).layer(DefaultBodyLimit::max(
+                app_state.config.ingest_max_body_bytes,
+            )),
+        )
         .route("/categories", get(get_categories))
-        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         .route_layer(from_fn_with_state(app_state.clone(), api_auth));
 
     public.merge(protected)

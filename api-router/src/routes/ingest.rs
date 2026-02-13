@@ -6,6 +6,7 @@ use common::{
         file_info::FileInfo, ingestion_payload::IngestionPayload, ingestion_task::IngestionTask,
         user::User,
     },
+    utils::ingest_limits::{validate_ingest_input, IngestValidationError},
 };
 use futures::{future::try_join_all, TryFutureExt};
 use serde_json::json;
@@ -19,7 +20,7 @@ pub struct IngestParams {
     pub content: Option<String>,
     pub context: String,
     pub category: String,
-    #[form_data(limit = "10000000")] // Adjust limit as needed
+    #[form_data(limit = "20000000")]
     #[form_data(default)]
     pub files: Vec<FieldData<NamedTempFile>>,
 }
@@ -36,6 +37,22 @@ pub async fn ingest_data(
     let category_bytes = input.category.len();
     let file_count = input.files.len();
 
+    match validate_ingest_input(
+        &state.config,
+        input.content.as_deref(),
+        &input.context,
+        &input.category,
+        file_count,
+    ) {
+        Ok(()) => {}
+        Err(IngestValidationError::PayloadTooLarge(message)) => {
+            return Err(ApiError::PayloadTooLarge(message));
+        }
+        Err(IngestValidationError::BadRequest(message)) => {
+            return Err(ApiError::ValidationError(message));
+        }
+    }
+
     info!(
         user_id = %user_id,
         has_content,
@@ -43,7 +60,7 @@ pub async fn ingest_data(
         context_bytes,
         category_bytes,
         file_count,
-        "Received ingestion request"
+        "Received ingest request"
     );
 
     let file_infos = try_join_all(input.files.into_iter().map(|file| {
