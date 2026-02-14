@@ -1,8 +1,4 @@
-use axum::{
-    extract::State,
-    response::{Html, IntoResponse},
-    Form,
-};
+use axum::{extract::State, response::IntoResponse, Form};
 use axum_htmx::HxBoosted;
 use serde::{Deserialize, Serialize};
 
@@ -46,7 +42,7 @@ pub async fn authenticate_user(
     let user = match User::authenticate(&form.email, &form.password, &state.db).await {
         Ok(user) => user,
         Err(_) => {
-            return Ok(Html("<p>Incorrect email or password </p>").into_response());
+            return Ok(TemplateResponse::bad_request("Incorrect email or password").into_response());
         }
     };
 

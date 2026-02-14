@@ -6,7 +6,7 @@
     </div>
     <div class="u-hairline mb-3"></div>
 
-    <form hx-post="/signin" hx-target="#login-result" class="flex flex-col gap-2">
+    <form hx-post="/signin" hx-swap="none" class="flex flex-col gap-2">
       <label class="w-full">
         <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Email</div>
         <input name="email" type="email" placeholder="Email" class="nb-input w-full validator" required />
@@ -18,8 +18,6 @@
         <input name="password" type="password" class="nb-input w-full validator" required placeholder="Password"
           minlength="8" />
       </label>
-
-      <div class="mt-1 text-error" id="login-result"></div>
 
       <div class="form-control mt-1">
         <label class="label cursor-pointer justify-start gap-3">

@@ -13,9 +13,9 @@
   <label class="w-full">
     <div class="text-xs uppercase tracking-wide opacity-70 mb-1">API Key</div>
     {% block api_key_section %}
-    {% if user.api_key %}
+    {% if api_key %}
     <div class="relative">
-      <input id="api_key_input" type="text" name="api_key" value="{{ user.api_key }}"
+      <input id="api_key_input" type="text" name="api_key" value="{{ api_key }}"
         class="nb-input w-full pr-14" disabled />
       <button type="button" id="copy_api_key_btn" onclick="copy_api_key()"
         class="absolute inset-y-0 right-0 flex items-center px-2 nb-btn btn-sm" aria-label="Copy API key"
@@ -48,9 +48,10 @@
   <label class="w-full">
     <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Timezone</div>
     {% block timezone_section %}
+    {% set active_timezone = selected_timezone|default(user.timezone) %}
     <select name="timezone" class="nb-select w-full" hx-patch="/update-timezone" hx-swap="outerHTML">
       {% for tz in timezones %}
-      <option value="{{ tz }}" {% if tz==user.timezone %}selected{% endif %}>{{ tz }}</option>
+      <option value="{{ tz }}" {% if tz==active_timezone %}selected{% endif %}>{{ tz }}</option>
       {% endfor %}
     </select>
     {% endblock %}
@@ -59,13 +60,14 @@
   <label class="w-full">
     <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Theme</div>
     {% block theme_section %}
+    {% set active_theme = selected_theme|default(user.theme) %}
     <select name="theme" class="nb-select w-full" hx-patch="/update-theme" hx-swap="outerHTML">
       {% for option in theme_options %}
-      <option value="{{ option }}" {% if option==user.theme %}selected{% endif %}>{{ option }}</option>
+      <option value="{{ option }}" {% if option==active_theme %}selected{% endif %}>{{ option }}</option>
       {% endfor %}
     </select>
     <script>
-      document.documentElement.setAttribute('data-theme-preference', '{{ user.theme }}');
+      document.documentElement.setAttribute('data-theme-preference', '{{ active_theme }}');
     </script>
     {% endblock %}
   </label>
