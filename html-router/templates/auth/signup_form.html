@@ -11,7 +11,7 @@
       </div>
       <div class="u-hairline mb-3"></div>
 
-      <form hx-post="/signup" hx-target="#signup-result" class="flex flex-col gap-4">
+      <form hx-post="/signup" hx-swap="none" class="flex flex-col gap-4">
         <label class="w-full">
           <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Email</div>
           <input type="email" placeholder="Email" name="email" required class="nb-input w-full validator" />
@@ -31,7 +31,6 @@
           </p>
         </label>
 
-        <div class="mt-2 text-error" id="signup-result"></div>
         <div class="form-control mt-1">
           <button id="submit-btn" class="nb-btn nb-cta w-full">Create Account</button>
         </div>

@@ -73,6 +73,7 @@ pub async fn show_initialized_chat(
     state.db.store_item(conversation.clone()).await?;
     state.db.store_item(ai_message.clone()).await?;
     state.db.store_item(user_message.clone()).await?;
+    state.invalidate_conversation_archive_cache(&user.id).await;
 
     let messages = vec![user_message, ai_message];
 
@@ -178,7 +179,7 @@ pub async fn new_chat_user_message(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    let conversation = Conversation::new(user.id, "New chat".to_string());
+    let conversation = Conversation::new(user.id.clone(), "New chat".to_string());
     let user_message = Message::new(
         conversation.id.clone(),
         MessageRole::User,
@@ -188,6 +189,7 @@ pub async fn new_chat_user_message(
 
     state.db.store_item(conversation.clone()).await?;
     state.db.store_item(user_message.clone()).await?;
+    state.invalidate_conversation_archive_cache(&user.id).await;
 
     #[derive(Serialize)]
     struct SSEResponseInitData {
@@ -252,6 +254,7 @@ pub async fn patch_conversation_title(
     Form(form): Form<PatchConversationTitle>,
 ) -> Result<impl IntoResponse, HtmlError> {
     Conversation::patch_title(&conversation_id, &user.id, &form.title, &state.db).await?;
+    state.invalidate_conversation_archive_cache(&user.id).await;
 
     Ok(TemplateResponse::new_template(
         "sidebar.html",
@@ -281,6 +284,7 @@ pub async fn delete_conversation(
         .db
         .delete_item::<Conversation>(&conversation_id)
         .await?;
+    state.invalidate_conversation_archive_cache(&user.id).await;
 
     Ok(TemplateResponse::new_template(
         "sidebar.html",

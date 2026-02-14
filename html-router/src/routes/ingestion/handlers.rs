@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive},
-        Html, IntoResponse, Response, Sse,
+        IntoResponse, Response, Sse,
     },
 };
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
@@ -56,12 +56,10 @@ pub async fn show_ingest_form(
 pub async fn hide_ingest_form(
     RequireUser(_user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    Ok(
-        Html(
-            "<a class='btn btn-primary' hx-get='/ingest-form' hx-swap='outerHTML'>Add Content</a>",
-        )
-        .into_response(),
-    )
+    Ok(TemplateResponse::new_template(
+        "ingestion/add_content_button.html",
+        (),
+    ))
 }
 
 #[derive(Debug, TryFromMultipart)]
@@ -80,11 +78,10 @@ pub async fn process_ingest_form(
     TypedMultipart(input): TypedMultipart<IngestionParams>,
 ) -> Result<Response, HtmlError> {
     if input.content.as_ref().is_none_or(|c| c.len() < 2) && input.files.is_empty() {
-        return Ok((
-            StatusCode::BAD_REQUEST,
-            "You need to either add files or content",
-        )
-            .into_response());
+        return Ok(
+            TemplateResponse::bad_request("You need to either add files or content")
+                .into_response(),
+        );
     }
 
     let content_bytes = input.content.as_ref().map_or(0, |c| c.len());
@@ -102,10 +99,15 @@ pub async fn process_ingest_form(
     ) {
         Ok(()) => {}
         Err(IngestValidationError::PayloadTooLarge(message)) => {
-            return Ok((StatusCode::PAYLOAD_TOO_LARGE, message).into_response());
+            return Ok(TemplateResponse::error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "Payload Too Large",
+                &message,
+            )
+            .into_response());
         }
         Err(IngestValidationError::BadRequest(message)) => {
-            return Ok((StatusCode::BAD_REQUEST, message).into_response());
+            return Ok(TemplateResponse::bad_request(&message).into_response());
         }
     }
 

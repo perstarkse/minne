@@ -1,8 +1,4 @@
-use axum::{
-    extract::State,
-    response::{Html, IntoResponse},
-    Form,
-};
+use axum::{extract::State, response::IntoResponse, Form};
 use axum_htmx::HxBoosted;
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +53,7 @@ pub async fn process_signup_and_show_verification(
         Ok(user) => user,
         Err(e) => {
             tracing::error!("{:?}", e);
-            return Ok(Html(format!("<p>{e}</p>")).into_response());
+            return Ok(TemplateResponse::bad_request(&e.to_string()).into_response());
         }
     };
 

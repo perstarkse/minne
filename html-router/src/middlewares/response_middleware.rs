@@ -27,7 +27,7 @@ pub trait ProvidesHtmlState {
     fn html_state(&self) -> &HtmlState;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TemplateKind {
     Full(String),
     Partial(String, String),
@@ -115,11 +115,32 @@ impl IntoResponse for TemplateResponse {
 }
 
 #[derive(Serialize)]
+struct TemplateUser {
+    id: String,
+    email: String,
+    admin: bool,
+    timezone: String,
+    theme: String,
+}
+
+impl From<&User> for TemplateUser {
+    fn from(user: &User) -> Self {
+        Self {
+            id: user.id.clone(),
+            email: user.email.clone(),
+            admin: user.admin,
+            timezone: user.timezone.clone(),
+            theme: user.theme.as_str().to_string(),
+        }
+    }
+}
+
+#[derive(Serialize)]
 struct ContextWrapper<'a> {
     user_theme: &'a str,
     initial_theme: &'a str,
     is_authenticated: bool,
-    user: Option<&'a User>,
+    user: Option<&'a TemplateUser>,
     conversation_archive: Vec<Conversation>,
     #[serde(flatten)]
     context: HashMap<String, Value>,
@@ -138,6 +159,7 @@ where
     let mut initial_theme = Theme::System.initial_theme();
     let mut is_authenticated = false;
     let mut current_user_id = None;
+    let mut current_user = None;
 
     {
         if let Some(auth) = req.extensions().get::<AuthSessionType>() {
@@ -146,6 +168,7 @@ where
                 current_user_id = Some(user.id.clone());
                 user_theme = user.theme.as_str();
                 initial_theme = user.theme.initial_theme();
+                current_user = Some(TemplateUser::from(user));
             }
         }
     }
@@ -158,17 +181,48 @@ where
     if let Some(template_response) = response.extensions().get::<TemplateResponse>().cloned() {
         let template_engine = state.template_engine();
 
-        let mut current_user = None;
         let mut conversation_archive = Vec::new();
 
-        if let Some(user_id) = current_user_id {
-            let html_state = state.html_state();
-            if let Ok(Some(user)) = html_state.db.get_item::<User>(&user_id).await {
-                // Fetch conversation archive globally for authenticated users
-                if let Ok(archive) = User::get_user_conversations(&user.id, &html_state.db).await {
+        let should_load_conversation_archive =
+            matches!(&template_response.template_kind, TemplateKind::Full(_));
+
+        if should_load_conversation_archive {
+            if let Some(user_id) = current_user_id {
+                let html_state = state.html_state();
+                if let Some(cached_archive) =
+                    html_state.get_cached_conversation_archive(&user_id).await
+                {
+                    conversation_archive = cached_archive;
+                } else if let Ok(archive) =
+                    User::get_user_conversations(&user_id, &html_state.db).await
+                {
+                    html_state
+                        .set_cached_conversation_archive(&user_id, archive.clone())
+                        .await;
                     conversation_archive = archive;
                 }
-                current_user = Some(user);
+            }
+        }
+
+        fn context_to_map(
+            value: &Value,
+        ) -> Result<HashMap<String, Value>, minijinja::value::ValueKind> {
+            match value.kind() {
+                minijinja::value::ValueKind::Map => {
+                    let mut map = HashMap::new();
+                    if let Ok(keys) = value.try_iter() {
+                        for key in keys {
+                            if let Ok(val) = value.get_item(&key) {
+                                map.insert(key.to_string(), val);
+                            }
+                        }
+                    }
+                    Ok(map)
+                }
+                minijinja::value::ValueKind::None | minijinja::value::ValueKind::Undefined => {
+                    Ok(HashMap::new())
+                }
+                other => Err(other),
             }
         }
 
@@ -183,19 +237,15 @@ where
             }
         }
 
-        // Convert minijinja::Value to HashMap if it's a map, otherwise use empty HashMap
-        let context_map = if template_response.context.kind() == minijinja::value::ValueKind::Map {
-            let mut map = HashMap::new();
-            if let Ok(keys) = template_response.context.try_iter() {
-                for key in keys {
-                    if let Ok(val) = template_response.context.get_item(&key) {
-                        map.insert(key.to_string(), val);
-                    }
-                }
+        let context_map = match context_to_map(&template_response.context) {
+            Ok(map) => map,
+            Err(kind) => {
+                error!(
+                    "Template context must be a map or unit, got kind={:?} for template_kind={:?}",
+                    kind, template_response.template_kind
+                );
+                return (StatusCode::INTERNAL_SERVER_ERROR, Html(fallback_error())).into_response();
             }
-            map
-        } else {
-            HashMap::new()
         };
 
         let context = ContextWrapper {

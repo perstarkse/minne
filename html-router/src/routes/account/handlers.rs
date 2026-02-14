@@ -17,10 +17,16 @@ use crate::html_state::HtmlState;
 pub struct AccountPageData {
     timezones: Vec<String>,
     theme_options: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    api_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_timezone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_theme: Option<String>,
 }
 
 pub async fn show_account_page(
-    RequireUser(_user): RequireUser,
+    RequireUser(user): RequireUser,
     State(_state): State<HtmlState>,
 ) -> Result<impl IntoResponse, HtmlError> {
     let timezones = TZ_VARIANTS
@@ -40,6 +46,9 @@ pub async fn show_account_page(
         AccountPageData {
             timezones,
             theme_options,
+            api_key: user.api_key,
+            selected_timezone: None,
+            selected_theme: None,
         },
     ))
 }
@@ -50,7 +59,7 @@ pub async fn set_api_key(
     auth: AuthSessionType,
 ) -> Result<impl IntoResponse, HtmlError> {
     // Generate and set the API key
-    User::set_api_key(&user.id, &state.db).await?;
+    let api_key = User::set_api_key(&user.id, &state.db).await?;
 
     // Clear the cache so new requests have access to the user with api key
     auth.cache_clear_user(user.id.to_string());
@@ -62,6 +71,9 @@ pub async fn set_api_key(
         AccountPageData {
             timezones: vec![],
             theme_options: vec![],
+            api_key: Some(api_key),
+            selected_timezone: None,
+            selected_theme: None,
         },
     ))
 }
@@ -108,6 +120,9 @@ pub async fn update_timezone(
         AccountPageData {
             timezones,
             theme_options: vec![],
+            api_key: None,
+            selected_timezone: Some(form.timezone),
+            selected_theme: None,
         },
     ))
 }
@@ -142,6 +157,9 @@ pub async fn update_theme(
         AccountPageData {
             timezones: vec![],
             theme_options,
+            api_key: None,
+            selected_timezone: None,
+            selected_theme: Some(form.theme),
         },
     ))
 }
