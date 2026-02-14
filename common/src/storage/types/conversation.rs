@@ -10,6 +10,54 @@ stored_object!(Conversation, "conversation", {
     title: String
 });
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SidebarConversation {
+    #[serde(deserialize_with = "deserialize_sidebar_id")]
+    pub id: String,
+    pub title: String,
+}
+
+struct SidebarIdVisitor;
+
+impl<'de> serde::de::Visitor<'de> for SidebarIdVisitor {
+    type Value = String;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string id or a SurrealDB Thing")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(value.to_string())
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(value)
+    }
+
+    fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let thing = <surrealdb::sql::Thing as serde::Deserialize>::deserialize(
+            serde::de::value::MapAccessDeserializer::new(map),
+        )?;
+        Ok(thing.id.to_raw())
+    }
+}
+
+fn deserialize_sidebar_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserializer.deserialize_any(SidebarIdVisitor)
+}
+
 impl Conversation {
     pub fn new(user_id: String, title: String) -> Self {
         let now = Utc::now();
@@ -74,6 +122,23 @@ impl Conversation {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn get_user_sidebar_conversations(
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<SidebarConversation>, AppError> {
+        let conversations: Vec<SidebarConversation> = db
+            .client
+            .query(
+                "SELECT id, title, updated_at FROM type::table($table_name) WHERE user_id = $user_id ORDER BY updated_at DESC",
+            )
+            .bind(("table_name", Self::table_name()))
+            .bind(("user_id", user_id.to_string()))
+            .await?
+            .take(0)?;
+
+        Ok(conversations)
     }
 }
 
@@ -247,6 +312,96 @@ mod tests {
             Err(AppError::Auth(_)) => {}
             _ => panic!("Expected Auth error"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_user_sidebar_conversations_filters_and_orders_by_updated_at_desc() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        let user_id = "sidebar_user";
+        let other_user_id = "other_user";
+        let base = Utc::now();
+
+        let mut oldest = Conversation::new(user_id.to_string(), "Oldest".to_string());
+        oldest.updated_at = base - chrono::Duration::minutes(30);
+
+        let mut newest = Conversation::new(user_id.to_string(), "Newest".to_string());
+        newest.updated_at = base - chrono::Duration::minutes(5);
+
+        let mut middle = Conversation::new(user_id.to_string(), "Middle".to_string());
+        middle.updated_at = base - chrono::Duration::minutes(15);
+
+        let mut other_user = Conversation::new(other_user_id.to_string(), "Other".to_string());
+        other_user.updated_at = base;
+
+        db.store_item(oldest.clone())
+            .await
+            .expect("Failed to store oldest conversation");
+        db.store_item(newest.clone())
+            .await
+            .expect("Failed to store newest conversation");
+        db.store_item(middle.clone())
+            .await
+            .expect("Failed to store middle conversation");
+        db.store_item(other_user)
+            .await
+            .expect("Failed to store other-user conversation");
+
+        let sidebar_items = Conversation::get_user_sidebar_conversations(user_id, &db)
+            .await
+            .expect("Failed to get sidebar conversations");
+
+        assert_eq!(sidebar_items.len(), 3);
+        assert_eq!(sidebar_items[0].id, newest.id);
+        assert_eq!(sidebar_items[0].title, "Newest");
+        assert_eq!(sidebar_items[1].id, middle.id);
+        assert_eq!(sidebar_items[1].title, "Middle");
+        assert_eq!(sidebar_items[2].id, oldest.id);
+        assert_eq!(sidebar_items[2].title, "Oldest");
+    }
+
+    #[tokio::test]
+    async fn test_sidebar_projection_reflects_patch_title_and_updated_at_reorder() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        let user_id = "sidebar_patch_user";
+        let base = Utc::now();
+
+        let mut first = Conversation::new(user_id.to_string(), "First".to_string());
+        first.updated_at = base - chrono::Duration::minutes(20);
+
+        let mut second = Conversation::new(user_id.to_string(), "Second".to_string());
+        second.updated_at = base - chrono::Duration::minutes(10);
+
+        db.store_item(first.clone())
+            .await
+            .expect("Failed to store first conversation");
+        db.store_item(second.clone())
+            .await
+            .expect("Failed to store second conversation");
+
+        let before_patch = Conversation::get_user_sidebar_conversations(user_id, &db)
+            .await
+            .expect("Failed to get sidebar conversations before patch");
+        assert_eq!(before_patch[0].id, second.id);
+
+        Conversation::patch_title(&first.id, user_id, "First (renamed)", &db)
+            .await
+            .expect("Failed to patch conversation title");
+
+        let after_patch = Conversation::get_user_sidebar_conversations(user_id, &db)
+            .await
+            .expect("Failed to get sidebar conversations after patch");
+        assert_eq!(after_patch[0].id, first.id);
+        assert_eq!(after_patch[0].title, "First (renamed)");
     }
 
     #[tokio::test]

@@ -2,7 +2,7 @@
   "name": "html-router",
   "version": "1.0.0",
   "scripts": {
-    "tailwind": "npx @tailwindcss/cli -i app.css -o assets/style.css -w -m"
+    "tailwind": "tailwindcss -i app.css -o assets/style.css --watch=always"
   },
   "author": "",
   "license": "ISC",

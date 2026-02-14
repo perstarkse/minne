@@ -10,6 +10,7 @@
   packages = [
     pkgs.openssl
     pkgs.nodejs
+    pkgs.watchman
     pkgs.vscode-langservers-extracted
     pkgs.cargo-dist
     pkgs.cargo-xwin
@@ -34,6 +35,6 @@
   processes = {
     surreal_db.exec = "docker run --rm --pull always -p 8000:8000 --net=host --user $(id -u) -v $(pwd)/database:/database surrealdb/surrealdb:latest-dev start rocksdb:/database/database.db --user root_user --pass root_password";
     server.exec = "cargo watch -x 'run --bin main'";
-    tailwind.exec = "cd html-router && npm run tailwind";
+    tailwind.exec = "tailwindcss --cwd html-router -i app.css -o assets/style.css --watch=always";
   };
 }

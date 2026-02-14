@@ -42,9 +42,8 @@ pub async fn index_handler(
         return Ok(TemplateResponse::redirect("/signin"));
     };
 
-    let (text_contents, _conversation_archive, stats, active_jobs) = try_join!(
+    let (text_contents, stats, active_jobs) = try_join!(
         User::get_latest_text_contents(&user.id, &state.db),
-        User::get_user_conversations(&user.id, &state.db),
         User::get_dashboard_stats(&user.id, &state.db),
         User::get_unfinished_ingestion_tasks(&user.id, &state.db)
     )?;

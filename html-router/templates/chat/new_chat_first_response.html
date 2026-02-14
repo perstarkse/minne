@@ -12,16 +12,34 @@
   </label>
 </form>
 <script>
-  document.getElementById('chat-input').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      htmx.trigger('#chat-form', 'submit');
-    }
-  });
-  // Clear textarea after successful submission
-  document.getElementById('chat-form').addEventListener('htmx:afterRequest', function (e) {
-    if (e.detail.successful) { // Check if the request was successful
-      document.getElementById('chat-input').value = ''; // Clear the textarea
-    }
-  });
+  (function () {
+    const newChatStreamId = 'ai-stream-{{ user_message.id }}';
+
+    document.getElementById('chat-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        htmx.trigger('#chat-form', 'submit');
+      }
+    });
+    // Clear textarea after successful submission
+    document.getElementById('chat-form').addEventListener('htmx:afterRequest', function (e) {
+      if (e.detail.successful) { // Check if the request was successful
+        document.getElementById('chat-input').value = ''; // Clear the textarea
+      }
+    });
+
+    const refreshSidebarAfterFirstResponse = function (e) {
+      const streamEl = document.getElementById(newChatStreamId);
+      if (!streamEl || e.target !== streamEl) return;
+
+      htmx.ajax('GET', '/chat/sidebar', {
+        target: '.drawer-side',
+        swap: 'outerHTML'
+      });
+
+      document.body.removeEventListener('htmx:sseClose', refreshSidebarAfterFirstResponse);
+    };
+
+    document.body.addEventListener('htmx:sseClose', refreshSidebarAfterFirstResponse);
+  })();
 </script>

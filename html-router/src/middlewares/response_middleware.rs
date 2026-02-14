@@ -19,7 +19,7 @@ use tracing::error;
 
 use crate::{html_state::HtmlState, AuthSessionType};
 use common::storage::types::{
-    conversation::Conversation,
+    conversation::{Conversation, SidebarConversation},
     user::{Theme, User},
 };
 
@@ -141,7 +141,7 @@ struct ContextWrapper<'a> {
     initial_theme: &'a str,
     is_authenticated: bool,
     user: Option<&'a TemplateUser>,
-    conversation_archive: Vec<Conversation>,
+    conversation_archive: Vec<SidebarConversation>,
     #[serde(flatten)]
     context: HashMap<String, Value>,
 }
@@ -194,7 +194,7 @@ where
                 {
                     conversation_archive = cached_archive;
                 } else if let Ok(archive) =
-                    User::get_user_conversations(&user_id, &html_state.db).await
+                    Conversation::get_user_sidebar_conversations(&user_id, &html_state.db).await
                 {
                     html_state
                         .set_cached_conversation_archive(&user_id, archive.clone())

@@ -1,7 +1,11 @@
 # Changelog
 ## Unreleased
 - Fix: edge case where navigation back to a chat page could trigger a new response generation
-- Security: Misc security fixes
+- Fix: chat references now validate and render more reliably
+- Fix: improved admin access checks for restricted routes
+- Performance: faster chat sidebar loads from cached conversation archive data
+- API: harmonized ingest endpoint naming and added configurable ingest safety limits
+- Security: hardened query handling and ingestion logging to reduce injection and data exposure risk
 
 ## 1.0.1 (2026-02-11)
 - Shipped an S3 storage backend so content can be stored in object storage instead of local disk, with configuration support for S3 deployments.
