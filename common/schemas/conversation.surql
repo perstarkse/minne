@@ -13,3 +13,4 @@ DEFINE FIELD IF NOT EXISTS title ON conversation TYPE string;
 # Add indexes based on query patterns (get_complete_conversation ownership check, get_user_conversations)
 DEFINE INDEX IF NOT EXISTS conversation_user_id_idx ON conversation FIELDS user_id;
 DEFINE INDEX IF NOT EXISTS conversation_created_at_idx ON conversation FIELDS created_at; # For get_user_conversations ORDER BY
+DEFINE INDEX IF NOT EXISTS conversation_user_updated_at_idx ON conversation FIELDS user_id, updated_at; # For sidebar conversation projection ORDER BY
