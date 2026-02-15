@@ -72,7 +72,7 @@ impl KnowledgeRelationship {
     ) -> Result<(), AppError> {
         db_client
             .client
-            .query("DELETE knowledge_entity -> relates_to WHERE metadata.source_id = $source_id")
+            .query("DELETE FROM relates_to WHERE metadata.source_id = $source_id")
             .bind(("source_id", source_id.to_owned()))
             .await?
             .check()?;
@@ -127,6 +127,34 @@ mod tests {
     use super::*;
     use crate::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
 
+    async fn setup_test_db() -> SurrealDbClient {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        db.apply_migrations()
+            .await
+            .expect("Failed to apply migrations");
+
+        db
+    }
+
+    async fn get_relationship_by_id(
+        relationship_id: &str,
+        db_client: &SurrealDbClient,
+    ) -> Option<KnowledgeRelationship> {
+        let mut result = db_client
+            .client
+            .query("SELECT * FROM type::thing('relates_to', $id)")
+            .bind(("id", relationship_id.to_owned()))
+            .await
+            .expect("relationship query by id failed");
+
+        result.take(0).expect("failed to take relationship by id")
+    }
+
     // Helper function to create a test knowledge entity for the relationship tests
     async fn create_test_entity(name: &str, db_client: &SurrealDbClient) -> String {
         let source_id = "source123".to_string();
@@ -178,15 +206,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_and_verify_by_source_id() {
         // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
-
-        db.apply_migrations()
-            .await
-            .expect("Failed to apply migrations");
+        let db = setup_test_db().await;
 
         // Create two entities to relate
         let entity1_id = create_test_entity("Entity 1", &db).await;
@@ -211,33 +231,33 @@ mod tests {
             .await
             .expect("Failed to store relationship");
 
+        let persisted = get_relationship_by_id(&relationship.id, &db)
+            .await
+            .expect("Relationship should be retrievable by id");
+        assert_eq!(persisted.in_, entity1_id);
+        assert_eq!(persisted.out, entity2_id);
+        assert_eq!(persisted.metadata.user_id, user_id);
+        assert_eq!(persisted.metadata.source_id, source_id);
+
         // Query to verify the relationship exists by checking for relationships with our source_id
         // This approach is more reliable than trying to look up by ID
-        let check_query = format!(
-            "SELECT * FROM relates_to WHERE metadata.source_id = '{}'",
-            source_id
-        );
-        let mut check_result = db.query(check_query).await.expect("Check query failed");
+        let mut check_result = db
+            .query("SELECT * FROM relates_to WHERE metadata.source_id = $source_id")
+            .bind(("source_id", source_id.clone()))
+            .await
+            .expect("Check query failed");
         let check_results: Vec<KnowledgeRelationship> = check_result.take(0).unwrap_or_default();
 
-        // Just verify that a relationship was created
-        assert!(
-            !check_results.is_empty(),
-            "Relationship should exist in the database"
+        assert_eq!(
+            check_results.len(),
+            1,
+            "Expected one relationship for source_id"
         );
     }
 
     #[tokio::test]
     async fn test_store_relationship_resists_query_injection() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
-
-        db.apply_migrations()
-            .await
-            .expect("Failed to apply migrations");
+        let db = setup_test_db().await;
 
         let entity1_id = create_test_entity("Entity 1", &db).await;
         let entity2_id = create_test_entity("Entity 2", &db).await;
@@ -273,11 +293,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_and_delete_relationship() {
         // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = setup_test_db().await;
 
         // Create two entities to relate
         let entity1_id = create_test_entity("Entity 1", &db).await;
@@ -338,11 +354,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_relationship_by_id_unauthorized() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = setup_test_db().await;
 
         let entity1_id = create_test_entity("Entity 1", &db).await;
         let entity2_id = create_test_entity("Entity 2", &db).await;
@@ -406,11 +418,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_relationship_exists() {
         // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = setup_test_db().await;
 
         // Create entities to relate
         let entity1_id = create_test_entity("Entity 1", &db).await;
@@ -462,49 +470,87 @@ mod tests {
             .await
             .expect("Failed to store different relationship");
 
+        // Sanity-check setup: exactly two relationships use source_id and one uses different_source_id.
+        let mut before_delete = db
+            .query("SELECT * FROM relates_to WHERE metadata.source_id = $source_id")
+            .bind(("source_id", source_id.clone()))
+            .await
+            .expect("before delete query failed");
+        let before_delete_rows: Vec<KnowledgeRelationship> =
+            before_delete.take(0).unwrap_or_default();
+        assert_eq!(before_delete_rows.len(), 2);
+
+        let mut before_delete_different = db
+            .query("SELECT * FROM relates_to WHERE metadata.source_id = $source_id")
+            .bind(("source_id", different_source_id.clone()))
+            .await
+            .expect("before delete different query failed");
+        let before_delete_different_rows: Vec<KnowledgeRelationship> =
+            before_delete_different.take(0).unwrap_or_default();
+        assert_eq!(before_delete_different_rows.len(), 1);
+
         // Delete relationships by source_id
         KnowledgeRelationship::delete_relationships_by_source_id(&source_id, &db)
             .await
             .expect("Failed to delete relationships by source_id");
 
-        // Query to verify the relationships with source_id were deleted
-        let query1 = format!("SELECT * FROM relates_to WHERE id = '{}'", relationship1.id);
-        let query2 = format!("SELECT * FROM relates_to WHERE id = '{}'", relationship2.id);
-        let different_query = format!(
-            "SELECT * FROM relates_to WHERE id = '{}'",
-            different_relationship.id
-        );
-
-        let mut result1 = db.query(query1).await.expect("Query 1 failed");
-        let results1: Vec<KnowledgeRelationship> = result1.take(0).unwrap_or_default();
-
-        let mut result2 = db.query(query2).await.expect("Query 2 failed");
-        let results2: Vec<KnowledgeRelationship> = result2.take(0).unwrap_or_default();
-
-        let mut different_result = db
-            .query(different_query)
-            .await
-            .expect("Different query failed");
-        let _different_results: Vec<KnowledgeRelationship> =
-            different_result.take(0).unwrap_or_default();
+        // Query to verify the specific relationships with source_id were deleted.
+        let result1 = get_relationship_by_id(&relationship1.id, &db).await;
+        let result2 = get_relationship_by_id(&relationship2.id, &db).await;
+        let different_result = get_relationship_by_id(&different_relationship.id, &db).await;
 
         // Verify relationships with the source_id are deleted
-        assert!(results1.is_empty(), "Relationship 1 should be deleted");
-        assert!(results2.is_empty(), "Relationship 2 should be deleted");
+        assert!(result1.is_none(), "Relationship 1 should be deleted");
+        assert!(result2.is_none(), "Relationship 2 should be deleted");
+        let remaining =
+            different_result.expect("Relationship with different source_id should remain");
+        assert_eq!(remaining.metadata.source_id, different_source_id);
+    }
 
-        // For the relationship with different source ID, we need to check differently
-        // Let's just verify we have a relationship where the source_id matches different_source_id
-        let check_query = format!(
-            "SELECT * FROM relates_to WHERE metadata.source_id = '{}'",
-            different_source_id
+    #[tokio::test]
+    async fn test_delete_relationships_by_source_id_resists_query_injection() {
+        let db = setup_test_db().await;
+
+        let entity1_id = create_test_entity("Entity 1", &db).await;
+        let entity2_id = create_test_entity("Entity 2", &db).await;
+        let entity3_id = create_test_entity("Entity 3", &db).await;
+
+        let safe_relationship = KnowledgeRelationship::new(
+            entity1_id.clone(),
+            entity2_id.clone(),
+            "user123".to_string(),
+            "safe_source".to_string(),
+            "references".to_string(),
         );
-        let mut check_result = db.query(check_query).await.expect("Check query failed");
-        let check_results: Vec<KnowledgeRelationship> = check_result.take(0).unwrap_or_default();
 
-        // Verify the relationship with a different source_id still exists
+        let other_relationship = KnowledgeRelationship::new(
+            entity2_id,
+            entity3_id,
+            "user123".to_string(),
+            "other_source".to_string(),
+            "contains".to_string(),
+        );
+
+        safe_relationship
+            .store_relationship(&db)
+            .await
+            .expect("store safe relationship");
+        other_relationship
+            .store_relationship(&db)
+            .await
+            .expect("store other relationship");
+
+        KnowledgeRelationship::delete_relationships_by_source_id("safe_source' OR 1=1 --", &db)
+            .await
+            .expect("delete call should succeed");
+
+        let remaining_safe = get_relationship_by_id(&safe_relationship.id, &db).await;
+        let remaining_other = get_relationship_by_id(&other_relationship.id, &db).await;
+
+        assert!(remaining_safe.is_some(), "Safe relationship should remain");
         assert!(
-            !check_results.is_empty(),
-            "Relationship with different source_id should still exist"
+            remaining_other.is_some(),
+            "Other relationship should remain"
         );
     }
 }
