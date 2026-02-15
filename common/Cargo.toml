@@ -16,7 +16,7 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
-surrealdb = { workspace = true, features = ["kv-mem"] }
+surrealdb = { workspace = true }
 async-openai = { workspace = true }
 futures = { workspace = true }
 tempfile = { workspace = true }
@@ -49,4 +49,7 @@ fastembed = { workspace = true }
 
 
 [features]
-test-utils = []
+test-utils = ["surrealdb/kv-mem"]
+
+[dev-dependencies]
+surrealdb = { workspace = true, features = ["kv-mem"] }

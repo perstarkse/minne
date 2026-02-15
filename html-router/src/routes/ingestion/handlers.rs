@@ -4,7 +4,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
     response::{
-        sse::{Event, KeepAlive},
+        sse::{Event, KeepAlive, KeepAliveStream},
         IntoResponse, Response, Sse,
     },
 };
@@ -35,6 +35,17 @@ use crate::{
     },
     AuthSessionType,
 };
+
+type EventStream = Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>;
+type TaskSse = Sse<KeepAliveStream<EventStream>>;
+
+fn sse_with_keep_alive(stream: EventStream) -> TaskSse {
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("keep-alive-ping"),
+    )
+}
 
 pub async fn show_ingest_form(
     State(state): State<HtmlState>,
@@ -158,9 +169,7 @@ pub struct QueryParams {
     task_id: String,
 }
 
-fn create_error_stream(
-    message: impl Into<String>,
-) -> Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>> {
+fn create_error_stream(message: impl Into<String>) -> EventStream {
     let message = message.into();
     stream::once(async move { Ok(Event::default().event("error").data(message)) }).boxed()
 }
@@ -169,13 +178,13 @@ pub async fn get_task_updates_stream(
     State(state): State<HtmlState>,
     auth: AuthSessionType,
     Query(params): Query<QueryParams>,
-) -> Sse<Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>> {
+) -> TaskSse {
     let task_id = params.task_id.clone();
     let db = state.db.clone();
 
     // 1. Check for authenticated user
     let Some(current_user) = auth.current_user else {
-        return Sse::new(create_error_stream("User not authenticated"));
+        return sse_with_keep_alive(create_error_stream("User not authenticated"));
     };
 
     // 2. Fetch task for initial authorization and to ensure it exists
@@ -183,7 +192,7 @@ pub async fn get_task_updates_stream(
         Ok(Some(task)) => {
             // 3. Validate user ownership
             if task.user_id != current_user.id {
-                return Sse::new(create_error_stream(
+                return sse_with_keep_alive(create_error_stream(
                     "Access denied: You do not have permission to view updates for this task.",
                 ));
             }
@@ -269,18 +278,14 @@ pub async fn get_task_updates_stream(
                 }
             };
 
-            Sse::new(sse_stream.boxed()).keep_alive(
-                KeepAlive::new()
-                    .interval(Duration::from_secs(15))
-                    .text("keep-alive-ping"),
-            )
+            sse_with_keep_alive(sse_stream.boxed())
         }
-        Ok(None) => Sse::new(create_error_stream(format!(
+        Ok(None) => sse_with_keep_alive(create_error_stream(format!(
             "Task with ID '{task_id}' not found."
         ))),
         Err(e) => {
             error!("Failed to fetch task '{task_id}' for authorization: {e:?}");
-            Sse::new(create_error_stream(
+            sse_with_keep_alive(create_error_stream(
                 "An error occurred while retrieving task details. Please try again later.",
             ))
         }

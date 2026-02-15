@@ -1,5 +1,5 @@
 # === Builder ===
-FROM rust:1.86-bookworm AS builder
+FROM rust:1.89-bookworm AS builder
 WORKDIR /usr/src/minne
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config clang cmake git && rm -rf /var/lib/apt/lists/*
@@ -30,8 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 libstdc++6 curl \
   && rm -rf /var/lib/apt/lists/*
 
-# ONNX Runtime (CPU). Change if you bump ort.
-ARG ORT_VERSION=1.22.0
+# ONNX Runtime (CPU). Keep in sync with ort crate requirements.
+ARG ORT_VERSION=1.23.2
 RUN mkdir -p /opt/onnxruntime && \
     curl -fsSL -o /tmp/ort.tgz \
       "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" && \

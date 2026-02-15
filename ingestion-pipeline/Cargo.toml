@@ -38,3 +38,6 @@ retrieval-pipeline = { path = "../retrieval-pipeline" }
 
 [features]
 docker = []
+
+[dev-dependencies]
+common = { path = "../common", features = ["test-utils"] }

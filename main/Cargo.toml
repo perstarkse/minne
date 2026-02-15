@@ -30,6 +30,7 @@ retrieval-pipeline = { path = "../retrieval-pipeline" }
 [dev-dependencies]
 tower = "0.5"
 uuid = { workspace = true }
+common = { path = "../common", features = ["test-utils"] }
 
 [[bin]]
 name = "server"
