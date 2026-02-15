@@ -1,5 +1,7 @@
 # Changelog
 ## Unreleased
+
+## 1.0.2 (2026-02-15)
 - Fix: edge case where navigation back to a chat page could trigger a new response generation
 - Fix: chat references now validate and render more reliably
 - Fix: improved admin access checks for restricted routes
