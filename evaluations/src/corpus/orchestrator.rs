@@ -9,6 +9,8 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use async_openai::Client;
 use chrono::Utc;
+#[cfg(not(test))]
+use common::utils::config::get_config;
 use common::{
     storage::{
         db::SurrealDbClient,
@@ -421,11 +423,7 @@ async fn ingest_paragraph_batch(
         return Ok(Vec::new());
     }
     let namespace = format!("ingest_eval_{}", Uuid::new_v4());
-    let db = Arc::new(
-        SurrealDbClient::memory(&namespace, "corpus")
-            .await
-            .context("creating in-memory surrealdb for ingestion")?,
-    );
+    let db = create_ingest_db(&namespace).await?;
     db.apply_migrations()
         .await
         .context("applying migrations for ingestion")?;
@@ -485,6 +483,29 @@ async fn ingest_paragraph_batch(
     }
 
     Ok(shards)
+}
+
+#[cfg(test)]
+async fn create_ingest_db(namespace: &str) -> Result<Arc<SurrealDbClient>> {
+    let db = SurrealDbClient::memory(namespace, "corpus")
+        .await
+        .context("creating in-memory surrealdb for ingestion")?;
+    Ok(Arc::new(db))
+}
+
+#[cfg(not(test))]
+async fn create_ingest_db(namespace: &str) -> Result<Arc<SurrealDbClient>> {
+    let config = get_config().context("loading app config for ingestion database")?;
+    let db = SurrealDbClient::new(
+        &config.surrealdb_address,
+        &config.surrealdb_username,
+        &config.surrealdb_password,
+        namespace,
+        "corpus",
+    )
+    .await
+    .context("creating surrealdb database for ingestion")?;
+    Ok(Arc::new(db))
 }
 
 #[allow(clippy::too_many_arguments)]

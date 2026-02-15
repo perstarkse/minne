@@ -33,3 +33,4 @@ clap = { version = "4.4", features = ["derive", "env"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+common = { path = "../common", features = ["test-utils"] }

@@ -23,4 +23,7 @@ uuid = { workspace = true }
 fastembed = { workspace = true }
 clap = { version = "4.4", features = ["derive"] }
  
+common = { path = "../common" }
+
+[dev-dependencies]
 common = { path = "../common", features = ["test-utils"] }
