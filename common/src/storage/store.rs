@@ -281,6 +281,33 @@ pub mod testing {
     use crate::utils::config::{AppConfig, PdfIngestMode};
     use uuid;
 
+    const DEFAULT_TEST_S3_BUCKET: &str = "minne-tests";
+    const DEFAULT_TEST_S3_ENDPOINT: &str = "http://127.0.0.1:19000";
+
+    fn configured_test_s3_bucket() -> String {
+        std::env::var("MINNE_TEST_S3_BUCKET")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                std::env::var("S3_BUCKET")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            })
+            .unwrap_or_else(|| DEFAULT_TEST_S3_BUCKET.to_string())
+    }
+
+    fn configured_test_s3_endpoint() -> String {
+        std::env::var("MINNE_TEST_S3_ENDPOINT")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                std::env::var("S3_ENDPOINT")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            })
+            .unwrap_or_else(|| DEFAULT_TEST_S3_ENDPOINT.to_string())
+    }
+
     /// Create a test configuration with memory storage.
     ///
     /// This provides a ready-to-use configuration for testing scenarios
@@ -326,7 +353,8 @@ pub mod testing {
 
     /// Create a test configuration with S3 storage (MinIO).
     ///
-    /// This requires a running MinIO instance on localhost:9000.
+    /// Uses `MINNE_TEST_S3_ENDPOINT` / `S3_ENDPOINT` and
+    /// `MINNE_TEST_S3_BUCKET` / `S3_BUCKET` when provided.
     pub fn test_config_s3() -> AppConfig {
         AppConfig {
             openai_api_key: "test".into(),
@@ -339,8 +367,8 @@ pub mod testing {
             http_port: 0,
             openai_base_url: "..".into(),
             storage: StorageKind::S3,
-            s3_bucket: Some("minne-tests".into()),
-            s3_endpoint: Some("http://localhost:9000".into()),
+            s3_bucket: Some(configured_test_s3_bucket()),
+            s3_endpoint: Some(configured_test_s3_endpoint()),
             s3_region: Some("us-east-1".into()),
             pdf_ingest_mode: PdfIngestMode::LlmFirst,
             ..Default::default()
@@ -391,8 +419,7 @@ pub mod testing {
 
         /// Create a new TestStorageManager with S3 backend (MinIO).
         ///
-        /// This requires a running MinIO instance on localhost:9000 with
-        /// default credentials (minioadmin/minioadmin) and a 'minne-tests' bucket.
+        /// This requires a reachable MinIO endpoint and an existing test bucket.
         pub async fn new_s3() -> object_store::Result<Self> {
             // Ensure credentials are set for MinIO
             // We set these env vars for the process, which AmazonS3Builder will pick up
@@ -402,6 +429,11 @@ pub mod testing {
 
             let cfg = test_config_s3();
             let storage = StorageManager::new(&cfg).await?;
+
+            // Probe the bucket so tests can cleanly skip when the endpoint is unreachable
+            // or the test bucket is not provisioned.
+            let probe_prefix = format!("__minne_s3_probe__/{}", uuid::Uuid::new_v4());
+            storage.list(Some(&probe_prefix)).await?;
 
             Ok(Self {
                 storage,
@@ -923,8 +955,8 @@ mod tests {
         assert_eq!(*test_storage.storage().backend_kind(), StorageKind::Memory);
     }
 
-    // S3 Tests - Require MinIO on localhost:9000 with bucket 'minne-tests'
-    // These tests will fail if MinIO is not running or bucket doesn't exist.
+    // S3 Tests - Require a reachable MinIO endpoint and test bucket.
+    // `TestStorageManager::new_s3()` probes connectivity and these tests auto-skip when unavailable.
 
     #[tokio::test]
     async fn test_storage_manager_s3_basic_operations() {

@@ -30,6 +30,20 @@
 
   env = {
     ORT_DYLIB_PATH = "${pkgs.onnxruntime}/lib/libonnxruntime.so";
+    S3_ENDPOINT = "http://127.0.0.1:19000";
+    S3_BUCKET = "minne-tests";
+    MINNE_TEST_S3_ENDPOINT = "http://127.0.0.1:19000";
+    MINNE_TEST_S3_BUCKET = "minne-tests";
+  };
+
+  services.minio = {
+    enable = true;
+    listenAddress = "127.0.0.1:19000";
+    consoleAddress = "127.0.0.1:19001";
+    buckets = ["minne-tests"];
+    accessKey = "minioadmin";
+    secretKey = "minioadmin";
+    region = "us-east-1";
   };
 
   processes = {
