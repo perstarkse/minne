@@ -9,7 +9,8 @@ use axum::{
     response::IntoResponse,
 };
 use common::storage::types::{
-    text_content::{deserialize_flexible_id, TextContent},
+    serde_helpers::deserialize_flexible_id,
+    text_content::TextContent,
     StoredObject,
 };
 use retrieval_pipeline::{RetrievalConfig, SearchResult, SearchTarget, StrategyOutput};

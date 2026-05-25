@@ -1,6 +1,8 @@
 #![allow(clippy::module_name_repetitions)]
 use uuid::Uuid;
 
+use std::fmt;
+
 use crate::stored_object;
 
 #[derive(Deserialize, Debug, Clone, Serialize, PartialEq)]

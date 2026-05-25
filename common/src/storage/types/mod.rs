@@ -1,5 +1,6 @@
 #![allow(clippy::unsafe_derive_deserialize)]
 use serde::{Deserialize, Serialize};
+pub mod serde_helpers;
 pub mod analytics;
 pub mod conversation;
 pub mod file_info;
@@ -25,96 +26,14 @@ pub trait StoredObject: Serialize + for<'de> Deserialize<'de> {
 #[macro_export]
 macro_rules! stored_object {
     ($(#[$struct_attr:meta])* $name:ident, $table:expr, {$($(#[$field_attr:meta])* $field:ident: $ty:ty),*}) => {
-        use serde::{Deserialize, Deserializer, Serialize};
-        use surrealdb::sql::Thing;
+        use serde::{Deserialize, Serialize};
         use $crate::storage::types::StoredObject;
-        use serde::de::{self, Visitor};
-        use std::fmt;
+        #[allow(unused_imports)]
+        use $crate::storage::types::serde_helpers::{
+            deserialize_flexible_id, serialize_datetime, deserialize_datetime,
+            serialize_option_datetime, deserialize_option_datetime,
+        };
         use chrono::{DateTime, Utc };
-
-        struct FlexibleIdVisitor;
-
-        impl<'de> Visitor<'de> for FlexibleIdVisitor {
-            type Value = String;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a string or a Thing")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(value.to_string())
-            }
-
-            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(value)
-            }
-
-            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
-            where
-                A: de::MapAccess<'de>,
-            {
-                // Try to deserialize as Thing
-                let thing = Thing::deserialize(de::value::MapAccessDeserializer::new(map))?;
-                Ok(thing.id.to_raw())
-            }
-        }
-
-        pub fn deserialize_flexible_id<'de, D>(deserializer: D) -> Result<String, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            deserializer.deserialize_any(FlexibleIdVisitor)
-        }
-
-        fn serialize_datetime<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            Into::<surrealdb::sql::Datetime>::into(*date).serialize(serializer)
-        }
-
-        fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            let dt = surrealdb::sql::Datetime::deserialize(deserializer)?;
-            Ok(DateTime::<Utc>::from(dt))
-        }
-
-        #[allow(dead_code)]
-        #[allow(clippy::ref_option)]
-        fn serialize_option_datetime<S>(
-            date: &Option<DateTime<Utc>>,
-            serializer: S,
-        ) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            match date {
-                Some(dt) => serializer
-                    .serialize_some(&Into::<surrealdb::sql::Datetime>::into(*dt)),
-                None => serializer.serialize_none(),
-            }
-        }
-
-        #[allow(dead_code)]
-        #[allow(clippy::ref_option)]
-        fn deserialize_option_datetime<'de, D>(
-            deserializer: D,
-        ) -> Result<Option<DateTime<Utc>>, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            let value = Option::<surrealdb::sql::Datetime>::deserialize(deserializer)?;
-            Ok(value.map(DateTime::<Utc>::from))
-        }
-
 
         $(#[$struct_attr])*
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
