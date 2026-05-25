@@ -49,12 +49,12 @@ impl HtmlState {
         reranker_pool: Option<Arc<RerankerPool>>,
         embedding_provider: Arc<EmbeddingProvider>,
         template_engine: Option<Arc<TemplateEngine>>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Self {
         let templates =
             template_engine.unwrap_or_else(|| Arc::new(create_template_engine!("templates")));
         debug!("Template engine configured for html_router.");
 
-        Ok(Self {
+        Self {
             db,
             openai_client,
             session_store,
@@ -65,7 +65,7 @@ impl HtmlState {
             embedding_provider,
             conversation_archive_cache: Arc::new(RwLock::new(HashMap::new())),
             conversation_archive_cache_writes: Arc::new(AtomicUsize::new(0)),
-        })
+        }
     }
 
     pub fn retrieval_strategy(&self) -> RetrievalStrategy {

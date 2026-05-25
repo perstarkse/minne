@@ -22,7 +22,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use tokio::task::LocalSet;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     // Set up tracing
     tracing_subscriber::registry()
         .with(fmt::layer().with_writer(std::io::stderr))
@@ -118,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         embedding_provider.clone(),
         None,
     )
-    .await?;
+    .await;
 
     let api_state = ApiState::new(&config, storage.clone()).await?;
 
@@ -295,8 +295,7 @@ mod tests {
             embedding_provider,
             None,
         )
-        .await
-        .expect("failed to build html state");
+        .await;
 
         let api_state = ApiState {
             db: db.clone(),
