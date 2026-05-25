@@ -75,7 +75,7 @@ impl SurrealDbClient {
         SessionStore::new(
             Some(self.client.clone().into()),
             SessionConfig::default()
-                .with_table_name("test_session_table")
+                .with_table_name("session")
                 .with_secure(true),
         )
         .await

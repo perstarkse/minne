@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::scoring::FusionWeights;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RetrievalStrategy {
     /// Primary hybrid chunk retrieval for search/chat (formerly Revised)
