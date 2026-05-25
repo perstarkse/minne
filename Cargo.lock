@@ -5422,7 +5422,6 @@ dependencies = [
  "async-openai",
  "async-trait",
  "axum",
- "clap",
  "common",
  "fastembed",
  "futures",
