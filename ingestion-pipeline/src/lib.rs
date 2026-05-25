@@ -17,7 +17,7 @@ use uuid::Uuid;
 pub async fn run_worker_loop(
     db: Arc<SurrealDbClient>,
     ingestion_pipeline: Arc<IngestionPipeline>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> anyhow::Result<()> {
     let worker_id = format!("ingestion-worker-{}", Uuid::new_v4());
     let lease_duration = Duration::from_secs(DEFAULT_LEASE_SECS as u64);
     let idle_backoff = Duration::from_millis(500);

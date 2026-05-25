@@ -12,7 +12,7 @@ use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     // Set up tracing
     tracing_subscriber::registry()
         .with(fmt::layer().with_writer(std::io::stderr))
@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         embedding_provider,
         None,
     )
-    .await?;
+    .await;
 
     let api_state = ApiState::new(&config, storage).await?;
 

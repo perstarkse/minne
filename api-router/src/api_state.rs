@@ -16,7 +16,7 @@ impl ApiState {
     pub async fn new(
         config: &AppConfig,
         storage: StorageManager,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> anyhow::Result<Self> {
         let surreal_db_client = Arc::new(
             SurrealDbClient::new(
                 &config.surrealdb_address,
