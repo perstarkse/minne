@@ -3,14 +3,14 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     thread::available_parallelism,
 };
 
 use common::{error::AppError, utils::config::AppConfig};
 use fastembed::{RerankInitOptions, RerankResult, TextRerank};
-use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::debug;
 
 static NEXT_ENGINE: AtomicUsize = AtomicUsize::new(0);
@@ -161,11 +161,15 @@ impl RerankerLease {
         query: &str,
         documents: Vec<String>,
     ) -> Result<Vec<RerankResult>, AppError> {
-        // Lock this specific engine so we get &mut TextRerank
-        let mut guard = self.engine.lock().await;
+        let query = query.to_owned();
+        let engine = Arc::clone(&self.engine);
 
-        guard
-            .rerank(query.to_owned(), documents, false, None)
-            .map_err(|e| AppError::InternalError(e.to_string()))
+        tokio::task::spawn_blocking(move || {
+            let mut guard = engine.lock().expect("reranker engine mutex poisoned");
+            guard
+                .rerank(query, documents, false, None)
+                .map_err(|e| AppError::InternalError(e.to_string()))
+        })
+        .await?
     }
 }

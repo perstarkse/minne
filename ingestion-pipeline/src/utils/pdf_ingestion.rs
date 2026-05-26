@@ -15,7 +15,7 @@ use headless_chrome::{
 };
 use lopdf::Document;
 use serde_json::Value;
-use tokio::time::sleep;
+
 use tracing::{debug, warn};
 
 use common::{
@@ -116,8 +116,29 @@ async fn load_page_numbers(pdf_bytes: Vec<u8>) -> Result<Vec<u32>, AppError> {
 }
 
 /// Uses the existing headless Chrome dependency to rasterize the requested PDF pages into PNGs.
-#[allow(clippy::too_many_lines)]
 async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>>, AppError> {
+    let file_path = file_path.to_path_buf();
+    let pages = pages.to_vec();
+    let page_numbers = pages.clone();
+    let captures = tokio::task::spawn_blocking(move || {
+        render_pdf_pages_inner(&file_path, &pages)
+    })
+    .await??;
+
+    for (idx, png) in captures.iter().enumerate() {
+        if let Err(err) = maybe_dump_debug_image(page_numbers[idx], png).await {
+            warn!(
+                page = page_numbers[idx],
+                error = %err,
+                "Failed to write debug screenshot to disk"
+            );
+        }
+    }
+
+    Ok(captures)
+}
+
+fn render_pdf_pages_inner(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>>, AppError> {
     let file_url = url::Url::from_file_path(file_path)
         .map_err(|()| AppError::Processing("Unable to construct PDF file URL".into()))?;
 
@@ -132,7 +153,7 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
 
     let mut captures = Vec::with_capacity(pages.len());
 
-    for (idx, page) in pages.iter().enumerate() {
+    for page in pages.iter().copied() {
         let target = format!("{file_url}#page={page}&toolbar=0&statusbar=0&zoom=page-fit");
         tab.navigate_to(&target)
             .map_err(|err| AppError::Processing(format!("Failed to navigate to PDF page: {err}")))?
@@ -150,7 +171,7 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
                 break;
             }
             if attempt < NAVIGATION_RETRY_ATTEMPTS.saturating_sub(1) {
-                sleep(Duration::from_millis(NAVIGATION_RETRY_INTERVAL_MS)).await;
+                std::thread::sleep(Duration::from_millis(NAVIGATION_RETRY_INTERVAL_MS));
             }
         }
 
@@ -160,25 +181,25 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
             ));
         }
 
-        wait_for_pdf_ready(&tab, *page)?;
-        tokio::time::sleep(Duration::from_millis(350)).await;
+        wait_for_pdf_ready(&tab, page)?;
+        std::thread::sleep(Duration::from_millis(350));
 
-        prepare_pdf_viewer(&tab, *page);
+        prepare_pdf_viewer(&tab, page);
 
         let mut viewport: Option<Page::Viewport> = None;
         for attempt in 0..CANVAS_VIEWPORT_ATTEMPTS {
-            match canvas_viewport_for_page(&tab, *page) {
+            match canvas_viewport_for_page(&tab, page) {
                 Ok(Some(vp)) => {
                     viewport = Some(vp);
                     break;
                 }
                 Ok(None) => {
                     if attempt < CANVAS_VIEWPORT_ATTEMPTS.saturating_sub(1) {
-                        tokio::time::sleep(Duration::from_millis(CANVAS_VIEWPORT_WAIT_MS)).await;
+                        std::thread::sleep(Duration::from_millis(CANVAS_VIEWPORT_WAIT_MS));
                     }
                 }
                 Err(err) => {
-                    warn!(page = *page, error = %err, "Failed to derive canvas viewport");
+                    warn!(page, error = %err, "Failed to derive canvas viewport");
                     break;
                 }
             }
@@ -196,43 +217,34 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
                 Ok(data) => match STANDARD.decode(data.data) {
                     Ok(bytes) => bytes,
                     Err(err) => {
-                        warn!(error = %err, page = *page, "Failed to decode clipped screenshot; falling back to full page capture");
+                        warn!(error = %err, page, "Failed to decode clipped screenshot; falling back to full page capture");
                         capture_full_page_png(&tab)?
                     }
                 },
                 Err(err) => {
-                    warn!(error = %err, page = *page, "Clipped screenshot failed; falling back to full page capture");
+                    warn!(error = %err, page, "Clipped screenshot failed; falling back to full page capture");
                     capture_full_page_png(&tab)?
                 }
             }
         } else {
             warn!(
-                page = *page,
+                page,
                 "Unable to determine canvas viewport; capturing full page"
             );
             capture_full_page_png(&tab)?
         };
 
         debug!(
-            page = *page,
+            page,
             bytes = png.len(),
-            page_index = idx,
             "Captured PDF page screenshot"
         );
 
         if is_suspicious_image(png.len()) {
             warn!(
-                page = *page,
+                page,
                 bytes = png.len(),
                 "Screenshot size below threshold; check rendering output"
-            );
-        }
-
-        if let Err(err) = maybe_dump_debug_image(*page, &png).await {
-            warn!(
-                page = *page,
-                error = %err,
-                "Failed to write debug screenshot to disk"
             );
         }
 
