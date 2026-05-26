@@ -22,7 +22,7 @@ services:
     command: ["sh", "-c", "echo 'Waiting for SurrealDB to start...' && sleep 10 && echo 'Starting application...' && /usr/local/bin/main"]
 
   surrealdb:
-    image: surrealdb/surrealdb:latest 
+    image: surrealdb/surrealdb:v2.6.5 
     container_name: minne_surrealdb
     ports:
       - "8000:8000" 
