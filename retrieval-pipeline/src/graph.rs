@@ -44,8 +44,8 @@ pub async fn find_entities_by_relationship_by_id(
         return Ok(Vec::new());
     }
 
-    let mut neighbor_ids: Vec<String> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
+    let mut neighbor_ids: Vec<String> = Vec::with_capacity(relationships.len());
+    let mut seen: HashSet<String> = HashSet::with_capacity(relationships.len());
     for rel in relationships {
         if rel.in_ == entity_id {
             if seen.insert(rel.out.clone()) {
@@ -97,7 +97,7 @@ pub async fn find_entities_by_relationship_by_id(
         .map(|entity| (entity.id.clone(), entity))
         .collect();
 
-    let mut ordered = Vec::new();
+    let mut ordered = Vec::with_capacity(neighbor_ids.len());
     for id in neighbor_ids {
         if let Some(entity) = neighbor_map.remove(&id) {
             ordered.push(entity);

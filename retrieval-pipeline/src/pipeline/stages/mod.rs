@@ -647,7 +647,8 @@ pub fn assemble(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     let tuning = &ctx.config.tuning;
     let question_terms = extract_keywords(&ctx.input_text);
 
-    let mut chunk_by_source: HashMap<String, Vec<Scored<TextChunk>>> = HashMap::new();
+    let mut chunk_by_source: HashMap<String, Vec<Scored<TextChunk>>> =
+        HashMap::with_capacity(ctx.chunk_values.len());
     for chunk in ctx.chunk_values.drain(..) {
         chunk_by_source
             .entry(chunk.item.source_id.clone())
@@ -663,15 +664,19 @@ pub fn assemble(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     }
 
     let mut token_budget_remaining = tuning.token_budget_estimate;
-    let mut results = Vec::new();
+    let mut results = Vec::with_capacity(ctx.filtered_entities.len());
     let diagnostics_enabled = ctx.diagnostics_enabled();
-    let mut per_entity_traces = Vec::new();
+    let mut per_entity_traces = if diagnostics_enabled {
+        Vec::with_capacity(ctx.filtered_entities.len())
+    } else {
+        Vec::new()
+    };
     let mut chunks_skipped_due_budget = 0usize;
     let mut chunks_selected = 0usize;
     let mut tokens_spent = 0usize;
 
     for entity in &ctx.filtered_entities {
-        let mut selected_chunks = Vec::new();
+        let mut selected_chunks = Vec::with_capacity(tuning.max_chunks_per_entity);
         let mut entity_trace = if diagnostics_enabled {
             Some(EntityAssemblyTrace {
                 entity_id: entity.item.id.clone(),
@@ -788,7 +793,7 @@ fn normalize_fts_query(input: &str) -> (String, usize) {
             cleaned.push(' ');
         }
     }
-    let mut tokens = Vec::new();
+    let mut tokens = Vec::with_capacity(cleaned.len() / 3 + 1);
     for token in cleaned.split_whitespace() {
         if !STOPWORDS.contains(&token) && !token.is_empty() {
             tokens.push(token.to_string());
@@ -813,7 +818,8 @@ fn build_rerank_documents(ctx: &PipelineContext<'_>, max_chunks_per_entity: usiz
         return Vec::new();
     }
 
-    let mut chunk_by_source: HashMap<&str, Vec<&Scored<TextChunk>>> = HashMap::new();
+    let mut chunk_by_source: HashMap<&str, Vec<&Scored<TextChunk>>> =
+        HashMap::with_capacity(ctx.chunk_values.len());
     for chunk in &ctx.chunk_values {
         chunk_by_source
             .entry(chunk.item.source_id.as_str())
@@ -1002,7 +1008,7 @@ fn rank_chunks_by_combined_score(
 }
 
 fn extract_keywords(text: &str) -> Vec<String> {
-    let mut terms = Vec::new();
+    let mut terms = Vec::with_capacity((text.len() / 3).max(4));
     for raw in text.split(|c: char| !c.is_alphanumeric()) {
         let term = raw.trim().to_ascii_lowercase();
         if term.len() >= 3 {
