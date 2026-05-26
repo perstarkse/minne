@@ -6,7 +6,10 @@ use common::{
     storage::{db::SurrealDbClient, store::StorageManager, types::system_settings::SystemSettings},
     utils::{config::get_config, embedding::EmbeddingProvider},
 };
-use html_router::{html_routes, html_state::HtmlState};
+use html_router::{
+    html_routes,
+    html_state::{HtmlState, StateResources},
+};
 use retrieval_pipeline::reranking::RerankerPool;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -52,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create embedding provider based on config
     let embedding_provider =
-        Arc::new(EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?);
+        Arc::new(EmbeddingProvider::from_config(&config, Some(Arc::clone(&openai_client))).await?);
     info!(
         embedding_backend = ?config.embedding_backend,
         embedding_dimension = embedding_provider.dimension(),
@@ -63,17 +66,16 @@ async fn main() -> anyhow::Result<()> {
     let (_settings, _dimensions_changed) =
         SystemSettings::sync_from_embedding_provider(&db, &embedding_provider).await?;
 
-    let html_state = HtmlState::new_with_resources(
+    let html_state = HtmlState::new_with_resources(StateResources {
         db,
         openai_client,
         session_store,
-        storage.clone(),
-        config.clone(),
+        storage: storage.clone(),
+        config: config.clone(),
         reranker_pool,
         embedding_provider,
-        None,
-    )
-    .await;
+        template_engine: None,
+    });
 
     let api_state = ApiState::new(&config, storage).await?;
 

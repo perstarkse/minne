@@ -2,7 +2,7 @@ use serde::Serialize;
 
 /// Captures instrumentation for each hybrid retrieval stage when diagnostics are enabled.
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct PipelineDiagnostics {
+pub struct Diagnostics {
     pub collect_candidates: Option<CollectCandidatesStats>,
     pub enrich_chunks_from_entities: Option<ChunkEnrichmentStats>,
     pub assemble: Option<AssembleStats>,

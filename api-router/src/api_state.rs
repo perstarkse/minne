@@ -31,7 +31,7 @@ impl ApiState {
         surreal_db_client.apply_migrations().await?;
 
         let app_state = Self {
-            db: surreal_db_client.clone(),
+            db: Arc::clone(&surreal_db_client),
             config: config.clone(),
             storage,
         };

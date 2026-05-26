@@ -27,9 +27,9 @@ use super::{
     config::{RetrievalConfig, RetrievalTuning},
     diagnostics::{
         AssembleStats, ChunkEnrichmentStats, CollectCandidatesStats, EntityAssemblyTrace,
-        PipelineDiagnostics,
+        Diagnostics,
     },
-    PipelineStage, PipelineStageTimings, StageKind,
+    StageTimings, Stage, StageKind, StrategyParams,
 };
 
 pub struct PipelineContext<'a> {
@@ -45,76 +45,51 @@ pub struct PipelineContext<'a> {
     pub chunk_values: Vec<Scored<TextChunk>>,
     pub revised_chunk_values: Vec<Scored<TextChunk>>,
     pub reranker: Option<RerankerLease>,
-    pub diagnostics: Option<PipelineDiagnostics>,
+    pub diagnostics: Option<Diagnostics>,
     pub entity_results: Vec<RetrievedEntity>,
     pub chunk_results: Vec<RetrievedChunk>,
-    stage_timings: PipelineStageTimings,
+    stage_timings: StageTimings,
 }
 
 impl<'a> PipelineContext<'a> {
-    pub fn new(
-        db_client: &'a SurrealDbClient,
-        openai_client: &'a Client<async_openai::config::OpenAIConfig>,
-        embedding_provider: Option<&'a EmbeddingProvider>,
-        input_text: String,
-        user_id: String,
-        config: RetrievalConfig,
-        reranker: Option<RerankerLease>,
-    ) -> Self {
+    pub fn new(params: StrategyParams<'a>) -> Self {
         Self {
-            db_client,
-            openai_client,
-            embedding_provider,
-            input_text,
-            user_id,
-            config,
+            db_client: params.db_client,
+            openai_client: params.openai_client,
+            embedding_provider: params.embedding_provider,
+            input_text: params.input_text.to_owned(),
+            user_id: params.user_id.to_owned(),
+            config: params.config,
             query_embedding: None,
             entity_candidates: HashMap::new(),
             filtered_entities: Vec::new(),
             chunk_values: Vec::new(),
             revised_chunk_values: Vec::new(),
-            reranker,
+            reranker: params.reranker,
             diagnostics: None,
             entity_results: Vec::new(),
             chunk_results: Vec::new(),
-            stage_timings: PipelineStageTimings::default(),
+            stage_timings: StageTimings::default(),
         }
     }
 
-    pub fn with_embedding(
-        db_client: &'a SurrealDbClient,
-        openai_client: &'a Client<async_openai::config::OpenAIConfig>,
-        embedding_provider: Option<&'a EmbeddingProvider>,
-        query_embedding: Vec<f32>,
-        input_text: String,
-        user_id: String,
-        config: RetrievalConfig,
-        reranker: Option<RerankerLease>,
-    ) -> Self {
-        let mut ctx = Self::new(
-            db_client,
-            openai_client,
-            embedding_provider,
-            input_text,
-            user_id,
-            config,
-            reranker,
-        );
+    pub fn with_embedding(params: StrategyParams<'a>, query_embedding: Vec<f32>) -> Self {
+        let mut ctx = Self::new(params);
         ctx.query_embedding = Some(query_embedding);
         ctx
     }
 
-    fn ensure_embedding(&self) -> Result<&Vec<f32>, AppError> {
+    fn ensure_embedding(&self) -> Result<&Vec<f32>, Box<AppError>> {
         self.query_embedding.as_ref().ok_or_else(|| {
-            AppError::InternalError(
+            Box::new(AppError::InternalError(
                 "query embedding missing before candidate collection".to_string(),
-            )
+            ))
         })
     }
 
     pub fn enable_diagnostics(&mut self) {
         if self.diagnostics.is_none() {
-            self.diagnostics = Some(PipelineDiagnostics::default());
+            self.diagnostics = Some(Diagnostics::default());
         }
     }
 
@@ -140,11 +115,11 @@ impl<'a> PipelineContext<'a> {
         }
     }
 
-    pub fn take_diagnostics(&mut self) -> Option<PipelineDiagnostics> {
+    pub fn take_diagnostics(&mut self) -> Option<Diagnostics> {
         self.diagnostics.take()
     }
 
-    pub fn take_stage_timings(&mut self) -> PipelineStageTimings {
+    pub fn take_stage_timings(&mut self) -> StageTimings {
         std::mem::take(&mut self.stage_timings)
     }
 
@@ -165,7 +140,7 @@ impl<'a> PipelineContext<'a> {
 pub struct EmbedStage;
 
 #[async_trait]
-impl PipelineStage for EmbedStage {
+impl Stage for EmbedStage {
     fn kind(&self) -> StageKind {
         StageKind::Embed
     }
@@ -179,7 +154,7 @@ impl PipelineStage for EmbedStage {
 pub struct CollectCandidatesStage;
 
 #[async_trait]
-impl PipelineStage for CollectCandidatesStage {
+impl Stage for CollectCandidatesStage {
     fn kind(&self) -> StageKind {
         StageKind::CollectCandidates
     }
@@ -193,7 +168,7 @@ impl PipelineStage for CollectCandidatesStage {
 pub struct GraphExpansionStage;
 
 #[async_trait]
-impl PipelineStage for GraphExpansionStage {
+impl Stage for GraphExpansionStage {
     fn kind(&self) -> StageKind {
         StageKind::GraphExpansion
     }
@@ -207,7 +182,7 @@ impl PipelineStage for GraphExpansionStage {
 pub struct RerankStage;
 
 #[async_trait]
-impl PipelineStage for RerankStage {
+impl Stage for RerankStage {
     fn kind(&self) -> StageKind {
         StageKind::Rerank
     }
@@ -221,7 +196,7 @@ impl PipelineStage for RerankStage {
 pub struct AssembleEntitiesStage;
 
 #[async_trait]
-impl PipelineStage for AssembleEntitiesStage {
+impl Stage for AssembleEntitiesStage {
     fn kind(&self) -> StageKind {
         StageKind::Assemble
     }
@@ -235,7 +210,7 @@ impl PipelineStage for AssembleEntitiesStage {
 pub struct ChunkVectorStage;
 
 #[async_trait]
-impl PipelineStage for ChunkVectorStage {
+impl Stage for ChunkVectorStage {
     fn kind(&self) -> StageKind {
         StageKind::CollectCandidates
     }
@@ -249,7 +224,7 @@ impl PipelineStage for ChunkVectorStage {
 pub struct ChunkRerankStage;
 
 #[async_trait]
-impl PipelineStage for ChunkRerankStage {
+impl Stage for ChunkRerankStage {
     fn kind(&self) -> StageKind {
         StageKind::Rerank
     }
@@ -263,7 +238,7 @@ impl PipelineStage for ChunkRerankStage {
 pub struct ChunkAssembleStage;
 
 #[async_trait]
-impl PipelineStage for ChunkAssembleStage {
+impl Stage for ChunkAssembleStage {
     fn kind(&self) -> StageKind {
         StageKind::Assemble
     }
@@ -283,8 +258,7 @@ pub async fn embed(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
         let embedding = if let Some(provider) = ctx.embedding_provider {
             provider.embed(&ctx.input_text).await.map_err(|e| {
                 AppError::InternalError(format!(
-                    "Failed to generate embedding with provider: {}",
-                    e
+                    "Failed to generate embedding with provider: {e}",
                 ))
             })?
         } else {
@@ -299,7 +273,7 @@ pub async fn embed(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
 #[instrument(level = "trace", skip_all)]
 pub async fn collect_candidates(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     debug!("Collecting initial candidates via vector and FTS search");
-    let embedding = ctx.ensure_embedding()?.clone();
+    let embedding = ctx.ensure_embedding().map_err(|e| *e)?.clone();
     let tuning = &ctx.config.tuning;
 
     let weights = FusionWeights::default();
@@ -487,11 +461,11 @@ pub async fn rerank(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
 #[instrument(level = "trace", skip_all)]
 pub async fn collect_vector_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     debug!("Collecting vector chunk candidates for revised strategy");
-    let embedding = ctx.ensure_embedding()?.clone();
+    let embedding = ctx.ensure_embedding().map_err(|e| *e)?.clone();
     let tuning = &ctx.config.tuning;
     let fts_take = tuning.chunk_fts_take;
     let (fts_query, fts_token_count) = normalize_fts_query(&ctx.input_text);
-    let fts_enabled = tuning.chunk_rrf_use_fts && fts_take > 0 && !fts_query.is_empty();
+    let fts_enabled = tuning.flags.chunk_rrf_use_fts() && fts_take > 0 && !fts_query.is_empty();
 
     let (vector_rows, fts_rows) = tokio::try_join!(
         TextChunk::vector_search(
@@ -532,8 +506,8 @@ pub async fn collect_vector_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), 
         k: tuning.chunk_rrf_k,
         vector_weight: tuning.chunk_rrf_vector_weight,
         fts_weight,
-        use_vector: tuning.chunk_rrf_use_vector,
-        use_fts: tuning.chunk_rrf_use_fts && fts_candidates > 0,
+        use_vector: tuning.flags.chunk_rrf_use_vector(),
+        use_fts: tuning.flags.chunk_rrf_use_fts() && fts_candidates > 0,
     };
 
     let mut vector_chunks = reciprocal_rank_fusion(vector_scored, fts_scored, rrf_config);
@@ -715,7 +689,7 @@ pub fn assemble(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
             let mut per_entity_count = 0;
             for candidate in candidates.iter() {
                 if let Some(trace) = entity_trace.as_mut() {
-                    trace.inspected_candidates += 1;
+                    trace.inspected_candidates = trace.inspected_candidates.saturating_add(1);
                 }
                 if per_entity_count >= tuning.max_chunks_per_entity {
                     break;
@@ -723,17 +697,17 @@ pub fn assemble(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
                 let estimated_tokens =
                     estimate_tokens(&candidate.item.chunk, tuning.avg_chars_per_token);
                 if estimated_tokens > token_budget_remaining {
-                    chunks_skipped_due_budget += 1;
+                    chunks_skipped_due_budget = chunks_skipped_due_budget.saturating_add(1);
                     if let Some(trace) = entity_trace.as_mut() {
-                        trace.skipped_due_budget += 1;
+                        trace.skipped_due_budget = trace.skipped_due_budget.saturating_add(1);
                     }
                     continue;
                 }
 
                 token_budget_remaining = token_budget_remaining.saturating_sub(estimated_tokens);
-                tokens_spent += estimated_tokens;
-                per_entity_count += 1;
-                chunks_selected += 1;
+                tokens_spent = tokens_spent.saturating_add(estimated_tokens);
+                per_entity_count = per_entity_count.saturating_add(1);
+                chunks_selected = chunks_selected.saturating_add(1);
 
                 selected_chunks.push(RetrievedChunk {
                     chunk: candidate.item.clone(),
@@ -780,14 +754,14 @@ pub fn assemble(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
 
 const SCORE_SAMPLE_LIMIT: usize = 8;
 
-fn sample_scores<T, F>(items: &[Scored<T>], mut extractor: F) -> Vec<f32>
+fn sample_scores<T, F>(items: &[Scored<T>], extractor: F) -> Vec<f32>
 where
     F: FnMut(&Scored<T>) -> f32,
 {
     items
         .iter()
         .take(SCORE_SAMPLE_LIMIT)
-        .map(|item| extractor(item))
+        .map(extractor)
         .collect()
 }
 
@@ -912,7 +886,7 @@ fn apply_rerank_results(ctx: &mut PipelineContext<'_>, results: Vec<RerankResult
     let raw_scores: Vec<f32> = results.iter().map(|r| r.score).collect();
     let normalized_scores = min_max_normalize(&raw_scores);
 
-    let use_only = ctx.config.tuning.rerank_scores_only;
+    let use_only = ctx.config.tuning.flags.rerank_scores_only();
     let blend = if use_only {
         1.0
     } else {
@@ -942,11 +916,7 @@ fn apply_rerank_results(ctx: &mut PipelineContext<'_>, results: Vec<RerankResult
         }
     }
 
-    for slot in remaining.into_iter() {
-        if let Some(candidate) = slot {
-            reranked.push(candidate);
-        }
-    }
+    reranked.extend(remaining.into_iter().flatten());
 
     ctx.filtered_entities = reranked;
     let keep_top = ctx.config.tuning.rerank_keep_top;
@@ -970,7 +940,7 @@ fn apply_chunk_rerank_results(
     let raw_scores: Vec<f32> = results.iter().map(|r| r.score).collect();
     let normalized_scores = min_max_normalize(&raw_scores);
 
-    let use_only = tuning.rerank_scores_only;
+    let use_only = tuning.flags.rerank_scores_only();
     let blend = if use_only {
         1.0
     } else {
@@ -1001,11 +971,7 @@ fn apply_chunk_rerank_results(
         }
     }
 
-    for slot in remaining.into_iter() {
-        if let Some(candidate) = slot {
-            reranked.push(candidate);
-        }
-    }
+    reranked.extend(remaining.into_iter().flatten());
 
     let keep_top = tuning.rerank_keep_top;
     if keep_top > 0 && reranked.len() > keep_top {
@@ -1017,7 +983,7 @@ fn apply_chunk_rerank_results(
 
 fn estimate_tokens(text: &str, avg_chars_per_token: usize) -> usize {
     let chars = text.chars().count().max(1);
-    (chars / avg_chars_per_token).max(1)
+    chars.checked_div(avg_chars_per_token).map_or(1, |v| v.max(1))
 }
 
 fn rank_chunks_by_combined_score(
@@ -1053,13 +1019,20 @@ fn lexical_overlap_score(terms: &[String], haystack: &str) -> f32 {
         return 0.0;
     }
     let lower = haystack.to_ascii_lowercase();
-    let mut matches = 0usize;
+    let mut matches: u32 = 0;
     for term in terms {
         if lower.contains(term) {
-            matches += 1;
+            matches = matches.saturating_add(1);
         }
     }
-    (matches as f32) / (terms.len() as f32)
+    let total = u32::try_from(terms.len()).unwrap_or(u32::MAX);
+    if total == 0 {
+        return 0.0;
+    }
+    let num = matches.min(total);
+    let num_f32 = u16::try_from(num).map(f32::from).unwrap_or(f32::MAX);
+    let den_f32 = u16::try_from(total).map(f32::from).unwrap_or(f32::MAX);
+    num_f32 / den_f32
 }
 
 #[derive(Clone)]

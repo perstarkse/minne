@@ -102,12 +102,12 @@ pub async fn show_text_content_edit_form(
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
-
     #[derive(Serialize)]
     pub struct TextContentEditModal {
         pub text_content: TextContent,
     }
+
+    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "content/edit_text_content_modal.html",
@@ -214,12 +214,13 @@ pub async fn show_content_read_modal(
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    // Get and validate the text content
-    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
     #[derive(Serialize)]
     pub struct TextContentReadModalData {
         pub text_content: TextContent,
     }
+
+    // Get and validate the text content
+    let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "content/read_content_modal.html",

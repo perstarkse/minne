@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create embedding provider based on config
     let embedding_provider =
-        Arc::new(EmbeddingProvider::from_config(&config, Some(openai_client.clone())).await?);
+        Arc::new(EmbeddingProvider::from_config(&config, Some(Arc::clone(&openai_client))).await?);
     info!(
         embedding_backend = ?config.embedding_backend,
         "Embedding provider initialized for worker"
@@ -52,8 +52,8 @@ async fn main() -> anyhow::Result<()> {
     let storage = StorageManager::new(&config).await?;
 
     let ingestion_pipeline = Arc::new(IngestionPipeline::new(
-        db.clone(),
-        openai_client.clone(),
+        Arc::clone(&db),
+        Arc::clone(&openai_client),
         config,
         reranker_pool,
         storage,

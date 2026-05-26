@@ -226,7 +226,7 @@ fn summarize_task_content(task: &IngestionTask) -> (String, String) {
             ("Text".to_string(), truncate_summary(text, 80))
         }
         common::storage::types::ingestion_payload::IngestionPayload::Url { url, .. } => {
-            ("URL".to_string(), url.to_string())
+            ("URL".to_string(), url.clone())
         }
         common::storage::types::ingestion_payload::IngestionPayload::File { file_info, .. } => {
             ("File".to_string(), file_info.file_name.clone())
@@ -248,18 +248,16 @@ pub async fn serve_file(
     RequireUser(user): RequireUser,
     Path(file_id): Path<String>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let file_info = match FileInfo::get_by_id(&file_id, &state.db).await {
-        Ok(info) => info,
-        _ => return Ok(TemplateResponse::not_found().into_response()),
+    let Ok(file_info) = FileInfo::get_by_id(&file_id, &state.db).await else {
+        return Ok(TemplateResponse::not_found().into_response());
     };
 
     if file_info.user_id != user.id {
         return Ok(TemplateResponse::unauthorized().into_response());
     }
 
-    let stream = match state.storage.get_stream(&file_info.path).await {
-        Ok(s) => s,
-        Err(_) => return Ok(TemplateResponse::server_error().into_response()),
+    let Ok(stream) = state.storage.get_stream(&file_info.path).await else {
+        return Ok(TemplateResponse::server_error().into_response());
     };
     let body = Body::from_stream(stream);
 

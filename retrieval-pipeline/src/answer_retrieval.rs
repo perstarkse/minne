@@ -118,18 +118,16 @@ pub fn create_chat_request(
 }
 
 pub fn process_llm_response(
-    response: CreateChatCompletionResponse,
-) -> Result<LLMResponseFormat, AppError> {
+    response: &CreateChatCompletionResponse,
+) -> Result<LLMResponseFormat, Box<AppError>> {
     response
         .choices
         .first()
         .and_then(|choice| choice.message.content.as_ref())
-        .ok_or(AppError::LLMParsing(
-            "No content found in LLM response".into(),
-        ))
+        .ok_or_else(|| Box::new(AppError::LLMParsing("No content found in LLM response".into())))
         .and_then(|content| {
             serde_json::from_str::<LLMResponseFormat>(content).map_err(|e| {
-                AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {e}"))
+                Box::new(AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {e}")))
             })
         })
 }

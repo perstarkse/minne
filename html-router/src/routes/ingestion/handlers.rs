@@ -1,4 +1,4 @@
-use std::{pin::Pin, time::Duration};
+use std::{pin::Pin, sync::Arc, time::Duration};
 
 use axum::{
     extract::{Query, State},
@@ -51,12 +51,12 @@ pub async fn show_ingest_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user_categories = User::get_user_categories(&user.id, &state.db).await?;
-
     #[derive(Serialize)]
     pub struct ShowIngestFormData {
         user_categories: Vec<String>,
     }
+
+    let user_categories = User::get_user_categories(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "ingestion_modal.html",
@@ -180,7 +180,7 @@ pub async fn get_task_updates_stream(
     Query(params): Query<QueryParams>,
 ) -> TaskSse {
     let task_id = params.task_id.clone();
-    let db = state.db.clone();
+    let db = Arc::clone(&state.db);
 
     // 1. Check for authenticated user
     let Some(current_user) = auth.current_user else {
@@ -198,7 +198,7 @@ pub async fn get_task_updates_stream(
             }
 
             let sse_stream = async_stream::stream! {
-                let mut consecutive_db_errors = 0;
+                let mut consecutive_db_errors: u32 = 0;
                 let max_consecutive_db_errors = 3;
 
                 loop {
@@ -263,7 +263,7 @@ pub async fn get_task_updates_stream(
                         }
                         Err(db_err) => {
                             error!("Database error while fetching task '{}': {:?}", task_id, db_err);
-                            consecutive_db_errors += 1;
+                            consecutive_db_errors = consecutive_db_errors.saturating_add(1);
                             yield Ok(Event::default().event("error").data(format!("Temporary error fetching task update (attempt {consecutive_db_errors}).")));
 
                             if consecutive_db_errors >= max_consecutive_db_errors {

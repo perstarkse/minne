@@ -4,7 +4,7 @@ use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
-        indexes::rebuild_indexes,
+        indexes::rebuild,
         types::{
             ingestion_payload::IngestionPayload, knowledge_entity::KnowledgeEntity,
             knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
@@ -191,7 +191,7 @@ pub async fn persist(
     ctx.db.store_item(text_content).await?;
 
     debug!("stored item");
-    rebuild_indexes(ctx.db).await?;
+    rebuild(ctx.db).await?;
 
     debug!(
         task_id = %ctx.task_id,
@@ -301,8 +301,8 @@ async fn store_chunk_batch(
 
     for embedded in batch {
         TextChunk::store_with_embedding(
-            embedded.chunk.to_owned(),
-            embedded.embedding.to_owned(),
+            embedded.chunk.clone(),
+            embedded.embedding.clone(),
             db,
         )
         .await?;

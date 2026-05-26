@@ -3,10 +3,11 @@ mod diagnostics;
 mod stages;
 mod strategies;
 
-pub use config::{RetrievalConfig, RetrievalStrategy, RetrievalTuning, SearchTarget};
+pub use config::{
+    RetrievalConfig, RetrievalStrategy, RetrievalTuning, RetrievalTuningFlags, SearchTarget,
+};
 pub use diagnostics::{
-    AssembleStats, ChunkEnrichmentStats, CollectCandidatesStats, EntityAssemblyTrace,
-    PipelineDiagnostics,
+    AssembleStats, ChunkEnrichmentStats, CollectCandidatesStats, EntityAssemblyTrace, Diagnostics,
 };
 
 use crate::{reranking::RerankerLease, RetrievedEntity, StrategyOutput};
@@ -37,13 +38,13 @@ pub enum StageKind {
 
 // Pipeline stage trait
 #[async_trait]
-pub trait PipelineStage: Send + Sync {
+pub trait Stage: Send + Sync {
     fn kind(&self) -> StageKind;
     async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError>;
 }
 
 // Type alias for boxed stages
-pub type BoxedStage = Box<dyn PipelineStage>;
+pub type BoxedStage = Box<dyn Stage>;
 
 // Strategy driver trait
 #[async_trait]
@@ -51,16 +52,16 @@ pub trait StrategyDriver: Send + Sync {
     type Output;
 
     fn stages(&self) -> Vec<BoxedStage>;
-    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, AppError>;
+    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, Box<AppError>>;
 }
 
 // Pipeline stage timings tracker
 #[derive(Debug, Default, Clone)]
-pub struct PipelineStageTimings {
+pub struct StageTimings {
     timings: Vec<(StageKind, Duration)>,
 }
 
-impl PipelineStageTimings {
+impl StageTimings {
     pub fn record(&mut self, kind: StageKind, duration: Duration) {
         self.timings.push((kind, duration));
     }
@@ -74,8 +75,7 @@ impl PipelineStageTimings {
         self.timings
             .iter()
             .find(|(k, _)| *k == kind)
-            .map(|(_, d)| d.as_millis())
-            .unwrap_or(0)
+            .map_or(0, |(_, d)| d.as_millis())
     }
 
     pub fn embed_ms(&self) -> u128 {
@@ -103,228 +103,100 @@ impl PipelineStageTimings {
     }
 }
 
-pub struct PipelineRunOutput<T> {
+pub struct RunOutput<T> {
     pub results: T,
-    pub diagnostics: Option<PipelineDiagnostics>,
-    pub stage_timings: PipelineStageTimings,
+    pub diagnostics: Option<Diagnostics>,
+    pub stage_timings: StageTimings,
 }
 
-pub async fn run_pipeline(
-    db_client: &SurrealDbClient,
-    openai_client: &Client<async_openai::config::OpenAIConfig>,
-    embedding_provider: Option<&common::utils::embedding::EmbeddingProvider>,
-    input_text: &str,
-    user_id: &str,
-    config: RetrievalConfig,
-    reranker: Option<RerankerLease>,
-) -> Result<StrategyOutput, AppError> {
-    let input_chars = input_text.chars().count();
-    let input_preview: String = input_text.chars().take(120).collect();
+pub async fn execute(params: StrategyParams<'_>) -> Result<StrategyOutput, AppError> {
+    let input_chars = params.input_text.chars().count();
+    let input_preview: String = params.input_text.chars().take(120).collect();
     let input_preview_clean = input_preview.replace('\n', " ");
     let preview_len = input_preview_clean.chars().count();
     info!(
-        %user_id,
+        user_id = %params.user_id,
         input_chars,
         preview_truncated = input_chars > preview_len,
         preview = %input_preview_clean,
-        strategy = %config.strategy,
+        strategy = %params.config.strategy,
         "Starting retrieval pipeline"
     );
 
-    match config.strategy {
+    let strategy = params.config.strategy;
+    let search_target = params.config.search_target;
+
+    match strategy {
         RetrievalStrategy::Default => {
             let driver = DefaultStrategyDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                None,
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
+            let run = execute_strategy(driver, params, None, false).await?;
             Ok(StrategyOutput::Chunks(run.results))
         }
         RetrievalStrategy::RelationshipSuggestion => {
             let driver = RelationshipSuggestionDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                None,
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
+            let run = execute_strategy(driver, params, None, false).await?;
             Ok(StrategyOutput::Entities(run.results))
         }
         RetrievalStrategy::Ingestion => {
             let driver = IngestionDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                None,
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
+            let run = execute_strategy(driver, params, None, false).await?;
             Ok(StrategyOutput::Entities(run.results))
         }
         RetrievalStrategy::Search => {
-            let search_target = config.search_target;
             let driver = SearchStrategyDriver::new(search_target);
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                None,
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
+            let run = execute_strategy(driver, params, None, false).await?;
             Ok(StrategyOutput::Search(run.results))
         }
     }
 }
 
 pub async fn run_pipeline_with_embedding(
-    db_client: &SurrealDbClient,
-    openai_client: &Client<async_openai::config::OpenAIConfig>,
-    embedding_provider: Option<&common::utils::embedding::EmbeddingProvider>,
+    params: StrategyParams<'_>,
     query_embedding: Vec<f32>,
-    input_text: &str,
-    user_id: &str,
-    config: RetrievalConfig,
-    reranker: Option<RerankerLease>,
 ) -> Result<StrategyOutput, AppError> {
-    match config.strategy {
+    let strategy = params.config.strategy;
+    let search_target = params.config.search_target;
+
+    match strategy {
         RetrievalStrategy::Default => {
             let driver = DefaultStrategyDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
+            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
             Ok(StrategyOutput::Chunks(run.results))
         }
         RetrievalStrategy::RelationshipSuggestion => {
             let driver = RelationshipSuggestionDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
+            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
             Ok(StrategyOutput::Entities(run.results))
         }
         RetrievalStrategy::Ingestion => {
             let driver = IngestionDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
+            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
             Ok(StrategyOutput::Entities(run.results))
         }
         RetrievalStrategy::Search => {
-            let search_target = config.search_target;
             let driver = SearchStrategyDriver::new(search_target);
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
+            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
             Ok(StrategyOutput::Search(run.results))
         }
     }
 }
 
-// Note: The metrics/diagnostics variants would follow the same pattern,
-// but for brevity I'm only updating the main ones used by callers.
-// If metrics/diagnostics are needed for non-chat strategies, they should be updated too.
-// For now, I'll update them to support at least Initial/Revised as before.
-
 pub async fn run_pipeline_with_embedding_with_metrics(
-    db_client: &SurrealDbClient,
-    openai_client: &Client<async_openai::config::OpenAIConfig>,
-    embedding_provider: Option<&common::utils::embedding::EmbeddingProvider>,
+    params: StrategyParams<'_>,
     query_embedding: Vec<f32>,
-    input_text: &str,
-    user_id: &str,
-    config: RetrievalConfig,
-    reranker: Option<RerankerLease>,
-) -> Result<PipelineRunOutput<StrategyOutput>, AppError> {
-    match config.strategy {
+) -> Result<RunOutput<StrategyOutput>, AppError> {
+    let strategy = params.config.strategy;
+
+    match strategy {
         RetrievalStrategy::Default => {
             let driver = DefaultStrategyDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                false,
-            )
-            .await?;
-            Ok(PipelineRunOutput {
+            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
+            Ok(RunOutput {
                 results: StrategyOutput::Chunks(run.results),
                 diagnostics: run.diagnostics,
                 stage_timings: run.stage_timings,
             })
         }
-        // Fallback for others if needed, or error. For now assuming metrics mainly for chat.
         _ => Err(AppError::InternalError(
             "Metrics not supported for this strategy".into(),
         )),
@@ -332,32 +204,16 @@ pub async fn run_pipeline_with_embedding_with_metrics(
 }
 
 pub async fn run_pipeline_with_embedding_with_diagnostics(
-    db_client: &SurrealDbClient,
-    openai_client: &Client<async_openai::config::OpenAIConfig>,
-    embedding_provider: Option<&common::utils::embedding::EmbeddingProvider>,
+    params: StrategyParams<'_>,
     query_embedding: Vec<f32>,
-    input_text: &str,
-    user_id: &str,
-    config: RetrievalConfig,
-    reranker: Option<RerankerLease>,
-) -> Result<PipelineRunOutput<StrategyOutput>, AppError> {
-    match config.strategy {
+) -> Result<RunOutput<StrategyOutput>, AppError> {
+    let strategy = params.config.strategy;
+
+    match strategy {
         RetrievalStrategy::Default => {
             let driver = DefaultStrategyDriver::new();
-            let run = execute_strategy(
-                driver,
-                db_client,
-                openai_client,
-                embedding_provider,
-                Some(query_embedding),
-                input_text,
-                user_id,
-                config,
-                reranker,
-                true,
-            )
-            .await?;
-            Ok(PipelineRunOutput {
+            let run = execute_strategy(driver, params, Some(query_embedding), true).await?;
+            Ok(RunOutput {
                 results: StrategyOutput::Chunks(run.results),
                 diagnostics: run.diagnostics,
                 stage_timings: run.stage_timings,
@@ -391,38 +247,25 @@ pub fn retrieved_entities_to_json(entities: &[RetrievedEntity]) -> serde_json::V
         .collect::<Vec<_>>())
 }
 
+pub struct StrategyParams<'a> {
+    pub db_client: &'a SurrealDbClient,
+    pub openai_client: &'a Client<async_openai::config::OpenAIConfig>,
+    pub embedding_provider: Option<&'a common::utils::embedding::EmbeddingProvider>,
+    pub input_text: &'a str,
+    pub user_id: &'a str,
+    pub config: RetrievalConfig,
+    pub reranker: Option<RerankerLease>,
+}
+
 async fn execute_strategy<D: StrategyDriver>(
     driver: D,
-    db_client: &SurrealDbClient,
-    openai_client: &Client<async_openai::config::OpenAIConfig>,
-    embedding_provider: Option<&common::utils::embedding::EmbeddingProvider>,
+    params: StrategyParams<'_>,
     query_embedding: Option<Vec<f32>>,
-    input_text: &str,
-    user_id: &str,
-    config: RetrievalConfig,
-    reranker: Option<RerankerLease>,
     capture_diagnostics: bool,
-) -> Result<PipelineRunOutput<D::Output>, AppError> {
+) -> Result<RunOutput<D::Output>, AppError> {
     let ctx = match query_embedding {
-        Some(embedding) => PipelineContext::with_embedding(
-            db_client,
-            openai_client,
-            embedding_provider,
-            embedding,
-            input_text.to_owned(),
-            user_id.to_owned(),
-            config,
-            reranker,
-        ),
-        None => PipelineContext::new(
-            db_client,
-            openai_client,
-            embedding_provider,
-            input_text.to_owned(),
-            user_id.to_owned(),
-            config,
-            reranker,
-        ),
+        Some(embedding) => PipelineContext::with_embedding(params, embedding),
+        None => PipelineContext::new(params),
     };
 
     run_with_driver(driver, ctx, capture_diagnostics).await
@@ -432,7 +275,7 @@ async fn run_with_driver<D: StrategyDriver>(
     driver: D,
     mut ctx: PipelineContext<'_>,
     capture_diagnostics: bool,
-) -> Result<PipelineRunOutput<D::Output>, AppError> {
+) -> Result<RunOutput<D::Output>, AppError> {
     if capture_diagnostics {
         ctx.enable_diagnostics();
     }
@@ -445,9 +288,9 @@ async fn run_with_driver<D: StrategyDriver>(
 
     let diagnostics = ctx.take_diagnostics();
     let stage_timings = ctx.take_stage_timings();
-    let results = driver.finalize(&mut ctx)?;
+    let results = driver.finalize(&mut ctx).map_err(|e| *e)?;
 
-    Ok(PipelineRunOutput {
+    Ok(RunOutput {
         results,
         diagnostics,
         stage_timings,

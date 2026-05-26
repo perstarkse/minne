@@ -10,7 +10,7 @@ use axum::{
 use axum_htmx::{HxRequest, HX_TRIGGER};
 use common::{
     error::AppError,
-    utils::template_engine::{ProvidesTemplateEngine, Value},
+    utils::template_engine::{ProvidesTemplateEngine, TemplateEngine, Value},
 };
 use minijinja::context;
 use serde::Serialize;
@@ -146,6 +146,40 @@ struct ContextWrapper<'a> {
     context: HashMap<String, Value>,
 }
 
+const HTMX_HEADERS_TO_FORWARD: &[&str] = &["HX-Push", "HX-Trigger", "HX-Redirect"];
+
+fn forward_headers(from: &axum::http::HeaderMap, to: &mut axum::http::HeaderMap) {
+    for &header_name in HTMX_HEADERS_TO_FORWARD {
+        if let Ok(name) = HeaderName::from_bytes(header_name.as_bytes()) {
+            if let Some(value) = from.get(&name) {
+                to.insert(name.clone(), value.clone());
+            }
+        }
+    }
+}
+
+fn context_to_map(
+    value: &Value,
+) -> Result<HashMap<String, Value>, minijinja::value::ValueKind> {
+    match value.kind() {
+        minijinja::value::ValueKind::Map => {
+            let mut map = HashMap::new();
+            if let Ok(keys) = value.try_iter() {
+                for key in keys {
+                    if let Ok(val) = value.get_item(&key) {
+                        map.insert(key.to_string(), val);
+                    }
+                }
+            }
+            Ok(map)
+        }
+        minijinja::value::ValueKind::None | minijinja::value::ValueKind::Undefined => {
+            Ok(HashMap::new())
+        }
+        other => Err(other),
+    }
+}
+
 pub async fn with_template_response<S>(
     State(state): State<S>,
     HxRequest(is_htmx): HxRequest,
@@ -158,14 +192,12 @@ where
     let mut user_theme = Theme::System.as_str();
     let mut initial_theme = Theme::System.initial_theme();
     let mut is_authenticated = false;
-    let mut current_user_id = None;
     let mut current_user = None;
 
     {
         if let Some(auth) = req.extensions().get::<AuthSessionType>() {
             if let Some(user) = &auth.current_user {
                 is_authenticated = true;
-                current_user_id = Some(user.id.clone());
                 user_theme = user.theme.as_str();
                 initial_theme = user.theme.initial_theme();
                 current_user = Some(TemplateUser::from(user));
@@ -174,9 +206,6 @@ where
     }
 
     let response = next.run(req).await;
-
-    // Headers to forward from the original response
-    const HTMX_HEADERS_TO_FORWARD: &[&str] = &["HX-Push", "HX-Trigger", "HX-Redirect"];
 
     if let Some(template_response) = response.extensions().get::<TemplateResponse>().cloned() {
         let template_engine = state.template_engine();
@@ -187,52 +216,19 @@ where
             matches!(&template_response.template_kind, TemplateKind::Full(_));
 
         if should_load_conversation_archive {
-            if let Some(user_id) = current_user_id {
+            if let Some(user_id) = current_user.as_ref().map(|u| &u.id) {
                 let html_state = state.html_state();
                 if let Some(cached_archive) =
-                    html_state.get_cached_conversation_archive(&user_id).await
+                    html_state.get_cached_conversation_archive(user_id).await
                 {
                     conversation_archive = cached_archive;
                 } else if let Ok(archive) =
-                    Conversation::get_user_sidebar_conversations(&user_id, &html_state.db).await
+                    Conversation::get_user_sidebar_conversations(user_id, &html_state.db).await
                 {
                     html_state
-                        .set_cached_conversation_archive(&user_id, archive.clone())
+                        .set_cached_conversation_archive(user_id, archive.clone())
                         .await;
                     conversation_archive = archive;
-                }
-            }
-        }
-
-        fn context_to_map(
-            value: &Value,
-        ) -> Result<HashMap<String, Value>, minijinja::value::ValueKind> {
-            match value.kind() {
-                minijinja::value::ValueKind::Map => {
-                    let mut map = HashMap::new();
-                    if let Ok(keys) = value.try_iter() {
-                        for key in keys {
-                            if let Ok(val) = value.get_item(&key) {
-                                map.insert(key.to_string(), val);
-                            }
-                        }
-                    }
-                    Ok(map)
-                }
-                minijinja::value::ValueKind::None | minijinja::value::ValueKind::Undefined => {
-                    Ok(HashMap::new())
-                }
-                other => Err(other),
-            }
-        }
-
-        // Helper to forward relevant headers
-        fn forward_headers(from: &axum::http::HeaderMap, to: &mut axum::http::HeaderMap) {
-            for &header_name in HTMX_HEADERS_TO_FORWARD {
-                if let Ok(name) = HeaderName::from_bytes(header_name.as_bytes()) {
-                    if let Some(value) = from.get(&name) {
-                        to.insert(name.clone(), value.clone());
-                    }
                 }
             }
         }
@@ -290,18 +286,17 @@ where
             }
             TemplateKind::Error(status) => {
                 if is_htmx {
-                    // HTMX request: Send 204 + HX-Trigger for toast
                     let title = template_response
                         .context
                         .get_attr("title")
                         .ok()
-                        .and_then(|v| v.as_str().map(String::from))
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))
                         .unwrap_or_else(|| "Error".to_string());
                     let description = template_response
                         .context
                         .get_attr("description")
                         .ok()
-                        .and_then(|v| v.as_str().map(String::from))
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))
                         .unwrap_or_else(|| "An error occurred.".to_string());
 
                     let trigger_payload = json!({"toast": {"title": title, "description": description, "type": "error"}});
@@ -312,14 +307,12 @@ where
                     });
                     (StatusCode::NO_CONTENT, [(HX_TRIGGER, trigger_value)], "").into_response()
                 } else {
-                    // Non-HTMX request: Render the full errors/error.html page
                     match template_engine
                         .render("errors/error.html", &Value::from_serialize(&context))
                     {
                         Ok(html) => (*status, Html(html)).into_response(),
                         Err(e) => {
                             error!("Critical: Failed to render 'errors/error.html': {:?}", e);
-                            // Fallback HTML, but use the intended status code
                             (*status, Html(fallback_error())).into_response()
                         }
                     }

@@ -202,6 +202,7 @@ impl SurrealDbClient {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
     use crate::stored_object;
 
     use super::*;
@@ -212,19 +213,17 @@ mod tests {
     });
 
     #[tokio::test]
-    async fn test_initialization_and_crud() {
+    async fn test_initialization_and_crud() -> anyhow::Result<()> {
         let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string(); // ensures isolation per test run
+        let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
-        // Call your initialization
         db.apply_migrations()
             .await
-            .expect("Failed to initialize schema");
+            .with_context(|| "Failed to initialize schema".to_string())?;
 
-        // Test basic CRUD
         let dummy = Dummy {
             id: "abc".to_string(),
             name: "first".to_string(),
@@ -232,50 +231,50 @@ mod tests {
             updated_at: Utc::now(),
         };
 
-        // Store
-        let stored = db.store_item(dummy.clone()).await.expect("Failed to store");
+        let stored = db
+            .store_item(dummy.clone())
+            .await
+            .with_context(|| "Failed to store".to_string())?;
         assert!(stored.is_some());
 
-        // Read
         let fetched = db
             .get_item::<Dummy>(&dummy.id)
             .await
-            .expect("Failed to fetch");
+            .with_context(|| "Failed to fetch".to_string())?;
         assert_eq!(fetched, Some(dummy.clone()));
 
-        // Read all
         let all = db
             .get_all_stored_items::<Dummy>()
             .await
-            .expect("Failed to fetch all");
+            .with_context(|| "Failed to fetch all".to_string())?;
         assert!(all.contains(&dummy));
 
-        // Delete
         let deleted = db
             .delete_item::<Dummy>(&dummy.id)
             .await
-            .expect("Failed to delete");
+            .with_context(|| "Failed to delete".to_string())?;
         assert_eq!(deleted, Some(dummy));
 
-        // After delete, should not be present
         let fetch_post = db
             .get_item::<Dummy>("abc")
             .await
-            .expect("Failed fetch post delete");
+            .with_context(|| "Failed fetch post delete".to_string())?;
         assert!(fetch_post.is_none());
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn upsert_item_overwrites_existing_records() {
+    async fn upsert_item_overwrites_existing_records() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to initialize schema");
+            .with_context(|| "Failed to initialize schema".to_string())?;
 
         let mut dummy = Dummy {
             id: "abc".to_string(),
@@ -286,17 +285,21 @@ mod tests {
 
         db.store_item(dummy.clone())
             .await
-            .expect("Failed to store initial record");
+            .with_context(|| "Failed to store initial record".to_string())?;
 
         dummy.name = "updated".to_string();
         let upserted = db
             .upsert_item(dummy.clone())
             .await
-            .expect("Failed to upsert record");
+            .with_context(|| "Failed to upsert record".to_string())?;
         assert!(upserted.is_some());
 
-        let fetched: Option<Dummy> = db.get_item(&dummy.id).await.expect("fetch after upsert");
-        assert_eq!(fetched.unwrap().name, "updated");
+        let fetched: Option<Dummy> = db
+            .get_item(&dummy.id)
+            .await
+            .with_context(|| "fetch after upsert".to_string())?;
+        let fetched = fetched.ok_or_else(|| anyhow::anyhow!("Expected record to exist after upsert"))?;
+        assert_eq!(fetched.name, "updated");
 
         let new_record = Dummy {
             id: "def".to_string(),
@@ -306,25 +309,29 @@ mod tests {
         };
         db.upsert_item(new_record.clone())
             .await
-            .expect("Failed to upsert new record");
+            .with_context(|| "Failed to upsert new record".to_string())?;
 
         let fetched_new: Option<Dummy> = db
             .get_item(&new_record.id)
             .await
-            .expect("fetch inserted via upsert");
+            .with_context(|| "fetch inserted via upsert".to_string())?;
         assert_eq!(fetched_new, Some(new_record));
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_applying_migrations() {
+    async fn test_applying_migrations() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to build indexes");
+            .with_context(|| "Failed to build indexes".to_string())?;
+
+        Ok(())
     }
 }

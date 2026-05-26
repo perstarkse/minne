@@ -106,11 +106,11 @@ missing_errors_doc = "allow"
 missing_panics_doc = "warn"
 module_name_repetitions = "warn"
 wildcard_dependencies = "warn"
-missing_docs_in_private_items = "warn"
+missing_docs_in_private_items = "allow"
 
 # Allow noisy lints that don't add value for this project
 needless_raw_string_hashes = "allow"
 multiple_bound_locations = "allow"
 cargo_common_metadata = "allow"
 multiple-crate-versions = "allow"
-module_name_repetition = "allow"
+

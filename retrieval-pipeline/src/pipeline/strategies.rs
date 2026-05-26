@@ -28,7 +28,7 @@ impl StrategyDriver for DefaultStrategyDriver {
         ]
     }
 
-    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, AppError> {
+    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, Box<AppError>> {
         Ok(ctx.take_chunk_results())
     }
 }
@@ -55,7 +55,7 @@ impl StrategyDriver for RelationshipSuggestionDriver {
         ]
     }
 
-    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, AppError> {
+    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, Box<AppError>> {
         Ok(ctx.take_entity_results())
     }
 }
@@ -82,7 +82,7 @@ impl StrategyDriver for IngestionDriver {
         ]
     }
 
-    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, AppError> {
+    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, Box<AppError>> {
         Ok(ctx.take_entity_results())
     }
 }
@@ -134,7 +134,7 @@ impl StrategyDriver for SearchStrategyDriver {
         }
     }
 
-    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, AppError> {
+    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, Box<AppError>> {
         let chunks = match self.target {
             SearchTarget::EntitiesOnly => Vec::new(),
             _ => ctx.take_chunk_results(),

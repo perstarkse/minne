@@ -529,6 +529,8 @@ impl IngestionTask {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
+
     use super::*;
     use crate::storage::types::ingestion_payload::IngestionPayload;
 
@@ -541,16 +543,16 @@ mod tests {
         }
     }
 
-    async fn memory_db() -> SurrealDbClient {
+    async fn memory_db() -> anyhow::Result<SurrealDbClient> {
         let namespace = "test_ns";
         let database = Uuid::new_v4().to_string();
         SurrealDbClient::memory(namespace, &database)
             .await
-            .expect("in-memory surrealdb")
+            .with_context(|| "in-memory surrealdb".to_string())
     }
 
     #[tokio::test]
-    async fn test_new_task_defaults() {
+    async fn test_new_task_defaults() -> anyhow::Result<()> {
         let user_id = "user123";
         let payload = create_payload(user_id);
         let task = IngestionTask::new(payload.clone(), user_id.to_string());
@@ -562,73 +564,76 @@ mod tests {
         assert_eq!(task.max_attempts, MAX_ATTEMPTS);
         assert!(task.locked_at.is_none());
         assert!(task.worker_id.is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_create_and_store_task() {
-        let db = memory_db().await;
+    async fn test_create_and_store_task() -> anyhow::Result<()> {
+        let db = memory_db().await?;
         let user_id = "user123";
         let payload = create_payload(user_id);
 
         let created =
             IngestionTask::create_and_add_to_db(payload.clone(), user_id.to_string(), &db)
                 .await
-                .expect("store");
+                .with_context(|| "store".to_string())?;
 
         let stored: Option<IngestionTask> = db
             .get_item::<IngestionTask>(&created.id)
             .await
-            .expect("fetch");
+            .with_context(|| "fetch".to_string())?;
 
-        let stored = stored.expect("task exists");
+        let stored = stored.with_context(|| "task exists".to_string())?;
         assert_eq!(stored.id, created.id);
         assert_eq!(stored.state, TaskState::Pending);
         assert_eq!(stored.attempts, 0);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_claim_and_transition() {
-        let db = memory_db().await;
+    async fn test_claim_and_transition() -> anyhow::Result<()> {
+        let db = memory_db().await?;
         let user_id = "user123";
         let payload = create_payload(user_id);
         let task = IngestionTask::new(payload, user_id.to_string());
-        db.store_item(task.clone()).await.expect("store");
+        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
 
         let worker_id = "worker-1";
         let now = chrono::Utc::now();
         let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_secs(60))
             .await
-            .expect("claim");
+            .with_context(|| "claim".to_string())?
+            .with_context(|| "task claimed".to_string())?;
 
-        let claimed = claimed.expect("task claimed");
         assert_eq!(claimed.state, TaskState::Reserved);
         assert_eq!(claimed.worker_id.as_deref(), Some(worker_id));
 
-        let processing = claimed.mark_processing(&db).await.expect("processing");
+        let processing = claimed.mark_processing(&db).await.with_context(|| "processing".to_string())?;
         assert_eq!(processing.state, TaskState::Processing);
 
-        let succeeded = processing.mark_succeeded(&db).await.expect("succeeded");
+        let succeeded = processing.mark_succeeded(&db).await.with_context(|| "succeeded".to_string())?;
         assert_eq!(succeeded.state, TaskState::Succeeded);
         assert!(succeeded.worker_id.is_none());
         assert!(succeeded.locked_at.is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_fail_and_dead_letter() {
-        let db = memory_db().await;
+    async fn test_fail_and_dead_letter() -> anyhow::Result<()> {
+        let db = memory_db().await?;
         let user_id = "user123";
         let payload = create_payload(user_id);
         let task = IngestionTask::new(payload, user_id.to_string());
-        db.store_item(task.clone()).await.expect("store");
+        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
 
         let worker_id = "worker-dead";
         let now = chrono::Utc::now();
         let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_secs(60))
             .await
-            .expect("claim")
-            .expect("claimed");
+            .with_context(|| "claim".to_string())?
+            .with_context(|| "claimed".to_string())?;
 
-        let processing = claimed.mark_processing(&db).await.expect("processing");
+        let processing = claimed.mark_processing(&db).await.with_context(|| "processing".to_string())?;
 
         let error_info = TaskErrorInfo {
             code: Some("pipeline_error".into()),
@@ -638,7 +643,7 @@ mod tests {
         let failed = processing
             .mark_failed(error_info.clone(), Duration::from_secs(30), &db)
             .await
-            .expect("failed update");
+            .with_context(|| "failed update".to_string())?;
         assert_eq!(failed.state, TaskState::Failed);
         assert_eq!(failed.error_message.as_deref(), Some("failed"));
         assert!(failed.worker_id.is_none());
@@ -648,19 +653,20 @@ mod tests {
         let dead = failed
             .mark_dead_letter(error_info.clone(), &db)
             .await
-            .expect("dead letter");
+            .with_context(|| "dead letter".to_string())?;
         assert_eq!(dead.state, TaskState::DeadLetter);
         assert_eq!(dead.error_message.as_deref(), Some("failed"));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mark_processing_requires_reservation() {
-        let db = memory_db().await;
+    async fn test_mark_processing_requires_reservation() -> anyhow::Result<()> {
+        let db = memory_db().await?;
         let user_id = "user123";
         let payload = create_payload(user_id);
 
         let task = IngestionTask::new(payload.clone(), user_id.to_string());
-        db.store_item(task.clone()).await.expect("store");
+        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
 
         let err = task
             .mark_processing(&db)
@@ -674,18 +680,19 @@ mod tests {
                     "unexpected message: {message}"
                 );
             }
-            other => panic!("expected validation error, got {other:?}"),
+            other => anyhow::bail!("expected validation error, got {other:?}"),
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mark_failed_requires_processing() {
-        let db = memory_db().await;
+    async fn test_mark_failed_requires_processing() -> anyhow::Result<()> {
+        let db = memory_db().await?;
         let user_id = "user123";
         let payload = create_payload(user_id);
 
         let task = IngestionTask::new(payload.clone(), user_id.to_string());
-        db.store_item(task.clone()).await.expect("store");
+        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
 
         let err = task
             .mark_failed(
@@ -706,18 +713,19 @@ mod tests {
                     "unexpected message: {message}"
                 );
             }
-            other => panic!("expected validation error, got {other:?}"),
+            other => anyhow::bail!("expected validation error, got {other:?}"),
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_release_requires_reservation() {
-        let db = memory_db().await;
+    async fn test_release_requires_reservation() -> anyhow::Result<()> {
+        let db = memory_db().await?;
         let user_id = "user123";
         let payload = create_payload(user_id);
 
         let task = IngestionTask::new(payload.clone(), user_id.to_string());
-        db.store_item(task.clone()).await.expect("store");
+        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
 
         let err = task
             .release(&db)
@@ -731,7 +739,8 @@ mod tests {
                     "unexpected message: {message}"
                 );
             }
-            other => panic!("expected validation error, got {other:?}"),
+            other => anyhow::bail!("expected validation error, got {other:?}"),
         }
+        Ok(())
     }
 }

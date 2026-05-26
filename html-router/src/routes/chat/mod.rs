@@ -10,8 +10,9 @@ use axum::{
 };
 pub use chat_handlers::{
     delete_conversation, new_chat_user_message, new_user_message, patch_conversation_title,
-    reload_sidebar, show_chat_base, show_conversation_editing_title, show_existing_chat,
-    show_initialized_chat,
+    reload_sidebar, show_conversation_editing_title,
+    show_chat_base as show_base, show_existing_chat as show_existing,
+    show_initialized_chat as show_initialized,
 };
 use message_response_stream::get_response_stream;
 use references::show_reference_tooltip;
@@ -24,10 +25,10 @@ where
     HtmlState: FromRef<S>,
 {
     Router::new()
-        .route("/chat", get(show_chat_base).post(new_chat_user_message))
+        .route("/chat", get(show_base).post(new_chat_user_message))
         .route(
             "/chat/{id}",
-            get(show_existing_chat)
+            get(show_existing)
                 .post(new_user_message)
                 .delete(delete_conversation),
         )
@@ -36,7 +37,7 @@ where
             get(show_conversation_editing_title).patch(patch_conversation_title),
         )
         .route("/chat/sidebar", get(reload_sidebar))
-        .route("/initialized-chat", post(show_initialized_chat))
+        .route("/initialized-chat", post(show_initialized))
         .route("/chat/response-stream", get(get_response_stream))
         .route("/chat/reference/{id}", get(show_reference_tooltip))
 }

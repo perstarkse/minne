@@ -715,6 +715,7 @@ const fn prompt_for_attempt(attempt: usize, base_prompt: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::{self};
 
     #[test]
     fn test_looks_good_enough_short_text() {
@@ -737,15 +738,16 @@ mod tests {
     }
 
     #[test]
-    fn test_debug_dump_directory_env_var() {
+    fn test_debug_dump_directory_env_var() -> anyhow::Result<()> {
         std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
         assert!(debug_dump_directory().is_none());
 
         std::env::set_var(DEBUG_IMAGE_ENV_VAR, "/tmp/minne_pdf_debug");
-        let dir = debug_dump_directory().expect("expected debug directory");
+        let dir = debug_dump_directory().ok_or_else(|| anyhow::anyhow!("expected debug directory"))?;
         assert_eq!(dir, PathBuf::from("/tmp/minne_pdf_debug"));
 
         std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
+        Ok(())
     }
 
     #[test]

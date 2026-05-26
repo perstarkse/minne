@@ -10,7 +10,7 @@ use crate::eval::{
     CaseSummary, RetrievedSummary,
 };
 use retrieval_pipeline::{
-    pipeline::{self, PipelineStageTimings, RetrievalConfig},
+    pipeline::{self, StageTimings, RetrievalConfig},
     reranking::RerankerPool,
 };
 use tokio::sync::Semaphore;
@@ -75,10 +75,10 @@ pub(crate) async fn run_queries(
         retrieval_config.tuning.chunk_rrf_fts_weight = value;
     }
     if let Some(value) = config.retrieval.chunk_rrf_use_vector {
-        retrieval_config.tuning.chunk_rrf_use_vector = value;
+        retrieval_config.tuning.flags.chunk_rrf_use_vector = value.into();
     }
     if let Some(value) = config.retrieval.chunk_rrf_use_fts {
-        retrieval_config.tuning.chunk_rrf_use_fts = value;
+        retrieval_config.tuning.flags.chunk_rrf_use_fts = value.into();
     }
     if let Some(value) = config.retrieval.chunk_avg_chars_per_token {
         retrieval_config.tuning.avg_chars_per_token = value;
@@ -113,8 +113,8 @@ pub(crate) async fn run_queries(
         chunk_rrf_k = active_tuning.chunk_rrf_k,
         chunk_rrf_vector_weight = active_tuning.chunk_rrf_vector_weight,
         chunk_rrf_fts_weight = active_tuning.chunk_rrf_fts_weight,
-        chunk_rrf_use_vector = active_tuning.chunk_rrf_use_vector,
-        chunk_rrf_use_fts = active_tuning.chunk_rrf_use_fts,
+        chunk_rrf_use_vector = active_tuning.flags.chunk_rrf_use_vector.as_bool(),
+        chunk_rrf_use_fts = active_tuning.flags.chunk_rrf_use_fts.as_bool(),
         embedding_backend = ctx.embedding_provider().backend_label(),
         embedding_model = ctx
             .embedding_provider()
@@ -181,35 +181,32 @@ pub(crate) async fn run_queries(
                     embedding_provider.embed(&question).await.with_context(|| {
                         format!("generating embedding for question {}", question_id)
                     })?;
-                let reranker = match &rerank_pool {
-                    Some(pool) => Some(pool.checkout().await),
+                let reranker = match rerank_pool.as_ref() {
+                    Some(pool) => pool.checkout().await,
                     None => None,
                 };
 
+                let params = pipeline::StrategyParams {
+                    db_client: &db,
+                    openai_client: &openai_client,
+                    embedding_provider: Some(&embedding_provider),
+                    input_text: &question,
+                    user_id: &user_id,
+                    config: (*retrieval_config).clone(),
+                    reranker,
+                };
                 let (result_output, pipeline_diagnostics, stage_timings) = if diagnostics_enabled {
                     let outcome = pipeline::run_pipeline_with_embedding_with_diagnostics(
-                        &db,
-                        &openai_client,
-                        Some(&embedding_provider),
+                        params,
                         query_embedding,
-                        &question,
-                        &user_id,
-                        (*retrieval_config).clone(),
-                        reranker,
                     )
                     .await
                     .with_context(|| format!("running pipeline for question {}", question_id))?;
                     (outcome.results, outcome.diagnostics, outcome.stage_timings)
                 } else {
                     let outcome = pipeline::run_pipeline_with_embedding_with_metrics(
-                        &db,
-                        &openai_client,
-                        Some(&embedding_provider),
+                        params,
                         query_embedding,
-                        &question,
-                        &user_id,
-                        (*retrieval_config).clone(),
-                        reranker,
                     )
                     .await
                     .with_context(|| format!("running pipeline for question {}", question_id))?;
@@ -327,7 +324,7 @@ pub(crate) async fn run_queries(
                         usize,
                         CaseSummary,
                         Option<CaseDiagnostics>,
-                        PipelineStageTimings,
+                        StageTimings,
                     ),
                     anyhow::Error,
                 >((idx, summary, diagnostics, stage_timings))

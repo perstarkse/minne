@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Deserialize, Serialize)]
-pub struct SignupParams {
+pub struct Params {
     pub email: String,
     pub password: String,
     pub timezone: String,
@@ -39,7 +39,7 @@ pub async fn show_signup_form(
 pub async fn process_signup_and_show_verification(
     State(state): State<HtmlState>,
     auth: AuthSessionType,
-    Form(form): Form<SignupParams>,
+    Form(form): Form<Params>,
 ) -> Result<impl IntoResponse, HtmlError> {
     let user = match User::create_new(
         form.email,

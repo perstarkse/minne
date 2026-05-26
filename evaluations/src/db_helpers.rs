@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use common::storage::{db::SurrealDbClient, indexes::ensure_runtime_indexes};
+use common::storage::{db::SurrealDbClient, indexes::ensure_runtime};
 use tracing::info;
 
 // Helper functions for index management during namespace reseed
@@ -11,7 +11,7 @@ pub async fn remove_all_indexes(db: &SurrealDbClient) -> Result<()> {
 
 pub async fn recreate_indexes(db: &SurrealDbClient, dimension: usize) -> Result<()> {
     info!("Recreating ALL indexes after namespace reseed via shared runtime helper");
-    ensure_runtime_indexes(db, dimension)
+    ensure_runtime(db, dimension)
         .await
         .context("creating runtime indexes")
 }

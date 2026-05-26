@@ -39,30 +39,33 @@ const CONVERSATION_ARCHIVE_CACHE_TTL: Duration = Duration::from_secs(30);
 const CONVERSATION_ARCHIVE_CACHE_MAX_USERS: usize = 1024;
 const CONVERSATION_ARCHIVE_CACHE_CLEANUP_WRITE_INTERVAL: usize = 64;
 
+pub struct StateResources {
+    pub db: Arc<SurrealDbClient>,
+    pub openai_client: Arc<OpenAIClientType>,
+    pub session_store: Arc<SessionStoreType>,
+    pub storage: StorageManager,
+    pub config: AppConfig,
+    pub reranker_pool: Option<Arc<RerankerPool>>,
+    pub embedding_provider: Arc<EmbeddingProvider>,
+    pub template_engine: Option<Arc<TemplateEngine>>,
+}
+
 impl HtmlState {
-    pub async fn new_with_resources(
-        db: Arc<SurrealDbClient>,
-        openai_client: Arc<OpenAIClientType>,
-        session_store: Arc<SessionStoreType>,
-        storage: StorageManager,
-        config: AppConfig,
-        reranker_pool: Option<Arc<RerankerPool>>,
-        embedding_provider: Arc<EmbeddingProvider>,
-        template_engine: Option<Arc<TemplateEngine>>,
-    ) -> Self {
-        let templates =
-            template_engine.unwrap_or_else(|| Arc::new(create_template_engine!("templates")));
+    pub fn new_with_resources(resources: StateResources) -> Self {
+        let templates = resources
+            .template_engine
+            .unwrap_or_else(|| Arc::new(create_template_engine!("templates")));
         debug!("Template engine configured for html_router.");
 
         Self {
-            db,
-            openai_client,
-            session_store,
+            db: resources.db,
+            openai_client: resources.openai_client,
             templates,
-            config,
-            storage,
-            reranker_pool,
-            embedding_provider,
+            session_store: resources.session_store,
+            config: resources.config,
+            storage: resources.storage,
+            reranker_pool: resources.reranker_pool,
+            embedding_provider: resources.embedding_provider,
             conversation_archive_cache: Arc::new(RwLock::new(HashMap::new())),
             conversation_archive_cache_writes: Arc::new(AtomicUsize::new(0)),
         }
@@ -210,18 +213,16 @@ mod tests {
             EmbeddingProvider::new_hashed(8).expect("Failed to create embedding provider"),
         );
 
-        HtmlState::new_with_resources(
+        HtmlState::new_with_resources(StateResources {
             db,
-            Arc::new(async_openai::Client::new()),
+            openai_client: Arc::new(async_openai::Client::new()),
             session_store,
             storage,
             config,
-            None,
+            reranker_pool: None,
             embedding_provider,
-            None,
-        )
-        .await
-        .expect("Failed to create HtmlState")
+            template_engine: None,
+        })
     }
 
     #[tokio::test]

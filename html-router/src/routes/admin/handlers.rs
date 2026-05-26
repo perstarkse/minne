@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_openai::types::ListModelResponse;
 use axum::{
     extract::{Query, State},
@@ -37,18 +39,14 @@ pub struct AdminPanelData {
     current_section: AdminSection,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminSection {
+    #[default]
     Overview,
     Models,
 }
 
-impl Default for AdminSection {
-    fn default() -> Self {
-        Self::Overview
-    }
-}
 
 #[derive(Deserialize)]
 pub struct AdminPanelQuery {
@@ -107,10 +105,7 @@ fn checkbox_to_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    match String::deserialize(deserializer) {
-        Ok(string) => Ok(string == "on"),
-        Err(_) => Ok(false),
-    }
+    String::deserialize(deserializer).map(|s| s == "on")
 }
 
 #[derive(Deserialize)]
@@ -219,8 +214,8 @@ pub async fn update_model_settings(
     if reembedding_needed {
         info!("Embedding dimensions changed. Spawning background re-embedding task...");
 
-        let db_for_task = state.db.clone();
-        let openai_for_task = state.openai_client.clone();
+        let db_for_task = Arc::clone(&state.db);
+        let openai_for_task = Arc::clone(&state.openai_client);
         let new_model_for_task = new_settings.embedding_model.clone();
         let new_dims_for_task = new_settings.embedding_dimensions;
 

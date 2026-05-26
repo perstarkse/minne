@@ -14,7 +14,7 @@ use common::utils::config::get_config;
 use common::{
     storage::{
         db::SurrealDbClient,
-        store::{DynStore, StorageManager},
+        store::{DynStorage, StorageManager},
         types::{ingestion_payload::IngestionPayload, ingestion_task::IngestionTask, StoredObject},
     },
     utils::config::{AppConfig, StorageKind},
@@ -432,7 +432,7 @@ async fn ingest_paragraph_batch(
         storage: StorageKind::Memory,
         ..Default::default()
     };
-    let backend: DynStore = Arc::new(InMemory::new());
+    let backend: DynStorage = Arc::new(InMemory::new());
     let storage = StorageManager::with_backend(backend, StorageKind::Memory);
 
     let pipeline_config = ingestion_config.clone();
