@@ -124,9 +124,9 @@ pub struct SliceWindow<'a> {
     positive_paragraph_ids: Vec<String>,
 }
 
-impl<'a> SliceWindow<'a> {
+impl SliceWindow<'_> {
     pub fn positive_ids(&self) -> impl Iterator<Item = &str> {
-        self.positive_paragraph_ids.iter().map(|id| id.as_str())
+        self.positive_paragraph_ids.iter().map(std::string::String::as_str)
     }
 }
 
@@ -312,15 +312,13 @@ pub fn resolve_slice<'a>(
 
     if manifest
         .as_ref()
-        .map(|manifest| manifest.version != SLICE_VERSION)
-        .unwrap_or(false)
+        .is_some_and(|manifest| manifest.version != SLICE_VERSION)
     {
         warn!(
             slice = manifest
                 .as_ref()
-                .map(|m| m.slice_id.as_str())
-                .unwrap_or("unknown"),
-            found = manifest.as_ref().map(|m| m.version).unwrap_or(0),
+                .map_or("unknown", |m| m.slice_id.as_str()),
+            found = manifest.as_ref().map_or(0, |m| m.version),
             expected = SLICE_VERSION,
             "Slice manifest version mismatch; regenerating"
         );
@@ -387,7 +385,7 @@ pub fn resolve_slice<'a>(
         );
     }
 
-    let resolved = manifest_to_resolved(dataset, &index, manifest.clone(), path.clone())?;
+    let resolved = manifest_to_resolved(dataset, &index, manifest.clone(), path)?;
 
     Ok(resolved)
 }
@@ -674,7 +672,7 @@ fn ordered_question_refs_beir(
         }
     }
 
-    if grouped.values().all(|entries| entries.is_empty()) {
+    if grouped.values().all(std::vec::Vec::is_empty) {
         return Err(anyhow!(
             "no eligible BEIR questions found; cannot build slice"
         ));
@@ -710,7 +708,7 @@ fn ordered_question_refs_beir(
     let mut shortfall = 0usize;
 
     for prefix in &prefixes {
-        let available = grouped.get(prefix).map(|v| v.len()).unwrap_or(0);
+        let available = grouped.get(prefix).map_or(0, std::vec::Vec::len);
         let quota = *quotas.get(prefix).unwrap_or(&0);
         let take = quota.min(available);
         let missing = quota.saturating_sub(take);
@@ -766,7 +764,7 @@ fn ordered_question_refs_beir(
     let mut output = Vec::with_capacity(total_selected);
     loop {
         let mut progressed = false;
-        for queue in queues.iter_mut() {
+        for queue in &mut queues {
             if let Some(item) = queue.pop_front() {
                 output.push(item);
                 progressed = true;
@@ -1045,10 +1043,10 @@ impl<'a> From<&'a Config> for SliceConfig<'a> {
     }
 }
 
-pub fn slice_config_with_limit<'a>(
-    config: &'a Config,
+pub fn slice_config_with_limit(
+    config: &Config,
     limit_override: Option<usize>,
-) -> SliceConfig<'a> {
+) -> SliceConfig<'_> {
     SliceConfig {
         cache_dir: config.cache_dir.as_path(),
         force_convert: config.force_convert,

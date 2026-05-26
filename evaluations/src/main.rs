@@ -21,7 +21,7 @@ use tokio::runtime::Builder;
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
 
-/// Configure SurrealDB environment variables for optimal performance
+/// Configure `SurrealDB` environment variables for optimal performance
 fn configure_surrealdb_performance(cpu_count: usize) {
     // Set environment variables only if they're not already set
     let indexing_batch_size = std::env::var("SURREAL_INDEXING_BATCH_SIZE")

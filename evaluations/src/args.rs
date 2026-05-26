@@ -63,7 +63,7 @@ pub struct RetrievalSettings {
     #[arg(long)]
     pub max_chunks_per_entity: Option<usize>,
 
-    /// Enable the FastEmbed reranking stage
+    /// Enable the `FastEmbed` reranking stage
     #[arg(long = "rerank", action = clap::ArgAction::SetTrue, default_value_t = false)]
     pub rerank: bool,
 
@@ -171,23 +171,23 @@ pub struct IngestConfig {
 
 #[derive(Debug, Clone, Args)]
 pub struct DatabaseArgs {
-    /// SurrealDB server endpoint
+    /// `SurrealDB` server endpoint
     #[arg(long, default_value = "ws://127.0.0.1:8000", env = "EVAL_DB_ENDPOINT")]
     pub db_endpoint: String,
 
-    /// SurrealDB root username
+    /// `SurrealDB` root username
     #[arg(long, default_value = "root_user", env = "EVAL_DB_USERNAME")]
     pub db_username: String,
 
-    /// SurrealDB root password
+    /// `SurrealDB` root password
     #[arg(long, default_value = "root_password", env = "EVAL_DB_PASSWORD")]
     pub db_password: String,
 
-    /// Override the namespace used on the SurrealDB server
+    /// Override the namespace used on the `SurrealDB` server
     #[arg(long, env = "EVAL_DB_NAMESPACE")]
     pub db_namespace: Option<String>,
 
-    /// Override the database used on the SurrealDB server
+    /// Override the database used on the `SurrealDB` server
     #[arg(long, env = "EVAL_DB_DATABASE")]
     pub db_database: Option<String>,
 
@@ -258,7 +258,7 @@ pub struct Config {
     #[arg(long, default_value_t = EmbeddingBackend::FastEmbed)]
     pub embedding_backend: EmbeddingBackend,
 
-    /// FastEmbed model code
+    /// `FastEmbed` model code
     #[arg(long)]
     pub embedding_model: Option<String>,
 
@@ -277,7 +277,7 @@ pub struct Config {
     #[arg(long)]
     pub slice: Option<String>,
 
-    /// Ignore cached corpus state and rebuild the slice's SurrealDB corpus
+    /// Ignore cached corpus state and rebuild the slice's `SurrealDB` corpus
     #[arg(long)]
     pub reseed_slice: bool,
 
@@ -313,7 +313,7 @@ pub struct Config {
     #[arg(long)]
     pub inspect_manifest: Option<PathBuf>,
 
-    /// Override the SurrealDB system settings query model
+    /// Override the `SurrealDB` system settings query model
     #[arg(long)]
     pub query_model: Option<String>,
 

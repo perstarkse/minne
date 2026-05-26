@@ -99,9 +99,9 @@ struct ManifestSlice {
 impl DatasetCatalog {
     pub fn load() -> Result<Self> {
         let manifest_raw = fs::read_to_string(MANIFEST_PATH)
-            .with_context(|| format!("reading dataset manifest at {}", MANIFEST_PATH))?;
+            .with_context(|| format!("reading dataset manifest at {MANIFEST_PATH}"))?;
         let manifest: ManifestFile = serde_yaml::from_str(&manifest_raw)
-            .with_context(|| format!("parsing dataset manifest at {}", MANIFEST_PATH))?;
+            .with_context(|| format!("parsing dataset manifest at {MANIFEST_PATH}"))?;
 
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut datasets = BTreeMap::new();
@@ -351,15 +351,11 @@ impl DatasetKind {
     }
 
     pub fn default_raw_path(self) -> PathBuf {
-        dataset_entry_for_kind(self)
-            .map(|entry| entry.raw_path.clone())
-            .unwrap_or_else(|err| panic!("dataset manifest missing entry for {:?}: {err}", self))
+        dataset_entry_for_kind(self).map_or_else(|err| panic!("dataset manifest missing entry for {self:?}: {err}"), |entry| entry.raw_path.clone())
     }
 
     pub fn default_converted_path(self) -> PathBuf {
-        dataset_entry_for_kind(self)
-            .map(|entry| entry.converted_path.clone())
-            .unwrap_or_else(|err| panic!("dataset manifest missing entry for {:?}: {err}", self))
+        dataset_entry_for_kind(self).map_or_else(|err| panic!("dataset manifest missing entry for {self:?}: {err}"), |entry| entry.converted_path.clone())
     }
 }
 

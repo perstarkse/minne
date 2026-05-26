@@ -38,9 +38,9 @@ pub(crate) async fn finalize(
     }
 
     info!(
-        total_cases = ctx.summary.as_ref().map(|s| s.total_cases).unwrap_or(0),
-        correct = ctx.summary.as_ref().map(|s| s.correct).unwrap_or(0),
-        precision = ctx.summary.as_ref().map(|s| s.precision).unwrap_or(0.0),
+        total_cases = ctx.summary.as_ref().map_or(0, |s| s.total_cases),
+        correct = ctx.summary.as_ref().map_or(0, |s| s.correct),
+        precision = ctx.summary.as_ref().map_or(0.0, |s| s.precision),
         dataset = ctx.dataset().metadata.id.as_str(),
         "Evaluation complete"
     );

@@ -576,13 +576,13 @@ fn validate_answers(
         }
     }
 
-    if !found_any {
+    if found_any {
+        Ok(matches.into_iter().collect())
+    } else {
         Err(anyhow!(
             "expected answer for question '{}' was not found in ingested content",
             question.id
         ))
-    } else {
-        Ok(matches.into_iter().collect())
     }
 }
 

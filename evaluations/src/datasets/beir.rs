@@ -59,7 +59,7 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
     let mut paragraphs = Vec::with_capacity(corpus.len());
     let mut paragraph_index = HashMap::new();
 
-    for (doc_id, entry) in corpus.iter() {
+    for (doc_id, entry) in &corpus {
         let paragraph_id = format!("{}-{doc_id}", dataset.source_prefix());
         let paragraph = ConvertedParagraph {
             id: paragraph_id.clone(),
@@ -76,13 +76,10 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
     let mut skipped_answers = 0usize;
 
     for (query_id, entries) in qrels {
-        let query = match queries.get(&query_id) {
-            Some(query) => query,
-            None => {
-                missing_queries += 1;
-                warn!(query_id = %query_id, "Skipping qrels entry for missing query");
-                continue;
-            }
+        let query = if let Some(query) = queries.get(&query_id) { query } else {
+            missing_queries += 1;
+            warn!(query_id = %query_id, "Skipping qrels entry for missing query");
+            continue;
         };
 
         let best = match select_best_doc(&entries) {
@@ -90,31 +87,25 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
             None => continue,
         };
 
-        let paragraph_slot = match paragraph_index.get(&best.doc_id) {
-            Some(slot) => *slot,
-            None => {
-                missing_docs += 1;
-                warn!(
-                    query_id = %query_id,
-                    doc_id = %best.doc_id,
-                    "Skipping qrels entry referencing missing corpus document"
-                );
-                continue;
-            }
+        let paragraph_slot = if let Some(slot) = paragraph_index.get(&best.doc_id) { *slot } else {
+            missing_docs += 1;
+            warn!(
+                query_id = %query_id,
+                doc_id = %best.doc_id,
+                "Skipping qrels entry referencing missing corpus document"
+            );
+            continue;
         };
 
         let answer = answer_snippet(&paragraphs[paragraph_slot].context);
-        let answers = match answer {
-            Some(snippet) => vec![snippet],
-            None => {
-                skipped_answers += 1;
-                warn!(
-                    query_id = %query_id,
-                    doc_id = %best.doc_id,
-                    "Skipping query because no non-empty answer snippet could be derived"
-                );
-                continue;
-            }
+        let answers = if let Some(snippet) = answer { vec![snippet] } else {
+            skipped_answers += 1;
+            warn!(
+                query_id = %query_id,
+                doc_id = %best.doc_id,
+                "Skipping query because no non-empty answer snippet could be derived"
+            );
+            continue;
         };
 
         let question_id = format!("{}-{query_id}", dataset.source_prefix());

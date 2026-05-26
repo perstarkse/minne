@@ -179,7 +179,7 @@ pub(crate) async fn run_queries(
                 debug!(question_id = %question_id, "Evaluating query");
                 let query_embedding =
                     embedding_provider.embed(&question).await.with_context(|| {
-                        format!("generating embedding for question {}", question_id)
+                        format!("generating embedding for question {question_id}")
                     })?;
                 let reranker = match rerank_pool.as_ref() {
                     Some(pool) => pool.checkout().await,
@@ -201,7 +201,7 @@ pub(crate) async fn run_queries(
                         query_embedding,
                     )
                     .await
-                    .with_context(|| format!("running pipeline for question {}", question_id))?;
+                    .with_context(|| format!("running pipeline for question {question_id}"))?;
                     (outcome.results, outcome.diagnostics, outcome.stage_timings)
                 } else {
                     let outcome = pipeline::run_pipeline_with_embedding_with_metrics(
@@ -209,7 +209,7 @@ pub(crate) async fn run_queries(
                         query_embedding,
                     )
                     .await
-                    .with_context(|| format!("running pipeline for question {}", question_id))?;
+                    .with_context(|| format!("running pipeline for question {question_id}"))?;
                     (outcome.results, None, outcome.stage_timings)
                 };
                 let query_latency = query_start.elapsed().as_millis();
@@ -220,7 +220,7 @@ pub(crate) async fn run_queries(
                 let answers_lower: Vec<String> =
                     answers.iter().map(|ans| ans.to_ascii_lowercase()).collect();
                 let expected_chunk_ids_set: HashSet<&str> =
-                    expected_chunk_ids.iter().map(|id| id.as_str()).collect();
+                    expected_chunk_ids.iter().map(std::string::String::as_str).collect();
                 let chunk_id_required = has_verified_chunks;
                 let mut entity_hit = false;
                 let mut chunk_text_hit = false;
@@ -408,7 +408,7 @@ fn calculate_ndcg(retrieved: &[RetrievedSummary], k: usize) -> f64 {
     let mut idcg = 0.0;
     for i in 0..relevant_count {
         let rel = 1.0;
-        idcg += rel / (i as f64 + 2.0).log2();
+        idcg += rel / (f64::from(i) + 2.0).log2();
     }
 
     if idcg == 0.0 {

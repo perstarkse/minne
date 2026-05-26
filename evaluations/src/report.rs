@@ -455,7 +455,7 @@ fn render_markdown(report: &EvaluationReport) -> String {
     } else {
         report.dataset.embedding_backend.clone()
     };
-    md.push_str(&format!("| Embedding | {} |\\n", embedding_label));
+    md.push_str(&format!("| Embedding | {embedding_label} |\\n"));
     md.push_str(&format!(
         "| Embedding Dim | {} |\\n",
         report.dataset.embedding_dimension
@@ -520,9 +520,7 @@ fn render_markdown(report: &EvaluationReport) -> String {
     if report.retrieval.rerank_enabled {
         let pool = report
             .retrieval
-            .rerank_pool_size
-            .map(|size| size.to_string())
-            .unwrap_or_else(|| "?".into());
+            .rerank_pool_size.map_or_else(|| "?".into(), |size| size.to_string());
         md.push_str(&format!(
             "| Rerank | enabled (pool {pool}, keep top {}) |\\n",
             report.retrieval.rerank_keep_top
@@ -550,7 +548,7 @@ fn render_markdown(report: &EvaluationReport) -> String {
         report.performance.ingestion_ms
     ));
     if let Some(seed) = report.performance.namespace_seed_ms {
-        md.push_str(&format!("| Namespace Seed | {} ms |\\n", seed));
+        md.push_str(&format!("| Namespace Seed | {seed} ms |\\n"));
     }
     md.push_str(&format!(
         "| Namespace State | {} |\\n",
@@ -672,9 +670,7 @@ fn render_markdown(report: &EvaluationReport) -> String {
             for case in &report.llm_cases {
                 let retrieved = render_retrieved(&case.retrieved);
                 let rank = case
-                    .match_rank
-                    .map(|rank| rank.to_string())
-                    .unwrap_or_else(|| "-".into());
+                    .match_rank.map_or_else(|| "-".into(), |rank| rank.to_string());
                 md.push_str(&format!(
                     "| `{}` | {} | {} | {} |\\n",
                     case.question_id,

@@ -82,12 +82,11 @@ pub(crate) async fn prepare_corpus(
                 return machine
                     .prepare_corpus()
                     .map_err(|(_, guard)| map_guard_error("prepare_corpus", guard));
-            } else {
-                info!(
-                    cache = %base_dir.display(),
-                    "Namespace reusable but cached manifest missing; regenerating corpus"
-                );
             }
+            info!(
+                cache = %base_dir.display(),
+                "Namespace reusable but cached manifest missing; regenerating corpus"
+            );
         }
     }
 

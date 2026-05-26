@@ -300,7 +300,7 @@ fn normalize_for_match(input: &str) -> String {
     // to reduce false negatives from formatting or punctuation differences.
     let mut out = String::with_capacity(input.len());
     let mut last_space = false;
-    for ch in input.nfkc().flat_map(|c| c.to_lowercase()) {
+    for ch in input.nfkc().flat_map(char::to_lowercase) {
         let is_space = ch.is_whitespace();
         let is_punct = ch.is_ascii_punctuation()
             || matches!(
@@ -371,7 +371,7 @@ pub fn build_stage_latency_breakdown(samples: &[PipelineStageTimings]) -> StageL
     }
 
     StageLatencyBreakdown {
-        embed: compute_latency_stats(&collect_stage(samples, |entry| entry.embed_ms())),
+        embed: compute_latency_stats(&collect_stage(samples, retrieval_pipeline::StageTimings::embed_ms)),
         collect_candidates: compute_latency_stats(&collect_stage(samples, |entry| {
             entry.collect_candidates_ms()
         })),
@@ -381,8 +381,8 @@ pub fn build_stage_latency_breakdown(samples: &[PipelineStageTimings]) -> StageL
         chunk_attach: compute_latency_stats(&collect_stage(samples, |entry| {
             entry.chunk_attach_ms()
         })),
-        rerank: compute_latency_stats(&collect_stage(samples, |entry| entry.rerank_ms())),
-        assemble: compute_latency_stats(&collect_stage(samples, |entry| entry.assemble_ms())),
+        rerank: compute_latency_stats(&collect_stage(samples, retrieval_pipeline::StageTimings::rerank_ms)),
+        assemble: compute_latency_stats(&collect_stage(samples, retrieval_pipeline::StageTimings::assemble_ms)),
     }
 }
 
@@ -402,7 +402,7 @@ pub fn build_case_diagnostics(
     candidates: &[EvaluationCandidate],
     pipeline_stats: Option<PipelineDiagnostics>,
 ) -> CaseDiagnostics {
-    let expected_set: HashSet<&str> = expected_chunk_ids.iter().map(|id| id.as_str()).collect();
+    let expected_set: HashSet<&str> = expected_chunk_ids.iter().map(std::string::String::as_str).collect();
     let mut seen_chunks: HashSet<String> = HashSet::new();
     let mut attached_chunk_ids = Vec::new();
     let mut entity_diagnostics = Vec::new();

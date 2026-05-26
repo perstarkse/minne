@@ -18,11 +18,9 @@ pub async fn recreate_indexes(db: &SurrealDbClient, dimension: usize) -> Result<
 
 pub async fn reset_namespace(db: &SurrealDbClient, namespace: &str, database: &str) -> Result<()> {
     let query = format!(
-        "REMOVE NAMESPACE {ns};
-         DEFINE NAMESPACE {ns};
-         DEFINE DATABASE {db};",
-        ns = namespace,
-        db = database
+        "REMOVE NAMESPACE {namespace};
+         DEFINE NAMESPACE {namespace};
+         DEFINE DATABASE {database};"
     );
     db.client
         .query(query)
