@@ -1,64 +1,27 @@
+mod bootstrap;
+
 use std::sync::Arc;
 
-use common::{
-    storage::db::SurrealDbClient,
-    storage::store::StorageManager,
-    utils::{config::get_config, embedding::EmbeddingProvider},
-};
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
-use retrieval_pipeline::reranking::RerankerPool;
 use tracing::info;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Set up tracing
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(EnvFilter::from_default_env())
-        .try_init()
-        .ok();
+    let services = bootstrap::init().await?;
 
-    let config = get_config()?;
-
-    let db = Arc::new(
-        SurrealDbClient::new(
-            &config.surrealdb_address,
-            &config.surrealdb_username,
-            &config.surrealdb_password,
-            &config.surrealdb_namespace,
-            &config.surrealdb_database,
-        )
-        .await?,
-    );
-
-    let openai_client = Arc::new(async_openai::Client::with_config(
-        async_openai::config::OpenAIConfig::new()
-            .with_api_key(&config.openai_api_key)
-            .with_api_base(&config.openai_base_url),
-    ));
-
-    let reranker_pool = RerankerPool::maybe_from_config(&config)?;
-
-    // Create embedding provider based on config
-    let embedding_provider =
-        Arc::new(EmbeddingProvider::from_config(&config, Some(Arc::clone(&openai_client))).await?);
     info!(
-        embedding_backend = ?config.embedding_backend,
+        embedding_backend = ?services.config.embedding_backend,
         "Embedding provider initialized for worker"
     );
 
-    // Create global storage manager
-    let storage = StorageManager::new(&config).await?;
-
     let ingestion_pipeline = Arc::new(IngestionPipeline::new(
-        Arc::clone(&db),
-        Arc::clone(&openai_client),
-        config,
-        reranker_pool,
-        storage,
-        embedding_provider,
+        Arc::clone(&services.db),
+        Arc::clone(&services.openai_client),
+        services.config.clone(),
+        services.reranker_pool.clone(),
+        services.storage,
+        Arc::clone(&services.embedding_provider),
     )?);
 
-    run_worker_loop(db, ingestion_pipeline).await
+    run_worker_loop(services.db, ingestion_pipeline).await
 }

@@ -41,8 +41,10 @@ impl SurrealDbClient {
     ) -> Result<Self, Error> {
         let db = connect(address).await?;
 
-        // Sign in to database
-        db.signin(Root { username, password }).await?;
+        // Skip sign-in for in-memory engine (no auth support)
+        if !address.starts_with("mem://") {
+            db.signin(Root { username, password }).await?;
+        }
 
         // Set namespace
         db.use_ns(namespace).use_db(database).await?;
