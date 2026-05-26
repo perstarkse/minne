@@ -37,7 +37,7 @@ pub fn mirror_perf_outputs(
             .and_then(|os| os.to_str())
             .unwrap_or("dataset");
         let timestamp = summary.generated_at.format("%Y%m%dT%H%M%S").to_string();
-        let filename = format!("perf-{}-{}.json", dataset_slug, timestamp);
+        let filename = format!("perf-{dataset_slug}-{timestamp}.json");
         let path = dir.join(filename);
         let blob = serde_json::to_vec_pretty(record).context("serialising perf log JSON")?;
         fs::write(&path, blob)
@@ -87,9 +87,7 @@ pub fn print_console_summary(record: &EvaluationReport) {
 }
 
 fn format_duration(value: Option<u128>) -> String {
-    value
-        .map(|ms| format!("{ms}ms"))
-        .unwrap_or_else(|| "-".to_string())
+    value.map_or_else(|| "-".to_string(), |ms| format!("{ms}ms"))
 }
 
 #[cfg(test)]

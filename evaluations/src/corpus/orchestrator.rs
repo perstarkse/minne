@@ -610,7 +610,7 @@ pub fn build_ingestion_fingerprint(
     checksum: &str,
     ingestion_config: &IngestionConfig,
 ) -> String {
-    let config_repr = format!("{:?}", ingestion_config);
+    let config_repr = format!("{ingestion_config:?}");
     let mut hasher = Sha256::new();
     hasher.update(config_repr.as_bytes());
     let config_hash = format!("{:x}", hasher.finalize());

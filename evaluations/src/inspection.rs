@@ -49,7 +49,7 @@ pub async fn inspect_question(config: &Config) -> Result<()> {
                 chunk_id, entry.paragraph_title, entry.snippet
             );
         } else {
-            println!("  - {} (missing from manifest)", chunk_id);
+            println!("  - {chunk_id} (missing from manifest)");
             missing_in_manifest.push(chunk_id.clone());
         }
     }
@@ -74,18 +74,15 @@ pub async fn inspect_question(config: &Config) -> Result<()> {
             match connect_eval_db(config, ns, db_name).await {
                 Ok(db) => match verify_chunks_in_db(&db, &question.matching_chunk_ids).await? {
                     MissingChunks::None => println!(
-                        "All matching_chunk_ids exist in namespace '{}', database '{}'",
-                        ns, db_name
+                        "All matching_chunk_ids exist in namespace '{ns}', database '{db_name}'"
                     ),
                     MissingChunks::Missing(list) => println!(
-                        "Missing chunks in namespace '{}', database '{}': {:?}",
-                        ns, db_name, list
+                        "Missing chunks in namespace '{ns}', database '{db_name}': {list:?}"
                     ),
                 },
                 Err(err) => {
                     println!(
-                        "Failed to connect to SurrealDB namespace '{}' / database '{}': {err}",
-                        ns, db_name
+                        "Failed to connect to SurrealDB namespace '{ns}' / database '{db_name}': {err}"
                     );
                 }
             }
@@ -170,7 +167,7 @@ async fn verify_chunks_in_db(db: &SurrealDbClient, chunk_ids: &[String]) -> Resu
         let exists = db
             .get_item::<TextChunk>(chunk_id)
             .await
-            .with_context(|| format!("fetching text_chunk {}", chunk_id))?
+            .with_context(|| format!("fetching text_chunk {chunk_id}"))?
             .is_some();
         if !exists {
             missing.push(chunk_id.clone());

@@ -86,7 +86,7 @@ pub(crate) async fn namespace_has_corpus(db: &SurrealDbClient) -> Result<bool> {
         .await
         .context("checking namespace corpus state")?;
     let rows: Vec<CountRow> = response.take(0).unwrap_or_default();
-    Ok(rows.first().map(|row| row.count).unwrap_or(0) > 0)
+    Ok(rows.first().map_or(0, |row| row.count) > 0)
 }
 
 /// Determine if we can reuse an existing namespace based on cached state.
@@ -101,12 +101,9 @@ pub(crate) async fn can_reuse_namespace(
     ingestion_fingerprint: &str,
     slice_case_count: usize,
 ) -> Result<bool> {
-    let state = match descriptor.load_db_state().await? {
-        Some(state) => state,
-        None => {
-            info!("No namespace state recorded; reseeding corpus from cached shards");
-            return Ok(false);
-        }
+    let state = if let Some(state) = descriptor.load_db_state().await? { state } else {
+        info!("No namespace state recorded; reseeding corpus from cached shards");
+        return Ok(false);
     };
 
     if state.slice_case_count != slice_case_count {
@@ -192,10 +189,10 @@ fn sanitize_identifier(input: &str) -> String {
 pub(crate) fn default_namespace(dataset_id: &str, limit: Option<usize>) -> String {
     let dataset_component = sanitize_identifier(dataset_id);
     let limit_component = match limit {
-        Some(value) if value > 0 => format!("limit{}", value),
+        Some(value) if value > 0 => format!("limit{value}"),
         _ => "all".to_string(),
     };
-    format!("eval_{}_{}", dataset_component, limit_component)
+    format!("eval_{dataset_component}_{limit_component}")
 }
 
 /// Generate the default database name for evaluations.
