@@ -90,6 +90,7 @@ impl Analytics {
 mod tests {
     use super::*;
     use crate::stored_object;
+    use anyhow::{self};
     use uuid::Uuid;
 
     stored_object!(TestUser, "user", {
@@ -99,18 +100,14 @@ mod tests {
     });
 
     #[tokio::test]
-    async fn test_analytics_initialization() {
+    async fn test_analytics_initialization() -> anyhow::Result<()> {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = SurrealDbClient::memory(namespace, database).await?;
 
         // Test initialization of analytics
-        let analytics = Analytics::ensure_initialized(&db)
-            .await
-            .expect("Failed to initialize analytics");
+        let analytics = Analytics::ensure_initialized(&db).await?;
 
         // Verify initial state after initialization
         assert_eq!(analytics.id, "current");
@@ -118,159 +115,134 @@ mod tests {
         assert_eq!(analytics.visitors, 0);
 
         // Test idempotency - ensure calling it again doesn't change anything
-        let analytics_again = Analytics::ensure_initialized(&db)
-            .await
-            .expect("Failed to get analytics after initialization");
+        let analytics_again = Analytics::ensure_initialized(&db).await?;
 
         assert_eq!(analytics.id, analytics_again.id);
         assert_eq!(analytics.page_loads, analytics_again.page_loads);
         assert_eq!(analytics.visitors, analytics_again.visitors);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_current_analytics() {
+    async fn test_get_current_analytics() -> anyhow::Result<()> {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = SurrealDbClient::memory(namespace, database).await?;
 
         // Initialize analytics
-        Analytics::ensure_initialized(&db)
-            .await
-            .expect("Failed to initialize analytics");
+        Analytics::ensure_initialized(&db).await?;
 
         // Test get_current method
-        let analytics = Analytics::get_current(&db)
-            .await
-            .expect("Failed to get current analytics");
+        let analytics = Analytics::get_current(&db).await?;
 
         assert_eq!(analytics.id, "current");
         assert_eq!(analytics.page_loads, 0);
         assert_eq!(analytics.visitors, 0);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_increment_visitors() {
+    async fn test_increment_visitors() -> anyhow::Result<()> {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = SurrealDbClient::memory(namespace, database).await?;
 
         // Initialize analytics
-        Analytics::ensure_initialized(&db)
-            .await
-            .expect("Failed to initialize analytics");
+        Analytics::ensure_initialized(&db).await?;
 
         // Test increment_visitors method
-        let analytics = Analytics::increment_visitors(&db)
-            .await
-            .expect("Failed to increment visitors");
+        let analytics = Analytics::increment_visitors(&db).await?;
 
         assert_eq!(analytics.visitors, 1);
         assert_eq!(analytics.page_loads, 0);
 
         // Increment again and check
-        let analytics = Analytics::increment_visitors(&db)
-            .await
-            .expect("Failed to increment visitors again");
+        let analytics = Analytics::increment_visitors(&db).await?;
 
         assert_eq!(analytics.visitors, 2);
         assert_eq!(analytics.page_loads, 0);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_increment_page_loads() {
+    async fn test_increment_page_loads() -> anyhow::Result<()> {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = SurrealDbClient::memory(namespace, database).await?;
 
         // Initialize analytics
-        Analytics::ensure_initialized(&db)
-            .await
-            .expect("Failed to initialize analytics");
+        Analytics::ensure_initialized(&db).await?;
 
         // Test increment_page_loads method
-        let analytics = Analytics::increment_page_loads(&db)
-            .await
-            .expect("Failed to increment page loads");
+        let analytics = Analytics::increment_page_loads(&db).await?;
 
         assert_eq!(analytics.visitors, 0);
         assert_eq!(analytics.page_loads, 1);
 
         // Increment again and check
-        let analytics = Analytics::increment_page_loads(&db)
-            .await
-            .expect("Failed to increment page loads again");
+        let analytics = Analytics::increment_page_loads(&db).await?;
 
         assert_eq!(analytics.visitors, 0);
         assert_eq!(analytics.page_loads, 2);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_users_amount() {
+    async fn test_get_users_amount() -> anyhow::Result<()> {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = SurrealDbClient::memory(namespace, database).await?;
 
         // Test with no users
-        let count = Analytics::get_users_amount(&db)
-            .await
-            .expect("Failed to get users amount");
+        let count = Analytics::get_users_amount(&db).await?;
         assert_eq!(count, 0);
 
         // Create a few test users
         for i in 0..3 {
             let user = TestUser {
-                id: format!("user{}", i),
-                email: format!("user{}@example.com", i),
+                id: format!("user{i}"),
+                email: format!("user{i}@example.com"),
                 password: "password".to_string(),
-                user_id: format!("uid{}", i),
+                user_id: format!("uid{i}"),
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
 
-            db.store_item(user)
-                .await
-                .expect("Failed to create test user");
+            db.store_item(user).await?;
         }
 
         // Test users amount after adding users
-        let count = Analytics::get_users_amount(&db)
-            .await
-            .expect("Failed to get users amount after adding users");
+        let count = Analytics::get_users_amount(&db).await?;
         assert_eq!(count, 3);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_current_nonexistent() {
+    async fn test_get_current_nonexistent() -> anyhow::Result<()> {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = SurrealDbClient::memory(namespace, database).await?;
 
         // Don't initialize analytics and try to get it
         let result = Analytics::get_current(&db).await;
 
         assert!(result.is_err());
-        if let Err(err) = result {
-            match err {
-                AppError::NotFound(_) => {
-                    // Expected error
-                }
-                _ => panic!("Expected NotFound error, got: {:?}", err),
-            }
+        match result {
+            Ok(_) => anyhow::bail!("Expected NotFound error, got success"),
+            Err(AppError::NotFound(_)) => {}
+            Err(err) => anyhow::bail!("Expected NotFound error, got: {err:?}"),
         }
+
+        Ok(())
     }
 }

@@ -31,8 +31,8 @@ impl Pagination {
         } else {
             0
         };
-        let start_index = if page_len == 0 { 0 } else { offset + 1 };
-        let end_index = if page_len == 0 { 0 } else { offset + page_len };
+        let start_index = if page_len == 0 { 0 } else { offset.saturating_add(1) };
+        let end_index = if page_len == 0 { 0 } else { offset.saturating_add(page_len) };
 
         Self {
             current_page,
@@ -42,12 +42,12 @@ impl Pagination {
             has_previous,
             has_next,
             previous_page: if has_previous {
-                Some(current_page - 1)
+                Some(current_page.saturating_sub(1))
             } else {
                 None
             },
             next_page: if has_next {
-                Some(current_page + 1)
+                Some(current_page.saturating_add(1))
             } else {
                 None
             },
@@ -68,7 +68,7 @@ pub fn paginate_items<T>(
     let total_pages = if total_items == 0 {
         0
     } else {
-        ((total_items - 1) / per_page) + 1
+        total_items.saturating_sub(1).checked_div(per_page).unwrap_or(0).saturating_add(1)
     };
 
     let mut current_page = requested_page.unwrap_or(1);
@@ -84,7 +84,7 @@ pub fn paginate_items<T>(
     let offset = if total_pages == 0 {
         0
     } else {
-        per_page.saturating_mul(current_page - 1)
+        per_page.saturating_mul(current_page.saturating_sub(1))
     };
 
     let page_items: Vec<T> = items.into_iter().skip(offset).take(per_page).collect();
@@ -136,8 +136,8 @@ mod tests {
         assert_eq!(page, vec![5]);
         assert_eq!(meta.current_page, 3);
         assert_eq!(meta.total_pages, 3);
-        assert_eq!(meta.has_next, false);
-        assert_eq!(meta.has_previous, true);
+        assert!(!meta.has_next, "expected no next page");
+        assert!(meta.has_previous, "expected previous page");
         assert_eq!(meta.start_index, 5);
         assert_eq!(meta.end_index, 5);
     }

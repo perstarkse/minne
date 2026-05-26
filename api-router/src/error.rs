@@ -8,7 +8,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Error, Debug, Serialize, Clone)]
-pub enum ApiError {
+pub enum ApiErr {
     #[error("Internal server error")]
     InternalError(String),
 
@@ -25,7 +25,7 @@ pub enum ApiError {
     PayloadTooLarge(String),
 }
 
-impl From<AppError> for ApiError {
+impl From<AppError> for ApiErr {
     fn from(err: AppError) -> Self {
         match err {
             AppError::Database(_) | AppError::OpenAI(_) => {
@@ -39,7 +39,7 @@ impl From<AppError> for ApiError {
         }
     }
 }
-impl IntoResponse for ApiError {
+impl IntoResponse for ApiErr {
     fn into_response(self) -> Response {
         let (status, error_response) = match self {
             Self::InternalError(message) => (
@@ -94,6 +94,7 @@ mod tests {
     use super::*;
     use common::error::AppError;
     use std::fmt::Debug;
+    use std::io;
 
     // Helper to check status code
     fn assert_status_code<T: IntoResponse + Debug>(response: T, expected_status: StatusCode) {
@@ -105,42 +106,42 @@ mod tests {
     fn test_app_error_to_api_error_conversion() {
         // Test NotFound error conversion
         let not_found = AppError::NotFound("resource not found".to_string());
-        let api_error = ApiError::from(not_found);
-        assert!(matches!(api_error, ApiError::NotFound(msg) if msg == "resource not found"));
+        let api_error = ApiErr::from(not_found);
+        assert!(matches!(api_error, ApiErr::NotFound(msg) if msg == "resource not found"));
 
         // Test Validation error conversion
         let validation = AppError::Validation("invalid input".to_string());
-        let api_error = ApiError::from(validation);
-        assert!(matches!(api_error, ApiError::ValidationError(msg) if msg == "invalid input"));
+        let api_error = ApiErr::from(validation);
+        assert!(matches!(api_error, ApiErr::ValidationError(msg) if msg == "invalid input"));
 
         // Test Auth error conversion
         let auth = AppError::Auth("unauthorized".to_string());
-        let api_error = ApiError::from(auth);
-        assert!(matches!(api_error, ApiError::Unauthorized(msg) if msg == "unauthorized"));
+        let api_error = ApiErr::from(auth);
+        assert!(matches!(api_error, ApiErr::Unauthorized(msg) if msg == "unauthorized"));
 
         // Test for internal errors - create a mock error that doesn't require surrealdb
         let internal_error =
-            AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, "io error"));
-        let api_error = ApiError::from(internal_error);
-        assert!(matches!(api_error, ApiError::InternalError(_)));
+            AppError::Io(io::Error::other("io error"));
+        let api_error = ApiErr::from(internal_error);
+        assert!(matches!(api_error, ApiErr::InternalError(_)));
     }
 
     #[test]
     fn test_api_error_response_status_codes() {
         // Test internal error status
-        let error = ApiError::InternalError("server error".to_string());
+        let error = ApiErr::InternalError("server error".to_string());
         assert_status_code(error, StatusCode::INTERNAL_SERVER_ERROR);
 
         // Test not found status
-        let error = ApiError::NotFound("not found".to_string());
+        let error = ApiErr::NotFound("not found".to_string());
         assert_status_code(error, StatusCode::NOT_FOUND);
 
         // Test validation error status
-        let error = ApiError::ValidationError("invalid input".to_string());
+        let error = ApiErr::ValidationError("invalid input".to_string());
         assert_status_code(error, StatusCode::BAD_REQUEST);
 
         // Test unauthorized status
-        let error = ApiError::Unauthorized("not allowed".to_string());
+        let error = ApiErr::Unauthorized("not allowed".to_string());
         assert_status_code(error, StatusCode::UNAUTHORIZED);
 
         // Test payload too large status
@@ -153,15 +154,15 @@ mod tests {
     fn test_error_messages() {
         // For validation errors
         let message = "invalid data format";
-        let error = ApiError::ValidationError(message.to_string());
+        let error = ApiErr::ValidationError(message.to_string());
 
         // Check that the error itself contains the message
-        assert_eq!(error.to_string(), format!("Validation error: {}", message));
+        assert_eq!(error.to_string(), format!("Validation error: {message}"));
 
         // For not found errors
         let message = "user not found";
-        let error = ApiError::NotFound(message.to_string());
-        assert_eq!(error.to_string(), format!("Not found: {}", message));
+        let error = ApiErr::NotFound(message.to_string());
+        assert_eq!(error.to_string(), format!("Not found: {message}"));
     }
 
     // Alternative approach for internal error test
@@ -170,8 +171,8 @@ mod tests {
         // Create a sensitive error message
         let sensitive_info = "db password incorrect";
 
-        // Create ApiError with sensitive info
-        let api_error = ApiError::InternalError(sensitive_info.to_string());
+        // Create ApiErr with sensitive info
+        let api_error = ApiErr::InternalError(sensitive_info.to_string());
 
         // Check the error message is correctly set
         assert_eq!(api_error.to_string(), "Internal server error");

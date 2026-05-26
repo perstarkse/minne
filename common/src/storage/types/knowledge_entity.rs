@@ -5,7 +5,6 @@
     clippy::format_push_string,
     clippy::uninlined_format_args,
     clippy::explicit_iter_loop,
-    clippy::items_after_statements,
     clippy::get_first,
     clippy::redundant_closure_for_method_calls
 )]
@@ -317,6 +316,11 @@ impl KnowledgeEntity {
     }
 
     async fn get_user_id_by_id(id: &str, db_client: &SurrealDbClient) -> Result<String, AppError> {
+        #[derive(Deserialize)]
+        struct Row {
+            user_id: String,
+        }
+
         let mut response = db_client
             .client
             .query("SELECT user_id FROM type::thing($table, $id) LIMIT 1")
@@ -324,10 +328,6 @@ impl KnowledgeEntity {
             .bind(("id", id.to_string()))
             .await
             .map_err(AppError::Database)?;
-        #[derive(Deserialize)]
-        struct Row {
-            user_id: String,
-        }
         let rows: Vec<Row> = response.take(0).map_err(AppError::Database)?;
         rows.get(0)
             .map(|r| r.user_id.clone())
@@ -497,7 +497,6 @@ impl KnowledgeEntity {
             new_embeddings.insert(entity.id.clone(), (embedding, entity.user_id.clone()));
         }
         info!("Successfully generated all new embeddings.");
-        info!("Successfully generated all new embeddings.");
 
         // Clear existing embeddings and index first to prevent SurrealDB panics and dimension conflicts.
         info!("Removing old index and clearing embeddings...");
@@ -572,14 +571,14 @@ impl KnowledgeEntity {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
     use super::*;
     use crate::storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding;
     use serde_json::json;
     use uuid::Uuid;
 
     #[tokio::test]
-    async fn test_knowledge_entity_creation() {
-        // Create basic test entity
+    async fn test_knowledge_entity_creation() -> anyhow::Result<()> {
         let source_id = "source123".to_string();
         let name = "Test Entity".to_string();
         let description = "Test Description".to_string();
@@ -596,7 +595,6 @@ mod tests {
             user_id.clone(),
         );
 
-        // Verify all fields are set correctly
         assert_eq!(entity.source_id, source_id);
         assert_eq!(entity.name, name);
         assert_eq!(entity.description, description);
@@ -604,11 +602,12 @@ mod tests {
         assert_eq!(entity.metadata, metadata);
         assert_eq!(entity.user_id, user_id);
         assert!(!entity.id.is_empty());
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_knowledge_entity_type_from_string() {
-        // Test conversion from String to KnowledgeEntityType
+    async fn test_knowledge_entity_type_from_string() -> anyhow::Result<()> {
         assert_eq!(
             KnowledgeEntityType::from("idea".to_string()),
             KnowledgeEntityType::Idea
@@ -639,15 +638,16 @@ mod tests {
             KnowledgeEntityType::TextSnippet
         );
 
-        // Test default case
         assert_eq!(
             KnowledgeEntityType::from("unknown".to_string()),
             KnowledgeEntityType::Document
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_knowledge_entity_variants() {
+    async fn test_knowledge_entity_variants() -> anyhow::Result<()> {
         let variants = KnowledgeEntityType::variants();
         assert_eq!(variants.len(), 5);
         assert!(variants.contains(&"Idea"));
@@ -655,28 +655,28 @@ mod tests {
         assert!(variants.contains(&"Document"));
         assert!(variants.contains(&"Page"));
         assert!(variants.contains(&"TextSnippet"));
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_delete_by_source_id() {
-        // Setup in-memory database for testing
+    async fn test_delete_by_source_id() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
-        // Create two entities with the same source_id
         let source_id = "source123".to_string();
         let entity_type = KnowledgeEntityType::Document;
         let user_id = "user123".to_string();
 
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 5)
             .await
-            .expect("Failed to redefine index length");
+            .with_context(|| "Failed to redefine index length".to_string())?;
 
         let entity1 = KnowledgeEntity::new(
             source_id.clone(),
@@ -696,7 +696,6 @@ mod tests {
             user_id.clone(),
         );
 
-        // Create an entity with a different source_id
         let different_source_id = "different_source".to_string();
         let different_entity = KnowledgeEntity::new(
             different_source_id.clone(),
@@ -708,23 +707,20 @@ mod tests {
         );
 
         let emb = vec![0.1, 0.2, 0.3, 0.4, 0.5];
-        // Store the entities
         KnowledgeEntity::store_with_embedding(entity1.clone(), emb.clone(), &db)
             .await
-            .expect("Failed to store entity 1");
+            .with_context(|| "Failed to store entity 1".to_string())?;
         KnowledgeEntity::store_with_embedding(entity2.clone(), emb.clone(), &db)
             .await
-            .expect("Failed to store entity 2");
+            .with_context(|| "Failed to store entity 2".to_string())?;
         KnowledgeEntity::store_with_embedding(different_entity.clone(), emb.clone(), &db)
             .await
-            .expect("Failed to store different entity");
+            .with_context(|| "Failed to store different entity".to_string())?;
 
-        // Delete by source_id
         KnowledgeEntity::delete_by_source_id(&source_id, &db)
             .await
-            .expect("Failed to delete entities by source_id");
+            .with_context(|| "Failed to delete entities by source_id".to_string())?;
 
-        // Verify all entities with the specified source_id are deleted
         let query = format!(
             "SELECT * FROM {} WHERE source_id = '{}'",
             KnowledgeEntity::table_name(),
@@ -734,16 +730,11 @@ mod tests {
             .client
             .query(query)
             .await
-            .expect("Query failed")
+            .with_context(|| "Query failed".to_string())?
             .take(0)
-            .expect("Failed to get query results");
-        assert_eq!(
-            remaining.len(),
-            0,
-            "All entities with the source_id should be deleted"
-        );
+            .with_context(|| "Failed to get query results".to_string())?;
+        assert!(remaining.is_empty(), "All entities with the source_id should be deleted");
 
-        // Verify the entity with a different source_id still exists
         let different_query = format!(
             "SELECT * FROM {} WHERE source_id = '{}'",
             KnowledgeEntity::table_name(),
@@ -753,15 +744,20 @@ mod tests {
             .client
             .query(different_query)
             .await
-            .expect("Query failed")
+            .with_context(|| "Query failed".to_string())?
             .take(0)
-            .expect("Failed to get query results");
+            .with_context(|| "Failed to get query results".to_string())?;
         assert_eq!(
             different_remaining.len(),
             1,
             "Entity with different source_id should still exist"
         );
-        assert_eq!(different_remaining[0].id, different_entity.id);
+        assert_eq!(
+            different_remaining.first().context("Expected entity to exist")?.id,
+            different_entity.id
+        );
+
+        Ok(())
     }
 
     #[tokio::test]
@@ -833,35 +829,37 @@ mod tests {
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("Failed to redefine index length");
+            .with_context(|| "Failed to redefine index length".to_string())?;
 
         let results = KnowledgeEntity::vector_search(5, vec![0.1, 0.2, 0.3], &db, "user")
             .await
-            .expect("vector search");
+            .with_context(|| "vector search".to_string())?;
         assert!(results.is_empty());
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_vector_search_single_result() {
+    async fn test_vector_search_single_result() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("Failed to redefine index length");
+            .with_context(|| "Failed to redefine index length".to_string())?;
 
         let user_id = "user".to_string();
         let source_id = "src".to_string();
@@ -876,9 +874,12 @@ mod tests {
 
         KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.1, 0.2, 0.3], &db)
             .await
-            .expect("store entity with embedding");
+            .with_context(|| "store entity with embedding".to_string())?;
 
-        let stored_entity: Option<KnowledgeEntity> = db.get_item(&entity.id).await.unwrap();
+        let stored_entity: Option<KnowledgeEntity> = db
+            .get_item(&entity.id)
+            .await
+            .with_context(|| "Failed to get entity".to_string())?;
         assert!(stored_entity.is_some());
 
         let stored_embeddings: Vec<KnowledgeEntityEmbedding> = db
@@ -888,42 +889,44 @@ mod tests {
                 KnowledgeEntityEmbedding::table_name()
             ))
             .await
-            .expect("query embeddings")
+            .with_context(|| "query embeddings".to_string())?
             .take(0)
-            .expect("take embeddings");
+            .with_context(|| "take embeddings".to_string())?;
         assert_eq!(stored_embeddings.len(), 1);
 
         let rid = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
         let fetched_emb = KnowledgeEntityEmbedding::get_by_entity_id(&rid, &db)
             .await
-            .expect("fetch embedding");
+            .with_context(|| "fetch embedding".to_string())?;
         assert!(fetched_emb.is_some());
 
         let results = KnowledgeEntity::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
             .await
-            .expect("vector search");
+            .with_context(|| "vector search".to_string())?;
 
         assert_eq!(results.len(), 1);
-        let res = &results[0];
+        let res = results.first().context("Expected at least one result")?;
         assert_eq!(res.entity.id, entity.id);
         assert_eq!(res.entity.source_id, source_id);
         assert_eq!(res.entity.name, "hello");
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_vector_search_orders_by_similarity() {
+    async fn test_vector_search_orders_by_similarity() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("Failed to redefine index length");
+            .with_context(|| "Failed to redefine index length".to_string())?;
 
         let user_id = "user".to_string();
         let e1 = KnowledgeEntity::new(
@@ -945,13 +948,19 @@ mod tests {
 
         KnowledgeEntity::store_with_embedding(e1.clone(), vec![1.0, 0.0, 0.0], &db)
             .await
-            .expect("store e1");
+            .with_context(|| "store e1".to_string())?;
         KnowledgeEntity::store_with_embedding(e2.clone(), vec![0.0, 1.0, 0.0], &db)
             .await
-            .expect("store e2");
+            .with_context(|| "store e2".to_string())?;
 
-        let stored_e1: Option<KnowledgeEntity> = db.get_item(&e1.id).await.unwrap();
-        let stored_e2: Option<KnowledgeEntity> = db.get_item(&e2.id).await.unwrap();
+        let stored_e1: Option<KnowledgeEntity> = db
+            .get_item(&e1.id)
+            .await
+            .with_context(|| "Failed to get entity".to_string())?;
+        let stored_e2: Option<KnowledgeEntity> = db
+            .get_item(&e2.id)
+            .await
+            .with_context(|| "Failed to get entity".to_string())?;
         assert!(stored_e1.is_some() && stored_e2.is_some());
 
         let stored_embeddings: Vec<KnowledgeEntityEmbedding> = db
@@ -961,45 +970,53 @@ mod tests {
                 KnowledgeEntityEmbedding::table_name()
             ))
             .await
-            .expect("query embeddings")
+            .with_context(|| "query embeddings".to_string())?
             .take(0)
-            .expect("take embeddings");
+            .with_context(|| "take embeddings".to_string())?;
         assert_eq!(stored_embeddings.len(), 2);
 
         let rid_e1 = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &e1.id);
         let rid_e2 = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &e2.id);
         assert!(KnowledgeEntityEmbedding::get_by_entity_id(&rid_e1, &db)
             .await
-            .unwrap()
+            .with_context(|| "get embedding e1".to_string())?
             .is_some());
         assert!(KnowledgeEntityEmbedding::get_by_entity_id(&rid_e2, &db)
             .await
-            .unwrap()
+            .with_context(|| "get embedding e2".to_string())?
             .is_some());
 
         let results = KnowledgeEntity::vector_search(2, vec![0.0, 1.0, 0.0], &db, &user_id)
             .await
-            .expect("vector search");
+            .with_context(|| "vector search".to_string())?;
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].entity.id, e2.id);
-        assert_eq!(results[1].entity.id, e1.id);
+        assert_eq!(
+            results.first().context("Expected at least one result")?.entity.id,
+            e2.id
+        );
+        assert_eq!(
+            results.get(1).context("Expected at least two results")?.entity.id,
+            e1.id
+        );
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_vector_search_with_orphaned_embedding() {
+    async fn test_vector_search_with_orphaned_embedding() -> anyhow::Result<()> {
         let namespace = "test_ns_orphan";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("Failed to redefine index length");
+            .with_context(|| "Failed to redefine index length".to_string())?;
 
         let user_id = "user".to_string();
         let source_id = "src".to_string();
@@ -1014,21 +1031,20 @@ mod tests {
 
         KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.1, 0.2, 0.3], &db)
             .await
-            .expect("store entity with embedding");
+            .with_context(|| "store entity with embedding".to_string())?;
 
-        // Manually delete the entity to create an orphan
         let query = format!("DELETE type::thing('knowledge_entity', '{}')", entity.id);
-        db.client.query(query).await.expect("delete entity");
+        db.client
+            .query(query)
+            .await
+            .with_context(|| "delete entity".to_string())?;
 
-        // Now search
         let results = KnowledgeEntity::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
             .await
-            .expect("search should succeed even with orphans");
+            .with_context(|| "search should succeed even with orphans".to_string())?;
 
-        assert!(
-            results.is_empty(),
-            "Should return empty result for orphan, got: {:?}",
-            results
-        );
+        assert!(results.is_empty(), "Should return empty result for orphan, got: {:?}", results);
+
+        Ok(())
     }
 }

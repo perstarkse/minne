@@ -20,7 +20,6 @@ use common::storage::{
 /// * `entity_id` - ID of the entity to find neighbors for
 /// * `user_id` - User ID for access control
 /// * `limit` - Maximum number of neighbors to return
-
 pub async fn find_entities_by_relationship_by_id(
     db: &SurrealDbClient,
     entity_id: &str,
@@ -113,25 +112,23 @@ pub async fn find_entities_by_relationship_by_id(
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
     use super::*;
     use common::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
     use common::storage::types::knowledge_relationship::KnowledgeRelationship;
     use uuid::Uuid;
 
     #[tokio::test]
-    async fn test_find_entities_by_relationship_by_id() {
-        // Setup in-memory database for testing
+    async fn test_find_entities_by_relationship_by_id() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
-        // Create some test entities
         let entity_type = KnowledgeEntityType::Document;
         let user_id = "user123".to_string();
 
-        // Create the central entity we'll query relationships for
         let central_entity = KnowledgeEntity::new(
             "central_source".to_string(),
             "Central Entity".to_string(),
@@ -141,7 +138,6 @@ mod tests {
             user_id.clone(),
         );
 
-        // Create related entities
         let related_entity1 = KnowledgeEntity::new(
             "related_source1".to_string(),
             "Related Entity 1".to_string(),
@@ -160,7 +156,6 @@ mod tests {
             user_id.clone(),
         );
 
-        // Create an unrelated entity
         let unrelated_entity = KnowledgeEntity::new(
             "unrelated_source".to_string(),
             "Unrelated Entity".to_string(),
@@ -170,32 +165,29 @@ mod tests {
             user_id.clone(),
         );
 
-        // Store all entities
         let central_entity = db
             .store_item(central_entity.clone())
             .await
-            .expect("Failed to store central entity")
-            .unwrap();
+            .with_context(|| "Failed to store central entity".to_string())?
+            .ok_or_else(|| anyhow::anyhow!("Central entity not returned after store"))?;
         let related_entity1 = db
             .store_item(related_entity1.clone())
             .await
-            .expect("Failed to store related entity 1")
-            .unwrap();
+            .with_context(|| "Failed to store related entity 1".to_string())?
+            .ok_or_else(|| anyhow::anyhow!("Related entity 1 not returned after store"))?;
         let related_entity2 = db
             .store_item(related_entity2.clone())
             .await
-            .expect("Failed to store related entity 2")
-            .unwrap();
+            .with_context(|| "Failed to store related entity 2".to_string())?
+            .ok_or_else(|| anyhow::anyhow!("Related entity 2 not returned after store"))?;
         let _unrelated_entity = db
             .store_item(unrelated_entity.clone())
             .await
-            .expect("Failed to store unrelated entity")
-            .unwrap();
+            .with_context(|| "Failed to store unrelated entity".to_string())?
+            .ok_or_else(|| anyhow::anyhow!("Unrelated entity not returned after store"))?;
 
-        // Create relationships
         let source_id = "relationship_source".to_string();
 
-        // Create relationship 1: central -> related1
         let relationship1 = KnowledgeRelationship::new(
             central_entity.id.clone(),
             related_entity1.id.clone(),
@@ -204,7 +196,6 @@ mod tests {
             "references".to_string(),
         );
 
-        // Create relationship 2: central -> related2
         let relationship2 = KnowledgeRelationship::new(
             central_entity.id.clone(),
             related_entity2.id.clone(),
@@ -213,26 +204,25 @@ mod tests {
             "contains".to_string(),
         );
 
-        // Store relationships
         relationship1
             .store_relationship(&db)
             .await
-            .expect("Failed to store relationship 1");
+            .with_context(|| "Failed to store relationship 1".to_string())?;
         relationship2
             .store_relationship(&db)
             .await
-            .expect("Failed to store relationship 2");
+            .with_context(|| "Failed to store relationship 2".to_string())?;
 
-        // Test finding entities related to the central entity
         let related_entities =
             find_entities_by_relationship_by_id(&db, &central_entity.id, &user_id, usize::MAX)
                 .await
-                .expect("Failed to find entities by relationship");
+                .with_context(|| "Failed to find entities by relationship".to_string())?;
 
-        // Check that we found relationships
         assert!(
             related_entities.len() >= 2,
             "Should find related entities in both directions"
         );
+
+        Ok(())
     }
 }

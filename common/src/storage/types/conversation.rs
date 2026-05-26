@@ -144,76 +144,71 @@ impl Conversation {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
     use crate::storage::types::message::MessageRole;
 
     use super::*;
 
     #[tokio::test]
-    async fn test_create_conversation() {
-        // Setup in-memory database for testing
+    async fn test_create_conversation() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
-        // Create a new conversation
         let user_id = "test_user";
         let title = "Test Conversation";
         let conversation = Conversation::new(user_id.to_string(), title.to_string());
 
-        // Verify conversation properties
         assert_eq!(conversation.user_id, user_id);
         assert_eq!(conversation.title, title);
         assert!(!conversation.id.is_empty());
 
-        // Store the conversation
         let result = db.store_item(conversation.clone()).await;
         assert!(result.is_ok());
 
-        // Verify it can be retrieved
         let retrieved: Option<Conversation> = db
             .get_item(&conversation.id)
             .await
-            .expect("Failed to retrieve conversation");
-        assert!(retrieved.is_some());
+            .with_context(|| "Failed to retrieve conversation".to_string())?;
 
-        let retrieved = retrieved.unwrap();
+        let retrieved = retrieved.ok_or_else(|| anyhow::anyhow!("Expected conversation to exist"))?;
         assert_eq!(retrieved.id, conversation.id);
         assert_eq!(retrieved.user_id, user_id);
         assert_eq!(retrieved.title, title);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_complete_conversation_not_found() {
-        // Setup in-memory database for testing
+    async fn test_get_complete_conversation_not_found() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
-        // Try to get a conversation that doesn't exist
         let result =
             Conversation::get_complete_conversation("nonexistent_id", "test_user", &db).await;
         assert!(result.is_err());
 
         match result {
-            Err(AppError::NotFound(_)) => { /* expected error */ }
-            _ => panic!("Expected NotFound error"),
+            Err(AppError::NotFound(_)) => {}
+            _ => anyhow::bail!("Expected NotFound error"),
         }
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_complete_conversation_unauthorized() {
-        // Setup in-memory database for testing
+    async fn test_get_complete_conversation_unauthorized() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
-        // Create and store a conversation for user_id_1
         let user_id_1 = "user_1";
         let conversation =
             Conversation::new(user_id_1.to_string(), "Private Conversation".to_string());
@@ -221,27 +216,28 @@ mod tests {
 
         db.store_item(conversation)
             .await
-            .expect("Failed to store conversation");
+            .with_context(|| "Failed to store conversation".to_string())?;
 
-        // Try to access with a different user
         let user_id_2 = "user_2";
         let result =
             Conversation::get_complete_conversation(&conversation_id, user_id_2, &db).await;
         assert!(result.is_err());
 
         match result {
-            Err(AppError::Auth(_)) => { /* expected error */ }
-            _ => panic!("Expected Auth error"),
+            Err(AppError::Auth(_)) => {}
+            _ => anyhow::bail!("Expected Auth error"),
         }
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_patch_title_success() {
+    async fn test_patch_title_success() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         let user_id = "user_1";
         let original_title = "Original Title";
@@ -250,49 +246,50 @@ mod tests {
 
         db.store_item(conversation)
             .await
-            .expect("Failed to store conversation");
+            .with_context(|| "Failed to store conversation".to_string())?;
 
         let new_title = "Updated Title";
 
-        // Patch title successfully
         let result = Conversation::patch_title(&conversation_id, user_id, new_title, &db).await;
         assert!(result.is_ok());
 
-        // Retrieve from DB to verify
         let updated_conversation = db
             .get_item::<Conversation>(&conversation_id)
             .await
-            .expect("Failed to get conversation")
-            .expect("Conversation missing");
+            .with_context(|| "Failed to get conversation".to_string())?
+            .ok_or_else(|| anyhow::anyhow!("Conversation missing"))?;
         assert_eq!(updated_conversation.title, new_title);
         assert_eq!(updated_conversation.user_id, user_id);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_patch_title_not_found() {
+    async fn test_patch_title_not_found() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
-        // Try to patch non-existing conversation
         let result = Conversation::patch_title("nonexistent", "user_x", "New Title", &db).await;
 
         assert!(result.is_err());
         match result {
             Err(AppError::NotFound(_)) => {}
-            _ => panic!("Expected NotFound error"),
+            _ => anyhow::bail!("Expected NotFound error"),
         }
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_patch_title_unauthorized() {
+    async fn test_patch_title_unauthorized() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         let owner_id = "owner";
         let other_user_id = "intruder";
@@ -301,17 +298,18 @@ mod tests {
 
         db.store_item(conversation)
             .await
-            .expect("Failed to store conversation");
+            .with_context(|| "Failed to store conversation".to_string())?;
 
-        // Attempt patch with unauthorized user
         let result =
             Conversation::patch_title(&conversation_id, other_user_id, "Hacked Title", &db).await;
 
         assert!(result.is_err());
         match result {
             Err(AppError::Auth(_)) => {}
-            _ => panic!("Expected Auth error"),
+            _ => anyhow::bail!("Expected Auth error"),
         }
+
+        Ok(())
     }
 
     #[tokio::test]
@@ -405,24 +403,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_complete_conversation_with_messages() {
-        // Setup in-memory database for testing
+    async fn test_get_complete_conversation_with_messages() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
-        // Create and store a conversation for user_id_1
         let user_id_1 = "user_1";
         let conversation = Conversation::new(user_id_1.to_string(), "Conversation".to_string());
         let conversation_id = conversation.id.clone();
 
         db.store_item(conversation)
             .await
-            .expect("Failed to store conversation");
+            .with_context(|| "Failed to store conversation".to_string())?;
 
-        // Create messages
         let message1 = Message::new(
             conversation_id.clone(),
             MessageRole::User,
@@ -442,46 +437,44 @@ mod tests {
             None,
         );
 
-        // Store messages
         db.store_item(message1)
             .await
-            .expect("Failed to store message1");
+            .with_context(|| "Failed to store message1".to_string())?;
         db.store_item(message2)
             .await
-            .expect("Failed to store message2");
+            .with_context(|| "Failed to store message2".to_string())?;
         db.store_item(message3)
             .await
-            .expect("Failed to store message3");
+            .with_context(|| "Failed to store message3".to_string())?;
 
-        // Retrieve the complete conversation
         let result =
             Conversation::get_complete_conversation(&conversation_id, user_id_1, &db).await;
         assert!(result.is_ok(), "Failed to retrieve complete conversation");
 
-        let (retrieved_conversation, messages) = result.unwrap();
+        let (retrieved_conversation, retrieved_messages) = result
+            .with_context(|| "Failed to retrieve complete conversation".to_string())?;
 
-        // Verify conversation data
         assert_eq!(retrieved_conversation.id, conversation_id);
         assert_eq!(retrieved_conversation.user_id, user_id_1);
         assert_eq!(retrieved_conversation.title, "Conversation");
 
-        // Verify messages
-        assert_eq!(messages.len(), 3);
+        assert_eq!(retrieved_messages.len(), 3);
 
-        // Verify messages are sorted by updated_at
-        let message_contents: Vec<&str> = messages.iter().map(|m| m.content.as_str()).collect();
+        let message_contents: Vec<&str> =
+            retrieved_messages.iter().map(|m| m.content.as_str()).collect();
         assert!(message_contents.contains(&"Hello, AI!"));
         assert!(message_contents.contains(&"Hello, human! How can I help you today?"));
         assert!(message_contents.contains(&"Tell me about Rust programming."));
 
-        // Make sure we can't access with different user
         let user_id_2 = "user_2";
         let unauthorized_result =
             Conversation::get_complete_conversation(&conversation_id, user_id_2, &db).await;
         assert!(unauthorized_result.is_err());
         match unauthorized_result {
-            Err(AppError::Auth(_)) => { /* expected error */ }
-            _ => panic!("Expected Auth error"),
+            Err(AppError::Auth(_)) => {}
+            _ => anyhow::bail!("Expected Auth error"),
         }
+
+        Ok(())
     }
 }

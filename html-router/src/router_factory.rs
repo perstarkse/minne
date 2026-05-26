@@ -9,7 +9,7 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         analytics_middleware::analytics_middleware, auth_middleware::require_auth,
-        compression::compression_layer, response_middleware::with_template_response,
+        compression, response_middleware::with_template_response,
     },
 };
 
@@ -71,6 +71,7 @@ where
     }
 
     // Add a serving of assets
+    #[must_use]
     pub fn with_public_assets(mut self, path: &str, directory: &str) -> Self {
         self.public_assets_config = Some(AssetsConfig {
             path: path.to_string(),
@@ -80,24 +81,28 @@ where
     }
 
     // Add a public router that will be merged at the root level
+    #[must_use]
     pub fn add_public_routes(mut self, routes: Router<S>) -> Self {
         self.public_routers.push(routes);
         self
     }
 
     // Add a protected router that will be merged at the root level
+    #[must_use]
     pub fn add_protected_routes(mut self, routes: Router<S>) -> Self {
         self.protected_routers.push(routes);
         self
     }
 
     // Nest a public router under a path prefix
+    #[must_use]
     pub fn nest_public_routes(mut self, path: &str, routes: Router<S>) -> Self {
         self.nested_routes.push((path.to_string(), routes));
         self
     }
 
     // Nest a protected router under a path prefix
+    #[must_use]
     pub fn nest_protected_routes(mut self, path: &str, routes: Router<S>) -> Self {
         self.nested_protected_routes
             .push((path.to_string(), routes));
@@ -105,6 +110,7 @@ where
     }
 
     // Add custom middleware to be applied before the standard ones
+    #[must_use]
     pub fn with_middleware<F>(mut self, middleware_fn: F) -> Self
     where
         F: FnOnce(Router<S>) -> Router<S> + Send + 'static,
@@ -114,6 +120,7 @@ where
     }
 
     /// Enables response compression when building the router.
+    #[must_use]
     pub const fn with_compression(mut self) -> Self {
         self.compression_enabled = true;
         self
@@ -191,7 +198,7 @@ where
 
         // Apply Global Middleware (Compression)
         if self.compression_enabled {
-            final_router = final_router.layer(compression_layer());
+            final_router = final_router.layer(compression::layer());
         }
 
         final_router

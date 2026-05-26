@@ -110,11 +110,15 @@ impl KnowledgeEntityEmbedding {
     }
 
     /// Delete embeddings by source_id (via joining to knowledge_entity table)
-    #[allow(clippy::items_after_statements)]
     pub async fn delete_by_source_id(
         source_id: &str,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
+        #[derive(Deserialize)]
+        struct IdRow {
+            id: RecordId,
+        }
+
         let query = "SELECT id FROM knowledge_entity WHERE source_id = $source_id";
         let mut res = db
             .client
@@ -122,11 +126,6 @@ impl KnowledgeEntityEmbedding {
             .bind(("source_id", source_id.to_owned()))
             .await
             .map_err(AppError::Database)?;
-        #[allow(clippy::missing_docs_in_private_items)]
-        #[derive(Deserialize)]
-        struct IdRow {
-            id: RecordId,
-        }
         let ids: Vec<IdRow> = res.take(0).map_err(AppError::Database)?;
 
         for row in ids {
@@ -138,6 +137,7 @@ impl KnowledgeEntityEmbedding {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
     use super::*;
     use crate::storage::db::SurrealDbClient;
     use crate::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
@@ -145,18 +145,18 @@ mod tests {
     use surrealdb::Value as SurrealValue;
     use uuid::Uuid;
 
-    async fn setup_test_db() -> SurrealDbClient {
+    async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
         let namespace = "test_ns";
         let database = Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, &database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
-        db
+        Ok(db)
     }
 
     fn build_knowledge_entity_with_id(
@@ -178,11 +178,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_create_and_get_by_entity_id() {
-        let db = setup_test_db().await;
+    async fn test_create_and_get_by_entity_id() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("set test index dimension");
+            .with_context(|| "set test index dimension".to_string())?;
         let user_id = "user_ke";
         let entity_key = "entity-1";
         let source_id = "source-ke";
@@ -192,26 +192,28 @@ mod tests {
 
         KnowledgeEntity::store_with_embedding(entity.clone(), embedding_vec.clone(), &db)
             .await
-            .expect("Failed to store entity with embedding");
+            .with_context(|| "Failed to store entity with embedding".to_string())?;
 
         let entity_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
 
         let fetched = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
             .await
-            .expect("Failed to get embedding by entity_id")
-            .expect("Expected embedding to exist");
+            .with_context(|| "Failed to get embedding by entity_id".to_string())?
+            .ok_or_else(|| anyhow::anyhow!("Expected embedding to exist"))?;
 
         assert_eq!(fetched.user_id, user_id);
         assert_eq!(fetched.entity_id, entity_rid);
         assert_eq!(fetched.embedding, embedding_vec);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_delete_by_entity_id() {
-        let db = setup_test_db().await;
+    async fn test_delete_by_entity_id() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("set test index dimension");
+            .with_context(|| "set test index dimension".to_string())?;
         let user_id = "user_ke";
         let entity_key = "entity-delete";
         let source_id = "source-del";
@@ -220,61 +222,67 @@ mod tests {
 
         KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.5_f32, 0.6, 0.7], &db)
             .await
-            .expect("Failed to store entity with embedding");
+            .with_context(|| "Failed to store entity with embedding".to_string())?;
 
         let entity_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
 
         let existing = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
             .await
-            .expect("Failed to get embedding before delete");
+            .with_context(|| "Failed to get embedding before delete".to_string())?;
         assert!(existing.is_some());
 
         KnowledgeEntityEmbedding::delete_by_entity_id(&entity_rid, &db)
             .await
-            .expect("Failed to delete by entity_id");
+            .with_context(|| "Failed to delete by entity_id".to_string())?;
 
         let after = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
             .await
-            .expect("Failed to get embedding after delete");
+            .with_context(|| "Failed to get embedding after delete".to_string())?;
         assert!(after.is_none());
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_store_with_embedding_creates_entity_and_embedding() {
-        let db = setup_test_db().await;
+    async fn test_store_with_embedding_creates_entity_and_embedding() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "user_store";
         let source_id = "source_store";
         let embedding = vec![0.2_f32, 0.3, 0.4];
 
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, embedding.len())
             .await
-            .expect("set test index dimension");
+            .with_context(|| "set test index dimension".to_string())?;
 
         let entity = build_knowledge_entity_with_id("entity-store", source_id, user_id);
 
         KnowledgeEntity::store_with_embedding(entity.clone(), embedding.clone(), &db)
             .await
-            .expect("Failed to store entity with embedding");
+            .with_context(|| "Failed to store entity with embedding".to_string())?;
 
-        let stored_entity: Option<KnowledgeEntity> = db.get_item(&entity.id).await.unwrap();
+        let stored_entity: Option<KnowledgeEntity> = db
+            .get_item(&entity.id)
+            .await
+            .with_context(|| "Failed to get entity".to_string())?;
         assert!(stored_entity.is_some());
 
         let entity_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
         let stored_embedding = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
             .await
-            .expect("Failed to fetch embedding");
-        assert!(stored_embedding.is_some());
-        let stored_embedding = stored_embedding.unwrap();
+            .with_context(|| "Failed to fetch embedding".to_string())?;
+        let stored_embedding = stored_embedding.ok_or_else(|| anyhow::anyhow!("Expected embedding to exist"))?;
         assert_eq!(stored_embedding.user_id, user_id);
         assert_eq!(stored_embedding.entity_id, entity_rid);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_delete_by_source_id() {
-        let db = setup_test_db().await;
+    async fn test_delete_by_source_id() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("set test index dimension");
+            .with_context(|| "set test index dimension".to_string())?;
         let user_id = "user_ke";
         let source_id = "shared-ke";
         let other_source = "other-ke";
@@ -285,13 +293,13 @@ mod tests {
 
         KnowledgeEntity::store_with_embedding(entity1.clone(), vec![1.0_f32, 1.1, 1.2], &db)
             .await
-            .expect("Failed to store entity with embedding");
+            .with_context(|| "Failed to store entity with embedding".to_string())?;
         KnowledgeEntity::store_with_embedding(entity2.clone(), vec![2.0_f32, 2.1, 2.2], &db)
             .await
-            .expect("Failed to store entity with embedding");
+            .with_context(|| "Failed to store entity with embedding".to_string())?;
         KnowledgeEntity::store_with_embedding(entity_other.clone(), vec![3.0_f32, 3.1, 3.2], &db)
             .await
-            .expect("Failed to store entity with embedding");
+            .with_context(|| "Failed to store entity with embedding".to_string())?;
 
         let entity1_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity1.id);
         let entity2_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity2.id);
@@ -299,59 +307,74 @@ mod tests {
 
         KnowledgeEntityEmbedding::delete_by_source_id(source_id, &db)
             .await
-            .expect("Failed to delete by source_id");
+            .with_context(|| "Failed to delete by source_id".to_string())?;
 
         assert!(
             KnowledgeEntityEmbedding::get_by_entity_id(&entity1_rid, &db)
                 .await
-                .unwrap()
+                .with_context(|| "get entity1 embedding after delete".to_string())?
                 .is_none()
         );
         assert!(
             KnowledgeEntityEmbedding::get_by_entity_id(&entity2_rid, &db)
                 .await
-                .unwrap()
+                .with_context(|| "get entity2 embedding after delete".to_string())?
                 .is_none()
         );
         assert!(KnowledgeEntityEmbedding::get_by_entity_id(&other_rid, &db)
             .await
-            .unwrap()
+            .with_context(|| "get other embedding after delete".to_string())?
             .is_some());
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_redefine_hnsw_index_updates_dimension() {
-        let db = setup_test_db().await;
+    async fn test_redefine_hnsw_index_updates_dimension() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
 
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 16)
             .await
-            .expect("failed to redefine index");
+            .with_context(|| "failed to redefine index".to_string())?;
 
         let mut info_res = db
             .client
             .query("INFO FOR TABLE knowledge_entity_embedding;")
             .await
-            .expect("info query failed");
-        let info: SurrealValue = info_res.take(0).expect("failed to take info result");
-        let info_json: serde_json::Value =
-            serde_json::to_value(info).expect("failed to convert info to json");
-        let idx_sql = info_json["Object"]["indexes"]["Object"]
-            ["idx_embedding_knowledge_entity_embedding"]["Strand"]
-            .as_str()
+            .with_context(|| "info query failed".to_string())?;
+        let info: SurrealValue = info_res
+            .take(0)
+            .with_context(|| "failed to take info result".to_string())?;
+        let info_json: serde_json::Value = serde_json::to_value(info)
+            .with_context(|| "failed to convert info to json".to_string())?;
+        let idx_sql = info_json
+            .get("Object")
+            .and_then(|v| v.get("indexes"))
+            .and_then(|v| v.get("Object"))
+            .and_then(|v| v.get("idx_embedding_knowledge_entity_embedding"))
+            .and_then(|v| v.get("Strand"))
+            .and_then(|v| v.as_str())
             .unwrap_or_default();
 
         assert!(
             idx_sql.contains("DIMENSION 16"),
             "expected index definition to contain new dimension, got: {idx_sql}"
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_fetch_entity_via_record_id() {
-        let db = setup_test_db().await;
+    async fn test_fetch_entity_via_record_id() -> anyhow::Result<()> {
+        #[derive(Deserialize)]
+        struct Row {
+            entity_id: KnowledgeEntity,
+        }
+
+        let db = setup_test_db().await?;
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("set test index dimension");
+            .with_context(|| "set test index dimension".to_string())?;
         let user_id = "user_ke";
         let entity_key = "entity-fetch";
         let source_id = "source-fetch";
@@ -359,14 +382,9 @@ mod tests {
         let entity = build_knowledge_entity_with_id(entity_key, source_id, user_id);
         KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.7_f32, 0.8, 0.9], &db)
             .await
-            .expect("Failed to store entity with embedding");
+            .with_context(|| "Failed to store entity with embedding".to_string())?;
 
         let entity_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
-
-        #[derive(Deserialize)]
-        struct Row {
-            entity_id: KnowledgeEntity,
-        }
 
         let mut res = db
             .client
@@ -375,13 +393,17 @@ mod tests {
             )
             .bind(("id", entity_rid.clone()))
             .await
-            .expect("failed to fetch embedding with FETCH");
-        let rows: Vec<Row> = res.take(0).expect("failed to deserialize fetch rows");
+            .with_context(|| "failed to fetch embedding with FETCH".to_string())?;
+        let rows: Vec<Row> = res
+            .take(0)
+            .with_context(|| "failed to deserialize fetch rows".to_string())?;
 
         assert_eq!(rows.len(), 1);
-        let fetched_entity = &rows[0].entity_id;
+        let fetched_entity = &rows.first().context("Expected at least one result")?.entity_id;
         assert_eq!(fetched_entity.id, entity_key);
         assert_eq!(fetched_entity.name, "Test entity");
         assert_eq!(fetched_entity.user_id, user_id);
+
+        Ok(())
     }
 }

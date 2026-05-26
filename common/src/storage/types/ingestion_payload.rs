@@ -103,6 +103,7 @@ impl IngestionPayload {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
     use chrono::Utc;
 
     use super::*;
@@ -131,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn test_create_ingestion_payload_with_url() {
+    fn test_create_ingestion_payload_with_url() -> anyhow::Result<()> {
         let url = "https://example.com";
         let context = "Process this URL";
         let category = "websites";
@@ -145,10 +146,10 @@ mod tests {
             files,
             user_id,
         )
-        .unwrap();
+        .with_context(|| "create_ingestion_payload".to_string())?;
 
         assert_eq!(result.len(), 1);
-        match &result[0] {
+        match result.first().context("expected one result")? {
             IngestionPayload::Url {
                 url: payload_url,
                 context: payload_context,
@@ -156,17 +157,18 @@ mod tests {
                 user_id: payload_user_id,
             } => {
                 // URL parser may normalize the URL by adding a trailing slash
-                assert!(payload_url == &url.to_string() || payload_url == &format!("{}/", url));
+                assert!(payload_url == &url.to_string() || payload_url == &format!("{url}/"));
                 assert_eq!(payload_context, &context);
                 assert_eq!(payload_category, &category);
                 assert_eq!(payload_user_id, &user_id);
             }
-            _ => panic!("Expected Url variant"),
+            _ => anyhow::bail!("Expected Url variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_create_ingestion_payload_with_text() {
+    fn test_create_ingestion_payload_with_text() -> anyhow::Result<()> {
         let text = "This is some text content";
         let context = "Process this text";
         let category = "notes";
@@ -180,10 +182,10 @@ mod tests {
             files,
             user_id,
         )
-        .unwrap();
+        .with_context(|| "create_ingestion_payload".to_string())?;
 
         assert_eq!(result.len(), 1);
-        match &result[0] {
+        match result.first().context("expected one result")? {
             IngestionPayload::Text {
                 text: payload_text,
                 context: payload_context,
@@ -195,12 +197,13 @@ mod tests {
                 assert_eq!(payload_category, category);
                 assert_eq!(payload_user_id, user_id);
             }
-            _ => panic!("Expected Text variant"),
+            _ => anyhow::bail!("Expected Text variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_create_ingestion_payload_with_file() {
+    fn test_create_ingestion_payload_with_file() -> anyhow::Result<()> {
         let context = "Process this file";
         let category = "documents";
         let user_id = "user123";
@@ -220,10 +223,10 @@ mod tests {
             files,
             user_id,
         )
-        .unwrap();
+        .with_context(|| "create_ingestion_payload".to_string())?;
 
         assert_eq!(result.len(), 1);
-        match &result[0] {
+        match result.first().context("expected one result")? {
             IngestionPayload::File {
                 file_info: payload_file_info,
                 context: payload_context,
@@ -235,12 +238,13 @@ mod tests {
                 assert_eq!(payload_category, category);
                 assert_eq!(payload_user_id, user_id);
             }
-            _ => panic!("Expected File variant"),
+            _ => anyhow::bail!("Expected File variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_create_ingestion_payload_with_url_and_file() {
+    fn test_create_ingestion_payload_with_url_and_file() -> anyhow::Result<()> {
         let url = "https://example.com";
         let context = "Process this data";
         let category = "mixed";
@@ -261,35 +265,36 @@ mod tests {
             files,
             user_id,
         )
-        .unwrap();
+        .with_context(|| "create_ingestion_payload".to_string())?;
 
         assert_eq!(result.len(), 2);
 
         // Check first item is URL
-        match &result[0] {
+        match result.first().context("expected first item")? {
             IngestionPayload::Url {
                 url: payload_url, ..
             } => {
                 // URL parser may normalize the URL by adding a trailing slash
-                assert!(payload_url == &url.to_string() || payload_url == &format!("{}/", url));
+                assert!(payload_url == &url.to_string() || payload_url == &format!("{url}/"));
             }
-            _ => panic!("Expected first item to be Url variant"),
+            _ => anyhow::bail!("Expected first item to be Url variant"),
         }
 
         // Check second item is File
-        match &result[1] {
+        match result.get(1).context("expected second item")? {
             IngestionPayload::File {
                 file_info: payload_file_info,
                 ..
             } => {
                 assert_eq!(payload_file_info.id, file_info.id);
             }
-            _ => panic!("Expected second item to be File variant"),
+            _ => anyhow::bail!("Expected second item to be File variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_create_ingestion_payload_empty_input() {
+    fn test_create_ingestion_payload_empty_input() -> anyhow::Result<()> {
         let context = "Process something";
         let category = "empty";
         let user_id = "user123";
@@ -308,12 +313,13 @@ mod tests {
             Err(AppError::NotFound(msg)) => {
                 assert_eq!(msg, "No valid content or files provided");
             }
-            _ => panic!("Expected NotFound error"),
+            _ => anyhow::bail!("Expected NotFound error"),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_create_ingestion_payload_with_empty_text() {
+    fn test_create_ingestion_payload_with_empty_text() -> anyhow::Result<()> {
         let text = ""; // Empty text
         let context = "Process this";
         let category = "notes";
@@ -333,7 +339,8 @@ mod tests {
             Err(AppError::NotFound(msg)) => {
                 assert_eq!(msg, "No valid content or files provided");
             }
-            _ => panic!("Expected NotFound error"),
+            _ => anyhow::bail!("Expected NotFound error"),
         }
+        Ok(())
     }
 }

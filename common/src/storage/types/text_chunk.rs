@@ -1,4 +1,4 @@
-#![allow(clippy::missing_docs_in_private_items, clippy::uninlined_format_args)]
+#![allow(clippy::missing_docs_in_private_items)]
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -237,10 +237,7 @@ impl TextChunk {
         new_model: &str,
         new_dimensions: u32,
     ) -> Result<(), AppError> {
-        info!(
-            "Starting re-embedding process for all text chunks. New dimensions: {}",
-            new_dimensions
-        );
+        info!("Starting re-embedding process for all text chunks. New dimensions: {new_dimensions}");
 
         // Fetch all chunks first
         let all_chunks: Vec<TextChunk> = db.select(Self::table_name()).await?;
@@ -252,7 +249,7 @@ impl TextChunk {
 
             return Ok(());
         }
-        info!("Found {} chunks to process.", total_chunks);
+        info!("Found {total_chunks} chunks to process.");
 
         // Generate all new embeddings in memory
         let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
@@ -276,7 +273,7 @@ impl TextChunk {
                     "CRITICAL: Generated embedding for chunk {} has incorrect dimension ({}). Expected {}. Aborting.",
                     chunk.id, embedding.len(), new_dimensions
                 );
-                error!("{}", err_msg);
+                error!("{err_msg}");
                 return Err(AppError::InternalError(err_msg));
             }
             new_embeddings.insert(
@@ -300,6 +297,7 @@ impl TextChunk {
                     .join(",")
             );
             // Use the chunk id as the embedding record id to keep a 1:1 mapping
+            let embedding = embedding_str;
             write!(
                 &mut transaction_query,
                 "UPSERT type::thing('text_chunk_embedding', '{id}') SET \
@@ -309,18 +307,13 @@ impl TextChunk {
                     user_id = '{user_id}', \
                     created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
                     updated_at = time::now();",
-                id = id,
-                embedding = embedding_str,
-                user_id = user_id,
-                source_id = source_id
             )
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
 
         write!(
             &mut transaction_query,
-            "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {};",
-            new_dimensions
+            "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
         )
         .map_err(|e| AppError::InternalError(e.to_string()))?;
 
@@ -377,7 +370,7 @@ impl TextChunk {
                     "CRITICAL: Generated embedding for chunk {} has incorrect dimension ({}). Expected {}. Aborting.",
                     chunk.id, embedding.len(), new_dimensions
                 );
-                error!("{}", err_msg);
+                error!("{err_msg}");
                 return Err(AppError::InternalError(err_msg));
             }
             new_embeddings.insert(
@@ -422,6 +415,7 @@ impl TextChunk {
                     .collect::<Vec<_>>()
                     .join(",")
             );
+            let embedding = embedding_str;
             write!(
                 &mut transaction_query,
                 "CREATE type::thing('text_chunk_embedding', '{id}') SET \
@@ -431,18 +425,13 @@ impl TextChunk {
                     user_id = '{user_id}', \
                     created_at = time::now(), \
                     updated_at = time::now();",
-                id = id,
-                embedding = embedding_str,
-                user_id = user_id,
-                source_id = source_id
             )
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
 
         write!(
             &mut transaction_query,
-            "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {};",
-            new_dimensions
+            "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
         )
         .map_err(|e| AppError::InternalError(e.to_string()))?;
 
@@ -462,20 +451,21 @@ impl TextChunk {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
+
     use super::*;
-    use crate::storage::indexes::{ensure_runtime_indexes, rebuild_indexes};
+    use crate::storage::indexes::{ensure_runtime, rebuild};
     use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
     use surrealdb::RecordId;
     use uuid::Uuid;
 
-    async fn ensure_chunk_fts_index(db: &SurrealDbClient) {
+    async fn ensure_chunk_fts_index(db: &SurrealDbClient) -> anyhow::Result<()> {
         let snowball_sql = r#"
             DEFINE ANALYZER IF NOT EXISTS app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii, snowball(english);
             DEFINE INDEX IF NOT EXISTS text_chunk_fts_chunk_idx ON TABLE text_chunk FIELDS chunk SEARCH ANALYZER app_en_fts_analyzer BM25;
         "#;
 
         if let Err(err) = db.client.query(snowball_sql).await {
-            // Fall back to ascii-only analyzer when snowball is unavailable in the build.
             let fallback_sql = r#"
                 DEFINE ANALYZER OVERWRITE app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii;
                 DEFINE INDEX IF NOT EXISTS text_chunk_fts_chunk_idx ON TABLE text_chunk FIELDS chunk SEARCH ANALYZER app_en_fts_analyzer BM25;
@@ -484,12 +474,13 @@ mod tests {
             db.client
                 .query(fallback_sql)
                 .await
-                .unwrap_or_else(|_| panic!("define chunk fts index fallback: {err}"));
+                .with_context(|| format!("define chunk fts index fallback: {err}"))?;
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_text_chunk_creation() {
+    async fn test_text_chunk_creation() -> anyhow::Result<()> {
         let source_id = "source123".to_string();
         let chunk = "This is a text chunk for testing embeddings".to_string();
         let user_id = "user123".to_string();
@@ -500,22 +491,23 @@ mod tests {
         assert_eq!(text_chunk.chunk, chunk);
         assert_eq!(text_chunk.user_id, user_id);
         assert!(!text_chunk.id.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_delete_by_source_id() {
+    async fn test_delete_by_source_id() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
 
         let source_id = "source123".to_string();
         let user_id = "user123".to_string();
         TextChunkEmbedding::redefine_hnsw_index(&db, 5)
             .await
-            .expect("redefine index");
+            .with_context(|| "redefine index".to_string())?;
 
         let chunk1 = TextChunk::new(
             source_id.clone(),
@@ -535,61 +527,63 @@ mod tests {
 
         TextChunk::store_with_embedding(chunk1.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
             .await
-            .expect("store chunk1");
+            .with_context(|| "store chunk1".to_string())?;
         TextChunk::store_with_embedding(chunk2.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
             .await
-            .expect("store chunk2");
+            .with_context(|| "store chunk2".to_string())?;
         TextChunk::store_with_embedding(
             different_chunk.clone(),
             vec![0.1, 0.2, 0.3, 0.4, 0.5],
             &db,
         )
         .await
-        .expect("store different chunk");
+        .with_context(|| "store different chunk".to_string())?;
 
         TextChunk::delete_by_source_id(&source_id, &db)
             .await
-            .expect("Failed to delete chunks by source_id");
+            .with_context(|| "Failed to delete chunks by source_id".to_string())?;
 
         let remaining: Vec<TextChunk> = db
             .client
             .query(format!(
-                "SELECT * FROM {} WHERE source_id = '{}'",
+                "SELECT * FROM {} WHERE source_id = '{source_id}'",
                 TextChunk::table_name(),
-                source_id
             ))
             .await
-            .expect("Query failed")
+            .with_context(|| "Query failed".to_string())?
             .take(0)
-            .expect("Failed to get query results");
+            .with_context(|| "Failed to get query results".to_string())?;
         assert_eq!(remaining.len(), 0);
 
         let different_remaining: Vec<TextChunk> = db
             .client
             .query(format!(
-                "SELECT * FROM {} WHERE source_id = '{}'",
+                "SELECT * FROM {} WHERE source_id = 'different_source'",
                 TextChunk::table_name(),
-                "different_source"
             ))
             .await
-            .expect("Query failed")
+            .with_context(|| "Query failed".to_string())?
             .take(0)
-            .expect("Failed to get query results");
+            .with_context(|| "Failed to get query results".to_string())?;
         assert_eq!(different_remaining.len(), 1);
-        assert_eq!(different_remaining[0].id, different_chunk.id);
+        assert_eq!(
+            different_remaining.first().map(|r| &r.id),
+            Some(&different_chunk.id)
+        );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_delete_by_nonexistent_source_id() {
+    async fn test_delete_by_nonexistent_source_id() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
         TextChunkEmbedding::redefine_hnsw_index(&db, 5)
             .await
-            .expect("redefine index");
+            .with_context(|| "redefine index".to_string())?;
 
         let real_source_id = "real_source".to_string();
         let chunk = TextChunk::new(
@@ -600,24 +594,24 @@ mod tests {
 
         TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
             .await
-            .expect("store chunk");
+            .with_context(|| "store chunk".to_string())?;
 
         TextChunk::delete_by_source_id("nonexistent_source", &db)
             .await
-            .expect("Delete should succeed");
+            .with_context(|| "Delete should succeed".to_string())?;
 
         let remaining: Vec<TextChunk> = db
             .client
             .query(format!(
-                "SELECT * FROM {} WHERE source_id = '{}'",
+                "SELECT * FROM {} WHERE source_id = '{real_source_id}'",
                 TextChunk::table_name(),
-                real_source_id
             ))
             .await
-            .expect("Query failed")
+            .with_context(|| "Query failed".to_string())?
             .take(0)
-            .expect("Failed to get query results");
+            .with_context(|| "Failed to get query results".to_string())?;
         assert_eq!(remaining.len(), 1);
+        Ok(())
     }
 
     #[tokio::test]
@@ -672,13 +666,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_store_with_embedding_creates_both_records() {
+    async fn test_store_with_embedding_creates_both_records() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
 
         let source_id = "store-src".to_string();
         let user_id = "user_store".to_string();
@@ -686,43 +680,43 @@ mod tests {
 
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("redefine index");
+            .with_context(|| "redefine index".to_string())?;
 
         TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
             .await
-            .expect("store with embedding");
+            .with_context(|| "store with embedding".to_string())?;
 
-        let stored_chunk: Option<TextChunk> = db.get_item(&chunk.id).await.unwrap();
-        assert!(stored_chunk.is_some());
-        let stored_chunk = stored_chunk.unwrap();
+        let stored_chunk: Option<TextChunk> = db.get_item(&chunk.id)
+            .await
+            .with_context(|| "get_item".to_string())?;
+        let stored_chunk = stored_chunk.with_context(|| "expected stored chunk".to_string())?;
         assert_eq!(stored_chunk.source_id, source_id);
         assert_eq!(stored_chunk.user_id, user_id);
 
         let rid = RecordId::from_table_key(TextChunk::table_name(), &chunk.id);
         let embedding = TextChunkEmbedding::get_by_chunk_id(&rid, &db)
             .await
-            .expect("get embedding");
-        assert!(embedding.is_some());
-        let embedding = embedding.unwrap();
+            .with_context(|| "get embedding".to_string())?
+            .with_context(|| "expected embedding".to_string())?;
         assert_eq!(embedding.chunk_id, rid);
         assert_eq!(embedding.user_id, user_id);
         assert_eq!(embedding.source_id, source_id);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_store_with_embedding_with_runtime_indexes() {
+    async fn test_store_with_embedding_with_runtime_indexes() -> anyhow::Result<()> {
         let namespace = "test_ns_runtime";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
 
-        // Ensure runtime indexes are built with the expected dimension.
         let embedding_dimension = 3usize;
-        ensure_runtime_indexes(&db, embedding_dimension)
+        ensure_runtime(&db, embedding_dimension)
             .await
-            .expect("ensure runtime indexes");
+            .with_context(|| "ensure runtime indexes".to_string())?;
 
         let chunk = TextChunk::new(
             "runtime_src".to_string(),
@@ -732,55 +726,60 @@ mod tests {
 
         TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
             .await
-            .expect("store with embedding");
+            .with_context(|| "store with embedding".to_string())?;
 
-        let stored_chunk: Option<TextChunk> = db.get_item(&chunk.id).await.unwrap();
-        assert!(stored_chunk.is_some(), "chunk should be stored");
+        let stored_chunk: Option<TextChunk> = db.get_item(&chunk.id)
+            .await
+            .with_context(|| "get_item".to_string())?;
+        let stored_chunk = stored_chunk.with_context(|| "chunk should be stored".to_string())?;
+        assert!(stored_chunk.id == chunk.id, "chunk should be stored");
 
         let rid = RecordId::from_table_key(TextChunk::table_name(), &chunk.id);
         let embedding = TextChunkEmbedding::get_by_chunk_id(&rid, &db)
             .await
-            .expect("get embedding");
-        assert!(embedding.is_some(), "embedding should exist");
+            .with_context(|| "get embedding".to_string())?
+            .with_context(|| "embedding should exist".to_string())?;
         assert_eq!(
-            embedding.unwrap().embedding.len(),
+            embedding.embedding.len(),
             embedding_dimension,
             "embedding dimension should match runtime index"
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_vector_search_returns_empty_when_no_embeddings() {
+    async fn test_vector_search_returns_empty_when_no_embeddings() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
 
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("redefine index");
+            .with_context(|| "redefine index".to_string())?;
 
         let results: Vec<TextChunkSearchResult> =
             TextChunk::vector_search(5, vec![0.1, 0.2, 0.3], &db, "user")
                 .await
-                .unwrap();
+                .with_context(|| "vector_search".to_string())?;
         assert!(results.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_vector_search_single_result() {
+    async fn test_vector_search_single_result() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
 
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("redefine index");
+            .with_context(|| "redefine index".to_string())?;
 
         let source_id = "src".to_string();
         let user_id = "user".to_string();
@@ -792,32 +791,33 @@ mod tests {
 
         TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
             .await
-            .expect("store");
+            .with_context(|| "store".to_string())?;
 
         let results: Vec<TextChunkSearchResult> =
             TextChunk::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
                 .await
-                .unwrap();
+                .with_context(|| "vector_search".to_string())?;
 
         assert_eq!(results.len(), 1);
-        let res = &results[0];
+        let res = results.first().context("expected first result")?;
         assert_eq!(res.chunk.id, chunk.id);
         assert_eq!(res.chunk.source_id, source_id);
         assert_eq!(res.chunk.chunk, "hello world");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_vector_search_orders_by_similarity() {
+    async fn test_vector_search_orders_by_similarity() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
 
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .expect("redefine index");
+            .with_context(|| "redefine index".to_string())?;
 
         let user_id = "user".to_string();
         let chunk1 = TextChunk::new("s1".to_string(), "chunk one".to_string(), user_id.clone());
@@ -825,49 +825,59 @@ mod tests {
 
         TextChunk::store_with_embedding(chunk1.clone(), vec![1.0, 0.0, 0.0], &db)
             .await
-            .expect("store chunk1");
+            .with_context(|| "store chunk1".to_string())?;
         TextChunk::store_with_embedding(chunk2.clone(), vec![0.0, 1.0, 0.0], &db)
             .await
-            .expect("store chunk2");
+            .with_context(|| "store chunk2".to_string())?;
 
         let results: Vec<TextChunkSearchResult> =
             TextChunk::vector_search(2, vec![0.0, 1.0, 0.0], &db, &user_id)
                 .await
-                .unwrap();
+                .with_context(|| "vector_search".to_string())?;
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].chunk.id, chunk2.id);
-        assert_eq!(results[1].chunk.id, chunk1.id);
-        assert!(results[0].score >= results[1].score);
+        assert_eq!(
+            results.first().map(|r| &r.chunk.id),
+            Some(&chunk2.id)
+        );
+        assert_eq!(
+            results.get(1).map(|r| &r.chunk.id),
+            Some(&chunk1.id)
+        );
+        let r0 = results.first().context("expected first result")?;
+        let r1 = results.get(1).context("expected second result")?;
+        assert!(r0.score >= r1.score);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_fts_search_returns_empty_when_no_chunks() {
+    async fn test_fts_search_returns_empty_when_no_chunks() -> anyhow::Result<()> {
         let namespace = "fts_chunk_ns_empty";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
-        ensure_chunk_fts_index(&db).await;
-        rebuild_indexes(&db).await.expect("rebuild indexes");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        ensure_chunk_fts_index(&db).await?;
+        rebuild(&db).await.with_context(|| "rebuild indexes".to_string())?;
 
         let results = TextChunk::fts_search(5, "hello", &db, "user")
             .await
-            .expect("fts search");
+            .with_context(|| "fts search".to_string())?;
 
         assert!(results.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_fts_search_single_result() {
+    async fn test_fts_search_single_result() -> anyhow::Result<()> {
         let namespace = "fts_chunk_ns_single";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
-        ensure_chunk_fts_index(&db).await;
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        ensure_chunk_fts_index(&db).await?;
 
         let user_id = "fts_user";
         let chunk = TextChunk::new(
@@ -875,27 +885,29 @@ mod tests {
             "rustaceans love rust".to_string(),
             user_id.to_string(),
         );
-        db.store_item(chunk.clone()).await.expect("store chunk");
-        rebuild_indexes(&db).await.expect("rebuild indexes");
+        db.store_item(chunk.clone()).await.with_context(|| "store chunk".to_string())?;
+        rebuild(&db).await.with_context(|| "rebuild indexes".to_string())?;
 
         let results = TextChunk::fts_search(3, "rust", &db, user_id)
             .await
-            .expect("fts search");
+            .with_context(|| "fts search".to_string())?;
 
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].chunk.id, chunk.id);
-        assert!(results[0].score.is_finite(), "expected a finite FTS score");
+        let r0 = results.first().context("expected first result")?;
+        assert_eq!(r0.chunk.id, chunk.id);
+        assert!(r0.score.is_finite(), "expected a finite FTS score");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_fts_search_orders_by_score_and_filters_user() {
+    async fn test_fts_search_orders_by_score_and_filters_user() -> anyhow::Result<()> {
         let namespace = "fts_chunk_ns_order";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
-        ensure_chunk_fts_index(&db).await;
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        ensure_chunk_fts_index(&db).await?;
 
         let user_id = "fts_user_order";
         let high_score_chunk = TextChunk::new(
@@ -916,18 +928,18 @@ mod tests {
 
         db.store_item(high_score_chunk.clone())
             .await
-            .expect("store high score chunk");
+            .with_context(|| "store high score chunk".to_string())?;
         db.store_item(low_score_chunk.clone())
             .await
-            .expect("store low score chunk");
+            .with_context(|| "store low score chunk".to_string())?;
         db.store_item(other_user_chunk)
             .await
-            .expect("store other user chunk");
-        rebuild_indexes(&db).await.expect("rebuild indexes");
+            .with_context(|| "store other user chunk".to_string())?;
+        rebuild(&db).await.with_context(|| "rebuild indexes".to_string())?;
 
         let results = TextChunk::fts_search(3, "apple", &db, user_id)
             .await
-            .expect("fts search");
+            .with_context(|| "fts search".to_string())?;
 
         assert_eq!(results.len(), 2);
         let ids: Vec<_> = results.iter().map(|r| r.chunk.id.as_str()).collect();
@@ -936,9 +948,12 @@ mod tests {
                 && ids.contains(&low_score_chunk.id.as_str()),
             "expected only the two chunks for the same user"
         );
+        let r0 = results.first().context("expected first result")?;
+        let r1 = results.get(1).context("expected second result")?;
         assert!(
-            results[0].score >= results[1].score,
+            r0.score >= r1.score,
             "expected results ordered by descending score"
         );
+        Ok(())
     }
 }

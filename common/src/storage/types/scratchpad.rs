@@ -216,20 +216,22 @@ impl Scratchpad {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
+
     use super::*;
 
     #[tokio::test]
-    async fn test_create_scratchpad() {
+    async fn test_create_scratchpad() -> anyhow::Result<()> {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         // Create a new scratchpad
         let user_id = "test_user";
@@ -254,29 +256,28 @@ mod tests {
         let retrieved: Option<Scratchpad> = db
             .get_item(&scratchpad.id)
             .await
-            .expect("Failed to retrieve scratchpad");
-        assert!(retrieved.is_some());
-
-        let retrieved = retrieved.unwrap();
+            .with_context(|| "Failed to retrieve scratchpad".to_string())?;
+        let retrieved = retrieved.with_context(|| "expected scratchpad to exist".to_string())?;
         assert_eq!(retrieved.id, scratchpad.id);
         assert_eq!(retrieved.user_id, user_id);
         assert_eq!(retrieved.title, title);
         assert!(!retrieved.is_archived);
         assert!(retrieved.archived_at.is_none());
         assert!(retrieved.ingested_at.is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_by_user() {
+    async fn test_get_by_user() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         let user_id = "test_user";
 
@@ -288,19 +289,21 @@ mod tests {
         // Store them
         let scratchpad1_id = scratchpad1.id.clone();
         let scratchpad2_id = scratchpad2.id.clone();
-        db.store_item(scratchpad1).await.unwrap();
-        db.store_item(scratchpad2).await.unwrap();
-        db.store_item(scratchpad3).await.unwrap();
+        db.store_item(scratchpad1).await.with_context(|| "store scratchpad1".to_string())?;
+        db.store_item(scratchpad2).await.with_context(|| "store scratchpad2".to_string())?;
+        db.store_item(scratchpad3).await.with_context(|| "store scratchpad3".to_string())?;
 
         // Archive one of the user's scratchpads
         Scratchpad::archive(&scratchpad2_id, user_id, &db, false)
             .await
-            .unwrap();
+            .with_context(|| "archive".to_string())?;
 
         // Get scratchpads for user_id
-        let user_scratchpads = Scratchpad::get_by_user(user_id, &db).await.unwrap();
+        let user_scratchpads = Scratchpad::get_by_user(user_id, &db)
+            .await
+            .with_context(|| "get_by_user".to_string())?;
         assert_eq!(user_scratchpads.len(), 1);
-        assert_eq!(user_scratchpads[0].id, scratchpad1_id);
+        assert_eq!(user_scratchpads.first().map(|s| &s.id), Some(&scratchpad1_id));
 
         // Verify they belong to the user
         for scratchpad in &user_scratchpads {
@@ -309,177 +312,183 @@ mod tests {
 
         let archived = Scratchpad::get_archived_by_user(user_id, &db)
             .await
-            .unwrap();
+            .with_context(|| "get_archived_by_user".to_string())?;
         assert_eq!(archived.len(), 1);
-        assert_eq!(archived[0].id, scratchpad2_id);
-        assert!(archived[0].is_archived);
-        assert!(archived[0].ingested_at.is_none());
+        assert_eq!(archived.first().map(|s| &s.id), Some(&scratchpad2_id));
+        assert!(archived.first().is_some_and(|s| s.is_archived));
+        assert!(archived.first().is_some_and(|s| s.ingested_at.is_none()));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_archive_and_restore() {
+    async fn test_archive_and_restore() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         let user_id = "test_user";
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
-        db.store_item(scratchpad).await.unwrap();
+        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
 
         let archived = Scratchpad::archive(&scratchpad_id, user_id, &db, true)
             .await
-            .expect("Failed to archive");
+            .with_context(|| "Failed to archive".to_string())?;
         assert!(archived.is_archived);
         assert!(archived.archived_at.is_some());
         assert!(archived.ingested_at.is_some());
 
         let restored = Scratchpad::restore(&scratchpad_id, user_id, &db)
             .await
-            .expect("Failed to restore");
+            .with_context(|| "Failed to restore".to_string())?;
         assert!(!restored.is_archived);
         assert!(restored.archived_at.is_none());
         assert!(restored.ingested_at.is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_update_content() {
+    async fn test_update_content() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         let user_id = "test_user";
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.unwrap();
+        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
 
         let new_content = "Updated content";
         let updated = Scratchpad::update_content(&scratchpad_id, user_id, new_content, &db)
             .await
-            .unwrap();
+            .with_context(|| "update_content".to_string())?;
 
         assert_eq!(updated.content, new_content);
         assert!(!updated.is_dirty);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_update_content_unauthorized() {
+    async fn test_update_content_unauthorized() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         let owner_id = "owner";
         let other_user = "other_user";
         let scratchpad = Scratchpad::new(owner_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.unwrap();
+        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
 
         let result = Scratchpad::update_content(&scratchpad_id, other_user, "Hacked", &db).await;
         assert!(result.is_err());
         match result {
             Err(AppError::Auth(_)) => {}
-            _ => panic!("Expected Auth error"),
+            _ => anyhow::bail!("Expected Auth error"),
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_delete_scratchpad() {
+    async fn test_delete_scratchpad() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         let user_id = "test_user";
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.unwrap();
+        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
 
         // Delete should succeed
         let result = Scratchpad::delete(&scratchpad_id, user_id, &db).await;
         assert!(result.is_ok());
 
         // Verify it's gone
-        let retrieved: Option<Scratchpad> = db.get_item(&scratchpad_id).await.unwrap();
+        let retrieved: Option<Scratchpad> = db.get_item(&scratchpad_id).await.with_context(|| "get_item".to_string())?;
         assert!(retrieved.is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_delete_unauthorized() {
+    async fn test_delete_unauthorized() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         let owner_id = "owner";
         let other_user = "other_user";
         let scratchpad = Scratchpad::new(owner_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.unwrap();
+        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
 
         let result = Scratchpad::delete(&scratchpad_id, other_user, &db).await;
         assert!(result.is_err());
         match result {
             Err(AppError::Auth(_)) => {}
-            _ => panic!("Expected Auth error"),
+            _ => anyhow::bail!("Expected Auth error"),
         }
 
         // Verify it still exists
-        let retrieved: Option<Scratchpad> = db.get_item(&scratchpad_id).await.unwrap();
+        let retrieved: Option<Scratchpad> = db.get_item(&scratchpad_id).await.with_context(|| "get_item".to_string())?;
         assert!(retrieved.is_some());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_timezone_aware_scratchpad_conversion() {
+    async fn test_timezone_aware_scratchpad_conversion() -> anyhow::Result<()> {
         let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
             .await
-            .expect("Failed to create test database");
+            .with_context(|| "Failed to create test database".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to apply migrations");
+            .with_context(|| "Failed to apply migrations".to_string())?;
 
         let user_id = "test_user_123";
         let scratchpad =
             Scratchpad::new(user_id.to_string(), "Test Timezone Scratchpad".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.unwrap();
+        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
 
         let retrieved = Scratchpad::get_by_id(&scratchpad_id, user_id, &db)
             .await
-            .unwrap();
+            .with_context(|| "get_by_id".to_string())?;
 
         // Test that datetime fields are preserved and can be used for timezone formatting
         assert!(retrieved.created_at.timestamp() > 0);
@@ -493,10 +502,11 @@ mod tests {
         // Archive the scratchpad to test optional datetime handling
         let archived = Scratchpad::archive(&scratchpad_id, user_id, &db, false)
             .await
-            .unwrap();
+            .with_context(|| "archive".to_string())?;
 
         assert!(archived.archived_at.is_some());
-        assert!(archived.archived_at.unwrap().timestamp() > 0);
+        assert!(archived.archived_at.with_context(|| "expected archived_at".to_string())?.timestamp() > 0);
         assert!(archived.ingested_at.is_none());
+        Ok(())
     }
 }

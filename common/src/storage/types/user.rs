@@ -723,30 +723,32 @@ impl User {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
+
     use super::*;
     use crate::storage::types::ingestion_payload::IngestionPayload;
     use crate::storage::types::ingestion_task::{IngestionTask, TaskState, MAX_ATTEMPTS};
     use std::collections::HashSet;
 
     // Helper function to set up a test database with SystemSettings
-    async fn setup_test_db() -> SurrealDbClient {
+    async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
         let namespace = "test_ns";
         let database = Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, &database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         db.apply_migrations()
             .await
-            .expect("Failed to setup the migrations");
+            .with_context(|| "Failed to setup the migrations".to_string())?;
 
-        db
+        Ok(db)
     }
 
     #[tokio::test]
-    async fn test_user_creation() {
+    async fn test_user_creation() -> anyhow::Result<()> {
         // Setup test database
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
 
         // Create a user
         let email = "test@example.com";
@@ -761,7 +763,7 @@ mod tests {
             "system".to_string(),
         )
         .await
-        .expect("Failed to create user");
+        .with_context(|| "Failed to create user".to_string())?;
 
         // Verify user properties
         assert!(!user.id.is_empty());
@@ -774,18 +776,17 @@ mod tests {
         let retrieved: Option<User> = db
             .get_item(&user.id)
             .await
-            .expect("Failed to retrieve user");
-        assert!(retrieved.is_some());
-
-        let retrieved = retrieved.unwrap();
+            .with_context(|| "Failed to retrieve user".to_string())?;
+        let retrieved = retrieved.with_context(|| "expected user to exist".to_string())?;
         assert_eq!(retrieved.id, user.id);
         assert_eq!(retrieved.email, email);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_user_authentication() {
+    async fn test_user_authentication() -> anyhow::Result<()> {
         // Setup test database
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
 
         // Create a user
         let email = "auth_test@example.com";
@@ -799,7 +800,7 @@ mod tests {
             "system".to_string(),
         )
         .await
-        .expect("Failed to create user");
+        .with_context(|| "Failed to create user".to_string())?;
 
         // Test successful authentication
         let auth_result = User::authenticate(email, password, &db).await;
@@ -812,11 +813,12 @@ mod tests {
         // Test failed authentication with non-existent user
         let nonexistent = User::authenticate("nonexistent@example.com", password, &db).await;
         assert!(nonexistent.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_unfinished_ingestion_tasks_filters_correctly() {
-        let db = setup_test_db().await;
+    async fn test_get_unfinished_ingestion_tasks_filters_correctly() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "unfinished_user";
         let other_user_id = "other_user";
 
@@ -830,14 +832,14 @@ mod tests {
         let created_task = IngestionTask::new(payload.clone(), user_id.to_string());
         db.store_item(created_task.clone())
             .await
-            .expect("Failed to store created task");
+            .with_context(|| "Failed to store created task".to_string())?;
 
         let mut processing_task = IngestionTask::new(payload.clone(), user_id.to_string());
         processing_task.state = TaskState::Processing;
         processing_task.attempts = 1;
         db.store_item(processing_task.clone())
             .await
-            .expect("Failed to store processing task");
+            .with_context(|| "Failed to store processing task".to_string())?;
 
         let mut failed_retry_task = IngestionTask::new(payload.clone(), user_id.to_string());
         failed_retry_task.state = TaskState::Failed;
@@ -845,7 +847,7 @@ mod tests {
         failed_retry_task.scheduled_at = chrono::Utc::now() - chrono::Duration::minutes(5);
         db.store_item(failed_retry_task.clone())
             .await
-            .expect("Failed to store retryable failed task");
+            .with_context(|| "Failed to store retryable failed task".to_string())?;
 
         let mut failed_blocked_task = IngestionTask::new(payload.clone(), user_id.to_string());
         failed_blocked_task.state = TaskState::Failed;
@@ -853,13 +855,13 @@ mod tests {
         failed_blocked_task.error_message = Some("Too many failures".into());
         db.store_item(failed_blocked_task.clone())
             .await
-            .expect("Failed to store blocked task");
+            .with_context(|| "Failed to store blocked task".to_string())?;
 
         let mut completed_task = IngestionTask::new(payload.clone(), user_id.to_string());
         completed_task.state = TaskState::Succeeded;
         db.store_item(completed_task.clone())
             .await
-            .expect("Failed to store completed task");
+            .with_context(|| "Failed to store completed task".to_string())?;
 
         let other_payload = IngestionPayload::Text {
             text: "Other".to_string(),
@@ -870,11 +872,11 @@ mod tests {
         let other_task = IngestionTask::new(other_payload, other_user_id.to_string());
         db.store_item(other_task)
             .await
-            .expect("Failed to store other user task");
+            .with_context(|| "Failed to store other user task".to_string())?;
 
         let unfinished = User::get_unfinished_ingestion_tasks(user_id, &db)
             .await
-            .expect("Failed to fetch unfinished tasks");
+            .with_context(|| "Failed to fetch unfinished tasks".to_string())?;
 
         let unfinished_ids: HashSet<String> =
             unfinished.iter().map(|task| task.id.clone()).collect();
@@ -885,11 +887,12 @@ mod tests {
         assert!(!unfinished_ids.contains(&failed_blocked_task.id));
         assert!(!unfinished_ids.contains(&completed_task.id));
         assert_eq!(unfinished_ids.len(), 3);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_all_ingestion_tasks_returns_sorted() {
-        let db = setup_test_db().await;
+    async fn test_get_all_ingestion_tasks_returns_sorted() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "archive_user";
         let other_user_id = "other_user";
 
@@ -902,15 +905,15 @@ mod tests {
 
         // Oldest task
         let mut first = IngestionTask::new(payload.clone(), user_id.to_string());
-        first.created_at = first.created_at - chrono::Duration::minutes(1);
+        first.created_at -= chrono::Duration::minutes(1);
         first.updated_at = first.created_at;
         first.state = TaskState::Succeeded;
-        db.store_item(first.clone()).await.expect("store first");
+        db.store_item(first.clone()).await.with_context(|| "store first".to_string())?;
 
         // Latest task
         let mut second = IngestionTask::new(payload.clone(), user_id.to_string());
         second.state = TaskState::Processing;
-        db.store_item(second.clone()).await.expect("store second");
+        db.store_item(second.clone()).await.with_context(|| "store second".to_string())?;
 
         let other_payload = IngestionPayload::Text {
             text: "Other".to_string(),
@@ -919,21 +922,22 @@ mod tests {
             user_id: other_user_id.to_string(),
         };
         let other_task = IngestionTask::new(other_payload, other_user_id.to_string());
-        db.store_item(other_task).await.expect("store other");
+        db.store_item(other_task).await.with_context(|| "store other".to_string())?;
 
         let tasks = User::get_all_ingestion_tasks(user_id, &db)
             .await
-            .expect("fetch all tasks");
+            .with_context(|| "fetch all tasks".to_string())?;
 
         assert_eq!(tasks.len(), 2);
-        assert_eq!(tasks[0].id, second.id); // newest first
-        assert_eq!(tasks[1].id, first.id);
+        assert_eq!(tasks.first().map(|t| &t.id), Some(&second.id)); // newest first
+        assert_eq!(tasks.get(1).map(|t| &t.id), Some(&first.id));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_find_by_email() {
+    async fn test_find_by_email() -> anyhow::Result<()> {
         // Setup test database
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
 
         // Create a user
         let email = "find_test@example.com";
@@ -947,28 +951,28 @@ mod tests {
             "system".to_string(),
         )
         .await
-        .expect("Failed to create user");
+        .with_context(|| "Failed to create user".to_string())?;
 
         // Test finding user by email
         let found_user = User::find_by_email(email, &db)
             .await
-            .expect("Error searching for user");
-        assert!(found_user.is_some());
-        let found_user = found_user.unwrap();
+            .with_context(|| "Error searching for user".to_string())?
+            .with_context(|| "expected user to exist".to_string())?;
         assert_eq!(found_user.id, created_user.id);
         assert_eq!(found_user.email, email);
 
         // Test finding non-existent user
         let not_found = User::find_by_email("nonexistent@example.com", &db)
             .await
-            .expect("Error searching for user");
+            .with_context(|| "Error searching for user".to_string())?;
         assert!(not_found.is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_api_key_management() {
+    async fn test_api_key_management() -> anyhow::Result<()> {
         // Setup test database
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
 
         // Create a user
         let email = "apikey_test@example.com";
@@ -982,7 +986,7 @@ mod tests {
             "system".to_string(),
         )
         .await
-        .expect("Failed to create user");
+        .with_context(|| "Failed to create user".to_string())?;
 
         // Initially, user should have no API key
         assert!(user.api_key.is_none());
@@ -990,7 +994,7 @@ mod tests {
         // Generate API key
         let api_key = User::set_api_key(&user.id, &db)
             .await
-            .expect("Failed to set API key");
+            .with_context(|| "Failed to set API key".to_string())?;
         assert!(!api_key.is_empty());
         assert!(api_key.starts_with("sk_"));
 
@@ -998,38 +1002,36 @@ mod tests {
         let updated_user: Option<User> = db
             .get_item(&user.id)
             .await
-            .expect("Failed to retrieve user");
-        assert!(updated_user.is_some());
-        let updated_user = updated_user.unwrap();
+            .with_context(|| "Failed to retrieve user".to_string())?;
+        let updated_user = updated_user.with_context(|| "expected updated user".to_string())?;
         assert_eq!(updated_user.api_key, Some(api_key.clone()));
 
         // Test finding user by API key
         let found_user = User::find_by_api_key(&api_key, &db)
             .await
-            .expect("Error searching by API key");
-        assert!(found_user.is_some());
-        let found_user = found_user.unwrap();
+            .with_context(|| "Error searching by API key".to_string())?
+            .with_context(|| "expected user found by api key".to_string())?;
         assert_eq!(found_user.id, user.id);
 
         // Revoke API key
         User::revoke_api_key(&user.id, &db)
             .await
-            .expect("Failed to revoke API key");
+            .with_context(|| "Failed to revoke API key".to_string())?;
 
         // Verify API key was revoked
         let revoked_user: Option<User> = db
             .get_item(&user.id)
             .await
-            .expect("Failed to retrieve user");
-        assert!(revoked_user.is_some());
-        let revoked_user = revoked_user.unwrap();
+            .with_context(|| "Failed to retrieve user".to_string())?;
+        let revoked_user = revoked_user.with_context(|| "expected revoked user".to_string())?;
         assert!(revoked_user.api_key.is_none());
 
         // Test searching by revoked API key
         let not_found = User::find_by_api_key(&api_key, &db)
             .await
-            .expect("Error searching by API key");
+            .with_context(|| "Error searching by API key".to_string())?;
         assert!(not_found.is_none());
+        Ok(())
     }
 
     #[tokio::test]
@@ -1069,9 +1071,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_password_update() {
+    async fn test_password_update() -> anyhow::Result<()> {
         // Setup test database
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
 
         // Create a user
         let email = "pwd_test@example.com";
@@ -1086,7 +1088,7 @@ mod tests {
             "system".to_string(),
         )
         .await
-        .expect("Failed to create user");
+        .with_context(|| "Failed to create user".to_string())?;
 
         // Authenticate with old password
         let auth_result = User::authenticate(email, old_password, &db).await;
@@ -1095,7 +1097,7 @@ mod tests {
         // Update password
         User::patch_password(email, new_password, &db)
             .await
-            .expect("Failed to update password");
+            .with_context(|| "Failed to update password".to_string())?;
 
         // Old password should no longer work
         let old_auth = User::authenticate(email, old_password, &db).await;
@@ -1104,10 +1106,11 @@ mod tests {
         // New password should work
         let new_auth = User::authenticate(email, new_password, &db).await;
         assert!(new_auth.is_ok());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_validate_timezone() {
+    async fn test_validate_timezone() -> anyhow::Result<()> {
         // Valid timezones should be accepted as-is
         assert_eq!(validate_timezone("America/New_York"), "America/New_York");
         assert_eq!(validate_timezone("Europe/London"), "Europe/London");
@@ -1117,12 +1120,13 @@ mod tests {
         // Invalid timezones should be replaced with UTC
         assert_eq!(validate_timezone("Invalid/Timezone"), "UTC");
         assert_eq!(validate_timezone("Not_Real"), "UTC");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_timezone_update() {
+    async fn test_timezone_update() -> anyhow::Result<()> {
         // Setup test database
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
 
         // Create user with default timezone
         let email = "timezone_test@example.com";
@@ -1134,7 +1138,7 @@ mod tests {
             "system".to_string(),
         )
         .await
-        .expect("Failed to create user");
+        .with_context(|| "Failed to create user".to_string())?;
 
         assert_eq!(user.timezone, "UTC");
 
@@ -1142,58 +1146,61 @@ mod tests {
         let new_timezone = "Europe/Paris";
         User::update_timezone(&user.id, new_timezone, &db)
             .await
-            .expect("Failed to update timezone");
+            .with_context(|| "Failed to update timezone".to_string())?;
 
         // Verify timezone was updated
         let updated_user: Option<User> = db
             .get_item(&user.id)
             .await
-            .expect("Failed to retrieve user");
-        assert!(updated_user.is_some());
-        let updated_user = updated_user.unwrap();
+            .with_context(|| "Failed to retrieve user".to_string())?;
+        let updated_user = updated_user.with_context(|| "expected updated user".to_string())?;
         assert_eq!(updated_user.timezone, new_timezone);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_conversations_order() {
-        let db = setup_test_db().await;
+    async fn test_conversations_order() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "user_order_test";
 
         // Create conversations with varying updated_at timestamps
         let mut conversations = Vec::new();
         for i in 0..5 {
-            let mut conv = Conversation::new(user_id.to_string(), format!("Conv {}", i));
+            let mut conv = Conversation::new(user_id.to_string(), format!("Conv {i}"));
             // Fake updated_at i minutes apart
             conv.created_at = chrono::Utc::now() - chrono::Duration::minutes(i);
             db.store_item(conv.clone())
                 .await
-                .expect("Failed to store conversation");
+                .with_context(|| "Failed to store conversation".to_string())?;
             conversations.push(conv);
         }
 
         // Retrieve via get_user_conversations - should be ordered by updated_at DESC
         let retrieved = User::get_user_conversations(user_id, &db)
             .await
-            .expect("Failed to get conversations");
+            .with_context(|| "Failed to get conversations".to_string())?;
 
         assert_eq!(retrieved.len(), conversations.len());
 
-        for window in retrieved.windows(2) {
-            // Assert each earlier conversation has updated_at >= later conversation
+        for pair in retrieved.windows(2) {
+            let a = pair.first().context("expected first in pair")?;
+            let b = pair.get(1).context("expected second in pair")?;
             assert!(
-                window[0].created_at >= window[1].created_at,
+                a.created_at >= b.created_at,
                 "Conversations not ordered descending by created_at"
             );
         }
 
         // Check first conversation title matches the most recently updated
-        let most_recent = conversations.iter().max_by_key(|c| c.created_at).unwrap();
-        assert_eq!(retrieved[0].id, most_recent.id);
+        let most_recent = conversations.iter().max_by_key(|c| c.created_at).context("expected most recent")?;
+        let r0 = retrieved.first().context("expected first result")?;
+        assert_eq!(r0.id, most_recent.id);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_latest_text_contents_returns_last_five() {
-        let db = setup_test_db().await;
+    async fn test_get_latest_text_contents_returns_last_five() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "latest_text_user";
 
         let mut inserted_ids = Vec::new();
@@ -1201,8 +1208,8 @@ mod tests {
 
         for i in 0..12 {
             let mut item = TextContent::new(
-                format!("Text {}", i),
-                Some(format!("Context {}", i)),
+                format!("Text {i}"),
+                Some(format!("Context {i}")),
                 "Category".to_string(),
                 None,
                 None,
@@ -1215,18 +1222,19 @@ mod tests {
 
             db.store_item(item.clone())
                 .await
-                .expect("Failed to store text content");
+                .with_context(|| "Failed to store text content".to_string())?;
 
             inserted_ids.push(item.id.clone());
         }
 
         let latest = User::get_latest_text_contents(user_id, &db)
             .await
-            .expect("Failed to fetch latest text contents");
+            .with_context(|| "Failed to fetch latest text contents".to_string())?;
 
         assert_eq!(latest.len(), 5, "Expected exactly five items");
 
-        let mut expected_ids = inserted_ids[inserted_ids.len() - 5..].to_vec();
+        let start = inserted_ids.len().saturating_sub(5);
+        let mut expected_ids = inserted_ids.get(start..).unwrap_or_default().to_vec();
         expected_ids.reverse();
 
         let returned_ids: Vec<String> = latest.iter().map(|item| item.id.clone()).collect();
@@ -1235,25 +1243,29 @@ mod tests {
             "Latest items did not match expectation"
         );
 
-        for window in latest.windows(2) {
+        for pair in latest.windows(2) {
+            let a = pair.first().context("expected first in pair")?;
+            let b = pair.get(1).context("expected second in pair")?;
             assert!(
-                window[0].created_at >= window[1].created_at,
+                a.created_at >= b.created_at,
                 "Results are not ordered by created_at descending"
             );
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_validate_theme() {
+    async fn test_validate_theme() -> anyhow::Result<()> {
         assert_eq!(validate_theme("light"), Theme::Light);
         assert_eq!(validate_theme("dark"), Theme::Dark);
         assert_eq!(validate_theme("system"), Theme::System);
         assert_eq!(validate_theme("invalid"), Theme::System);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_theme_update() {
-        let db = setup_test_db().await;
+    async fn test_theme_update() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let email = "theme_test@example.com";
         let user = User::create_new(
             email.to_string(),
@@ -1263,30 +1275,31 @@ mod tests {
             "system".to_string(),
         )
         .await
-        .expect("Failed to create user");
+        .with_context(|| "Failed to create user".to_string())?;
 
         assert_eq!(user.theme, Theme::System);
 
         User::update_theme(&user.id, "dark", &db)
             .await
-            .expect("update theme");
+            .with_context(|| "update theme".to_string())?;
 
         let updated = db
             .get_item::<User>(&user.id)
             .await
-            .expect("get user")
-            .unwrap();
+            .with_context(|| "get user".to_string())?
+            .with_context(|| "expected user".to_string())?;
         assert_eq!(updated.theme, Theme::Dark);
 
         // Invalid theme should default to system (but update_theme calls validate_theme)
         User::update_theme(&user.id, "invalid", &db)
             .await
-            .expect("update theme invalid");
+            .with_context(|| "update theme invalid".to_string())?;
         let updated2 = db
             .get_item::<User>(&user.id)
             .await
-            .expect("get user")
-            .unwrap();
+            .with_context(|| "get user".to_string())?
+            .with_context(|| "expected user".to_string())?;
         assert_eq!(updated2.theme, Theme::System);
+        Ok(())
     }
 }

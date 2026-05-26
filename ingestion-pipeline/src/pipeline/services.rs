@@ -180,7 +180,7 @@ impl PipelineServices for DefaultPipelineServices {
         );
 
         let rerank_lease = match &self.reranker_pool {
-            Some(pool) => Some(pool.checkout().await),
+            Some(pool) => pool.checkout().await,
             None => None,
         };
 

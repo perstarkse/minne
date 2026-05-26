@@ -155,21 +155,20 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn extracts_text_using_memory_storage_backend() {
-        let mut config = AppConfig::default();
-        config.storage = StorageKind::Memory;
+    async fn extracts_text_using_memory_storage_backend() -> anyhow::Result<()> {
+        let config = AppConfig {
+            storage: StorageKind::Memory,
+            ..Default::default()
+        };
 
-        let storage = StorageManager::new(&config)
-            .await
-            .expect("create storage manager");
+        let storage = StorageManager::new(&config).await?;
 
         let location = "user/test/file.txt";
         let contents = b"hello from memory storage";
 
         storage
             .put(location, Bytes::from(contents.as_slice().to_vec()))
-            .await
-            .expect("write object");
+            .await?;
 
         let now = Utc::now();
         let file_info = FileInfo {
@@ -185,16 +184,14 @@ mod tests {
 
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("create surreal memory");
+        let db = SurrealDbClient::memory(namespace, database).await?;
 
         let openai_client = Client::with_config(OpenAIConfig::default());
 
         let text = extract_text_from_file(&file_info, &db, &openai_client, &config, &storage)
-            .await
-            .expect("extract text");
+            .await?;
 
         assert_eq!(text, String::from_utf8_lossy(contents));
+        Ok(())
     }
 }

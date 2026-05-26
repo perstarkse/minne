@@ -861,7 +861,7 @@ mod tests {
         let question = CorpusQuestion {
             question_id: "q1".to_string(),
             paragraph_id: paragraph_one.paragraph_id.clone(),
-            text_content_id: text_content_id,
+            text_content_id,
             question_text: "What is this?".to_string(),
             answers: vec!["Hello".to_string()],
             is_impossible: false,

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::{self, Context};
 use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
@@ -265,16 +266,12 @@ impl PipelineServices for ValidationServices {
     }
 }
 
-async fn setup_db() -> SurrealDbClient {
+async fn setup_db() -> anyhow::Result<SurrealDbClient> {
     let namespace = "pipeline_test";
     let database = Uuid::new_v4().to_string();
-    let db = SurrealDbClient::memory(namespace, &database)
-        .await
-        .expect("Failed to create in-memory SurrealDB");
-    db.apply_migrations()
-        .await
-        .expect("Failed to apply migrations");
-    db
+    let db = SurrealDbClient::memory(namespace, &database).await?;
+    db.apply_migrations().await?;
+    Ok(db)
 }
 
 fn pipeline_config() -> IngestionConfig {
@@ -295,26 +292,28 @@ async fn reserve_task(
     worker_id: &str,
     payload: IngestionPayload,
     user_id: &str,
-) -> IngestionTask {
-    let task = IngestionTask::create_and_add_to_db(payload, user_id.into(), db)
-        .await
-        .expect("task created");
+) -> anyhow::Result<IngestionTask> {
+    let task = IngestionTask::create_and_add_to_db(payload, user_id.into(), db).await?;
     let lease = task.lease_duration();
-    IngestionTask::claim_next_ready(db, worker_id, Utc::now(), lease)
-        .await
-        .expect("claim succeeds")
-        .expect("task claimed")
+    let claimed = IngestionTask::claim_next_ready(db, worker_id, Utc::now(), lease)
+        .await?
+        .context("task claimed")?;
+    Ok(claimed)
 }
 
 #[tokio::test]
-async fn ingestion_pipeline_happy_path_persists_entities() {
-    let db = setup_db().await;
+async fn ingestion_pipeline_happy_path_persists_entities() -> anyhow::Result<()>
+{
+    let db = setup_db().await?;
     let worker_id = "worker-happy";
     let user_id = "user-123";
     let services = Arc::new(MockServices::new(user_id));
-    let pipeline =
-        IngestionPipeline::with_services(Arc::new(db.clone()), pipeline_config(), services.clone())
-            .expect("pipeline");
+    let services_clone: Arc<dyn PipelineServices> = Arc::<MockServices>::clone(&services);
+    let pipeline = IngestionPipeline::with_services(
+        Arc::new(db.clone()),
+        pipeline_config(),
+        services_clone,
+    )?;
 
     let task = reserve_task(
         &db,
@@ -327,30 +326,22 @@ async fn ingestion_pipeline_happy_path_persists_entities() {
         },
         user_id,
     )
-    .await;
+    .await?;
 
-    pipeline
-        .process_task(task.clone())
-        .await
-        .expect("pipeline succeeds");
+    pipeline.process_task(task.clone()).await?;
 
     let stored_task: IngestionTask = db
         .get_item(&task.id)
-        .await
-        .expect("retrieve task")
-        .expect("task present");
+        .await?
+        .context("task present")?;
     assert_eq!(stored_task.state, TaskState::Succeeded);
 
     let stored_entities: Vec<KnowledgeEntity> = db
         .get_all_stored_items::<KnowledgeEntity>()
-        .await
-        .expect("entities stored");
+        .await?;
     assert!(!stored_entities.is_empty(), "entities should be stored");
 
-    let stored_chunks: Vec<TextChunk> = db
-        .get_all_stored_items::<TextChunk>()
-        .await
-        .expect("chunks stored");
+    let stored_chunks: Vec<TextChunk> = db.get_all_stored_items::<TextChunk>().await?;
     assert!(
         !stored_chunks.is_empty(),
         "chunks should be stored for ingestion text"
@@ -362,22 +353,29 @@ async fn ingestion_pipeline_happy_path_persists_entities() {
         "expected at least one chunk embedding call"
     );
     assert_eq!(
-        &call_log[0..4],
-        ["prepare", "retrieve", "enrich", "convert"]
+        call_log.get(0..4),
+        Some(&["prepare", "retrieve", "enrich", "convert"][..])
     );
-    assert!(call_log[4..].iter().all(|entry| *entry == "chunk"));
+    assert!(
+        call_log.get(4..).is_some_and(|tail| tail.iter().all(|entry| *entry == "chunk"))
+    );
+    Ok(())
 }
 
 #[tokio::test]
-async fn ingestion_pipeline_chunk_only_skips_analysis() {
-    let db = setup_db().await;
+async fn ingestion_pipeline_chunk_only_skips_analysis() -> anyhow::Result<()> {
+    let db = setup_db().await?;
     let worker_id = "worker-chunk-only";
     let user_id = "user-999";
     let services = Arc::new(MockServices::new(user_id));
+    let services_clone: Arc<dyn PipelineServices> = Arc::<MockServices>::clone(&services);
     let mut config = pipeline_config();
     config.chunk_only = true;
-    let pipeline = IngestionPipeline::with_services(Arc::new(db.clone()), config, services.clone())
-        .expect("pipeline");
+    let pipeline = IngestionPipeline::with_services(
+        Arc::new(db.clone()),
+        config,
+        services_clone,
+    )?;
 
     let task = reserve_task(
         &db,
@@ -390,17 +388,13 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() {
         },
         user_id,
     )
-    .await;
+    .await?;
 
-    pipeline
-        .process_task(task.clone())
-        .await
-        .expect("pipeline succeeds");
+    pipeline.process_task(task.clone()).await?;
 
     let stored_entities: Vec<KnowledgeEntity> = db
         .get_all_stored_items::<KnowledgeEntity>()
-        .await
-        .expect("entities stored");
+        .await?;
     assert!(
         stored_entities.is_empty(),
         "chunk-only ingestion should not persist entities"
@@ -408,8 +402,7 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() {
     let relationship_count: Option<i64> = db
         .client
         .query("SELECT count() as count FROM relates_to;")
-        .await
-        .expect("query relationships")
+        .await?
         .take::<Option<i64>>(0)
         .unwrap_or_default();
     assert_eq!(
@@ -417,10 +410,7 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() {
         0,
         "chunk-only ingestion should not persist relationships"
     );
-    let stored_chunks: Vec<TextChunk> = db
-        .get_all_stored_items::<TextChunk>()
-        .await
-        .expect("chunks stored");
+    let stored_chunks: Vec<TextChunk> = db.get_all_stored_items::<TextChunk>().await?;
     assert!(
         !stored_chunks.is_empty(),
         "chunk-only ingestion should still persist chunks"
@@ -428,19 +418,19 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() {
 
     let call_log = services.calls.lock().await.clone();
     assert_eq!(call_log, vec!["prepare", "chunk"]);
+    Ok(())
 }
 
 #[tokio::test]
-async fn ingestion_pipeline_failure_marks_retry() {
-    let db = setup_db().await;
+async fn ingestion_pipeline_failure_marks_retry() -> anyhow::Result<()> {
+    let db = setup_db().await?;
     let worker_id = "worker-fail";
     let user_id = "user-456";
     let services = Arc::new(FailingServices {
         inner: MockServices::new(user_id),
     });
     let pipeline =
-        IngestionPipeline::with_services(Arc::new(db.clone()), pipeline_config(), services)
-            .expect("pipeline");
+        IngestionPipeline::with_services(Arc::new(db.clone()), pipeline_config(), services)?;
 
     let task = reserve_task(
         &db,
@@ -453,7 +443,7 @@ async fn ingestion_pipeline_failure_marks_retry() {
         },
         user_id,
     )
-    .await;
+    .await?;
 
     let result = pipeline.process_task(task.clone()).await;
     assert!(
@@ -463,38 +453,38 @@ async fn ingestion_pipeline_failure_marks_retry() {
 
     let stored_task: IngestionTask = db
         .get_item(&task.id)
-        .await
-        .expect("retrieve task")
-        .expect("task present");
+        .await?
+        .context("task present")?;
     assert_eq!(stored_task.state, TaskState::Failed);
     assert!(
         stored_task.scheduled_at > Utc::now() - ChronoDuration::seconds(5),
         "failed task should schedule retry in the future"
     );
+    Ok(())
 }
 
 #[tokio::test]
-async fn ingestion_pipeline_validation_failure_dead_letters_task() {
-    let db = setup_db().await;
+async fn ingestion_pipeline_validation_failure_dead_letters_task(
+) -> anyhow::Result<()> {
+    let db = setup_db().await?;
     let worker_id = "worker-validation";
     let user_id = "user-789";
     let services = Arc::new(ValidationServices);
     let pipeline =
-        IngestionPipeline::with_services(Arc::new(db.clone()), pipeline_config(), services)
-            .expect("pipeline");
+        IngestionPipeline::with_services(Arc::new(db.clone()), pipeline_config(), services)?;
 
     let task = reserve_task(
         &db,
         worker_id,
         IngestionPayload::Text {
             text: "irrelevant".into(),
-            context: "".into(),
+            context: String::new(),
             category: "notes".into(),
             user_id: user_id.into(),
         },
         user_id,
     )
-    .await;
+    .await?;
 
     let result = pipeline.process_task(task.clone()).await;
     assert!(
@@ -504,8 +494,8 @@ async fn ingestion_pipeline_validation_failure_dead_letters_task() {
 
     let stored_task: IngestionTask = db
         .get_item(&task.id)
-        .await
-        .expect("retrieve task")
-        .expect("task present");
+        .await?
+        .context("task present")?;
     assert_eq!(stored_task.state, TaskState::DeadLetter);
+    Ok(())
 }

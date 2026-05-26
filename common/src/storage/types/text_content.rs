@@ -185,10 +185,12 @@ impl TextContent {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{self, Context};
+
     use super::*;
 
     #[tokio::test]
-    async fn test_text_content_creation() {
+    async fn test_text_content_creation() -> anyhow::Result<()> {
         // Test basic object creation
         let text = "Test content text".to_string();
         let context = "Test context".to_string();
@@ -212,10 +214,11 @@ mod tests {
         assert!(text_content.file_info.is_none());
         assert!(text_content.url_info.is_none());
         assert!(!text_content.id.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_text_content_with_url() {
+    async fn test_text_content_with_url() -> anyhow::Result<()> {
         // Test creating with URL
         let text = "Content with URL".to_string();
         let context = "URL context".to_string();
@@ -232,26 +235,27 @@ mod tests {
         });
 
         let text_content = TextContent::new(
-            text.clone(),
-            Some(context.clone()),
-            category.clone(),
+            text,
+            Some(context),
+            category,
             None,
             url_info.clone(),
-            user_id.clone(),
+            user_id,
         );
 
         // Check URL field is set
         assert_eq!(text_content.url_info, url_info);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_text_content_patch() {
+    async fn test_text_content_patch() -> anyhow::Result<()> {
         // Setup in-memory database for testing
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         // Create initial text content
         let initial_text = "Initial text".to_string();
@@ -272,7 +276,7 @@ mod tests {
         let stored: Option<TextContent> = db
             .store_item(text_content.clone())
             .await
-            .expect("Failed to store text content");
+            .with_context(|| "Failed to store text content".to_string())?;
         assert!(stored.is_some());
 
         // New values for patch
@@ -283,31 +287,30 @@ mod tests {
         // Apply the patch
         TextContent::patch(&text_content.id, new_context, new_category, new_text, &db)
             .await
-            .expect("Failed to patch text content");
+            .with_context(|| "Failed to patch text content".to_string())?;
 
         // Retrieve the updated content
         let updated: Option<TextContent> = db
             .get_item(&text_content.id)
             .await
-            .expect("Failed to get updated text content");
-        assert!(updated.is_some());
-
-        let updated_content = updated.unwrap();
+            .with_context(|| "Failed to get updated text content".to_string())?;
+        let updated_content = updated.with_context(|| "expected updated content".to_string())?;
 
         // Verify the updates
         assert_eq!(updated_content.context, Some(new_context.to_string()));
         assert_eq!(updated_content.category, new_category);
         assert_eq!(updated_content.text, new_text);
         assert!(updated_content.updated_at > text_content.updated_at);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_has_other_with_file_detects_shared_usage() {
+    async fn test_has_other_with_file_detects_shared_usage() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("Failed to start in-memory surrealdb");
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
 
         let user_id = "user123".to_string();
         let file_info = FileInfo {
@@ -340,24 +343,25 @@ mod tests {
 
         db.store_item(content_a.clone())
             .await
-            .expect("Failed to store first content");
+            .with_context(|| "Failed to store first content".to_string())?;
         db.store_item(content_b.clone())
             .await
-            .expect("Failed to store second content");
+            .with_context(|| "Failed to store second content".to_string())?;
 
         let has_other = TextContent::has_other_with_file(&file_info.id, &content_a.id, &db)
             .await
-            .expect("Failed to check for shared file usage");
+            .with_context(|| "Failed to check for shared file usage".to_string())?;
         assert!(has_other);
 
         let _removed: Option<TextContent> = db
             .delete_item(&content_b.id)
             .await
-            .expect("Failed to delete second content");
+            .with_context(|| "Failed to delete second content".to_string())?;
 
         let has_other_after = TextContent::has_other_with_file(&file_info.id, &content_a.id, &db)
             .await
-            .expect("Failed to check shared usage after delete");
+            .with_context(|| "Failed to check shared usage after delete".to_string())?;
         assert!(!has_other_after);
+        Ok(())
     }
 }

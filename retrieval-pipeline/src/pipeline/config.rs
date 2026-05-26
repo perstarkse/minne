@@ -1,12 +1,13 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
 use crate::scoring::FusionWeights;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RetrievalStrategy {
     /// Primary hybrid chunk retrieval for search/chat (formerly Revised)
+    #[default]
     Default,
     /// Entity retrieval for suggesting relationships when creating manual entities
     RelationshipSuggestion,
@@ -27,12 +28,6 @@ pub enum SearchTarget {
     /// Return both chunks and entities (default)
     #[default]
     Both,
-}
-
-impl Default for RetrievalStrategy {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 impl std::str::FromStr for RetrievalStrategy {
@@ -70,6 +65,91 @@ impl fmt::Display for RetrievalStrategy {
     }
 }
 
+/// Two-variant flag that serializes as a bool for backward compatibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BoolFlag {
+    #[default]
+    Disabled,
+    Enabled,
+}
+
+impl BoolFlag {
+    pub const fn as_bool(self) -> bool {
+        matches!(self, BoolFlag::Enabled)
+    }
+}
+
+impl From<bool> for BoolFlag {
+    fn from(value: bool) -> Self {
+        if value {
+            BoolFlag::Enabled
+        } else {
+            BoolFlag::Disabled
+        }
+    }
+}
+
+impl Serialize for BoolFlag {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bool(self.as_bool())
+    }
+}
+
+impl<'de> Deserialize<'de> for BoolFlag {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bool::deserialize(deserializer).map(|b| {
+            if b {
+                BoolFlag::Enabled
+            } else {
+                BoolFlag::Disabled
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct RetrievalTuningFlags {
+    pub rerank_scores_only: BoolFlag,
+    pub normalize_vector_scores: BoolFlag,
+    pub normalize_fts_scores: BoolFlag,
+    pub chunk_rrf_use_vector: BoolFlag,
+    pub chunk_rrf_use_fts: BoolFlag,
+}
+
+impl RetrievalTuningFlags {
+    pub const fn rerank_scores_only(&self) -> bool {
+        self.rerank_scores_only.as_bool()
+    }
+
+    pub const fn normalize_vector_scores(&self) -> bool {
+        self.normalize_vector_scores.as_bool()
+    }
+
+    pub const fn normalize_fts_scores(&self) -> bool {
+        self.normalize_fts_scores.as_bool()
+    }
+
+    pub const fn chunk_rrf_use_vector(&self) -> bool {
+        self.chunk_rrf_use_vector.as_bool()
+    }
+
+    pub const fn chunk_rrf_use_fts(&self) -> bool {
+        self.chunk_rrf_use_fts.as_bool()
+    }
+}
+
+impl Default for RetrievalTuningFlags {
+    fn default() -> Self {
+        Self {
+            rerank_scores_only: BoolFlag::Disabled,
+            normalize_vector_scores: BoolFlag::Disabled,
+            normalize_fts_scores: BoolFlag::Enabled,
+            chunk_rrf_use_vector: BoolFlag::Enabled,
+            chunk_rrf_use_fts: BoolFlag::Enabled,
+        }
+    }
+}
+
 /// Tunable parameters that govern each retrieval stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalTuning {
@@ -89,15 +169,11 @@ pub struct RetrievalTuning {
     pub graph_seed_min_score: f32,
     pub graph_vector_inheritance: f32,
     pub rerank_blend_weight: f32,
-    pub rerank_scores_only: bool,
+    pub flags: RetrievalTuningFlags,
     pub rerank_keep_top: usize,
     pub chunk_result_cap: usize,
     /// Optional fusion weights for hybrid search. If None, uses default weights.
     pub fusion_weights: Option<FusionWeights>,
-    /// Normalize vector similarity scores before fusion (default: true)
-    pub normalize_vector_scores: bool,
-    /// Normalize FTS (BM25) scores before fusion (default: true)
-    pub normalize_fts_scores: bool,
     /// Reciprocal rank fusion k value for chunk merging in Revised strategy.
     #[serde(default = "default_chunk_rrf_k")]
     pub chunk_rrf_k: f32,
@@ -107,12 +183,6 @@ pub struct RetrievalTuning {
     /// Weight applied to chunk FTS ranks in RRF.
     #[serde(default = "default_chunk_rrf_fts_weight")]
     pub chunk_rrf_fts_weight: f32,
-    /// Whether to include vector rankings in RRF.
-    #[serde(default = "default_chunk_rrf_use_vector")]
-    pub chunk_rrf_use_vector: bool,
-    /// Whether to include chunk FTS rankings in RRF.
-    #[serde(default = "default_chunk_rrf_use_fts")]
-    pub chunk_rrf_use_fts: bool,
 }
 
 impl Default for RetrievalTuning {
@@ -134,26 +204,19 @@ impl Default for RetrievalTuning {
             graph_seed_min_score: 0.4,
             graph_vector_inheritance: 0.6,
             rerank_blend_weight: 0.65,
-            rerank_scores_only: false,
+            flags: RetrievalTuningFlags::default(),
             rerank_keep_top: 8,
             chunk_result_cap: 5,
             fusion_weights: None,
-            // Vector scores (cosine similarity) are already in [0,1] range
-            // Normalization only helps when there's significant variation
-            normalize_vector_scores: false,
-            // FTS scores (BM25) are unbounded, normalization helps more
-            normalize_fts_scores: true,
             chunk_rrf_k: default_chunk_rrf_k(),
             chunk_rrf_vector_weight: default_chunk_rrf_vector_weight(),
             chunk_rrf_fts_weight: default_chunk_rrf_fts_weight(),
-            chunk_rrf_use_vector: default_chunk_rrf_use_vector(),
-            chunk_rrf_use_fts: default_chunk_rrf_use_fts(),
         }
     }
 }
 
 /// Wrapper containing tuning plus future flags for per-request overrides.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RetrievalConfig {
     pub strategy: RetrievalStrategy,
     pub tuning: RetrievalTuning,
@@ -211,16 +274,6 @@ impl RetrievalConfig {
     }
 }
 
-impl Default for RetrievalConfig {
-    fn default() -> Self {
-        Self {
-            strategy: RetrievalStrategy::default(),
-            tuning: RetrievalTuning::default(),
-            search_target: SearchTarget::default(),
-        }
-    }
-}
-
 const fn default_chunk_rrf_k() -> f32 {
     60.0
 }
@@ -233,10 +286,4 @@ const fn default_chunk_rrf_fts_weight() -> f32 {
     1.0
 }
 
-const fn default_chunk_rrf_use_vector() -> bool {
-    true
-}
 
-const fn default_chunk_rrf_use_fts() -> bool {
-    true
-}

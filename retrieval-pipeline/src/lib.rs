@@ -42,9 +42,13 @@ impl SearchResult {
 }
 
 pub use pipeline::{
-    retrieved_entities_to_json, PipelineDiagnostics, PipelineStageTimings, RetrievalConfig,
-    RetrievalStrategy, RetrievalTuning, SearchTarget,
+    retrieved_entities_to_json, Diagnostics, StageTimings, RetrievalConfig,
+    RetrievalStrategy, RetrievalTuning, RetrievalTuningFlags, SearchTarget,
 };
+
+// Backward-compatible type aliases for external consumers
+pub type PipelineDiagnostics = Diagnostics;
+pub type PipelineStageTimings = StageTimings;
 
 // Captures a supporting chunk plus its fused retrieval score for downstream prompts.
 #[derive(Debug, Clone)]
@@ -61,7 +65,7 @@ pub struct RetrievedEntity {
     pub chunks: Vec<RetrievedChunk>,
 }
 
-/// Primary orchestrator for the process of retrieving KnowledgeEntitities related to a input_text
+/// Primary orchestrator for the process of retrieving `KnowledgeEntity` values related to an `input_text`
 #[instrument(skip_all, fields(user_id))]
 pub async fn retrieve_entities(
     db_client: &SurrealDbClient,
@@ -72,7 +76,7 @@ pub async fn retrieve_entities(
     config: RetrievalConfig,
     reranker: Option<RerankerLease>,
 ) -> Result<StrategyOutput, AppError> {
-    pipeline::run_pipeline(
+    let params = pipeline::StrategyParams {
         db_client,
         openai_client,
         embedding_provider,
@@ -80,17 +84,16 @@ pub async fn retrieve_entities(
         user_id,
         config,
         reranker,
-    )
-    .await
+    };
+    pipeline::execute(params).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::{self};
     use async_openai::Client;
-    use common::storage::indexes::ensure_runtime_indexes;
-    use common::storage::types::text_chunk::TextChunk;
-    use pipeline::{RetrievalConfig, RetrievalStrategy};
+    use common::storage::indexes::ensure_runtime;
     use uuid::Uuid;
 
     fn test_embedding() -> Vec<f32> {
@@ -105,27 +108,21 @@ mod tests {
         vec![0.2, 0.8, 0.0]
     }
 
-    async fn setup_test_db() -> SurrealDbClient {
+    async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = SurrealDbClient::memory(namespace, database).await?;
 
-        db.apply_migrations()
-            .await
-            .expect("Failed to apply migrations");
+        db.apply_migrations().await?;
 
-        ensure_runtime_indexes(&db, 3)
-            .await
-            .expect("failed to build runtime indexes");
+        ensure_runtime(&db, 3).await?;
 
-        db
+        Ok(db)
     }
 
     #[tokio::test]
-    async fn test_default_strategy_retrieves_chunks() {
-        let db = setup_test_db().await;
+    async fn test_default_strategy_retrieves_chunks() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "test_user";
         let chunk = TextChunk::new(
             "source_1".into(),
@@ -133,39 +130,38 @@ mod tests {
             user_id.into(),
         );
 
-        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db)
-            .await
-            .expect("Failed to store chunk");
+        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db).await?;
 
         let openai_client = Client::new();
-        let results = pipeline::run_pipeline_with_embedding(
-            &db,
-            &openai_client,
-            None,
-            test_embedding(),
-            "Rust concurrency async tasks",
+        let params = pipeline::StrategyParams {
+            db_client: &db,
+            openai_client: &openai_client,
+            embedding_provider: None,
+            input_text: "Rust concurrency async tasks",
             user_id,
-            RetrievalConfig::default(),
-            None,
-        )
-        .await
-        .expect("Default strategy retrieval failed");
+            config: RetrievalConfig::default(),
+            reranker: None,
+        };
+        let results = pipeline::run_pipeline_with_embedding(params, test_embedding())
+            .await?;
 
         let chunks = match results {
             StrategyOutput::Chunks(items) => items,
-            other => panic!("expected chunk results, got {:?}", other),
+            other => anyhow::bail!("expected chunk results, got {other:?}"),
         };
 
         assert!(!chunks.is_empty(), "Expected at least one retrieval result");
         assert!(
-            chunks[0].chunk.chunk.contains("Tokio"),
+            chunks.first().is_some_and(|c| c.chunk.chunk.contains("Tokio")),
             "Expected chunk about Tokio"
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_default_strategy_returns_chunks_from_multiple_sources() {
-        let db = setup_test_db().await;
+    async fn test_default_strategy_returns_chunks_from_multiple_sources(
+    ) -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "multi_source_user";
 
         let primary_chunk = TextChunk::new(
@@ -179,30 +175,25 @@ mod tests {
             user_id.into(),
         );
 
-        TextChunk::store_with_embedding(primary_chunk, chunk_embedding_primary(), &db)
-            .await
-            .expect("Failed to store primary chunk");
-        TextChunk::store_with_embedding(secondary_chunk, chunk_embedding_secondary(), &db)
-            .await
-            .expect("Failed to store secondary chunk");
+        TextChunk::store_with_embedding(primary_chunk, chunk_embedding_primary(), &db).await?;
+        TextChunk::store_with_embedding(secondary_chunk, chunk_embedding_secondary(), &db).await?;
 
         let openai_client = Client::new();
-        let results = pipeline::run_pipeline_with_embedding(
-            &db,
-            &openai_client,
-            None,
-            test_embedding(),
-            "Rust concurrency async tasks",
+        let params = pipeline::StrategyParams {
+            db_client: &db,
+            openai_client: &openai_client,
+            embedding_provider: None,
+            input_text: "Rust concurrency async tasks",
             user_id,
-            RetrievalConfig::default(),
-            None,
-        )
-        .await
-        .expect("Default strategy retrieval failed");
+            config: RetrievalConfig::default(),
+            reranker: None,
+        };
+        let results = pipeline::run_pipeline_with_embedding(params, test_embedding())
+            .await?;
 
         let chunks = match results {
             StrategyOutput::Chunks(items) => items,
-            other => panic!("expected chunk results, got {:?}", other),
+            other => anyhow::bail!("expected chunk results, got {other:?}"),
         };
 
         assert!(chunks.len() >= 2, "Expected chunks from multiple sources");
@@ -216,11 +207,12 @@ mod tests {
                 .any(|c| c.chunk.source_id == "secondary_source"),
             "Should include secondary source chunk"
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_revised_strategy_returns_chunks() {
-        let db = setup_test_db().await;
+    async fn test_revised_strategy_returns_chunks() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "chunk_user";
         let chunk_one = TextChunk::new(
             "src_alpha".into(),
@@ -233,31 +225,26 @@ mod tests {
             user_id.into(),
         );
 
-        TextChunk::store_with_embedding(chunk_one.clone(), chunk_embedding_primary(), &db)
-            .await
-            .expect("Failed to store chunk one");
-        TextChunk::store_with_embedding(chunk_two.clone(), chunk_embedding_secondary(), &db)
-            .await
-            .expect("Failed to store chunk two");
+        TextChunk::store_with_embedding(chunk_one.clone(), chunk_embedding_primary(), &db).await?;
+        TextChunk::store_with_embedding(chunk_two.clone(), chunk_embedding_secondary(), &db).await?;
 
         let config = RetrievalConfig::with_strategy(RetrievalStrategy::Default);
         let openai_client = Client::new();
-        let results = pipeline::run_pipeline_with_embedding(
-            &db,
-            &openai_client,
-            None,
-            test_embedding(),
-            "tokio runtime worker behavior",
+        let params = pipeline::StrategyParams {
+            db_client: &db,
+            openai_client: &openai_client,
+            embedding_provider: None,
+            input_text: "tokio runtime worker behavior",
             user_id,
             config,
-            None,
-        )
-        .await
-        .expect("Revised retrieval failed");
+            reranker: None,
+        };
+        let results = pipeline::run_pipeline_with_embedding(params, test_embedding())
+            .await?;
 
         let chunks = match results {
             StrategyOutput::Chunks(items) => items,
-            other => panic!("expected chunk output, got {:?}", other),
+            other => anyhow::bail!("expected chunk results, got {other:?}"),
         };
 
         assert!(
@@ -270,11 +257,12 @@ mod tests {
                 .any(|entry| entry.chunk.chunk.contains("Tokio")),
             "Chunk results should contain relevant snippets"
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_search_strategy_returns_search_result() {
-        let db = setup_test_db().await;
+    async fn test_search_strategy_returns_search_result() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
         let user_id = "search_user";
         let chunk = TextChunk::new(
             "search_src".into(),
@@ -282,33 +270,24 @@ mod tests {
             user_id.into(),
         );
 
-        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db)
-            .await
-            .expect("Failed to store chunk");
+        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db).await?;
 
         let config = RetrievalConfig::for_search(pipeline::SearchTarget::Both);
         let openai_client = Client::new();
-        let results = pipeline::run_pipeline_with_embedding(
-            &db,
-            &openai_client,
-            None,
-            test_embedding(),
-            "async rust programming",
+        let params = pipeline::StrategyParams {
+            db_client: &db,
+            openai_client: &openai_client,
+            embedding_provider: None,
+            input_text: "async rust programming",
             user_id,
             config,
-            None,
-        )
-        .await
-        .expect("Search strategy retrieval failed");
+            reranker: None,
+        };
+        let results = pipeline::run_pipeline_with_embedding(params, test_embedding())
+            .await?;
 
-        assert!(
-            matches!(results, StrategyOutput::Search(_)),
-            "expected Search output, got {:?}",
-            results
-        );
-        let search_result = match results {
-            StrategyOutput::Search(sr) => sr,
-            _ => unreachable!(),
+        let StrategyOutput::Search(search_result) = results else {
+            anyhow::bail!("expected Search output");
         };
 
         // Should return chunks (entities may be empty if none stored)
@@ -323,5 +302,6 @@ mod tests {
                 .any(|c| c.chunk.chunk.contains("Tokio")),
             "Search results should contain relevant chunks"
         );
+        Ok(())
     }
 }

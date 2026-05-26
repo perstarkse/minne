@@ -39,7 +39,7 @@ use url::form_urlencoded;
 
 const KNOWLEDGE_ENTITIES_PER_PAGE: usize = 12;
 const RELATIONSHIP_TYPE_OPTIONS: &[&str] = &["RelatedTo", "RelevantTo", "SimilarTo", "References"];
-const DEFAULT_RELATIONSHIP_TYPE: &str = RELATIONSHIP_TYPE_OPTIONS[0];
+const DEFAULT_RELATIONSHIP_TYPE: &str = "RelatedTo";
 const MAX_RELATIONSHIP_SUGGESTIONS: usize = 10;
 const SUGGESTION_MIN_SCORE: f32 = 0.5;
 
@@ -61,15 +61,15 @@ fn canonicalize_relationship_type(value: &str) -> String {
 
     let key: String = trimmed
         .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .flat_map(|c| c.to_lowercase())
+        .filter(char::is_ascii_alphanumeric)
+        .flat_map(char::to_lowercase)
         .collect();
 
     for option in RELATIONSHIP_TYPE_OPTIONS {
         let option_key: String = option
             .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .flat_map(|c| c.to_lowercase())
+            .filter(char::is_ascii_alphanumeric)
+            .flat_map(char::to_lowercase)
             .collect();
         if option_key == key {
             return (*option).to_string();
@@ -141,7 +141,7 @@ pub async fn show_new_knowledge_entity_form(
 ) -> Result<impl IntoResponse, HtmlError> {
     let entity_types: Vec<String> = KnowledgeEntityType::variants()
         .iter()
-        .map(|&s| s.to_owned())
+        .map(ToString::to_string)
         .collect();
 
     let existing_entities = User::get_knowledge_entities(&user.id, &state.db).await?;
@@ -278,7 +278,7 @@ pub async fn suggest_knowledge_relationships(
     if !query_parts.is_empty() {
         let query = query_parts.join(" ");
         let rerank_lease = match state.reranker_pool.as_ref() {
-            Some(pool) => Some(pool.checkout().await),
+            Some(pool) => pool.checkout().await,
             None => None,
         };
 
@@ -406,9 +406,10 @@ fn build_relationship_table_data(
         .map(|relationship| {
             let relationship_type_label =
                 canonicalize_relationship_type(&relationship.metadata.relationship_type);
-            *frequency
+            let count = frequency
                 .entry(relationship_type_label.clone())
-                .or_insert(0) += 1;
+                .or_insert(0);
+            *count = count.saturating_add(1);
             RelationshipTableRow {
                 relationship,
                 relationship_type_label,
@@ -417,9 +418,7 @@ fn build_relationship_table_data(
         .collect();
     let default_relationship_type = frequency
         .into_iter()
-        .max_by_key(|(_, count)| *count)
-        .map(|(label, _)| label)
-        .unwrap_or_else(|| DEFAULT_RELATIONSHIP_TYPE.to_string());
+        .max_by_key(|(_, count)| *count).map_or_else(|| DEFAULT_RELATIONSHIP_TYPE.to_string(), |(label, _)| label);
 
     RelationshipTableData {
         entities,
@@ -800,8 +799,10 @@ pub async fn get_knowledge_graph_json(
     for rel in &relationships {
         if entity_ids.contains(&rel.in_) && entity_ids.contains(&rel.out) {
             // undirected counting for degree
-            *degree_count.entry(rel.in_.clone()).or_insert(0) += 1;
-            *degree_count.entry(rel.out.clone()).or_insert(0) += 1;
+            let count = degree_count.entry(rel.in_.clone()).or_insert(0);
+            *count = count.saturating_add(1);
+            let count = degree_count.entry(rel.out.clone()).or_insert(0);
+            *count = count.saturating_add(1);
             links.push(GraphLink {
                 source: rel.out.clone(),
                 target: rel.in_.clone(),
@@ -836,11 +837,11 @@ fn normalize_filter(input: Option<String>) -> Option<String> {
 
 fn trim_matching_quotes(value: &str) -> &str {
     let bytes = value.as_bytes();
-    if bytes.len() >= 2 {
-        let first = bytes[0];
-        let last = bytes[bytes.len() - 1];
-        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
-            return &value[1..value.len() - 1];
+    if let (Some(&first), Some(&last)) = (bytes.first(), bytes.last()) {
+        if bytes.len() >= 2
+            && ((first == b'"' && last == b'"') || (first == b'\'' && last == b'\''))
+        {
+            return &value[1..value.len().saturating_sub(1)];
         }
     }
     value
@@ -860,7 +861,7 @@ pub async fn show_edit_knowledge_entity_form(
     // Get entity types
     let entity_types: Vec<String> = KnowledgeEntityType::variants()
         .iter()
-        .map(|&s| s.to_owned())
+        .map(ToString::to_string)
         .collect();
 
     // Get the entity and validate ownership

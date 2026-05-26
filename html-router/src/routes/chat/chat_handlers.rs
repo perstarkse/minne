@@ -49,6 +49,8 @@ pub struct ChatPageData {
     conversation: Option<Conversation>,
 }
 
+/// # Panics
+/// Panics if the HX-Push header value cannot be parsed.
 pub async fn show_initialized_chat(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
@@ -57,14 +59,14 @@ pub async fn show_initialized_chat(
     let conversation = Conversation::new(user.id.clone(), "Test".to_owned());
 
     let user_message = Message::new(
-        conversation.id.to_string(),
+        conversation.id.clone(),
         MessageRole::User,
         form.user_query,
         None,
     );
 
     let ai_message = Message::new(
-        conversation.id.to_string(),
+        conversation.id.clone(),
         MessageRole::AI,
         form.llm_response,
         Some(form.references),
@@ -86,10 +88,9 @@ pub async fn show_initialized_chat(
     )
     .into_response();
 
-    response.headers_mut().insert(
-        "HX-Push",
-        HeaderValue::from_str(&format!("/chat/{}", conversation.id)).unwrap(),
-    );
+    if let Ok(header_value) = HeaderValue::from_str(&format!("/chat/{}", conversation.id)) {
+        response.headers_mut().insert("HX-Push", header_value);
+    }
 
     Ok(response)
 }
@@ -130,12 +131,19 @@ pub async fn show_existing_chat(
     ))
 }
 
+/// # Panics
+/// Panics if the HX-Push header value cannot be parsed.
 pub async fn new_user_message(
     Path(conversation_id): Path<String>,
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Form(form): Form<NewMessageForm>,
 ) -> Result<impl IntoResponse, HtmlError> {
+    #[derive(Serialize)]
+    struct SSEResponseInitData {
+        user_message: Message,
+    }
+
     let conversation: Conversation = state
         .db
         .get_item(&conversation_id)
@@ -150,33 +158,34 @@ pub async fn new_user_message(
 
     state.db.store_item(user_message.clone()).await?;
 
-    #[derive(Serialize)]
-    struct SSEResponseInitData {
-        user_message: Message,
-    }
-
     let mut response = TemplateResponse::new_template(
         "chat/streaming_response.html",
         SSEResponseInitData { user_message },
     )
     .into_response();
 
-    response.headers_mut().insert(
-        "HX-Push",
-        HeaderValue::from_str(&format!("/chat/{}", conversation.id)).unwrap(),
-    );
+    if let Ok(header_value) = HeaderValue::from_str(&format!("/chat/{}", conversation.id)) {
+        response.headers_mut().insert("HX-Push", header_value);
+    }
 
     Ok(response)
 }
 
+/// # Panics
+/// Panics if the HX-Push header value cannot be parsed.
 pub async fn new_chat_user_message(
     State(state): State<HtmlState>,
     auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
     Form(form): Form<NewMessageForm>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user = match auth.current_user {
-        Some(user) => user,
-        None => return Ok(Redirect::to("/").into_response()),
+    #[derive(Serialize)]
+    struct SSEResponseInitData {
+        user_message: Message,
+        conversation: Conversation,
+    }
+
+    let Some(user) = auth.current_user else {
+        return Ok(Redirect::to("/").into_response());
     };
 
     let conversation = Conversation::new(user.id.clone(), "New chat".to_string());
@@ -191,11 +200,6 @@ pub async fn new_chat_user_message(
     state.db.store_item(user_message.clone()).await?;
     state.invalidate_conversation_archive_cache(&user.id).await;
 
-    #[derive(Serialize)]
-    struct SSEResponseInitData {
-        user_message: Message,
-        conversation: Conversation,
-    }
     let mut response = TemplateResponse::new_template(
         "chat/new_chat_first_response.html",
         SSEResponseInitData {
@@ -205,10 +209,9 @@ pub async fn new_chat_user_message(
     )
     .into_response();
 
-    response.headers_mut().insert(
-        "HX-Push",
-        HeaderValue::from_str(&format!("/chat/{}", conversation.id)).unwrap(),
-    );
+    if let Ok(header_value) = HeaderValue::from_str(&format!("/chat/{}", conversation.id)) {
+        response.headers_mut().insert("HX-Push", header_value);
+    }
 
     Ok(response.into_response())
 }

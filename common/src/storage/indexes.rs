@@ -159,23 +159,23 @@ impl FtsIndexSpec {
 
 /// Build runtime Surreal indexes (FTS + HNSW) using concurrent creation with readiness polling.
 /// Idempotent: safe to call multiple times and will overwrite HNSW definitions when the dimension changes.
-pub async fn ensure_runtime_indexes(
+pub async fn ensure_runtime(
     db: &SurrealDbClient,
     embedding_dimension: usize,
 ) -> Result<(), AppError> {
-    ensure_runtime_indexes_inner(db, embedding_dimension)
+    ensure_runtime_inner(db, embedding_dimension)
         .await
         .map_err(|err| AppError::InternalError(err.to_string()))
 }
 
 /// Rebuild known FTS and HNSW indexes, skipping any that are not yet defined.
-pub async fn rebuild_indexes(db: &SurrealDbClient) -> Result<(), AppError> {
-    rebuild_indexes_inner(db)
+pub async fn rebuild(db: &SurrealDbClient) -> Result<(), AppError> {
+    rebuild_inner(db)
         .await
         .map_err(|err| AppError::InternalError(err.to_string()))
 }
 
-async fn ensure_runtime_indexes_inner(
+async fn ensure_runtime_inner(
     db: &SurrealDbClient,
     embedding_dimension: usize,
 ) -> Result<()> {
@@ -262,9 +262,8 @@ async fn get_index_status(db: &SurrealDbClient, index_name: &str, table: &str) -
         .context("checking index status")?;
     let info: Option<Value> = info_res.take(0).context("failed to take info result")?;
 
-    let info = match info {
-        Some(i) => i,
-        None => return Ok("unknown".to_string()),
+    let Some(info) = info else {
+        return Ok("unknown".to_string());
     };
 
     let building = info.get("building");
@@ -277,7 +276,7 @@ async fn get_index_status(db: &SurrealDbClient, index_name: &str, table: &str) -
     Ok(status)
 }
 
-async fn rebuild_indexes_inner(db: &SurrealDbClient) -> Result<()> {
+async fn rebuild_inner(db: &SurrealDbClient) -> Result<()> {
     debug!("Rebuilding indexes with concurrent definitions");
     create_fts_analyzer(db).await?;
 
@@ -385,10 +384,9 @@ async fn create_fts_analyzer(db: &SurrealDbClient) -> Result<()> {
     // is unavailable in the running Surreal build. Use IF NOT EXISTS to avoid clobbering
     // an existing analyzer definition.
     let snowball_query = format!(
-        "DEFINE ANALYZER IF NOT EXISTS {analyzer}
+        "DEFINE ANALYZER IF NOT EXISTS {FTS_ANALYZER_NAME}
             TOKENIZERS class
-            FILTERS lowercase, ascii, snowball(english);",
-        analyzer = FTS_ANALYZER_NAME
+            FILTERS lowercase, ascii, snowball(english);"
     );
 
     match db.client.query(snowball_query).await {
@@ -410,10 +408,9 @@ async fn create_fts_analyzer(db: &SurrealDbClient) -> Result<()> {
     }
 
     let fallback_query = format!(
-        "DEFINE ANALYZER IF NOT EXISTS {analyzer}
+        "DEFINE ANALYZER IF NOT EXISTS {FTS_ANALYZER_NAME}
             TOKENIZERS class
-            FILTERS lowercase, ascii;",
-        analyzer = FTS_ANALYZER_NAME
+            FILTERS lowercase, ascii;"
     );
 
     let res = db
@@ -446,6 +443,7 @@ async fn create_index_with_polling(
     table: &str,
     progress_table: Option<&str>,
 ) -> Result<()> {
+    const MAX_ATTEMPTS: usize = 3;
     let expected_total = match progress_table {
         Some(table) => Some(count_table_rows(db, table).await.with_context(|| {
             format!("counting rows in {table} for index {index_name} progress")
@@ -453,10 +451,9 @@ async fn create_index_with_polling(
         None => None,
     };
 
-    let mut attempts = 0;
-    const MAX_ATTEMPTS: usize = 3;
+    let mut attempts: usize = 0;
     loop {
-        attempts += 1;
+        attempts = attempts.saturating_add(1);
         let res = db
             .client
             .query(definition.clone())
@@ -527,8 +524,8 @@ async fn poll_index_build_status(
             break;
         };
 
-        match snapshot.progress_pct {
-            Some(pct) => debug!(
+        if let Some(pct) = snapshot.progress_pct {
+            debug!(
                 index = %index_name,
                 table = %table,
                 status = snapshot.status,
@@ -539,8 +536,9 @@ async fn poll_index_build_status(
                 total = snapshot.total_rows,
                 progress_pct = format_args!("{pct:.1}"),
                 "Index build status"
-            ),
-            None => debug!(
+            );
+        } else {
+            debug!(
                 index = %index_name,
                 table = %table,
                 status = snapshot.status,
@@ -549,7 +547,7 @@ async fn poll_index_build_status(
                 updated = snapshot.updated,
                 processed = snapshot.processed,
                 "Index build status"
-            ),
+            );
         }
 
         if snapshot.is_ready() {
@@ -611,17 +609,17 @@ fn parse_index_build_info(
 
     let initial = building
         .and_then(|b| b.get("initial"))
-        .and_then(|v| v.as_u64())
+        .and_then(serde_json::Value::as_u64)
         .unwrap_or(0);
 
     let pending = building
         .and_then(|b| b.get("pending"))
-        .and_then(|v| v.as_u64())
+        .and_then(serde_json::Value::as_u64)
         .unwrap_or(0);
 
     let updated = building
         .and_then(|b| b.get("updated"))
-        .and_then(|v| v.as_u64())
+        .and_then(serde_json::Value::as_u64)
         .unwrap_or(0);
 
     // `initial` is the number of rows seen when the build started; `updated` accounts for later writes.
@@ -631,7 +629,7 @@ fn parse_index_build_info(
         if total == 0 {
             0.0
         } else {
-            ((processed as f64 / total as f64).min(1.0)) * 100.0
+            ((f64::from(u32::try_from(processed).unwrap_or(u32::MAX)) / f64::from(u32::try_from(total).unwrap_or(1))).min(1.0)) * 100.0
         }
     });
 
@@ -673,7 +671,7 @@ async fn table_index_definitions(
         .client
         .query(info_query)
         .await
-        .with_context(|| format!("fetching table info for {}", table))?;
+        .with_context(|| format!("fetching table info for {table}"))?;
 
     let info: surrealdb::Value = response
         .take(0)
@@ -700,12 +698,15 @@ async fn index_exists(db: &SurrealDbClient, table: &str, index_name: &str) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use anyhow::{self, Context};
+    use crate::storage::db::SurrealDbClient;
     use serde_json::json;
     use uuid::Uuid;
 
+    use super::*;
+
     #[test]
-    fn parse_index_build_info_reports_progress() {
+    fn parse_index_build_info_reports_progress() -> anyhow::Result<()> {
         let info = json!({
             "building": {
                 "initial": 56894,
@@ -715,7 +716,8 @@ mod tests {
             }
         });
 
-        let snapshot = parse_index_build_info(Some(info), Some(61081)).expect("snapshot");
+        let snapshot = parse_index_build_info(Some(info), Some(61081))
+            .context("snapshot")?;
         assert_eq!(
             snapshot,
             IndexBuildSnapshot {
@@ -729,16 +731,19 @@ mod tests {
             }
         );
         assert!(!snapshot.is_ready());
+        Ok(())
     }
 
     #[test]
-    fn parse_index_build_info_defaults_to_ready_when_no_building_block() {
+    fn parse_index_build_info_defaults_to_ready_when_no_building_block() -> anyhow::Result<()> {
         // Surreal returns `{}` when the index exists but isn't building.
         let info = json!({});
-        let snapshot = parse_index_build_info(Some(info), Some(10)).expect("snapshot");
+        let snapshot = parse_index_build_info(Some(info), Some(10))
+            .context("snapshot")?;
         assert!(snapshot.is_ready());
         assert_eq!(snapshot.processed, 0);
         assert_eq!(snapshot.progress_pct, Some(0.0));
+        Ok(())
     }
 
     #[test]
@@ -748,48 +753,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ensure_runtime_indexes_is_idempotent() {
+    async fn ensure_runtime_is_idempotent() -> anyhow::Result<()> {
         let namespace = "indexes_ns";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("in-memory db");
+            .context("in-memory db")?;
 
         db.apply_migrations()
             .await
-            .expect("migrations should succeed");
+            .context("migrations should succeed")?;
 
-        // First run creates everything
-        ensure_runtime_indexes(&db, 1536)
-            .await
-            .expect("initial index creation");
-
-        // Second run should be a no-op and still succeed
-        ensure_runtime_indexes(&db, 1536)
-            .await
-            .expect("second index creation");
+        ensure_runtime(&db, 1536).await
+            .context("first call should succeed")?;
+        ensure_runtime(&db, 1536).await
+            .context("second index creation")?;
+        Ok(())
     }
 
     #[tokio::test]
-    async fn ensure_hnsw_index_overwrites_dimension() {
+    async fn ensure_hnsw_index_overwrites_dimension() -> anyhow::Result<()> {
         let namespace = "indexes_dim";
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .expect("in-memory db");
+            .context("in-memory db")?;
 
         db.apply_migrations()
             .await
-            .expect("migrations should succeed");
+            .context("migrations should succeed")?;
 
-        // Create initial index with default dimension
-        ensure_runtime_indexes(&db, 1536)
-            .await
-            .expect("initial index creation");
-
-        // Change dimension and ensure overwrite path is exercised
-        ensure_runtime_indexes(&db, 128)
-            .await
-            .expect("overwritten index creation");
+        ensure_runtime(&db, 1536).await
+            .context("initial index creation")?;
+        ensure_runtime(&db, 128).await
+            .context("overwritten index creation")?;
+        Ok(())
     }
 }

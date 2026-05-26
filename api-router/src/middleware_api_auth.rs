@@ -6,19 +6,19 @@ use axum::{
 
 use common::storage::types::user::User;
 
-use crate::{api_state::ApiState, error::ApiError};
+use crate::{api_state::ApiState, error::ApiErr};
 
 pub async fn api_auth(
     State(state): State<ApiState>,
     mut request: Request,
     next: Next,
-) -> Result<Response, ApiError> {
+) -> Result<Response, ApiErr> {
     let api_key = extract_api_key(&request)
-        .ok_or_else(|| ApiError::Unauthorized("You have to be authenticated".to_string()))?;
+        .ok_or_else(|| ApiErr::Unauthorized("You have to be authenticated".to_string()))?;
 
     let user = User::find_by_api_key(&api_key, &state.db).await?;
     let user =
-        user.ok_or_else(|| ApiError::Unauthorized("You have to be authenticated".to_string()))?;
+        user.ok_or_else(|| ApiErr::Unauthorized("You have to be authenticated".to_string()))?;
 
     request.extensions_mut().insert(user);
 

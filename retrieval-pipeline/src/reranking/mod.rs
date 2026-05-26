@@ -17,7 +17,7 @@ static NEXT_ENGINE: AtomicUsize = AtomicUsize::new(0);
 
 fn pick_engine_index(pool_len: usize) -> usize {
     let n = NEXT_ENGINE.fetch_add(1, Ordering::Relaxed);
-    n % pool_len
+    n.checked_rem(pool_len).unwrap_or(0)
 }
 
 pub struct RerankerPool {
@@ -28,30 +28,30 @@ pub struct RerankerPool {
 impl RerankerPool {
     /// Build the pool at startup.
     /// `pool_size` controls max parallel reranks.
-    pub fn new(pool_size: usize) -> Result<Arc<Self>, AppError> {
-        Self::new_with_options(
-            pool_size,
-            RerankInitOptions::new(fastembed::RerankerModel::JINARerankerV1TurboEn),
-        )
+    pub fn new(pool_size: usize) -> Result<Arc<Self>, Box<AppError>> {
+        let init_options =
+            RerankInitOptions::new(fastembed::RerankerModel::JINARerankerV1TurboEn);
+        Self::new_with_options(pool_size, &init_options)
     }
 
     fn new_with_options(
         pool_size: usize,
-        init_options: RerankInitOptions,
-    ) -> Result<Arc<Self>, AppError> {
+        init_options: &RerankInitOptions,
+    ) -> Result<Arc<Self>, Box<AppError>> {
         if pool_size == 0 {
-            return Err(AppError::Validation(
+            return Err(Box::new(AppError::Validation(
                 "RERANKING_POOL_SIZE must be greater than zero".to_string(),
-            ));
+            )));
         }
 
-        fs::create_dir_all(&init_options.cache_dir)?;
+        fs::create_dir_all(&init_options.cache_dir)
+            .map_err(|e| Box::new(AppError::from(e)))?;
 
         let mut engines = Vec::with_capacity(pool_size);
         for x in 0..pool_size {
             debug!("Creating reranking engine: {x}");
             let model = TextRerank::try_new(init_options.clone())
-                .map_err(|e| AppError::InternalError(e.to_string()))?;
+                .map_err(|e| Box::new(AppError::InternalError(e.to_string())))?;
             engines.push(Arc::new(Mutex::new(model)));
         }
 
@@ -62,7 +62,7 @@ impl RerankerPool {
     }
 
     /// Initialize a pool using application configuration.
-    pub fn maybe_from_config(config: &AppConfig) -> Result<Option<Arc<Self>>, AppError> {
+    pub fn maybe_from_config(config: &AppConfig) -> Result<Option<Arc<Self>>, Box<AppError>> {
         if !config.reranking_enabled {
             return Ok(None);
         }
@@ -70,30 +70,28 @@ impl RerankerPool {
         let pool_size = config.reranking_pool_size.unwrap_or_else(default_pool_size);
 
         let init_options = build_rerank_init_options(config)?;
-        Self::new_with_options(pool_size, init_options).map(Some)
+        Self::new_with_options(pool_size, &init_options).map(Some)
     }
 
     /// Check out capacity + pick an engine.
-    /// This returns a lease that can perform rerank().
-    pub async fn checkout(self: &Arc<Self>) -> RerankerLease {
+    /// This returns a lease that can perform `rerank()`.
+    pub async fn checkout(self: &Arc<Self>) -> Option<RerankerLease> {
         // Acquire a permit. This enforces backpressure.
-        let permit = self
-            .semaphore
-            .clone()
+        let permit = Arc::clone(&self.semaphore)
             .acquire_owned()
             .await
-            .expect("semaphore closed");
+            .ok()?;
 
         // Pick an engine.
         // This is naive: just pick based on a simple modulo counter.
         // We use an atomic counter to avoid always choosing index 0.
         let idx = pick_engine_index(self.engines.len());
-        let engine = self.engines[idx].clone();
+        let engine = self.engines.get(idx).map(Arc::clone)?;
 
-        RerankerLease {
+        Some(RerankerLease {
             _permit: permit,
             engine,
-        }
+        })
     }
 }
 
@@ -111,7 +109,7 @@ fn is_truthy(value: &str) -> bool {
     )
 }
 
-fn build_rerank_init_options(config: &AppConfig) -> Result<RerankInitOptions, AppError> {
+fn build_rerank_init_options(config: &AppConfig) -> Result<RerankInitOptions, Box<AppError>> {
     let mut options = RerankInitOptions::default();
 
     let cache_dir = config
@@ -125,7 +123,7 @@ fn build_rerank_init_options(config: &AppConfig) -> Result<RerankInitOptions, Ap
                 .join("fastembed")
                 .join("reranker")
         });
-    fs::create_dir_all(&cache_dir)?;
+    fs::create_dir_all(&cache_dir).map_err(|e| Box::new(AppError::from(e)))?;
     options.cache_dir = cache_dir;
 
     let show_progress = config
@@ -150,7 +148,7 @@ fn env_bool(key: &str) -> Option<bool> {
     env::var(key).ok().map(|value| is_truthy(&value))
 }
 
-/// Active lease on a single TextRerank instance.
+/// Active lease on a single `TextRerank` instance.
 pub struct RerankerLease {
     // When this drops the semaphore permit is released.
     _permit: OwnedSemaphorePermit,

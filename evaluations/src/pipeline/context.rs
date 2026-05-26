@@ -13,7 +13,7 @@ use common::{
     utils::embedding::EmbeddingProvider,
 };
 use retrieval_pipeline::{
-    pipeline::{PipelineStageTimings, RetrievalConfig},
+    pipeline::{StageTimings, RetrievalConfig},
     reranking::RerankerPool,
 };
 
@@ -56,7 +56,7 @@ pub(super) struct EvaluationContext<'a> {
     pub corpus_handle: Option<corpus::CorpusHandle>,
     pub cases: Vec<SeededCase>,
     pub filtered_questions: usize,
-    pub stage_latency_samples: Vec<PipelineStageTimings>,
+    pub stage_latency_samples: Vec<StageTimings>,
     pub latencies: Vec<u128>,
     pub diagnostics_output: Vec<CaseDiagnostics>,
     pub query_summaries: Vec<CaseSummary>,

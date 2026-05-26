@@ -13,7 +13,7 @@ use serde_json::json;
 use tempfile::NamedTempFile;
 use tracing::info;
 
-use crate::{api_state::ApiState, error::ApiError};
+use crate::{api_state::ApiState, error::ApiErr};
 
 #[derive(Debug, TryFromMultipart)]
 pub struct IngestParams {

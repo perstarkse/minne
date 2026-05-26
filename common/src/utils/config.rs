@@ -28,8 +28,8 @@ fn default_storage_kind() -> StorageKind {
     StorageKind::Local
 }
 
-fn default_s3_region() -> Option<String> {
-    Some("us-east-1".to_string())
+fn default_s3_region() -> String {
+    "us-east-1".to_string()
 }
 
 /// Selects the strategy used for PDF ingestion.
@@ -69,7 +69,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub s3_endpoint: Option<String>,
     #[serde(default = "default_s3_region")]
-    pub s3_region: Option<String>,
+    pub s3_region: String,
     #[serde(default = "default_pdf_ingest_mode")]
     pub pdf_ingest_mode: PdfIngestMode,
     #[serde(default = "default_reranking_enabled")]

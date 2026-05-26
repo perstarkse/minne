@@ -142,29 +142,34 @@ fn ensure_ingestion_url_allowed(url: &url::Url) -> Result<String, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::{self};
 
     #[test]
-    fn rejects_unsupported_scheme() {
-        let url = url::Url::parse("ftp://example.com").expect("url");
+    fn rejects_unsupported_scheme() -> anyhow::Result<()> {
+        let url = url::Url::parse("ftp://example.com")?;
         assert!(ensure_ingestion_url_allowed(&url).is_err());
+        Ok(())
     }
 
     #[test]
-    fn rejects_localhost() {
-        let url = url::Url::parse("http://localhost/resource").expect("url");
+    fn rejects_localhost() -> anyhow::Result<()> {
+        let url = url::Url::parse("http://localhost/resource")?;
         assert!(ensure_ingestion_url_allowed(&url).is_err());
+        Ok(())
     }
 
     #[test]
-    fn rejects_private_ipv4() {
-        let url = url::Url::parse("http://192.168.1.10/index.html").expect("url");
+    fn rejects_private_ipv4() -> anyhow::Result<()> {
+        let url = url::Url::parse("http://192.168.1.10/index.html")?;
         assert!(ensure_ingestion_url_allowed(&url).is_err());
+        Ok(())
     }
 
     #[test]
-    fn allows_public_domain_and_sanitizes() {
-        let url = url::Url::parse("https://sub.example.com/path").expect("url");
-        let sanitized = ensure_ingestion_url_allowed(&url).expect("allowed");
+    fn allows_public_domain_and_sanitizes() -> anyhow::Result<()> {
+        let url = url::Url::parse("https://sub.example.com/path")?;
+        let sanitized = ensure_ingestion_url_allowed(&url)?;
         assert_eq!(sanitized, "sub_example_com");
+        Ok(())
     }
 }

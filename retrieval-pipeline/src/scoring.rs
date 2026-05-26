@@ -28,16 +28,19 @@ impl<T> Scored<T> {
         }
     }
 
+    #[must_use]
     pub const fn with_vector_score(mut self, score: f32) -> Self {
         self.scores.vector = Some(score);
         self
     }
 
+    #[must_use]
     pub const fn with_fts_score(mut self, score: f32) -> Self {
         self.scores.fts = Some(score);
         self
     }
 
+    #[must_use]
     pub const fn with_graph_score(mut self, score: f32) -> Self {
         self.scores.graph = Some(score);
         self
@@ -168,7 +171,7 @@ pub fn fuse_scores(scores: &Scores, weights: FusionWeights) -> f32 {
         if scores.vector.is_some() && scores.fts.is_some() {
             // Multiplicative boost: multiply by (1 + bonus) to scale with the base score
             // This ensures high-scoring golden chunks get boosted more than low-scoring ones
-            fused = fused * (1.0 + weights.multi_bonus);
+            fused *= 1.0 + weights.multi_bonus;
         } else {
             // For other multi-signal combinations (e.g., vector + graph), use additive bonus
             fused += weights.multi_bonus;
@@ -178,8 +181,8 @@ pub fn fuse_scores(scores: &Scores, weights: FusionWeights) -> f32 {
     clamp_unit(fused)
 }
 
-pub fn merge_scored_by_id<T>(
-    target: &mut std::collections::HashMap<String, Scored<T>>,
+pub fn merge_scored_by_id<T, S: std::hash::BuildHasher>(
+    target: &mut std::collections::HashMap<String, Scored<T>, S>,
     incoming: Vec<Scored<T>>,
 ) where
     T: StoredObject + Clone,
@@ -263,7 +266,10 @@ where
                 }
             }
             entry.item = candidate.item;
-            entry.fused += vector_weight / (k + rank as f32 + 1.0);
+            let rank_f32: f32 = u16::try_from(rank)
+                .map(f32::from)
+                .unwrap_or(f32::MAX);
+            entry.fused += vector_weight / (k + rank_f32 + 1.0);
         }
     }
 
@@ -290,7 +296,10 @@ where
                 }
             }
             entry.item = candidate.item;
-            entry.fused += fts_weight / (k + rank as f32 + 1.0);
+            let rank_f32: f32 = u16::try_from(rank)
+                .map(f32::from)
+                .unwrap_or(f32::MAX);
+            entry.fused += fts_weight / (k + rank_f32 + 1.0);
         }
     }
 

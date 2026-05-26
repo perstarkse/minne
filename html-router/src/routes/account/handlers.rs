@@ -62,7 +62,7 @@ pub async fn set_api_key(
     let api_key = User::set_api_key(&user.id, &state.db).await?;
 
     // Clear the cache so new requests have access to the user with api key
-    auth.cache_clear_user(user.id.to_string());
+    auth.cache_clear_user(user.id.clone());
 
     // Render the API key section block
     Ok(TemplateResponse::new_partial(
@@ -106,7 +106,7 @@ pub async fn update_timezone(
     User::update_timezone(&user.id, &form.timezone, &state.db).await?;
 
     // Clear the cache
-    auth.cache_clear_user(user.id.to_string());
+    auth.cache_clear_user(user.id.clone());
 
     let timezones = TZ_VARIANTS
         .iter()
@@ -141,7 +141,7 @@ pub async fn update_theme(
     User::update_theme(&user.id, &form.theme, &state.db).await?;
 
     // Clear the cache
-    auth.cache_clear_user(user.id.to_string());
+    auth.cache_clear_user(user.id.clone());
 
     let theme_options = vec![
         Theme::Light.as_str().to_string(),
