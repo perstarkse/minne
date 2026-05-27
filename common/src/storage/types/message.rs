@@ -70,9 +70,10 @@ pub fn format_history(history: &[Message]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{self, Context};
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
     use crate::storage::db::SurrealDbClient;
+    use anyhow::{self, Context};
 
     #[tokio::test]
     async fn test_message_creation() -> anyhow::Result<()> {

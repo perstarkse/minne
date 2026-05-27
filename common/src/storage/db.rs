@@ -204,8 +204,9 @@ impl SurrealDbClient {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{self, Context};
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use crate::stored_object;
+    use anyhow::{self, Context};
 
     use super::*;
     use uuid::Uuid;
@@ -300,7 +301,8 @@ mod tests {
             .get_item(&dummy.id)
             .await
             .with_context(|| "fetch after upsert".to_string())?;
-        let fetched = fetched.ok_or_else(|| anyhow::anyhow!("Expected record to exist after upsert"))?;
+        let fetched =
+            fetched.ok_or_else(|| anyhow::anyhow!("Expected record to exist after upsert"))?;
         assert_eq!(fetched.name, "updated");
 
         let new_record = Dummy {

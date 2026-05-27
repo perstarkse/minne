@@ -572,9 +572,10 @@ impl KnowledgeEntity {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{self, Context};
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
     use crate::storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding;
+    use anyhow::{self, Context};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -734,7 +735,10 @@ mod tests {
             .with_context(|| "Query failed".to_string())?
             .take(0)
             .with_context(|| "Failed to get query results".to_string())?;
-        assert!(remaining.is_empty(), "All entities with the source_id should be deleted");
+        assert!(
+            remaining.is_empty(),
+            "All entities with the source_id should be deleted"
+        );
 
         let different_query = format!(
             "SELECT * FROM {} WHERE source_id = '{}'",
@@ -754,7 +758,10 @@ mod tests {
             "Entity with different source_id should still exist"
         );
         assert_eq!(
-            different_remaining.first().context("Expected entity to exist")?.id,
+            different_remaining
+                .first()
+                .context("Expected entity to exist")?
+                .id,
             different_entity.id
         );
 
@@ -991,11 +998,19 @@ mod tests {
 
         assert_eq!(results.len(), 2);
         assert_eq!(
-            results.first().context("Expected at least one result")?.entity.id,
+            results
+                .first()
+                .context("Expected at least one result")?
+                .entity
+                .id,
             e2.id
         );
         assert_eq!(
-            results.get(1).context("Expected at least two results")?.entity.id,
+            results
+                .get(1)
+                .context("Expected at least two results")?
+                .entity
+                .id,
             e1.id
         );
 
@@ -1042,7 +1057,11 @@ mod tests {
             .await
             .with_context(|| "search should succeed even with orphans".to_string())?;
 
-        assert!(results.is_empty(), "Should return empty result for orphan, got: {:?}", results);
+        assert!(
+            results.is_empty(),
+            "Should return empty result for orphan, got: {:?}",
+            results
+        );
 
         Ok(())
     }

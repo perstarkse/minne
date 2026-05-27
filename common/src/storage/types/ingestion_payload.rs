@@ -103,6 +103,7 @@ impl IngestionPayload {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use anyhow::{self, Context};
     use chrono::Utc;
 

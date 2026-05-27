@@ -9,7 +9,7 @@ pub enum IngestValidationError {
 pub fn validate_ingest_input(
     config: &AppConfig,
     content: Option<&str>,
-    context: &str,
+    ctx: &str,
     category: &str,
     file_count: usize,
 ) -> Result<(), IngestValidationError> {
@@ -29,7 +29,7 @@ pub fn validate_ingest_input(
         }
     }
 
-    if context.len() > config.ingest_max_context_bytes {
+    if ctx.len() > config.ingest_max_context_bytes {
         return Err(IngestValidationError::PayloadTooLarge(format!(
             "Context is too large. Maximum allowed is {} bytes",
             config.ingest_max_context_bytes
@@ -48,6 +48,7 @@ pub fn validate_ingest_input(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
 
     #[test]

@@ -124,9 +124,10 @@ impl KnowledgeRelationship {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{self, Context};
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
     use crate::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
+    use anyhow::{self, Context};
 
     async fn setup_test_db() -> SurrealDbClient {
         let namespace = "test_ns";
@@ -283,8 +284,9 @@ mod tests {
         let rows: Vec<KnowledgeRelationship> = res.take(0).expect("take rows");
 
         assert_eq!(rows.len(), 1);
+        let row = rows.first().expect("expected 1 row");
         assert_eq!(
-            rows[0].metadata.source_id,
+            row.metadata.source_id,
             "source123'; DELETE FROM relates_to; --"
         );
 
@@ -323,7 +325,10 @@ mod tests {
             .with_context(|| "Query failed".to_string())?;
         let before_results: Vec<KnowledgeRelationship> =
             existing_before_delete.take(0).unwrap_or_default();
-        assert!(!before_results.is_empty(), "Relationship should exist before deletion");
+        assert!(
+            !before_results.is_empty(),
+            "Relationship should exist before deletion"
+        );
 
         KnowledgeRelationship::delete_relationship_by_id(&relationship.id, &user_id, &db)
             .await
@@ -372,7 +377,10 @@ mod tests {
             .await
             .with_context(|| "Query failed".to_string())?;
         let before_results: Vec<KnowledgeRelationship> = before_attempt.take(0).unwrap_or_default();
-        assert!(!before_results.is_empty(), "Relationship should exist before unauthorized delete attempt");
+        assert!(
+            !before_results.is_empty(),
+            "Relationship should exist before unauthorized delete attempt"
+        );
 
         let result = KnowledgeRelationship::delete_relationship_by_id(
             &relationship.id,
@@ -383,7 +391,9 @@ mod tests {
 
         match result {
             Err(AppError::Auth(_)) => {}
-            _ => anyhow::bail!("Expected authorization error when deleting someone else's relationship"),
+            _ => anyhow::bail!(
+                "Expected authorization error when deleting someone else's relationship"
+            ),
         }
 
         let mut after_attempt = db
@@ -394,7 +404,10 @@ mod tests {
             .with_context(|| "Query failed".to_string())?;
         let results: Vec<KnowledgeRelationship> = after_attempt.take(0).unwrap_or_default();
 
-        assert!(!results.is_empty(), "Relationship should still exist after unauthorized delete attempt");
+        assert!(
+            !results.is_empty(),
+            "Relationship should still exist after unauthorized delete attempt"
+        );
 
         Ok(())
     }
@@ -484,7 +497,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_delete_relationships_by_source_id_resists_query_injection() -> anyhow::Result<()> {
+    async fn test_delete_relationships_by_source_id_resists_query_injection() -> anyhow::Result<()>
+    {
         let db = setup_test_db().await;
 
         let entity1_id = create_test_entity("Entity 1", &db).await?;

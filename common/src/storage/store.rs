@@ -275,6 +275,7 @@ async fn create_storage_backend(
 /// automatic memory backend setup and proper test isolation.
 #[cfg(test)]
 pub mod testing {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
     use crate::utils::config::{AppConfig, PdfIngestMode};
     use uuid;
@@ -450,10 +451,7 @@ pub mod testing {
                 None
             };
 
-            Ok(Self {
-                storage,
-                temp_dir,
-            })
+            Ok(Self { storage, temp_dir })
         }
 
         /// Get a reference to the underlying StorageManager.
@@ -581,9 +579,10 @@ pub fn split_object_path(path: &str) -> AnyResult<(String, String)> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
-    use anyhow::Context;
     use crate::utils::config::{PdfIngestMode::LlmFirst, StorageKind};
+    use anyhow::Context;
     use bytes::Bytes;
     use uuid::Uuid;
 
@@ -637,14 +636,23 @@ mod tests {
             .put(location, Bytes::from(data.to_vec()))
             .await
             .with_context(|| "put".to_string())?;
-        let retrieved = storage.get(location).await.with_context(|| "get".to_string())?;
+        let retrieved = storage
+            .get(location)
+            .await
+            .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
         // Test exists
-        assert!(storage.exists(location).await.with_context(|| "exists check".to_string())?);
+        assert!(storage
+            .exists(location)
+            .await
+            .with_context(|| "exists check".to_string())?);
 
         // Test delete
-        storage.delete_prefix("test/data/").await.with_context(|| "delete".to_string())?;
+        storage
+            .delete_prefix("test/data/")
+            .await
+            .with_context(|| "delete".to_string())?;
         assert!(!storage
             .exists(location)
             .await
@@ -674,7 +682,10 @@ mod tests {
             .put(location, Bytes::from(data.to_vec()))
             .await
             .with_context(|| "put".to_string())?;
-        let retrieved = storage.get(location).await.with_context(|| "get".to_string())?;
+        let retrieved = storage
+            .get(location)
+            .await
+            .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
         let object_dir = resolved_base.join("test/data");
@@ -683,10 +694,16 @@ mod tests {
             .with_context(|| "object directory exists after write".to_string())?;
 
         // Test exists
-        assert!(storage.exists(location).await.with_context(|| "exists check".to_string())?);
+        assert!(storage
+            .exists(location)
+            .await
+            .with_context(|| "exists check".to_string())?);
 
         // Test delete
-        storage.delete_prefix("test/data/").await.with_context(|| "delete".to_string())?;
+        storage
+            .delete_prefix("test/data/")
+            .await
+            .with_context(|| "delete".to_string())?;
         assert!(!storage
             .exists(location)
             .await
@@ -723,7 +740,10 @@ mod tests {
             .with_context(|| "put first".to_string())?;
 
         // Retrieve and verify first data
-        let retrieved1 = storage.get(location).await.with_context(|| "get first".to_string())?;
+        let retrieved1 = storage
+            .get(location)
+            .await
+            .with_context(|| "get first".to_string())?;
         assert_eq!(retrieved1.as_ref(), data1);
 
         // Overwrite with second data
@@ -733,7 +753,10 @@ mod tests {
             .with_context(|| "put second".to_string())?;
 
         // Retrieve and verify second data
-        let retrieved2 = storage.get(location).await.with_context(|| "get second".to_string())?;
+        let retrieved2 = storage
+            .get(location)
+            .await
+            .with_context(|| "get second".to_string())?;
         assert_eq!(retrieved2.as_ref(), data2);
 
         // Data persists across multiple operations using the same StorageManager
@@ -764,11 +787,17 @@ mod tests {
         }
 
         // Test listing without prefix
-        let all_files = storage.list(None).await.with_context(|| "list all".to_string())?;
+        let all_files = storage
+            .list(None)
+            .await
+            .with_context(|| "list all".to_string())?;
         assert_eq!(all_files.len(), 3);
 
         // Test listing with prefix
-        let dir1_files = storage.list(Some("dir1/")).await.with_context(|| "list dir1".to_string())?;
+        let dir1_files = storage
+            .list(Some("dir1/"))
+            .await
+            .with_context(|| "list dir1".to_string())?;
         assert_eq!(dir1_files.len(), 2);
         assert!(dir1_files
             .iter()
@@ -804,7 +833,10 @@ mod tests {
             .with_context(|| "put large data".to_string())?;
 
         // Get as stream
-        let mut stream = storage.get_stream(location).await.with_context(|| "get stream".to_string())?;
+        let mut stream = storage
+            .get_stream(location)
+            .await
+            .with_context(|| "get stream".to_string())?;
         let mut collected = Vec::new();
 
         while let Some(chunk) = stream.next().await {
@@ -833,10 +865,16 @@ mod tests {
             .put(location, Bytes::from(data.to_vec()))
             .await
             .with_context(|| "put".to_string())?;
-        let retrieved = storage.get(location).await.with_context(|| "get".to_string())?;
+        let retrieved = storage
+            .get(location)
+            .await
+            .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
-        assert!(storage.exists(location).await.with_context(|| "exists".to_string())?);
+        assert!(storage
+            .exists(location)
+            .await
+            .with_context(|| "exists".to_string())?);
         assert_eq!(*storage.backend_kind(), StorageKind::Memory);
 
         Ok(())
@@ -879,12 +917,21 @@ mod tests {
         let data = b"test data with TestStorageManager";
 
         // Test put and get
-        test_storage.put(location, data).await.with_context(|| "put".to_string())?;
-        let retrieved = test_storage.get(location).await.with_context(|| "get".to_string())?;
+        test_storage
+            .put(location, data)
+            .await
+            .with_context(|| "put".to_string())?;
+        let retrieved = test_storage
+            .get(location)
+            .await
+            .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
         // Test existence check
-        assert!(test_storage.exists(location).await.with_context(|| "exists".to_string())?);
+        assert!(test_storage
+            .exists(location)
+            .await
+            .with_context(|| "exists".to_string())?);
 
         // Test list
         let files = test_storage
@@ -915,13 +962,19 @@ mod tests {
         let location = "test/local/file.txt";
         let data = b"test data with local TestStorageManager";
 
-        test_storage.put(location, data).await
+        test_storage
+            .put(location, data)
+            .await
             .with_context(|| "put".to_string())?;
-        let retrieved = test_storage.get(location).await
+        let retrieved = test_storage
+            .get(location)
+            .await
             .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
-        assert!(test_storage.exists(location).await
+        assert!(test_storage
+            .exists(location)
+            .await
             .with_context(|| "exists".to_string())?);
 
         Ok(())
@@ -940,14 +993,22 @@ mod tests {
         let data1 = b"storage 1 data";
         let data2 = b"storage 2 data";
 
-        storage1.put(location, data1).await
+        storage1
+            .put(location, data1)
+            .await
             .with_context(|| "put storage 1".to_string())?;
-        storage2.put(location, data2).await
+        storage2
+            .put(location, data2)
+            .await
             .with_context(|| "put storage 2".to_string())?;
 
-        let retrieved1 = storage1.get(location).await
+        let retrieved1 = storage1
+            .get(location)
+            .await
             .with_context(|| "get storage 1".to_string())?;
-        let retrieved2 = storage2.get(location).await
+        let retrieved2 = storage2
+            .get(location)
+            .await
             .with_context(|| "get storage 2".to_string())?;
 
         assert_eq!(retrieved1.as_ref(), data1);
@@ -967,9 +1028,13 @@ mod tests {
         let location = "config/test.txt";
         let data = b"test data with custom config";
 
-        test_storage.put(location, data).await
+        test_storage
+            .put(location, data)
+            .await
             .with_context(|| "put".to_string())?;
-        let retrieved = test_storage.get(location).await
+        let retrieved = test_storage
+            .get(location)
+            .await
             .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
@@ -1000,11 +1065,17 @@ mod tests {
         }
 
         // Test get
-        let retrieved = storage.get(&location).await.with_context(|| "get".to_string())?;
+        let retrieved = storage
+            .get(&location)
+            .await
+            .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
         // Test exists
-        assert!(storage.exists(&location).await.with_context(|| "exists".to_string())?);
+        assert!(storage
+            .exists(&location)
+            .await
+            .with_context(|| "exists".to_string())?);
 
         // Test delete
         storage
@@ -1040,11 +1111,17 @@ mod tests {
 
         // List with prefix
         let list_prefix = format!("{prefix}/");
-        let items = storage.list(Some(&list_prefix)).await.with_context(|| "list".to_string())?;
+        let items = storage
+            .list(Some(&list_prefix))
+            .await
+            .with_context(|| "list".to_string())?;
         assert_eq!(items.len(), 3);
 
         // Cleanup
-        storage.delete_prefix(&list_prefix).await.with_context(|| "cleanup".to_string())?;
+        storage
+            .delete_prefix(&list_prefix)
+            .await
+            .with_context(|| "cleanup".to_string())?;
 
         Ok(())
     }
@@ -1063,7 +1140,10 @@ mod tests {
             return Ok(());
         }
 
-        let mut stream = storage.get_stream(&location).await.with_context(|| "get stream".to_string())?;
+        let mut stream = storage
+            .get_stream(&location)
+            .await
+            .with_context(|| "get stream".to_string())?;
         let mut collected = Vec::new();
         while let Some(chunk) = stream.next().await {
             collected.extend_from_slice(&chunk.with_context(|| "chunk".to_string())?);

@@ -247,11 +247,9 @@ impl IngestionTask {
         "#;
 
         debug_assert!(lifecycle::pending().reserve().is_ok());
-        debug_assert!(
-            lifecycle::pending()
-                .reserve()
-                .is_ok_and(|m| m.start_processing().is_ok_and(|m| m.fail().is_ok_and(|m| m.reserve().is_ok())))
-        );
+        debug_assert!(lifecycle::pending().reserve().is_ok_and(|m| m
+            .start_processing()
+            .is_ok_and(|m| m.fail().is_ok_and(|m| m.reserve().is_ok()))));
 
         let mut result = db
             .client
@@ -277,7 +275,10 @@ impl IngestionTask {
             .bind(("reserved_state", TaskState::Reserved.as_str()))
             .bind(("now", SurrealDatetime::from(now)))
             .bind(("worker_id", worker_id.to_string()))
-            .bind(("lease_secs", i64::try_from(lease_duration.as_secs()).unwrap_or(i64::MAX)))
+            .bind((
+                "lease_secs",
+                i64::try_from(lease_duration.as_secs()).unwrap_or(i64::MAX),
+            ))
             .await?;
 
         let task: Option<IngestionTask> = result.take(0)?;
@@ -364,7 +365,8 @@ impl IngestionTask {
         let now = chrono::Utc::now();
         let retry_at = now
             .checked_add_signed(
-                ChronoDuration::from_std(retry_delay).unwrap_or_else(|_| ChronoDuration::seconds(30)),
+                ChronoDuration::from_std(retry_delay)
+                    .unwrap_or_else(|_| ChronoDuration::seconds(30)),
             )
             .unwrap_or(now);
 
@@ -509,6 +511,7 @@ impl IngestionTask {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use anyhow::{self, Context};
 
     use super::*;
@@ -576,11 +579,13 @@ mod tests {
         let user_id = "user123";
         let payload = create_payload(user_id);
         let task = IngestionTask::new(payload, user_id.to_string());
-        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
+        db.store_item(task.clone())
+            .await
+            .with_context(|| "store".to_string())?;
 
         let worker_id = "worker-1";
         let now = chrono::Utc::now();
-        let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_secs(60))
+        let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_mins(1))
             .await
             .with_context(|| "claim".to_string())?
             .with_context(|| "task claimed".to_string())?;
@@ -588,10 +593,16 @@ mod tests {
         assert_eq!(claimed.state, TaskState::Reserved);
         assert_eq!(claimed.worker_id.as_deref(), Some(worker_id));
 
-        let processing = claimed.mark_processing(&db).await.with_context(|| "processing".to_string())?;
+        let processing = claimed
+            .mark_processing(&db)
+            .await
+            .with_context(|| "processing".to_string())?;
         assert_eq!(processing.state, TaskState::Processing);
 
-        let succeeded = processing.mark_succeeded(&db).await.with_context(|| "succeeded".to_string())?;
+        let succeeded = processing
+            .mark_succeeded(&db)
+            .await
+            .with_context(|| "succeeded".to_string())?;
         assert_eq!(succeeded.state, TaskState::Succeeded);
         assert!(succeeded.worker_id.is_none());
         assert!(succeeded.locked_at.is_none());
@@ -604,16 +615,21 @@ mod tests {
         let user_id = "user123";
         let payload = create_payload(user_id);
         let task = IngestionTask::new(payload, user_id.to_string());
-        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
+        db.store_item(task.clone())
+            .await
+            .with_context(|| "store".to_string())?;
 
         let worker_id = "worker-dead";
         let now = chrono::Utc::now();
-        let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_secs(60))
+        let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_mins(1))
             .await
             .with_context(|| "claim".to_string())?
             .with_context(|| "claimed".to_string())?;
 
-        let processing = claimed.mark_processing(&db).await.with_context(|| "processing".to_string())?;
+        let processing = claimed
+            .mark_processing(&db)
+            .await
+            .with_context(|| "processing".to_string())?;
 
         let error_info = TaskErrorInfo {
             code: Some("pipeline_error".into()),
@@ -646,11 +662,13 @@ mod tests {
         let payload = create_payload(user_id);
 
         let task = IngestionTask::new(payload.clone(), user_id.to_string());
-        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
+        db.store_item(task.clone())
+            .await
+            .with_context(|| "store".to_string())?;
 
-        let Err(err) = task
-            .mark_processing(&db)
-            .await else { anyhow::bail!("processing should fail without reservation") };
+        let Err(err) = task.mark_processing(&db).await else {
+            anyhow::bail!("processing should fail without reservation")
+        };
 
         match err {
             AppError::Validation(message) => {
@@ -671,7 +689,9 @@ mod tests {
         let payload = create_payload(user_id);
 
         let task = IngestionTask::new(payload.clone(), user_id.to_string());
-        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
+        db.store_item(task.clone())
+            .await
+            .with_context(|| "store".to_string())?;
 
         let Err(err) = task
             .mark_failed(
@@ -682,7 +702,10 @@ mod tests {
                 Duration::from_secs(30),
                 &db,
             )
-            .await else { anyhow::bail!("failing should require processing state") };
+            .await
+        else {
+            anyhow::bail!("failing should require processing state")
+        };
 
         match err {
             AppError::Validation(message) => {
@@ -703,11 +726,13 @@ mod tests {
         let payload = create_payload(user_id);
 
         let task = IngestionTask::new(payload.clone(), user_id.to_string());
-        db.store_item(task.clone()).await.with_context(|| "store".to_string())?;
+        db.store_item(task.clone())
+            .await
+            .with_context(|| "store".to_string())?;
 
-        let Err(err) = task
-            .release(&db)
-            .await else { anyhow::bail!("release should require reserved state") };
+        let Err(err) = task.release(&db).await else {
+            anyhow::bail!("release should require reserved state")
+        };
 
         match err {
             AppError::Validation(message) => {

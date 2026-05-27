@@ -723,6 +723,7 @@ impl User {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use anyhow::{self, Context};
 
     use super::*;
@@ -908,12 +909,16 @@ mod tests {
         first.created_at -= chrono::Duration::minutes(1);
         first.updated_at = first.created_at;
         first.state = TaskState::Succeeded;
-        db.store_item(first.clone()).await.with_context(|| "store first".to_string())?;
+        db.store_item(first.clone())
+            .await
+            .with_context(|| "store first".to_string())?;
 
         // Latest task
         let mut second = IngestionTask::new(payload.clone(), user_id.to_string());
         second.state = TaskState::Processing;
-        db.store_item(second.clone()).await.with_context(|| "store second".to_string())?;
+        db.store_item(second.clone())
+            .await
+            .with_context(|| "store second".to_string())?;
 
         let other_payload = IngestionPayload::Text {
             text: "Other".to_string(),
@@ -922,7 +927,9 @@ mod tests {
             user_id: other_user_id.to_string(),
         };
         let other_task = IngestionTask::new(other_payload, other_user_id.to_string());
-        db.store_item(other_task).await.with_context(|| "store other".to_string())?;
+        db.store_item(other_task)
+            .await
+            .with_context(|| "store other".to_string())?;
 
         let tasks = User::get_all_ingestion_tasks(user_id, &db)
             .await
@@ -1192,7 +1199,10 @@ mod tests {
         }
 
         // Check first conversation title matches the most recently updated
-        let most_recent = conversations.iter().max_by_key(|c| c.created_at).context("expected most recent")?;
+        let most_recent = conversations
+            .iter()
+            .max_by_key(|c| c.created_at)
+            .context("expected most recent")?;
         let r0 = retrieved.first().context("expected first result")?;
         assert_eq!(r0.id, most_recent.id);
         Ok(())

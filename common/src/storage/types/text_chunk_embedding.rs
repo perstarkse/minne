@@ -126,6 +126,7 @@ impl TextChunkEmbedding {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use anyhow::{self, Context};
 
     use super::*;
@@ -177,9 +178,11 @@ mod tests {
             .query("INFO FOR TABLE text_chunk_embedding;")
             .await
             .with_context(|| "info query failed".to_string())?;
-        let info: SurrealValue = info_res.take(0).with_context(|| "failed to take info result".to_string())?;
-        let info_json: serde_json::Value =
-            serde_json::to_value(info).with_context(|| "failed to convert info to json".to_string())?;
+        let info: SurrealValue = info_res
+            .take(0)
+            .with_context(|| "failed to take info result".to_string())?;
+        let info_json: serde_json::Value = serde_json::to_value(info)
+            .with_context(|| "failed to convert info to json".to_string())?;
         let idx_sql = info_json
             .get("Object")
             .and_then(|v| v.get("indexes"))
