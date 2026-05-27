@@ -290,16 +290,8 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let mut embedding_str = String::from("[");
-            for (i, f) in embedding.iter().enumerate() {
-                if i > 0 {
-                    embedding_str.push(',');
-                }
-                write!(embedding_str, "{f}").unwrap_or_default();
-            }
-            embedding_str.push(']');
-            // Use the chunk id as the embedding record id to keep a 1:1 mapping
-            let embedding = embedding_str;
+            let embedding_str = serde_json::to_string(&embedding)
+                .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
             write!(
                 &mut transaction_query,
                 "UPSERT type::thing('text_chunk_embedding', '{id}') SET \
@@ -309,6 +301,10 @@ impl TextChunk {
                     user_id = '{user_id}', \
                     created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
                     updated_at = time::now();",
+                id = id,
+                embedding = embedding_str,
+                source_id = source_id,
+                user_id = user_id,
             )
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
@@ -409,15 +405,8 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let mut embedding_str = String::from("[");
-            for (i, f) in embedding.iter().enumerate() {
-                if i > 0 {
-                    embedding_str.push(',');
-                }
-                write!(embedding_str, "{f}").unwrap_or_default();
-            }
-            embedding_str.push(']');
-            let embedding = embedding_str;
+            let embedding_str = serde_json::to_string(&embedding)
+                .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
             write!(
                 &mut transaction_query,
                 "CREATE type::thing('text_chunk_embedding', '{id}') SET \
@@ -427,6 +416,10 @@ impl TextChunk {
                     user_id = '{user_id}', \
                     created_at = time::now(), \
                     updated_at = time::now();",
+                id = id,
+                embedding = embedding_str,
+                source_id = source_id,
+                user_id = user_id,
             )
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
