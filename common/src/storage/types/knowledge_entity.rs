@@ -275,10 +275,9 @@ impl KnowledgeEntity {
         db_client: &SurrealDbClient,
         ai_client: &Client<OpenAIConfig>,
     ) -> Result<(), AppError> {
-        let embedding_input = format!(
-            "name: {}, description: {}, type: {:?}",
-            name, description, entity_type
-        );
+            let embedding_input = format!(
+                "name: {name}, description: {description}, type: {entity_type:?}",
+            );
         let embedding = generate_embedding(ai_client, &embedding_input, db_client).await?;
         let user_id = Self::get_user_id_by_id(id, db_client).await?;
         let emb = KnowledgeEntityEmbedding::new(id, embedding, user_id);
@@ -398,7 +397,7 @@ impl KnowledgeEntity {
 
         // Add all update statements to the embedding table
         for (id, (embedding, user_id)) in new_embeddings {
-            let embedding_str = serde_json::to_string(&embedding)
+            let embedding = serde_json::to_string(&embedding)
                 .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
             write!(
                 transaction_query,
@@ -408,9 +407,6 @@ impl KnowledgeEntity {
                     user_id = '{user_id}', \
                     created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
                     updated_at = time::now();",
-                id = id,
-                embedding = embedding_str,
-                user_id = user_id,
             )
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
@@ -521,7 +517,7 @@ impl KnowledgeEntity {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id)) in new_embeddings {
-            let embedding_str = serde_json::to_string(&embedding)
+            let embedding = serde_json::to_string(&embedding)
                 .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
             write!(
                 transaction_query,
@@ -531,9 +527,6 @@ impl KnowledgeEntity {
                     user_id = '{user_id}', \
                     created_at = time::now(), \
                     updated_at = time::now();",
-                id = id,
-                embedding = embedding_str,
-                user_id = user_id,
             )
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
