@@ -1,11 +1,11 @@
 #![allow(clippy::module_name_repetitions)]
 use uuid::Uuid;
 
-use std::fmt;
+use std::fmt::Write;
 
 use crate::stored_object;
 
-#[derive(Deserialize, Debug, Clone, Serialize, PartialEq)]
+#[derive(Deserialize, Debug, Clone, Copy, Serialize, PartialEq)]
 pub enum MessageRole {
     User,
     AI,
@@ -57,11 +57,14 @@ impl fmt::Display for Message {
 
 // helper function to format a vector of messages
 pub fn format_history(history: &[Message]) -> String {
-    history
-        .iter()
-        .map(|msg| format!("{msg}"))
-        .collect::<Vec<String>>()
-        .join("\n")
+    let mut out = String::new();
+    for (i, msg) in history.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        write!(out, "{msg}").unwrap_or_default();
+    }
+    out
 }
 
 #[cfg(test)]
@@ -79,7 +82,7 @@ mod tests {
 
         let message = Message::new(
             conversation_id.to_string(),
-            role.clone(),
+            role,
             content.to_string(),
             references.clone(),
         );

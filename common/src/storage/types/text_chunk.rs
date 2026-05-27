@@ -288,14 +288,14 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding_str = format!(
-                "[{}]",
-                embedding
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(",")
-            );
+            let mut embedding_str = String::from("[");
+            for (i, f) in embedding.iter().enumerate() {
+                if i > 0 {
+                    embedding_str.push(',');
+                }
+                write!(embedding_str, "{f}").unwrap_or_default();
+            }
+            embedding_str.push(']');
             // Use the chunk id as the embedding record id to keep a 1:1 mapping
             let embedding = embedding_str;
             write!(
@@ -407,14 +407,14 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding_str = format!(
-                "[{}]",
-                embedding
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(",")
-            );
+            let mut embedding_str = String::from("[");
+            for (i, f) in embedding.iter().enumerate() {
+                if i > 0 {
+                    embedding_str.push(',');
+                }
+                write!(embedding_str, "{f}").unwrap_or_default();
+            }
+            embedding_str.push(']');
             let embedding = embedding_str;
             write!(
                 &mut transaction_query,

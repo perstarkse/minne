@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::env;
 
 /// Selects the embedding backend for vector generation.
-#[derive(Clone, Deserialize, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Deserialize, Debug, Default, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum EmbeddingBackend {
     /// Use OpenAI-compatible API for embeddings.
@@ -15,7 +15,7 @@ pub enum EmbeddingBackend {
     Hashed,
 }
 
-#[derive(Clone, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Copy, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageKind {
     Local,
@@ -33,7 +33,7 @@ fn default_s3_region() -> String {
 }
 
 /// Selects the strategy used for PDF ingestion.
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Copy, Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub enum PdfIngestMode {
     /// Only rely on classic text extraction (no LLM fallbacks).

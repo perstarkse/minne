@@ -49,7 +49,7 @@ impl IngestionPayload {
         content: Option<String>,
         context: String,
         category: String,
-        files: Vec<FileInfo>,
+        files: &[FileInfo],
         user_id: &str,
     ) -> Result<Vec<IngestionPayload>, AppError> {
         // Initialize list
@@ -83,7 +83,7 @@ impl IngestionPayload {
 
         for file in files {
             object_list.push(IngestionPayload::File {
-                file_info: file,
+                file_info: file.clone(),
                 context: context.clone(),
                 category: category.clone(),
                 user_id: user_id.into(),
@@ -143,7 +143,7 @@ mod tests {
             Some(url.to_string()),
             context.to_string(),
             category.to_string(),
-            files,
+            &files,
             user_id,
         )
         .with_context(|| "create_ingestion_payload".to_string())?;
@@ -179,7 +179,7 @@ mod tests {
             Some(text.to_string()),
             context.to_string(),
             category.to_string(),
-            files,
+            &files,
             user_id,
         )
         .with_context(|| "create_ingestion_payload".to_string())?;
@@ -220,7 +220,7 @@ mod tests {
             None,
             context.to_string(),
             category.to_string(),
-            files,
+            &files,
             user_id,
         )
         .with_context(|| "create_ingestion_payload".to_string())?;
@@ -262,7 +262,7 @@ mod tests {
             Some(url.to_string()),
             context.to_string(),
             category.to_string(),
-            files,
+            &files,
             user_id,
         )
         .with_context(|| "create_ingestion_payload".to_string())?;
@@ -304,7 +304,7 @@ mod tests {
             None,
             context.to_string(),
             category.to_string(),
-            files,
+            &files,
             user_id,
         );
 
@@ -330,7 +330,7 @@ mod tests {
             Some(text.to_string()),
             context.to_string(),
             category.to_string(),
-            files,
+            &files,
             user_id,
         );
 
