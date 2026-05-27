@@ -13,6 +13,7 @@ use super::super::{
 };
 use super::{map_guard_error, StageResult};
 
+#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects, clippy::cast_precision_loss)]
 pub(crate) async fn summarize(
     machine: EvaluationMachine<(), QueriesFinished>,
     ctx: &mut EvaluationContext<'_>,
@@ -34,8 +35,8 @@ pub(crate) async fn summarize(
         .unwrap_or_default();
     let config = ctx.config();
     let dataset = ctx.dataset();
-    let slice = ctx.slice();
-    let corpus_handle = ctx.corpus_handle();
+    let slice = ctx.slice()?;
+    let corpus_handle = ctx.corpus_handle()?;
     let total_cases = summaries.len();
 
     let mut correct = 0usize;
@@ -176,7 +177,7 @@ pub(crate) async fn summarize(
         slice_total_paragraphs: slice.manifest.total_paragraphs,
         slice_negative_multiplier: slice.manifest.negative_multiplier,
         namespace_reused: ctx.namespace_reused,
-        corpus_paragraphs: ctx.corpus_handle().manifest.metadata.paragraph_count,
+        corpus_paragraphs: ctx.corpus_handle()?.manifest.metadata.paragraph_count,
         ingestion_cache_path: corpus_handle.path.display().to_string(),
         ingestion_reused: corpus_handle.reused_ingestion,
         ingestion_embeddings_reused: corpus_handle.reused_embeddings,
@@ -189,9 +190,9 @@ pub(crate) async fn summarize(
         negative_paragraphs_reused: corpus_handle.negative_reused,
         latency_ms: latency_stats,
         perf: perf_timings,
-        embedding_backend: ctx.embedding_provider().backend_label().to_string(),
-        embedding_model: ctx.embedding_provider().model_code(),
-        embedding_dimension: ctx.embedding_provider().dimension(),
+        embedding_backend: ctx.embedding_provider()?.backend_label().to_string(),
+        embedding_model: ctx.embedding_provider()?.model_code(),
+        embedding_dimension: ctx.embedding_provider()?.dimension(),
         rerank_enabled: config.retrieval.rerank,
         rerank_pool_size: ctx
             .rerank_pool
@@ -228,5 +229,5 @@ pub(crate) async fn summarize(
 
     machine
         .summarize()
-        .map_err(|(_, guard)| map_guard_error("summarize", guard))
+        .map_err(|(_, guard)| map_guard_error("summarize", &guard))
 }

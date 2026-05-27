@@ -11,6 +11,7 @@ use tracing::warn;
 
 use super::{ConvertedParagraph, ConvertedQuestion};
 
+#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects, clippy::cast_sign_loss)]
 pub fn convert_nq(
     raw_path: &Path,
     include_unanswerable: bool,

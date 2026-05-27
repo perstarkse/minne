@@ -121,6 +121,7 @@ impl Descriptor {
     }
 }
 
+#[allow(clippy::expect_used)]
 fn compute_hash(metadata: &SnapshotMetadata) -> String {
     let mut hasher = Sha256::new();
     hasher.update(
@@ -134,6 +135,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
     async fn state_round_trip() {
         let temp_dir = tempfile::tempdir().unwrap();
         let metadata = SnapshotMetadata {

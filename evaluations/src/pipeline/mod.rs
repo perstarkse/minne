@@ -23,5 +23,5 @@ pub async fn run_evaluation(
     let machine = stages::summarize(machine, &mut ctx).await?;
     let _ = stages::finalize(machine, &mut ctx).await?;
 
-    Ok(ctx.into_summary())
+    ctx.into_summary()
 }

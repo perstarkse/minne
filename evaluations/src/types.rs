@@ -8,6 +8,7 @@ use retrieval_pipeline::{
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize)]
 pub struct EvaluationSummary {
     pub generated_at: DateTime<Utc>,
@@ -86,6 +87,7 @@ pub struct EvaluationSummary {
     pub cases: Vec<CaseSummary>,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize)]
 pub struct CaseSummary {
     pub question_id: String,
@@ -137,6 +139,7 @@ pub struct StageLatencyBreakdown {
     pub assemble: LatencyStats,
 }
 
+#[allow(clippy::struct_field_names)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct EvaluationStageTimings {
     pub prepare_slice_ms: u128,
@@ -345,6 +348,7 @@ fn chunk_snippet(text: &str) -> String {
     acc
 }
 
+#[allow(clippy::cast_precision_loss)]
 pub fn compute_latency_stats(latencies: &[u128]) -> LatencyStats {
     if latencies.is_empty() {
         return LatencyStats {
@@ -386,6 +390,13 @@ pub fn build_stage_latency_breakdown(samples: &[PipelineStageTimings]) -> StageL
     }
 }
 
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 fn percentile(sorted: &[u128], fraction: f64) -> u128 {
     if sorted.is_empty() {
         return 0;
@@ -395,6 +406,7 @@ fn percentile(sorted: &[u128], fraction: f64) -> u128 {
     sorted[idx.min(sorted.len() - 1)]
 }
 
+#[allow(clippy::arithmetic_side_effects)]
 pub fn build_case_diagnostics(
     summary: &CaseSummary,
     expected_chunk_ids: &[String],

@@ -213,6 +213,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
     fn writes_perf_mirrors_from_record() {
         let tmp = tempdir().unwrap();
         let report_root = tmp.path().join("reports");

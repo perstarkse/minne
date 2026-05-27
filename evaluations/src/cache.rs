@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -19,7 +19,7 @@ struct EmbeddingCacheData {
 
 #[derive(Clone)]
 pub struct EmbeddingCache {
-    path: Arc<PathBuf>,
+    path: Arc<Path>,
     data: Arc<Mutex<EmbeddingCacheData>>,
     dirty: Arc<AtomicBool>,
 }
@@ -39,7 +39,7 @@ impl EmbeddingCache {
         };
 
         Ok(Self {
-            path: Arc::new(path),
+            path: Arc::from(path.as_path()),
             data: Arc::new(Mutex::new(data)),
             dirty: Arc::new(AtomicBool::new(false)),
         })

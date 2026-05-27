@@ -117,5 +117,5 @@ pub(crate) async fn prepare_db(
 
     machine
         .prepare_db()
-        .map_err(|(_, guard)| map_guard_error("prepare_db", guard))
+        .map_err(|(_, guard)| map_guard_error("prepare_db", &guard))
 }

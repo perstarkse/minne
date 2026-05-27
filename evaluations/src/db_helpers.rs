@@ -55,6 +55,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
     async fn reset_namespace_drops_existing_rows() {
         let namespace = format!("reset_ns_{}", Uuid::new_v4().simple());
         let database = format!("reset_db_{}", Uuid::new_v4().simple());
@@ -90,8 +91,7 @@ mod tests {
                 let rows: Vec<FooRow> = response.take(0).unwrap_or_default();
                 assert!(
                     rows.is_empty(),
-                    "reset namespace should drop rows, found {:?}",
-                    rows
+                    "reset namespace should drop rows, found {rows:?}",
                 );
             }
             Err(error) => {

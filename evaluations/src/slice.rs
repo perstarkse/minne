@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    fmt::Write,
     fs,
     path::{Path, PathBuf},
 };
@@ -98,10 +99,10 @@ fn sanitize_identifier(input: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(input.as_bytes());
         let digest = hasher.finalize();
-        digest[..6]
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
+        digest.iter().take(6).fold(String::with_capacity(12), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        })
     } else {
         trimmed
     }
@@ -168,7 +169,7 @@ impl DatasetIndex {
             .paragraph_by_id
             .get(id)
             .ok_or_else(|| anyhow!("slice references unknown paragraph '{id}'"))?;
-        Ok(&dataset.paragraphs[*idx])
+        dataset.paragraphs.get(*idx).ok_or_else(|| anyhow!("paragraph index out of bounds"))
     }
 
     fn question<'a>(
@@ -180,7 +181,8 @@ impl DatasetIndex {
             .question_by_id
             .get(question_id)
             .ok_or_else(|| anyhow!("slice references unknown question '{question_id}'"))?;
-        let paragraph = &dataset.paragraphs[*p_idx];
+        let paragraph = dataset.paragraphs.get(*p_idx)
+            .ok_or_else(|| anyhow!("paragraph index out of bounds for question '{question_id}'"))?;
         let question = paragraph
             .questions
             .get(*q_idx)
@@ -205,6 +207,7 @@ struct BuildParams {
     rng_seed: u64,
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn resolve_slice<'a>(
     dataset: &'a ConvertedDataset,
     config: &SliceConfig<'_>,
@@ -237,7 +240,7 @@ pub fn resolve_slice<'a>(
         requested_corpus,
         seed: config.slice_seed,
     };
-    let slice_id = compute_slice_id(&key);
+    let slice_id = compute_slice_id(&key)?;
     let base = config
         .cache_dir
         .join("slices")
@@ -360,7 +363,7 @@ pub fn resolve_slice<'a>(
         &params,
         desired_negatives,
         requested_corpus,
-    )?;
+    );
     refresh_manifest_stats(&mut manifest);
 
     if changed {
@@ -390,6 +393,7 @@ pub fn resolve_slice<'a>(
     Ok(resolved)
 }
 
+#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 pub fn select_window<'a>(
     resolved: &'a ResolvedSlice<'a>,
     offset: usize,
@@ -404,9 +408,7 @@ pub fn select_window<'a>(
     }
     if offset >= total {
         return Err(anyhow!(
-            "slice offset {} exceeds available cases ({})",
-            offset,
-            total
+            "slice offset {offset} exceeds available cases ({total})",
         ));
     }
     let available = total - offset;
@@ -516,6 +518,7 @@ fn empty_manifest(
     }
 }
 
+#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 fn ensure_case_capacity(
     dataset: &ConvertedDataset,
     manifest: &mut SliceManifest,
@@ -631,6 +634,7 @@ fn ordered_question_refs(
     Ok(question_refs)
 }
 
+#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
 fn ordered_question_refs_beir(
     dataset: &ConvertedDataset,
     params: &BuildParams,
@@ -795,20 +799,21 @@ fn question_prefix(question_id: &str) -> Option<&'static str> {
     None
 }
 
+#[allow(clippy::indexing_slicing)]
 fn ensure_negative_pool(
     dataset: &ConvertedDataset,
     manifest: &mut SliceManifest,
     params: &BuildParams,
     target_negatives: usize,
     requested_corpus: usize,
-) -> Result<bool> {
+) -> bool {
     let current_negatives = manifest
         .paragraphs
         .iter()
         .filter(|entry| matches!(entry.kind, SliceParagraphKind::Negative))
         .count();
     if current_negatives >= target_negatives {
-        return Ok(false);
+        return false;
     }
 
     let positive_ids: HashSet<String> = manifest
@@ -816,7 +821,7 @@ fn ensure_negative_pool(
         .iter()
         .filter_map(|entry| match entry.kind {
             SliceParagraphKind::Positive { .. } => Some(entry.id.clone()),
-            _ => None,
+            SliceParagraphKind::Negative => None,
         })
         .collect();
     let mut negative_ids: HashSet<String> = manifest
@@ -824,7 +829,7 @@ fn ensure_negative_pool(
         .iter()
         .filter_map(|entry| match entry.kind {
             SliceParagraphKind::Negative => Some(entry.id.clone()),
-            _ => None,
+            SliceParagraphKind::Positive { .. } => None,
         })
         .collect();
 
@@ -863,7 +868,7 @@ fn ensure_negative_pool(
         );
     }
 
-    Ok(added)
+    added
 }
 
 fn ordered_negative_indices(
@@ -914,6 +919,7 @@ fn ensure_shard_paths(manifest: &mut SliceManifest) -> bool {
     changed
 }
 
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn desired_negative_target(
     positive_count: usize,
     requested_corpus: usize,
@@ -996,17 +1002,18 @@ fn manifest_to_resolved<'a>(
     })
 }
 
-fn compute_slice_id(key: &SliceKey<'_>) -> String {
-    let payload = serde_json::to_vec(key).expect("SliceKey serialisation should not fail");
+fn compute_slice_id(key: &SliceKey<'_>) -> Result<String> {
+    let payload = serde_json::to_vec(key).context("SliceKey serialisation failed")?;
     let mut hasher = Sha256::new();
     hasher.update(payload);
     let digest = hasher.finalize();
-    digest[..16]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>()
+    Ok(digest.iter().take(16).fold(String::with_capacity(32), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    }))
 }
 
+#[allow(clippy::indexing_slicing)]
 fn mix_seed(dataset_id: &str, seed: u64) -> u64 {
     let mut hasher = Sha256::new();
     hasher.update(dataset_id.as_bytes());
@@ -1146,6 +1153,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::indexing_slicing)]
     fn select_window_yields_expected_cases() -> Result<()> {
         let dataset = sample_dataset();
         let temp = tempdir().context("creating temp directory")?;
@@ -1177,6 +1185,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::indexing_slicing)]
     fn beir_mix_balances_and_rebalances() -> Result<()> {
         let mut paragraphs = Vec::new();
         let counts = [

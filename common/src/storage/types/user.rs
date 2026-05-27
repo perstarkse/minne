@@ -1036,7 +1036,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_api_key_with_none_theme() {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await.expect("Failed to setup test db");
 
         let user = User::create_new(
             "legacy_theme@example.com".to_string(),

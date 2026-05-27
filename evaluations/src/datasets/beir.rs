@@ -47,6 +47,7 @@ struct QrelEntry {
     score: i32,
 }
 
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<ConvertedParagraph>> {
     let corpus_path = raw_dir.join("corpus.jsonl");
     let queries_path = raw_dir.join("queries.jsonl");
@@ -76,18 +77,17 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
     let mut skipped_answers = 0usize;
 
     for (query_id, entries) in qrels {
-        let query = if let Some(query) = queries.get(&query_id) { query } else {
+        let Some(query) = queries.get(&query_id) else {
             missing_queries += 1;
             warn!(query_id = %query_id, "Skipping qrels entry for missing query");
             continue;
         };
 
-        let best = match select_best_doc(&entries) {
-            Some(entry) => entry,
-            None => continue,
+        let Some(best) = select_best_doc(&entries) else {
+            continue;
         };
 
-        let paragraph_slot = if let Some(slot) = paragraph_index.get(&best.doc_id) { *slot } else {
+        let Some(&paragraph_slot) = paragraph_index.get(&best.doc_id) else {
             missing_docs += 1;
             warn!(
                 query_id = %query_id,
@@ -97,8 +97,7 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
             continue;
         };
 
-        let answer = answer_snippet(&paragraphs[paragraph_slot].context);
-        let answers = if let Some(snippet) = answer { vec![snippet] } else {
+        let Some(snippet) = answer_snippet(&paragraphs[paragraph_slot].context) else {
             skipped_answers += 1;
             warn!(
                 query_id = %query_id,
@@ -107,6 +106,7 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
             );
             continue;
         };
+        let answers = vec![snippet];
 
         let question_id = format!("{}-{query_id}", dataset.source_prefix());
         paragraphs[paragraph_slot]
@@ -147,6 +147,7 @@ fn resolve_qrels_path(raw_dir: &Path) -> Result<PathBuf> {
     ))
 }
 
+#[allow(clippy::arithmetic_side_effects)]
 fn load_corpus(path: &Path) -> Result<BTreeMap<String, BeirParagraph>> {
     let file =
         File::open(path).with_context(|| format!("opening BEIR corpus at {}", path.display()))?;
@@ -181,6 +182,7 @@ fn load_corpus(path: &Path) -> Result<BTreeMap<String, BeirParagraph>> {
     Ok(corpus)
 }
 
+#[allow(clippy::arithmetic_side_effects)]
 fn load_queries(path: &Path) -> Result<BTreeMap<String, BeirQuery>> {
     let file = File::open(path)
         .with_context(|| format!("opening BEIR queries file at {}", path.display()))?;
@@ -211,6 +213,7 @@ fn load_queries(path: &Path) -> Result<BTreeMap<String, BeirQuery>> {
     Ok(queries)
 }
 
+#[allow(clippy::arithmetic_side_effects)]
 fn load_qrels(path: &Path) -> Result<BTreeMap<String, Vec<QrelEntry>>> {
     let file =
         File::open(path).with_context(|| format!("opening BEIR qrels at {}", path.display()))?;
@@ -294,6 +297,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
     fn converts_basic_beir_layout() {
         let dir = tempdir().unwrap();
         let corpus = r#"

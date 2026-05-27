@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// Grow the slice ledger to contain the target number of cases.
-pub async fn grow_slice(dataset: &ConvertedDataset, config: &Config) -> Result<()> {
+pub fn grow_slice(dataset: &ConvertedDataset, config: &Config) -> Result<()> {
     let ledger_limit = ledger_target(config);
     let slice_settings = slice::slice_config_with_limit(config, ledger_limit);
     let slice =
@@ -70,8 +70,8 @@ pub(crate) async fn write_chunk_diagnostics(path: &Path, cases: &[CaseDiagnostic
     Ok(())
 }
 
+#[allow(clippy::cast_precision_loss)]
 pub(crate) async fn warm_hnsw_cache(db: &SurrealDbClient, dimension: usize) -> Result<()> {
-    // Create a dummy embedding for cache warming
     let dummy_embedding: Vec<f32> = (0..dimension).map(|i| (i as f32).sin()).collect();
 
     info!("Warming HNSW caches with sample queries");

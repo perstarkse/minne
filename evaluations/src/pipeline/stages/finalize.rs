@@ -55,5 +55,5 @@ pub(crate) async fn finalize(
 
     machine
         .finalize()
-        .map_err(|(_, guard)| map_guard_error("finalize", guard))
+        .map_err(|(_, guard)| map_guard_error("finalize", &guard))
 }

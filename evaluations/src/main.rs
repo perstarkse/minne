@@ -22,6 +22,7 @@ use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
 
 /// Configure `SurrealDB` environment variables for optimal performance
+#[allow(clippy::arithmetic_side_effects, clippy::unwrap_used)]
 fn configure_surrealdb_performance(cpu_count: usize) {
     // Set environment variables only if they're not already set
     let indexing_batch_size = std::env::var("SURREAL_INDEXING_BATCH_SIZE")
@@ -74,6 +75,7 @@ fn main() -> anyhow::Result<()> {
     runtime.block_on(async_main())
 }
 
+#[allow(clippy::too_many_lines)]
 async fn async_main() -> anyhow::Result<()> {
     // Log runtime configuration
     let cpu_count = std::thread::available_parallelism()?.get();
@@ -165,7 +167,6 @@ async fn async_main() -> anyhow::Result<()> {
 
     if parsed.config.slice_grow.is_some() {
         eval::grow_slice(&dataset, &parsed.config)
-            .await
             .context("growing slice ledger")?;
         return Ok(());
     }

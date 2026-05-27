@@ -161,6 +161,7 @@ mod tests {
         Router,
     };
     use common::storage::{
+        db::SurrealDbClient,
         store::StorageManager,
         types::{system_settings::SystemSettings, user::User},
     };
@@ -195,9 +196,17 @@ mod tests {
             .expect("failed to create temp data directory");
 
         let config = smoke_test_config(namespace, &database, &data_dir);
-        let services = crate::bootstrap::init_with_config(config.clone()).await?;
+        let services = crate::bootstrap::init_with_config(config.clone())
+            .await
+            .expect("failed to init services");
 
-        let session_store = Arc::new(services.db.create_session_store().await?);
+        let session_store = Arc::new(
+            services
+                .db
+                .create_session_store()
+                .await
+                .expect("failed to create session store"),
+        );
 
         let html_state = HtmlState::new_with_resources(StateResources {
             db: Arc::clone(&services.db),
@@ -224,7 +233,7 @@ mod tests {
                 html_state,
             });
 
-        (app, db, data_dir)
+        (app, services.db, data_dir)
     }
 
     fn assert_redirect_to(response: &Response, expected_location: &str) {
@@ -289,22 +298,25 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/v1/live")
-                    .body(Body::empty())?,
+                    .body(Body::empty())
+                    .expect("building live request"),
             )
-            .await?;
+            .await
+            .expect("sending live request");
         assert_eq!(response.status(), StatusCode::OK);
 
         let ready_response = app
             .oneshot(
                 Request::builder()
                     .uri("/api/v1/ready")
-                    .body(Body::empty())?,
+                    .body(Body::empty())
+                    .expect("building ready request"),
             )
-            .await?;
+            .await
+            .expect("sending ready request");
         assert_eq!(ready_response.status(), StatusCode::OK);
 
         tokio::fs::remove_dir_all(&data_dir).await.ok();
-        Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

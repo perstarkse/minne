@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use middleware_api_auth::api_auth;
-use routes::{categories::get_categories, ingest::ingest_data, liveness::live, readiness::ready};
+use routes::{categories::list, ingest::ingest_data, liveness::live, readiness::ready};
 
 pub mod api_state;
 pub mod error;
@@ -32,7 +32,7 @@ where
                 app_state.config.ingest_max_body_bytes,
             )),
         )
-        .route("/categories", get(get_categories))
+        .route("/categories", get(list))
         .route_layer(from_fn_with_state(app_state.clone(), api_auth));
 
     public.merge(protected)
