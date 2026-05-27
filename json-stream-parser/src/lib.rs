@@ -1,40 +1,23 @@
 // This code is based on the json-stream-rust library (https://github.com/json-stream/json-stream-rust)
 // Original code is MIT licensed
 // Modified to fix escape character handling in strings
-use std::mem;
 use serde_json::{json, Value};
+use std::mem;
 
 #[derive(Clone, Debug)]
 enum ObjectStatus {
     Ready,
     StringQuoteOpen(bool),
     StringQuoteClose,
-    Scalar {
-        value_so_far: String,
-    },
-    ScalarNumber {
-        value_so_far: String,
-    },
+    Scalar { value_so_far: String },
+    ScalarNumber { value_so_far: String },
     StartProperty,
-    KeyQuoteOpen {
-        key_so_far: String,
-        escaped: bool,
-    },
-    KeyQuoteClose {
-        key: String,
-    },
-    Colon {
-        key: String,
-    },
-    ValueQuoteOpen {
-        key: String,
-        escaped: bool,
-    },
+    KeyQuoteOpen { key_so_far: String, escaped: bool },
+    KeyQuoteClose { key: String },
+    Colon { key: String },
+    ValueQuoteOpen { key: String, escaped: bool },
     ValueQuoteClose,
-    ValueScalar {
-        key: String,
-        value_so_far: String,
-    },
+    ValueScalar { key: String, value_so_far: String },
     Closed,
 }
 
@@ -52,11 +35,10 @@ pub enum ParseError {
     InvalidObjectValue(String, String),
     /// A character was encountered that does not fit the expected state.
     #[error("unexpected character `{char}`")]
-    UnexpectedCharacter {
-        char: char,
-    },
+    UnexpectedCharacter { char: char },
 }
 
+#[allow(clippy::too_many_lines)]
 fn add_char_into_object(
     object: &mut Value,
     current_status: &mut ObjectStatus,
@@ -97,15 +79,20 @@ fn add_char_into_object(
 
         // --- Object: key with escaped quote ---
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: true, .. }, '"') => {
-            if let ObjectStatus::KeyQuoteOpen { ref mut key_so_far, ref mut escaped } =
-                current_status
+            if let ObjectStatus::KeyQuoteOpen {
+                ref mut key_so_far,
+                ref mut escaped,
+            } = current_status
             {
                 key_so_far.push('"');
                 *escaped = false;
             }
         }
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: false, .. }, '"') => {
-            if let ObjectStatus::KeyQuoteOpen { ref mut key_so_far, .. } = current_status {
+            if let ObjectStatus::KeyQuoteOpen {
+                ref mut key_so_far, ..
+            } = current_status
+            {
                 let key = mem::take(key_so_far);
                 if let Value::Object(obj) = object {
                     obj.insert(key.clone(), Value::Null);
@@ -115,8 +102,10 @@ fn add_char_into_object(
         }
         // --- Object: key with escaped other char ---
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: true, .. }, c) => {
-            if let ObjectStatus::KeyQuoteOpen { ref mut key_so_far, ref mut escaped } =
-                current_status
+            if let ObjectStatus::KeyQuoteOpen {
+                ref mut key_so_far,
+                ref mut escaped,
+            } = current_status
             {
                 key_so_far.push('\\');
                 key_so_far.push(c);
@@ -124,7 +113,10 @@ fn add_char_into_object(
             }
         }
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: false, .. }, '\\') => {
-            if let ObjectStatus::KeyQuoteOpen { ref mut escaped, .. } = current_status {
+            if let ObjectStatus::KeyQuoteOpen {
+                ref mut escaped, ..
+            } = current_status
+            {
                 *escaped = true;
             }
         }
@@ -139,7 +131,11 @@ fn add_char_into_object(
 
         // --- Object: value with escaped quote ---
         (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: true, .. }, '"') => {
-            if let ObjectStatus::ValueQuoteOpen { ref key, ref mut escaped } = current_status {
+            if let ObjectStatus::ValueQuoteOpen {
+                ref key,
+                ref mut escaped,
+            } = current_status
+            {
                 if let Value::Object(obj) = object {
                     if let Some(Value::String(value)) = obj.get_mut(key) {
                         value.push('"');
@@ -152,7 +148,11 @@ fn add_char_into_object(
             *current_status = ObjectStatus::ValueQuoteClose;
         }
         (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: true, .. }, c) => {
-            if let ObjectStatus::ValueQuoteOpen { ref key, ref mut escaped } = current_status {
+            if let ObjectStatus::ValueQuoteOpen {
+                ref key,
+                ref mut escaped,
+            } = current_status
+            {
                 if let Value::Object(obj) = object {
                     if let Some(Value::String(value)) = obj.get_mut(key) {
                         value.push('\\');
@@ -163,7 +163,10 @@ fn add_char_into_object(
             }
         }
         (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: false, .. }, '\\') => {
-            if let ObjectStatus::ValueQuoteOpen { ref mut escaped, .. } = current_status {
+            if let ObjectStatus::ValueQuoteOpen {
+                ref mut escaped, ..
+            } = current_status
+            {
                 *escaped = true;
             }
         }
@@ -446,7 +449,6 @@ fn add_char_into_object(
 ///
 /// Returns [`ParseError`] if the input contains invalid JSON or unexpected characters
 /// for the current parser state.
-#[must_use]
 pub fn parse_stream(json_string: &str) -> Result<Value, ParseError> {
     let mut out: Value = Value::Null;
     let mut current_status = ObjectStatus::Ready;
