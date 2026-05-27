@@ -30,24 +30,36 @@ pub async fn extract_text_from_url(
                 .sandbox(false)
                 .build()
                 .map_err(|e| AppError::InternalError(e.to_string()))?;
-            Browser::new(options)?
+            Browser::new(options)
+                .map_err(|e| AppError::InternalError(e.to_string()))?
         }
         #[cfg(not(feature = "docker"))]
         {
-            Browser::default()?
+            Browser::default()
+                .map_err(|e| AppError::InternalError(e.to_string()))?
         }
     };
 
-    let tab = browser.new_tab()?;
-    let page = tab.navigate_to(url)?;
-    let loaded_page = page.wait_until_navigated()?;
-    let raw_content = loaded_page.get_content()?;
-    let screenshot = loaded_page.capture_screenshot(
-        headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Jpeg,
-        None,
-        None,
-        true,
-    )?;
+    let tab = browser
+        .new_tab()
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
+    let page = tab
+        .navigate_to(url)
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
+    let loaded_page = page
+        .wait_until_navigated()
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
+    let raw_content = loaded_page
+        .get_content()
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
+    let screenshot = loaded_page
+        .capture_screenshot(
+            headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Jpeg,
+            None,
+            None,
+            true,
+        )
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
 
     let mut tmp_file = NamedTempFile::new()?;
     let temp_path_str = tmp_file.path().display().to_string();

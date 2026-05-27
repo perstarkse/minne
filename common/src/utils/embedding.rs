@@ -311,7 +311,7 @@ pub async fn generate_embedding_with_provider(
     provider: &EmbeddingProvider,
     input: &str,
 ) -> Result<Vec<f32>, AppError> {
-    provider.embed(input).await.map_err(AppError::from)
+    provider.embed(input).await.map_err(|e| AppError::InternalError(e.to_string()))
 }
 
 /// Generates an embedding vector for the given input text using `OpenAI`'s embedding model.
