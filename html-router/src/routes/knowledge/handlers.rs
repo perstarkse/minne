@@ -173,7 +173,7 @@ pub async fn create_knowledge_entity(
 ) -> Result<impl IntoResponse, HtmlError> {
     let name = form.name.trim().to_string();
     if name.is_empty() {
-        return Err(AppError::Validation("Name is required".into()).into());
+        return Err(AppError::Validation("name is required".into()).into());
     }
 
     let description = form.description.trim().to_string();

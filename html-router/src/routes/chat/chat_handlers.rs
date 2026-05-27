@@ -148,7 +148,7 @@ pub async fn new_user_message(
         .db
         .get_item(&conversation_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("Conversation was not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("conversation was not found".into()))?;
 
     if conversation.user_id != user.id {
         return Ok(TemplateResponse::unauthorized().into_response());
@@ -235,7 +235,7 @@ pub async fn show_conversation_editing_title(
         .db
         .get_item(&conversation_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("conversation not found".to_string()))?;
 
     if conversation.user_id != user.id {
         return Ok(TemplateResponse::unauthorized().into_response());
@@ -277,7 +277,7 @@ pub async fn delete_conversation(
         .db
         .get_item(&conversation_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("conversation not found".to_string()))?;
 
     if conversation.user_id != user.id {
         return Ok(TemplateResponse::unauthorized().into_response());

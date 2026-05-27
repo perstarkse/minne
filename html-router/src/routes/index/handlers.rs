@@ -113,7 +113,7 @@ async fn get_and_validate_text_content(
         .db
         .get_item::<TextContent>(id)
         .await?
-        .ok_or_else(|| AppError::NotFound("Item was not found".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("item was not found".to_string()))?;
 
     if text_content.user_id != user.id {
         return Err(AppError::Auth(

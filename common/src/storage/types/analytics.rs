@@ -34,7 +34,7 @@ impl Analytics {
 
             let stored: Option<Self> = db.store_item(created_analytics).await?;
             return stored.ok_or(AppError::Validation(
-                "Failed to initialize analytics".into(),
+"failed to initialize analytics".into(),
             ));
         }
 
@@ -44,7 +44,7 @@ impl Analytics {
     }
     pub async fn get_current(db: &SurrealDbClient) -> Result<Self, AppError> {
         let analytics: Option<Self> = db.get_item("current").await?;
-        analytics.ok_or(AppError::NotFound("Analytics not found".into()))
+        analytics.ok_or(AppError::NotFound("analytics not found".into()))
     }
 
     pub async fn increment_visitors(db: &SurrealDbClient) -> Result<Self, AppError> {
@@ -54,7 +54,7 @@ impl Analytics {
             .await?
             .take(0)?;
 
-        updated.ok_or(AppError::Validation("Failed to update analytics".into()))
+        updated.ok_or(AppError::Validation("failed to update analytics".into()))
     }
 
     pub async fn increment_page_loads(db: &SurrealDbClient) -> Result<Self, AppError> {
@@ -64,7 +64,7 @@ impl Analytics {
             .await?
             .take(0)?;
 
-        updated.ok_or(AppError::Validation("Failed to update analytics".into()))
+        updated.ok_or(AppError::Validation("failed to update analytics".into()))
     }
 
     pub async fn get_users_amount(db: &SurrealDbClient) -> Result<i64, AppError> {

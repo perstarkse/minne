@@ -78,7 +78,7 @@ impl Scratchpad {
         let scratchpad: Option<Scratchpad> = db.get_item(id).await?;
 
         let scratchpad =
-            scratchpad.ok_or_else(|| AppError::NotFound("Scratchpad not found".to_string()))?;
+            scratchpad.ok_or_else(|| AppError::NotFound("scratchpad not found".to_string()))?;
 
         if scratchpad.user_id != user_id {
             return Err(AppError::Auth(

@@ -36,7 +36,7 @@ impl StoredObject for SystemSettings {
 impl SystemSettings {
     pub async fn get_current(db: &SurrealDbClient) -> Result<Self, AppError> {
         let settings: Option<Self> = db.get_item("current").await?;
-        settings.ok_or(AppError::NotFound("System settings not found".into()))
+        settings.ok_or(AppError::NotFound("system settings not found".into()))
     }
 
     pub async fn update(db: &SurrealDbClient, changes: Self) -> Result<Self, AppError> {
@@ -49,7 +49,7 @@ impl SystemSettings {
             .take(0)?;
 
         updated.ok_or(AppError::Validation(
-            "Something went wrong updating the settings".into(),
+            "something went wrong updating the settings".into(),
         ))
     }
 

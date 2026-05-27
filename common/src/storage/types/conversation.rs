@@ -79,7 +79,7 @@ impl Conversation {
         let conversation: Conversation = db
             .get_item(conversation_id)
             .await?
-            .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("conversation not found".to_string()))?;
 
         if conversation.user_id != user_id {
             return Err(AppError::Auth(
@@ -105,7 +105,7 @@ impl Conversation {
         // First verify ownership by getting conversation user_id
         let conversation: Option<Conversation> = db.get_item(id).await?;
         let conversation =
-            conversation.ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+            conversation.ok_or_else(|| AppError::NotFound("conversation not found".to_string()))?;
 
         if conversation.user_id != user_id {
             return Err(AppError::Auth(
