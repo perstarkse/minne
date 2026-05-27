@@ -829,21 +829,19 @@ mod tests {
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+            .expect("Failed to start in-memory surrealdb");
         db.apply_migrations()
             .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+            .expect("Failed to apply migrations");
 
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
-            .with_context(|| "Failed to redefine index length".to_string())?;
+            .expect("Failed to redefine index length");
 
         let results = KnowledgeEntity::vector_search(5, vec![0.1, 0.2, 0.3], &db, "user")
             .await
-            .with_context(|| "vector search".to_string())?;
+            .expect("vector search");
         assert!(results.is_empty());
-
-        Ok(())
     }
 
     #[tokio::test]

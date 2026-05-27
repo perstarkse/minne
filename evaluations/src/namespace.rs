@@ -101,7 +101,7 @@ pub(crate) async fn can_reuse_namespace(
     ingestion_fingerprint: &str,
     slice_case_count: usize,
 ) -> Result<bool> {
-    let state = if let Some(state) = descriptor.load_db_state().await? { state } else {
+    let Some(state) = descriptor.load_db_state().await? else {
         info!("No namespace state recorded; reseeding corpus from cached shards");
         return Ok(false);
     };

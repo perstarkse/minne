@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::{anyhow, Result};
 use async_openai::Client;
 use common::{
     storage::{
@@ -26,6 +27,7 @@ use crate::{
     slice, snapshot,
 };
 
+#[allow(clippy::struct_excessive_bools)]
 pub(super) struct EvaluationContext<'a> {
     dataset: &'a ConvertedDataset,
     config: &'a Config,
@@ -119,41 +121,39 @@ impl<'a> EvaluationContext<'a> {
         self.config
     }
 
-    pub fn slice(&self) -> &slice::ResolvedSlice<'a> {
-        self.slice.as_ref().expect("slice has not been prepared")
+    pub fn slice(&self) -> Result<&slice::ResolvedSlice<'a>> {
+        self.slice.as_ref().ok_or_else(|| anyhow!("slice has not been prepared"))
     }
 
-    pub fn db(&self) -> &SurrealDbClient {
-        self.db.as_ref().expect("database connection missing")
+    pub fn db(&self) -> Result<&SurrealDbClient> {
+        self.db.as_ref().ok_or_else(|| anyhow!("database connection missing"))
     }
 
-    pub fn descriptor(&self) -> &snapshot::Descriptor {
+    pub fn descriptor(&self) -> Result<&snapshot::Descriptor> {
         self.descriptor
             .as_ref()
-            .expect("snapshot descriptor unavailable")
+            .ok_or_else(|| anyhow!("snapshot descriptor unavailable"))
     }
 
-    pub fn embedding_provider(&self) -> &EmbeddingProvider {
+    pub fn embedding_provider(&self) -> Result<&EmbeddingProvider> {
         self.embedding_provider
             .as_ref()
-            .expect("embedding provider not initialised")
+            .ok_or_else(|| anyhow!("embedding provider not initialised"))
     }
 
-    pub fn openai_client(&self) -> Arc<Client<async_openai::config::OpenAIConfig>> {
-        self.openai_client
-            .as_ref()
-            .expect("openai client missing")
-            .clone()
+    pub fn openai_client(&self) -> Result<Arc<Client<async_openai::config::OpenAIConfig>>> {
+        Ok(Arc::clone(self.openai_client.as_ref().ok_or_else(|| anyhow!("openai client missing"))?))
     }
 
-    pub fn corpus_handle(&self) -> &corpus::CorpusHandle {
-        self.corpus_handle.as_ref().expect("corpus handle missing")
+    pub fn corpus_handle(&self) -> Result<&corpus::CorpusHandle> {
+        self.corpus_handle.as_ref().ok_or_else(|| anyhow!("corpus handle missing"))
     }
 
-    pub fn evaluation_user(&self) -> &User {
-        self.eval_user.as_ref().expect("evaluation user missing")
+    pub fn evaluation_user(&self) -> Result<&User> {
+        self.eval_user.as_ref().ok_or_else(|| anyhow!("evaluation user missing"))
     }
 
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn record_stage_duration(&mut self, stage: EvalStage, duration: Duration) {
         let elapsed = duration.as_millis();
         match stage {
@@ -167,8 +167,8 @@ impl<'a> EvaluationContext<'a> {
         }
     }
 
-    pub fn into_summary(self) -> EvaluationSummary {
-        self.summary.expect("evaluation summary missing")
+    pub fn into_summary(self) -> Result<EvaluationSummary> {
+        self.summary.ok_or_else(|| anyhow!("evaluation summary missing"))
     }
 }
 
@@ -184,7 +184,7 @@ pub(super) enum EvalStage {
 }
 
 impl EvalStage {
-    pub fn label(&self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             EvalStage::PrepareSlice => "prepare-slice",
             EvalStage::PrepareDb => "prepare-db",

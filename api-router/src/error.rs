@@ -145,7 +145,7 @@ mod tests {
         assert_status_code(error, StatusCode::UNAUTHORIZED);
 
         // Test payload too large status
-        let error = ApiError::PayloadTooLarge("too big".to_string());
+        let error = ApiErr::PayloadTooLarge("too big".to_string());
         assert_status_code(error, StatusCode::PAYLOAD_TOO_LARGE);
     }
 

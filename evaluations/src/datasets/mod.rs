@@ -305,7 +305,7 @@ impl DatasetKind {
     pub fn category(self) -> &'static str {
         match self {
             Self::SquadV2 => "SQuAD v2.0",
-            Self::NaturalQuestions => "Natural Questions",
+            Self::NaturalQuestions | Self::NqBeir => "Natural Questions",
             Self::Beir => "BEIR",
             Self::Fever => "FEVER",
             Self::Fiqa => "FiQA-2018",
@@ -314,14 +314,13 @@ impl DatasetKind {
             Self::Quora => "Quora",
             Self::TrecCovid => "TREC-COVID",
             Self::Scifact => "SciFact",
-            Self::NqBeir => "Natural Questions",
         }
     }
 
     pub fn entity_suffix(self) -> &'static str {
         match self {
             Self::SquadV2 => "SQuAD",
-            Self::NaturalQuestions => "Natural Questions",
+            Self::NaturalQuestions | Self::NqBeir => "Natural Questions",
             Self::Beir => "BEIR",
             Self::Fever => "FEVER",
             Self::Fiqa => "FiQA",
@@ -330,7 +329,6 @@ impl DatasetKind {
             Self::Quora => "Quora",
             Self::TrecCovid => "TREC-COVID",
             Self::Scifact => "SciFact",
-            Self::NqBeir => "Natural Questions",
         }
     }
 
@@ -351,11 +349,19 @@ impl DatasetKind {
     }
 
     pub fn default_raw_path(self) -> PathBuf {
-        dataset_entry_for_kind(self).map_or_else(|err| panic!("dataset manifest missing entry for {self:?}: {err}"), |entry| entry.raw_path.clone())
+        #[allow(clippy::panic)]
+        match dataset_entry_for_kind(self) {
+            Ok(entry) => entry.raw_path.clone(),
+            Err(err) => panic!("dataset manifest missing entry for {self:?}: {err}"),
+        }
     }
 
     pub fn default_converted_path(self) -> PathBuf {
-        dataset_entry_for_kind(self).map_or_else(|err| panic!("dataset manifest missing entry for {self:?}: {err}"), |entry| entry.converted_path.clone())
+        #[allow(clippy::panic)]
+        match dataset_entry_for_kind(self) {
+            Ok(entry) => entry.converted_path.clone(),
+            Err(err) => panic!("dataset manifest missing entry for {self:?}: {err}"),
+        }
     }
 }
 

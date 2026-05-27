@@ -705,7 +705,7 @@ mod tests {
         let database = &Uuid::new_v4().to_string();
         let db = SurrealDbClient::memory(namespace, database)
             .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+            .expect("Failed to start in-memory surrealdb");
 
         // Create a FileInfo instance directly
         let now = Utc::now();
@@ -728,14 +728,13 @@ mod tests {
         let retrieved = db
             .get_item::<FileInfo>(&file_info.id)
             .await
-            .with_context(|| "Failed to retrieve file info".to_string())?
-            .with_context(|| "expected file".to_string())?;
+            .expect("Failed to retrieve file info")
+            .expect("expected file");
         assert_eq!(retrieved.id, file_info.id);
         assert_eq!(retrieved.sha256, file_info.sha256);
         assert_eq!(retrieved.file_name, file_info.file_name);
         assert_eq!(retrieved.path, file_info.path);
         assert_eq!(retrieved.mime_type, file_info.mime_type);
-        Ok(())
     }
 
     #[tokio::test]

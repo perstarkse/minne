@@ -68,5 +68,5 @@ pub(crate) async fn prepare_slice(
 
     machine
         .prepare_slice()
-        .map_err(|(_, guard)| map_guard_error("prepare_slice", guard))
+        .map_err(|(_, guard)| map_guard_error("prepare_slice", &guard))
 }

@@ -333,7 +333,7 @@ async fn prepare_chat_request(
     history: &[Message],
 ) -> Result<
     (async_openai::types::CreateChatCompletionRequest, Vec<String>),
-    Sse<Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>>,
+    SseResponse,
 > {
     let rerank_lease = match state.reranker_pool.as_ref() {
         Some(pool) => pool.checkout().await,
@@ -356,7 +356,7 @@ async fn prepare_chat_request(
     {
         Ok(result) => result,
         Err(_e) => {
-            return Err(Sse::new(create_error_stream("Failed to retrieve knowledge")));
+            return Err(sse_with_keep_alive(create_error_stream("Failed to retrieve knowledge")));
         }
     };
 
@@ -365,7 +365,7 @@ async fn prepare_chat_request(
     let context_json = match retrieval_result {
         retrieval_pipeline::StrategyOutput::Chunks(chunks) => chunks_to_chat_context(&chunks),
         retrieval_pipeline::StrategyOutput::Entities(entities) => {
-            retrieved_entities_to_json(entities)
+            retrieved_entities_to_json(&entities)
         }
         retrieval_pipeline::StrategyOutput::Search(search_result) => {
             chunks_to_chat_context(&search_result.chunks)
@@ -374,10 +374,10 @@ async fn prepare_chat_request(
     let formatted_user_message =
         create_user_message_with_history(&context_json, history, &user_message.content);
     let Ok(settings) = SystemSettings::get_current(&state.db).await else {
-        return Err(Sse::new(create_error_stream("Failed to retrieve system settings")));
+        return Err(sse_with_keep_alive(create_error_stream("Failed to retrieve system settings")));
     };
     let Ok(request) = create_chat_request(formatted_user_message, &settings) else {
-        return Err(Sse::new(create_error_stream("Failed to create chat request")));
+        return Err(sse_with_keep_alive(create_error_stream("Failed to create chat request")));
     };
 
     Ok((request, allowed_reference_ids))
@@ -415,7 +415,7 @@ fn spawn_storage_task(
                 Err(err) => {
                     error!(error = %err, "Reference validation failed, storing answer without references");
                     let ai_message = Message::new(
-                        user_message.conversation_id,
+                        conversation_id.clone(),
                         MessageRole::AI,
                         answer,
                         Some(Vec::new()),

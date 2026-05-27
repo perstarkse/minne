@@ -197,6 +197,13 @@ pub struct CorpusHandle {
     pub negative_ingested: usize,
 }
 
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::indexing_slicing
+)]
 pub fn window_manifest(
     manifest: &CorpusManifest,
     offset: usize,
@@ -211,9 +218,7 @@ pub fn window_manifest(
     }
     if offset >= total {
         return Err(anyhow!(
-            "window offset {} exceeds manifest questions ({})",
-            offset,
-            total
+            "window offset {offset} exceeds manifest questions ({total})"
         ));
     }
     let end = (offset + length).min(total);
@@ -601,6 +606,7 @@ fn normalize_answer_text(text: &str) -> String {
         .join(" ")
 }
 
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 fn chunk_items<T: Clone + Serialize>(
     items: &[T],
     max_items: usize,
@@ -644,6 +650,7 @@ fn chunk_items<T: Clone + Serialize>(
     Ok(batches)
 }
 
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 async fn execute_batched_inserts<T: Clone + Serialize + 'static>(
     db: &SurrealDbClient,
     statement: impl AsRef<str>,
@@ -781,6 +788,7 @@ mod tests {
     use common::storage::types::knowledge_entity::KnowledgeEntityType;
     use uuid::Uuid;
 
+    #[allow(clippy::too_many_lines)]
     fn build_manifest() -> CorpusManifest {
         let user_id = "user-1".to_string();
         let source_id = "source-1".to_string();
@@ -822,9 +830,9 @@ mod tests {
             id: Uuid::new_v4().to_string(),
             created_at: now,
             updated_at: now,
-            source_id: source_id.clone(),
+            source_id,
             chunk: "chunk text".to_string(),
-            user_id: user_id.clone(),
+            user_id,
         };
 
         let paragraph_one = CorpusParagraph {
@@ -846,9 +854,9 @@ mod tests {
         let paragraph_two = CorpusParagraph {
             paragraph_id: "p2".to_string(),
             title: "Paragraph 2".to_string(),
-            text_content: text_content.clone(),
+            text_content,
             entities: vec![EmbeddedKnowledgeEntity {
-                entity: entity.clone(),
+                entity,
                 embedding: vec![0.1, 0.2, 0.3],
             }],
             relationships: Vec::new(),
@@ -865,7 +873,7 @@ mod tests {
             question_text: "What is this?".to_string(),
             answers: vec!["Hello".to_string()],
             is_impossible: false,
-            matching_chunk_ids: vec![chunk.id.clone()],
+            matching_chunk_ids: vec![chunk.id],
         };
 
         CorpusManifest {
@@ -893,6 +901,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::indexing_slicing, clippy::expect_used)]
     #[test]
     fn window_manifest_trims_questions_and_negatives() {
         let manifest = build_manifest();

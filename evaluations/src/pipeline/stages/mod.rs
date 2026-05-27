@@ -19,7 +19,7 @@ use state_machines::core::GuardError;
 
 use super::state::EvaluationMachine;
 
-fn map_guard_error(event: &str, guard: GuardError) -> anyhow::Error {
+fn map_guard_error(event: &str, guard: &GuardError) -> anyhow::Error {
     anyhow::anyhow!("invalid evaluation pipeline transition during {event}: {guard:?}")
 }
 

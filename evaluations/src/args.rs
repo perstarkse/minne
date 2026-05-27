@@ -198,6 +198,7 @@ pub struct DatabaseArgs {
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Config {
     /// Convert the selected dataset and exit
     #[arg(long)]
@@ -344,10 +345,12 @@ pub struct Config {
 }
 
 impl Config {
+    #[allow(clippy::unused_self)]
     pub fn context_token_limit(&self) -> Option<usize> {
         None
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn finalize(&mut self) -> Result<()> {
         // Handle dataset paths
         if let Some(raw) = &self.raw {

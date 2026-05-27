@@ -367,7 +367,7 @@ pub mod testing {
             storage: StorageKind::S3,
             s3_bucket: Some(configured_test_s3_bucket()),
             s3_endpoint: Some(configured_test_s3_endpoint()),
-            s3_region: Some("us-east-1".into()),
+            s3_region: "us-east-1".into(),
             pdf_ingest_mode: PdfIngestMode::LlmFirst,
             ..Default::default()
         }

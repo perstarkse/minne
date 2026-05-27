@@ -11,6 +11,7 @@ use super::super::{
 };
 use super::{map_guard_error, StageResult};
 
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn prepare_corpus(
     machine: EvaluationMachine<(), DbReady>,
     ctx: &mut EvaluationContext<'_>,
@@ -24,13 +25,13 @@ pub(crate) async fn prepare_corpus(
 
     let config = ctx.config();
     let cache_settings = corpus::CorpusCacheConfig::from(config);
-    let embedding_provider = ctx.embedding_provider().clone();
-    let openai_client = ctx.openai_client();
-    let slice = ctx.slice();
+    let embedding_provider = ctx.embedding_provider()?.clone();
+    let openai_client = ctx.openai_client()?;
+    let slice = ctx.slice()?;
     let window = slice::select_window(slice, ctx.config().slice_offset, ctx.config().limit)
         .context("selecting slice window for corpus preparation")?;
 
-    let descriptor = snapshot::Descriptor::new(config, slice, ctx.embedding_provider());
+    let descriptor = snapshot::Descriptor::new(config, slice, ctx.embedding_provider()?);
     let ingestion_config = corpus::make_ingestion_config(config);
     let expected_fingerprint = corpus::compute_ingestion_fingerprint(
         ctx.dataset(),
@@ -47,7 +48,7 @@ pub(crate) async fn prepare_corpus(
     if !config.reseed_slice {
         let requested_cases = window.cases.len();
         if can_reuse_namespace(
-            ctx.db(),
+            ctx.db()?,
             &descriptor,
             &ctx.namespace,
             &ctx.database,
@@ -81,7 +82,7 @@ pub(crate) async fn prepare_corpus(
 
                 return machine
                     .prepare_corpus()
-                    .map_err(|(_, guard)| map_guard_error("prepare_corpus", guard));
+                    .map_err(|(_, guard)| map_guard_error("prepare_corpus", &guard));
             }
             info!(
                 cache = %base_dir.display(),
@@ -137,5 +138,5 @@ pub(crate) async fn prepare_corpus(
 
     machine
         .prepare_corpus()
-        .map_err(|(_, guard)| map_guard_error("prepare_corpus", guard))
+        .map_err(|(_, guard)| map_guard_error("prepare_corpus", &guard))
 }

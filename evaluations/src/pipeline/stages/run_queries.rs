@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc, time::Instant};
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use common::storage::types::StoredObject;
 use futures::stream::{self, StreamExt};
 use tracing::{debug, info};
@@ -21,6 +21,7 @@ use super::super::{
 };
 use super::{map_guard_error, StageResult};
 
+#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
 pub(crate) async fn run_queries(
     machine: EvaluationMachine<(), NamespaceReady>,
     ctx: &mut EvaluationContext<'_>,
@@ -37,7 +38,7 @@ pub(crate) async fn run_queries(
     let slice_settings = ctx
         .slice_settings
         .as_ref()
-        .expect("slice settings missing during query stage");
+        .ok_or_else(|| anyhow!("slice settings missing during query stage"))?;
     let total_cases = ctx.cases.len();
     let cases_iter = std::mem::take(&mut ctx.cases).into_iter().enumerate();
 
@@ -115,9 +116,9 @@ pub(crate) async fn run_queries(
         chunk_rrf_fts_weight = active_tuning.chunk_rrf_fts_weight,
         chunk_rrf_use_vector = active_tuning.flags.chunk_rrf_use_vector.as_bool(),
         chunk_rrf_use_fts = active_tuning.flags.chunk_rrf_use_fts.as_bool(),
-        embedding_backend = ctx.embedding_provider().backend_label(),
+        embedding_backend = ctx.embedding_provider()?.backend_label(),
         embedding_model = ctx
-            .embedding_provider()
+            .embedding_provider()?
             .model_code()
             .as_deref()
             .unwrap_or("<default>"),
@@ -125,11 +126,11 @@ pub(crate) async fn run_queries(
     );
 
     let retrieval_config = Arc::new(retrieval_config);
-    ctx.rerank_pool = rerank_pool.clone();
-    ctx.retrieval_config = Some(retrieval_config.clone());
+    ctx.rerank_pool.clone_from(&rerank_pool);
+    ctx.retrieval_config = Some(Arc::clone(&retrieval_config));
 
     ctx.evaluation_start = Some(Instant::now());
-    let user_id = ctx.evaluation_user().id.clone();
+    let user_id = ctx.evaluation_user()?.id.clone();
     let concurrency = config.concurrency.max(1);
     let diagnostics_enabled = ctx.diagnostics_enabled;
 
@@ -141,20 +142,20 @@ pub(crate) async fn run_queries(
         "Starting evaluation with staged query execution"
     );
 
-    let embedding_provider_for_queries = ctx.embedding_provider().clone();
+    let embedding_provider_for_queries = ctx.embedding_provider()?.clone();
     let rerank_pool_for_queries = rerank_pool.clone();
-    let db = ctx.db().clone();
-    let openai_client = ctx.openai_client();
+    let db = ctx.db()?.clone();
+    let openai_client = ctx.openai_client()?;
 
     let raw_results = stream::iter(cases_iter)
         .map(move |(idx, case)| {
             let db = db.clone();
-            let openai_client = openai_client.clone();
+            let openai_client = Arc::clone(&openai_client);
             let user_id = user_id.clone();
-            let retrieval_config = retrieval_config.clone();
+            let retrieval_config = Arc::clone(&retrieval_config);
             let embedding_provider = embedding_provider_for_queries.clone();
             let rerank_pool = rerank_pool_for_queries.clone();
-            let semaphore = query_semaphore.clone();
+            let semaphore = Arc::clone(&query_semaphore);
             let diagnostics_enabled = diagnostics_enabled;
 
             async move {
@@ -374,9 +375,10 @@ pub(crate) async fn run_queries(
 
     machine
         .run_queries()
-        .map_err(|(_, guard)| map_guard_error("run_queries", guard))
+        .map_err(|(_, guard)| map_guard_error("run_queries", &guard))
 }
 
+#[allow(clippy::arithmetic_side_effects, clippy::cast_precision_loss)]
 fn calculate_reciprocal_rank(rank: Option<usize>) -> f64 {
     match rank {
         Some(r) if r > 0 => 1.0 / (r as f64),
@@ -384,6 +386,7 @@ fn calculate_reciprocal_rank(rank: Option<usize>) -> f64 {
     }
 }
 
+#[allow(clippy::arithmetic_side_effects, clippy::cast_precision_loss)]
 fn calculate_ndcg(retrieved: &[RetrievedSummary], k: usize) -> f64 {
     let mut dcg = 0.0;
     let mut relevant_count = 0;

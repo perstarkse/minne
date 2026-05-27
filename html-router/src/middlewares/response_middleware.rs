@@ -10,7 +10,7 @@ use axum::{
 use axum_htmx::{HxRequest, HX_TRIGGER};
 use common::{
     error::AppError,
-    utils::template_engine::{ProvidesTemplateEngine, TemplateEngine, Value},
+    utils::template_engine::{ProvidesTemplateEngine, Value},
 };
 use minijinja::context;
 use serde::Serialize;

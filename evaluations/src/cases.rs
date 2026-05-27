@@ -163,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::indexing_slicing)]
     fn cases_respect_mode_filters() {
         let mut manifest = sample_manifest();
         manifest.metadata.include_unanswerable = false;
@@ -173,7 +174,7 @@ mod tests {
         assert_eq!(strict_cases[0].question_id, "q1");
         assert_eq!(strict_cases[0].paragraph_title, "Alpha");
 
-        let mut llm_manifest = manifest.clone();
+        let mut llm_manifest = manifest;
         llm_manifest.metadata.include_unanswerable = true;
         llm_manifest.metadata.require_verified_chunks = false;
 

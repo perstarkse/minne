@@ -19,6 +19,7 @@ use super::super::{
 };
 use super::{map_guard_error, StageResult};
 
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn prepare_namespace(
     machine: EvaluationMachine<(), CorpusReady>,
     ctx: &mut EvaluationContext<'_>,
@@ -39,9 +40,9 @@ pub(crate) async fn prepare_namespace(
         .to_string();
     let namespace = ctx.namespace.clone();
     let database = ctx.database.clone();
-    let embedding_provider = ctx.embedding_provider().clone();
+    let embedding_provider = ctx.embedding_provider()?.clone();
 
-    let corpus_handle = ctx.corpus_handle();
+    let corpus_handle = ctx.corpus_handle()?;
     let base_manifest = &corpus_handle.manifest;
     let manifest_for_seed =
         if ctx.window_offset == 0 && ctx.window_length >= base_manifest.questions.len() {
@@ -60,10 +61,10 @@ pub(crate) async fn prepare_namespace(
     let mut namespace_reused = false;
     if !config.reseed_slice {
         namespace_reused = {
-            let slice = ctx.slice();
+            let slice = ctx.slice()?;
             can_reuse_namespace(
-                ctx.db(),
-                ctx.descriptor(),
+                ctx.db()?,
+                ctx.descriptor()?,
                 &namespace,
                 &database,
                 dataset.metadata.id.as_str(),
@@ -78,19 +79,19 @@ pub(crate) async fn prepare_namespace(
     let mut namespace_seed_ms = None;
     if !namespace_reused {
         ctx.must_reapply_settings = true;
-        if let Err(err) = reset_namespace(ctx.db(), &namespace, &database).await {
+        if let Err(err) = reset_namespace(ctx.db()?, &namespace, &database).await {
             warn!(
                 error = %err,
                 namespace,
                 database = %database,
                 "Failed to reset namespace before reseeding; continuing with existing data"
             );
-        } else if let Err(err) = ctx.db().apply_migrations().await {
+        } else if let Err(err) = ctx.db()?.apply_migrations().await {
             warn!(error = %err, "Failed to reapply migrations after namespace reset");
         }
 
         {
-            let slice = ctx.slice();
+            let slice = ctx.slice()?;
             info!(
                 slice = slice.manifest.slice_id.as_str(),
                 window_offset = ctx.window_offset,
@@ -113,10 +114,10 @@ pub(crate) async fn prepare_namespace(
                 "Seeding ingestion corpus into SurrealDB"
             );
         }
-        let indexes_disabled = remove_all_indexes(ctx.db()).await.is_ok();
+        let indexes_disabled = remove_all_indexes(ctx.db()?).await.is_ok();
 
         let seed_start = Instant::now();
-        corpus::seed_manifest_into_db(ctx.db(), &manifest_for_seed)
+        corpus::seed_manifest_into_db(ctx.db()?, &manifest_for_seed)
             .await
             .context("seeding ingestion corpus from manifest")?;
         namespace_seed_ms = Some(seed_start.elapsed().as_millis());
@@ -124,15 +125,15 @@ pub(crate) async fn prepare_namespace(
         // Recreate indexes AFTER data is loaded (correct bulk loading pattern)
         if indexes_disabled {
             info!("Recreating indexes after seeding data");
-            recreate_indexes(ctx.db(), embedding_provider.dimension())
+            recreate_indexes(ctx.db()?, embedding_provider.dimension())
                 .await
                 .context("recreating indexes with correct dimension")?;
-            warm_hnsw_cache(ctx.db(), embedding_provider.dimension()).await?;
+            warm_hnsw_cache(ctx.db()?, embedding_provider.dimension()).await?;
         }
         {
-            let slice = ctx.slice();
+            let slice = ctx.slice()?;
             record_namespace_state(
-                ctx.descriptor(),
+                ctx.descriptor()?,
                 dataset.metadata.id.as_str(),
                 slice.manifest.slice_id.as_str(),
                 expected_fingerprint.as_str(),
@@ -145,17 +146,17 @@ pub(crate) async fn prepare_namespace(
     }
 
     if ctx.must_reapply_settings {
-        let mut settings = SystemSettings::get_current(ctx.db())
+        let mut settings = SystemSettings::get_current(ctx.db()?)
             .await
             .context("reloading system settings after namespace reset")?;
         settings =
-            enforce_system_settings(ctx.db(), settings, embedding_provider.dimension(), config)
+            enforce_system_settings(ctx.db()?, settings, embedding_provider.dimension(), config)
                 .await?;
         ctx.settings = Some(settings);
         ctx.must_reapply_settings = false;
     }
 
-    let user = ensure_eval_user(ctx.db()).await?;
+    let user = ensure_eval_user(ctx.db()?).await?;
     ctx.eval_user = Some(user);
 
     let total_manifest_questions = manifest_for_seed.questions.len();
@@ -199,5 +200,5 @@ pub(crate) async fn prepare_namespace(
 
     machine
         .prepare_namespace()
-        .map_err(|(_, guard)| map_guard_error("prepare_namespace", guard))
+        .map_err(|(_, guard)| map_guard_error("prepare_namespace", &guard))
 }

@@ -10,6 +10,7 @@ use tracing::info;
 use crate::args::Config;
 
 /// Enforce evaluation-specific system settings overrides.
+#[allow(clippy::cast_possible_truncation)]
 pub(crate) async fn enforce_system_settings(
     db: &SurrealDbClient,
     mut settings: SystemSettings,

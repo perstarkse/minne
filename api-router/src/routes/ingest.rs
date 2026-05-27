@@ -29,7 +29,7 @@ pub async fn ingest_data(
     State(state): State<ApiState>,
     Extension(user): Extension<User>,
     TypedMultipart(input): TypedMultipart<IngestParams>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<impl IntoResponse, ApiErr> {
     let user_id = user.id;
     let content_bytes = input.content.as_ref().map_or(0, |c| c.len());
     let has_content = input.content.as_ref().is_some_and(|c| !c.trim().is_empty());
@@ -46,10 +46,10 @@ pub async fn ingest_data(
     ) {
         Ok(()) => {}
         Err(IngestValidationError::PayloadTooLarge(message)) => {
-            return Err(ApiError::PayloadTooLarge(message));
+            return Err(ApiErr::PayloadTooLarge(message));
         }
         Err(IngestValidationError::BadRequest(message)) => {
-            return Err(ApiError::ValidationError(message));
+            return Err(ApiErr::ValidationError(message));
         }
     }
 
