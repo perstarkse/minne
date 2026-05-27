@@ -403,15 +403,10 @@ impl KnowledgeEntity {
 
         // Add all update statements to the embedding table
         for (id, (embedding, user_id)) in new_embeddings {
-            let mut embedding_str = String::from("[");
-            for (i, f) in embedding.iter().enumerate() {
-                if i > 0 {
-                    embedding_str.push(',');
-                }
-                write!(embedding_str, "{f}").unwrap_or_default();
-            }
-            embedding_str.push(']');
-            transaction_query.push_str(&format!(
+            let embedding_str = serde_json::to_string(&embedding)
+                .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
+            write!(
+                transaction_query,
                 "UPSERT type::thing('knowledge_entity_embedding', '{id}') SET \
                     entity_id = type::thing('knowledge_entity', '{id}'), \
                     embedding = {embedding}, \
@@ -420,14 +415,16 @@ impl KnowledgeEntity {
                     updated_at = time::now();",
                 id = id,
                 embedding = embedding_str,
-                user_id = user_id
-            ));
+                user_id = user_id,
+            )
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
 
-        transaction_query.push_str(&format!(
-            "DEFINE INDEX OVERWRITE idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION {};",
-            new_dimensions
-        ));
+        write!(
+            transaction_query,
+            "DEFINE INDEX OVERWRITE idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
+        )
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 
@@ -529,15 +526,10 @@ impl KnowledgeEntity {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id)) in new_embeddings {
-            let mut embedding_str = String::from("[");
-            for (i, f) in embedding.iter().enumerate() {
-                if i > 0 {
-                    embedding_str.push(',');
-                }
-                write!(embedding_str, "{f}").unwrap_or_default();
-            }
-            embedding_str.push(']');
-            transaction_query.push_str(&format!(
+            let embedding_str = serde_json::to_string(&embedding)
+                .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
+            write!(
+                transaction_query,
                 "CREATE type::thing('knowledge_entity_embedding', '{id}') SET \
                     entity_id = type::thing('knowledge_entity', '{id}'), \
                     embedding = {embedding}, \
@@ -546,14 +538,16 @@ impl KnowledgeEntity {
                     updated_at = time::now();",
                 id = id,
                 embedding = embedding_str,
-                user_id = user_id
-            ));
+                user_id = user_id,
+            )
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
 
-        transaction_query.push_str(&format!(
-            "DEFINE INDEX OVERWRITE idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION {};",
-            new_dimensions
-        ));
+        write!(
+            transaction_query,
+            "DEFINE INDEX OVERWRITE idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
+        )
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 
