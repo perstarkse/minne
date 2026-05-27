@@ -1,6 +1,7 @@
 #![allow(clippy::module_name_repetitions)]
 use uuid::Uuid;
 
+use std::fmt;
 use std::fmt::Write;
 
 use crate::stored_object;
