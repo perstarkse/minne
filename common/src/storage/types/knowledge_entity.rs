@@ -1,12 +1,6 @@
 #![allow(
     clippy::missing_docs_in_private_items,
     clippy::module_name_repetitions,
-    clippy::match_same_arms,
-    clippy::format_push_string,
-    clippy::uninlined_format_args,
-    clippy::explicit_iter_loop,
-    clippy::get_first,
-    clippy::redundant_closure_for_method_calls
 )]
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -45,7 +39,6 @@ impl From<String> for KnowledgeEntityType {
         match s.to_lowercase().as_str() {
             "idea" => KnowledgeEntityType::Idea,
             "project" => KnowledgeEntityType::Project,
-            "document" => KnowledgeEntityType::Document,
             "page" => KnowledgeEntityType::Page,
             "textsnippet" => KnowledgeEntityType::TextSnippet,
             _ => KnowledgeEntityType::Document, // Default case
@@ -332,7 +325,7 @@ impl KnowledgeEntity {
             .await
             .map_err(AppError::Database)?;
         let rows: Vec<Row> = response.take(0).map_err(AppError::Database)?;
-        rows.get(0)
+        rows.first()
             .map(|r| r.user_id.clone())
             .ok_or_else(|| AppError::InternalError("user not found for entity".to_string()))
     }
@@ -364,12 +357,12 @@ impl KnowledgeEntity {
             KnowledgeEntityEmbedding::redefine_hnsw_index(db, new_dimensions as usize).await?;
             return Ok(());
         }
-        info!("Found {} entities to process.", total_entities);
+        info!("Found {total_entities} entities to process.");
 
         // Generate all new embeddings in memory
         let mut new_embeddings: HashMap<String, (Vec<f32>, String)> = HashMap::new();
         info!("Generating new embeddings for all entities...");
-        for entity in all_entities.iter() {
+        for entity in &all_entities {
             let embedding_input = format!(
                 "name: {}, description: {}, type: {:?}",
                 entity.name, entity.description, entity.entity_type
@@ -392,7 +385,7 @@ impl KnowledgeEntity {
                 "CRITICAL: Generated embedding for entity {} has incorrect dimension ({}). Expected {}. Aborting.",
                 entity.id, embedding.len(), new_dimensions
             );
-                error!("{}", err_msg);
+                error!("{err_msg}");
                 return Err(AppError::InternalError(err_msg));
             }
             new_embeddings.insert(entity.id.clone(), (embedding, entity.user_id.clone()));
@@ -491,7 +484,7 @@ impl KnowledgeEntity {
                     "CRITICAL: Generated embedding for entity {} has incorrect dimension ({}). Expected {}. Aborting.",
                     entity.id, embedding.len(), new_dimensions
                 );
-                error!("{}", err_msg);
+                error!("{err_msg}");
                 return Err(AppError::InternalError(err_msg));
             }
             new_embeddings.insert(entity.id.clone(), (embedding, entity.user_id.clone()));
@@ -1043,7 +1036,7 @@ mod tests {
             .await
             .with_context(|| "store entity with embedding".to_string())?;
 
-        let query = format!("DELETE type::thing('knowledge_entity', '{}')", entity.id);
+        let query = format!("DELETE type::thing('knowledge_entity', '{id}')", id = entity.id);
         db.client
             .query(query)
             .await
@@ -1055,8 +1048,7 @@ mod tests {
 
         assert!(
             results.is_empty(),
-            "Should return empty result for orphan, got: {:?}",
-            results
+            "Should return empty result for orphan, got: {results:?}",
         );
 
         Ok(())
