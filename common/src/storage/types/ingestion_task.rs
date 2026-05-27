@@ -207,6 +207,11 @@ impl IngestionTask {
         Duration::from_secs(u64::try_from(self.lease_duration_secs.max(0)).unwrap_or(0))
     }
 
+    /// Create a new task and immediately persist it to the database.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Database` if the store operation fails.
     pub async fn create_and_add_to_db(
         content: IngestionPayload,
         user_id: String,
@@ -217,6 +222,14 @@ impl IngestionTask {
         Ok(task)
     }
 
+    /// Claim the next ready task for processing.
+    ///
+    /// Atomically reserves a task by transitioning it from a candidate state to `Reserved`.
+    /// Returns `Ok(None)` if no task is ready to claim.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Database` if the update query fails.
     pub async fn claim_next_ready(
         db: &SurrealDbClient,
         worker_id: &str,
@@ -291,6 +304,12 @@ impl IngestionTask {
         Ok(task)
     }
 
+    /// Transition this task from `Reserved` to `Processing`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Validation` if the task is not in `Reserved` state
+    /// or belongs to a different worker. Returns `AppError::Database` on DB failure.
     pub async fn mark_processing(&self, db: &SurrealDbClient) -> Result<IngestionTask, AppError> {
         const START_PROCESSING_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
@@ -317,6 +336,12 @@ impl IngestionTask {
         updated.ok_or_else(|| invalid_transition(self.state, TaskTransition::StartProcessing))
     }
 
+    /// Transition this task from `Processing` to `Succeeded`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Validation` if the task is not in `Processing` state
+    /// or belongs to a different worker. Returns `AppError::Database` on DB failure.
     pub async fn mark_succeeded(&self, db: &SurrealDbClient) -> Result<IngestionTask, AppError> {
         const COMPLETE_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
@@ -348,6 +373,14 @@ impl IngestionTask {
         updated.ok_or_else(|| invalid_transition(self.state, TaskTransition::Succeed))
     }
 
+    /// Transition this task from `Processing` to `Failed`.
+    ///
+    /// The task will be rescheduled for retry after `retry_delay`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Validation` if the task is not in `Processing` state
+    /// or belongs to a different worker. Returns `AppError::Database` on DB failure.
     pub async fn mark_failed(
         &self,
         error: TaskErrorInfo,
@@ -394,6 +427,12 @@ impl IngestionTask {
         updated.ok_or_else(|| invalid_transition(self.state, TaskTransition::Fail))
     }
 
+    /// Transition this task from `Failed` to `DeadLetter`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Validation` if the task is not in `Failed` state.
+    /// Returns `AppError::Database` on DB failure.
     pub async fn mark_dead_letter(
         &self,
         error: TaskErrorInfo,
@@ -430,6 +469,12 @@ impl IngestionTask {
         updated.ok_or_else(|| invalid_transition(self.state, TaskTransition::DeadLetter))
     }
 
+    /// Transition this task to `Cancelled` from any non-terminal state.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Validation` if the task is in a terminal state.
+    /// Returns `AppError::Database` on DB failure.
     pub async fn mark_cancelled(&self, db: &SurrealDbClient) -> Result<IngestionTask, AppError> {
         const CANCEL_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
@@ -463,6 +508,12 @@ impl IngestionTask {
         updated.ok_or_else(|| invalid_transition(self.state, TaskTransition::Cancel))
     }
 
+    /// Release a reserved task back to `Pending` state.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Validation` if the task is not in `Reserved` state.
+    /// Returns `AppError::Database` on DB failure.
     pub async fn release(&self, db: &SurrealDbClient) -> Result<IngestionTask, AppError> {
         const RELEASE_QUERY: &str = r#"
             UPDATE type::thing($table, $id)
@@ -489,6 +540,11 @@ impl IngestionTask {
         updated.ok_or_else(|| invalid_transition(self.state, TaskTransition::Release))
     }
 
+    /// Retrieve all non-terminal tasks across active states.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::Database` if the query fails.
     pub async fn get_unfinished_tasks(
         db: &SurrealDbClient,
     ) -> Result<Vec<IngestionTask>, AppError> {

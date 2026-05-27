@@ -9,19 +9,19 @@ use thiserror::Error;
 
 #[derive(Error, Debug, Serialize, Clone)]
 pub enum ApiErr {
-    #[error("Internal server error")]
+    #[error("internal server error")]
     InternalError(String),
 
-    #[error("Validation error: {0}")]
+    #[error("validation error: {0}")]
     ValidationError(String),
 
-    #[error("Not found: {0}")]
+    #[error("not found: {0}")]
     NotFound(String),
 
-    #[error("Unauthorized: {0}")]
+    #[error("unauthorized: {0}")]
     Unauthorized(String),
 
-    #[error("Payload too large: {0}")]
+    #[error("payload too large: {0}")]
     PayloadTooLarge(String),
 }
 
@@ -157,12 +157,12 @@ mod tests {
         let error = ApiErr::ValidationError(message.to_string());
 
         // Check that the error itself contains the message
-        assert_eq!(error.to_string(), format!("Validation error: {message}"));
+        assert_eq!(error.to_string(), format!("validation error: {message}"));
 
         // For not found errors
         let message = "user not found";
         let error = ApiErr::NotFound(message.to_string());
-        assert_eq!(error.to_string(), format!("Not found: {message}"));
+        assert_eq!(error.to_string(), format!("not found: {message}"));
     }
 
     // Alternative approach for internal error test
@@ -175,7 +175,7 @@ mod tests {
         let api_error = ApiErr::InternalError(sensitive_info.to_string());
 
         // Check the error message is correctly set
-        assert_eq!(api_error.to_string(), "Internal server error");
+        assert_eq!(api_error.to_string(), "internal server error");
 
         // Also verify correct status code
         assert_status_code(api_error, StatusCode::INTERNAL_SERVER_ERROR);

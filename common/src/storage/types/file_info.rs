@@ -21,25 +21,25 @@ use crate::{
 
 #[derive(Error, Debug)]
 pub enum FileError {
-    #[error("File not found for UUID: {0}")]
+    #[error("file not found for uuid: {0}")]
     FileNotFound(String),
 
-    #[error("IO error occurred: {0}")]
+    #[error("io error occurred: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Duplicate file detected with SHA256: {0}")]
+    #[error("duplicate file detected with sha256: {0}")]
     DuplicateFile(String),
 
-    #[error("SurrealDB error: {0}")]
+    #[error("surrealdb error: {0}")]
     SurrealError(#[from] surrealdb::Error),
 
-    #[error("Failed to persist file: {0}")]
+    #[error("failed to persist file: {0}")]
     PersistError(#[from] tempfile::PersistError),
 
-    #[error("File name missing in metadata")]
+    #[error("file name missing in metadata")]
     MissingFileName,
 
-    #[error("Object store error: {0}")]
+    #[error("object store error: {0}")]
     ObjectStore(#[from] ObjectStoreError),
 }
 

@@ -159,6 +159,10 @@ impl FtsIndexSpec {
 
 /// Build runtime Surreal indexes (FTS + HNSW) using concurrent creation with readiness polling.
 /// Idempotent: safe to call multiple times and will overwrite HNSW definitions when the dimension changes.
+///
+/// # Errors
+///
+/// Returns `AppError::InternalError` if any index definition or polling step fails.
 pub async fn ensure_runtime(
     db: &SurrealDbClient,
     embedding_dimension: usize,
@@ -169,6 +173,10 @@ pub async fn ensure_runtime(
 }
 
 /// Rebuild known FTS and HNSW indexes, skipping any that are not yet defined.
+///
+/// # Errors
+///
+/// Returns `AppError::InternalError` if any index rebuild operation fails.
 pub async fn rebuild(db: &SurrealDbClient) -> Result<(), AppError> {
     rebuild_inner(db)
         .await

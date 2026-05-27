@@ -26,12 +26,20 @@ pub trait ProvidesDb {
 }
 
 impl SurrealDbClient {
-    /// # Initialize a new datbase client
+    /// Initialize a new database client.
     ///
     /// # Arguments
     ///
-    /// # Returns
-    /// * `SurrealDbClient` initialized
+    /// * `address` — Database connection string (e.g. `ws://localhost:8000` or `mem://`).
+    /// * `username` — Root username for authentication.
+    /// * `password` — Root password for authentication.
+    /// * `namespace` — SurrealDB namespace to use.
+    /// * `database` — SurrealDB database to use.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the connection, authentication, or namespace/database selection fails.
+    /// In-memory (`mem://`) connections skip authentication.
     pub async fn new(
         address: &str,
         username: &str,
@@ -52,6 +60,19 @@ impl SurrealDbClient {
         Ok(SurrealDbClient { client: db })
     }
 
+    /// Initialize a new database client using namespace-level authentication.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` — Database connection string.
+    /// * `namespace` — SurrealDB namespace to use (also used for auth).
+    /// * `username` — Namespace username for authentication.
+    /// * `password` — Namespace password for authentication.
+    /// * `database` — SurrealDB database to use.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the connection, namespace authentication, or namespace/database selection fails.
     pub async fn new_with_namespace_user(
         address: &str,
         namespace: &str,
@@ -70,6 +91,11 @@ impl SurrealDbClient {
         Ok(SurrealDbClient { client: db })
     }
 
+    /// Create an Axum session store backed by SurrealDB.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SessionError` if the session store configuration or table creation fails.
     pub async fn create_session_store(
         &self,
     ) -> Result<SessionStore<SessionSurrealPool<Any>>, SessionError> {
@@ -88,6 +114,10 @@ impl SurrealDbClient {
     /// This function should be called during application startup, after connecting to
     /// the database and selecting the appropriate namespace and database, but before
     /// the application starts performing operations that rely on the schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AppError::InternalError` if the migration runner fails to apply any migration.
     pub async fn apply_migrations(&self) -> Result<(), AppError> {
         debug!("Applying migrations");
         MigrationRunner::new(&self.client)
@@ -99,13 +129,15 @@ impl SurrealDbClient {
         Ok(())
     }
 
-    /// Operation to store a object in SurrealDB, requires the struct to implement StoredObject
+    /// Store an object in SurrealDB.
     ///
     /// # Arguments
-    /// * `item` - The item to be stored
     ///
-    /// # Returns
-    /// * `Result` - Item or Error
+    /// * `item` — The item to store. Must implement `StoredObject`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the database create operation fails.
     pub async fn store_item<T>(&self, item: T) -> Result<Option<T>, Error>
     where
         T: StoredObject + Send + Sync + 'static,
@@ -116,8 +148,13 @@ impl SurrealDbClient {
             .await
     }
 
-    /// Operation to upsert an object in SurrealDB, replacing any existing record
-    /// with the same ID. Useful for idempotent ingestion flows.
+    /// Upsert an object in SurrealDB, replacing any existing record with the same ID.
+    ///
+    /// Useful for idempotent ingestion flows.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the database upsert operation fails.
     pub async fn upsert_item<T>(&self, item: T) -> Result<Option<T>, Error>
     where
         T: StoredObject + Send + Sync + 'static,
@@ -129,10 +166,11 @@ impl SurrealDbClient {
             .await
     }
 
-    /// Operation to retrieve all objects from a certain table, requires the struct to implement StoredObject
+    /// Retrieve all objects from a table.
     ///
-    /// # Returns
-    /// * `Result` - Vec<T> or Error
+    /// # Errors
+    ///
+    /// Returns `Err` if the database select operation fails.
     pub async fn get_all_stored_items<T>(&self) -> Result<Vec<T>, Error>
     where
         T: for<'de> StoredObject,
@@ -140,13 +178,16 @@ impl SurrealDbClient {
         self.client.select(T::table_name()).await
     }
 
-    /// Operation to retrieve a single object by its ID, requires the struct to implement StoredObject
+    /// Retrieve a single object by its ID.
     ///
     /// # Arguments
-    /// * `id` - The ID of the item to retrieve
     ///
-    /// # Returns
-    /// * `Result<Option<T>, Error>` - The found item or Error
+    /// * `id` — The ID of the item to retrieve.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the database select operation fails.
+    /// Returns `Ok(None)` if no record with the given ID exists.
     pub async fn get_item<T>(&self, id: &str) -> Result<Option<T>, Error>
     where
         T: for<'de> StoredObject,
@@ -154,13 +195,16 @@ impl SurrealDbClient {
         self.client.select((T::table_name(), id)).await
     }
 
-    /// Operation to delete a single object by its ID, requires the struct to implement StoredObject
+    /// Delete a single object by its ID.
     ///
     /// # Arguments
-    /// * `id` - The ID of the item to delete
     ///
-    /// # Returns
-    /// * `Result<Option<T>, Error>` - The deleted item or Error
+    /// * `id` — The ID of the item to delete.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the database delete operation fails.
+    /// Returns `Ok(None)` if no record with the given ID exists.
     pub async fn delete_item<T>(&self, id: &str) -> Result<Option<T>, Error>
     where
         T: for<'de> StoredObject,
@@ -168,10 +212,11 @@ impl SurrealDbClient {
         self.client.delete((T::table_name(), id)).await
     }
 
-    /// Operation to listen to a table for updates, requires the struct to implement StoredObject
+    /// Listen to a table for real-time updates via a live query stream.
     ///
-    /// # Returns
-    /// * `Result<Option<T>, Error>` - The deleted item or Error
+    /// # Errors
+    ///
+    /// Returns `Err` if the database live query subscription fails.
     pub async fn listen<T>(
         &self,
     ) -> Result<impl Stream<Item = Result<Notification<T>, Error>>, Error>

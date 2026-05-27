@@ -106,6 +106,12 @@ impl EmbeddingProvider {
         }
     }
 
+    /// Generate an embedding vector for the given text.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the backend API call fails, FastEmbed initialisation fails,
+    /// or the backend returns no embedding data.
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         match &self.inner {
             EmbeddingInner::Hashed { dimension } => Ok(hashed_embedding(text, *dimension)),
@@ -144,6 +150,12 @@ impl EmbeddingProvider {
         }
     }
 
+    /// Generate embedding vectors for a batch of texts.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the backend API call fails or returns no embedding data.
+    /// Returns an empty `Vec` when `texts` is empty.
     pub async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         match &self.inner {
             EmbeddingInner::Hashed { dimension } => Ok(texts
@@ -309,7 +321,11 @@ fn bucket(token: &str, dimension: usize) -> usize {
     usize::try_from(hasher.finish()).unwrap_or_default() % safe_dimension
 }
 
-// Backward compatibility function
+/// Generate an embedding using the given provider.
+///
+/// # Errors
+///
+/// Returns `AppError::InternalError` if the provider's embed call fails.
 pub async fn generate_embedding_with_provider(
     provider: &EmbeddingProvider,
     input: &str,
@@ -372,6 +388,10 @@ pub async fn generate_embedding(
 ///
 /// This is used for the re-embedding process where the model and dimensions
 /// are known ahead of time and shouldn't be repeatedly fetched from settings.
+///
+/// # Errors
+///
+/// Returns `AppError` if the OpenAI API request fails or returns no embedding data.
 pub async fn generate_embedding_with_params(
     client: &async_openai::Client<async_openai::config::OpenAIConfig>,
     input: &str,
