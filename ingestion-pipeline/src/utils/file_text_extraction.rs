@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use common::{
     error::AppError,
     storage::{db::SurrealDbClient, store::StorageManager, types::file_info::FileInfo},
@@ -78,7 +77,7 @@ pub async fn extract_text_from_file(
     let file_bytes = storage
         .get(&file_info.path)
         .await
-        .map_err(|e| AppError::from(anyhow!(e)))?;
+        .map_err(AppError::Storage)?;
     let local_path = resolve_existing_local_path(storage, &file_info.path).await;
 
     match file_info.mime_type.as_str() {

@@ -253,11 +253,11 @@ impl FileInfo {
 
         // Remove the object's parent prefix in the object store
         let (parent_prefix, _file_name) = store::split_object_path(&file_info.path)
-            .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
+            .map_err(|e| AppError::InternalError(e.to_string()))?;
         storage
             .delete_prefix(&parent_prefix)
             .await
-            .map_err(|e| AppError::from(anyhow::anyhow!(e)))?;
+            .map_err(AppError::Storage)?;
         info!(
             "Removed object prefix {} and its contents via StorageManager",
             parent_prefix
@@ -283,7 +283,7 @@ impl FileInfo {
         storage
             .get(&self.path)
             .await
-            .map_err(|e: object_store::Error| AppError::from(anyhow::anyhow!(e)))
+            .map_err(AppError::Storage)
     }
 
     /// Persist file to storage using StorageManager.

@@ -26,12 +26,12 @@ pub enum AppError {
     Join(#[from] JoinError),
     #[error("Graph mapper error: {0}")]
     GraphMapper(String),
-    #[error("IoError: {0}")]
+    #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
-    #[error("Anyhow error: {0}")]
-    Anyhow(#[from] anyhow::Error),
+    #[error("Storage error: {0}")]
+    Storage(#[from] object_store::Error),
     #[error("Ingestion Processing error: {0}")]
     Processing(String),
     #[error("DOM smoothie error: {0}")]

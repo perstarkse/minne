@@ -4,7 +4,7 @@ use chrono::Utc;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
-use anyhow::Context;
+
 use common::{
     error::AppError,
     storage::{
@@ -161,7 +161,7 @@ async fn create_single_entity(
         provider
             .embed(&embedding_input)
             .await
-            .context("generating FastEmbed embedding for entity")?
+            .map_err(|e| AppError::InternalError(format!("FastEmbed embedding for entity failed: {e}")))?
     } else {
         generate_embedding(openai_client, &embedding_input, db_client).await?
     };

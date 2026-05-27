@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use anyhow::Context;
+
 use async_openai::types::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
     CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
@@ -269,7 +269,7 @@ impl PipelineServices for DefaultPipelineServices {
                 .embedding_provider
                 .embed(&chunk_text)
                 .await
-                .context("generating FastEmbed embedding for chunk")?;
+                .map_err(|e| AppError::InternalError(format!("FastEmbed embedding for chunk failed: {e}")))?;
             let chunk_struct = TextChunk::new(
                 content.get_id().to_string(),
                 chunk_text,
