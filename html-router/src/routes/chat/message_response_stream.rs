@@ -487,7 +487,7 @@ impl StreamParserState {
             let _ = self.parser.add_char(c);
         }
 
-        let json = self.parser.get_result();
+        let json = self.parser.result();
 
         if let Some(obj) = json.as_object() {
             if let Some(answer) = obj.get("answer") {
