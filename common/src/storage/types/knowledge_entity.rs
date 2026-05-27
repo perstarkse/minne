@@ -9,6 +9,7 @@
     clippy::redundant_closure_for_method_calls
 )]
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use crate::{
     error::AppError, storage::db::SurrealDbClient,
@@ -23,7 +24,7 @@ use tokio_retry::{
 use tracing::{error, info};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum KnowledgeEntityType {
     Idea,
     Project,
@@ -402,14 +403,14 @@ impl KnowledgeEntity {
 
         // Add all update statements to the embedding table
         for (id, (embedding, user_id)) in new_embeddings {
-            let embedding_str = format!(
-                "[{}]",
-                embedding
-                    .iter()
-                    .map(|f| f.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",")
-            );
+            let mut embedding_str = String::from("[");
+            for (i, f) in embedding.iter().enumerate() {
+                if i > 0 {
+                    embedding_str.push(',');
+                }
+                write!(embedding_str, "{f}").unwrap_or_default();
+            }
+            embedding_str.push(']');
             transaction_query.push_str(&format!(
                 "UPSERT type::thing('knowledge_entity_embedding', '{id}') SET \
                     entity_id = type::thing('knowledge_entity', '{id}'), \
@@ -528,14 +529,14 @@ impl KnowledgeEntity {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id)) in new_embeddings {
-            let embedding_str = format!(
-                "[{}]",
-                embedding
-                    .iter()
-                    .map(|f| f.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",")
-            );
+            let mut embedding_str = String::from("[");
+            for (i, f) in embedding.iter().enumerate() {
+                if i > 0 {
+                    embedding_str.push(',');
+                }
+                write!(embedding_str, "{f}").unwrap_or_default();
+            }
+            embedding_str.push(']');
             transaction_query.push_str(&format!(
                 "CREATE type::thing('knowledge_entity_embedding', '{id}') SET \
                     entity_id = type::thing('knowledge_entity', '{id}'), \
@@ -590,7 +591,7 @@ mod tests {
             source_id.clone(),
             name.clone(),
             description.clone(),
-            entity_type.clone(),
+            entity_type,
             metadata.clone(),
             user_id.clone(),
         );
@@ -682,7 +683,7 @@ mod tests {
             source_id.clone(),
             "Entity 1".to_string(),
             "Description 1".to_string(),
-            entity_type.clone(),
+            entity_type,
             None,
             user_id.clone(),
         );
@@ -691,7 +692,7 @@ mod tests {
             source_id.clone(),
             "Entity 2".to_string(),
             "Description 2".to_string(),
-            entity_type.clone(),
+            entity_type,
             None,
             user_id.clone(),
         );
@@ -701,7 +702,7 @@ mod tests {
             different_source_id.clone(),
             "Different Entity".to_string(),
             "Different Description".to_string(),
-            entity_type.clone(),
+            entity_type,
             None,
             user_id.clone(),
         );

@@ -73,7 +73,7 @@ pub async fn ingest_data(
         input.content,
         input.context,
         input.category,
-        file_infos,
+        &file_infos,
         &user_id,
     )?;
 

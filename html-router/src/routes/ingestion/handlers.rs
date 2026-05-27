@@ -142,7 +142,7 @@ pub async fn process_ingest_form(
         input.content,
         input.context,
         input.category,
-        file_infos,
+        &file_infos,
         user.id.as_str(),
     )?;
 

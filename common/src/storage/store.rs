@@ -32,7 +32,7 @@ impl StorageManager {
     /// This method validates the configuration and creates the appropriate
     /// storage backend with proper initialization.
     pub async fn new(cfg: &AppConfig) -> object_store::Result<Self> {
-        let backend_kind = cfg.storage.clone();
+        let backend_kind = cfg.storage;
         let (store, local_base) = create_storage_backend(cfg).await?;
 
         Ok(Self {

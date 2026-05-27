@@ -22,7 +22,7 @@ pub const MAX_ATTEMPTS: u32 = 3;
 pub const DEFAULT_LEASE_SECS: i64 = 300;
 pub const DEFAULT_PRIORITY: i32 = 0;
 
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub enum TaskState {
     #[serde(rename = "Pending")]
     #[default]
