@@ -28,6 +28,7 @@ stored_object!(Scratchpad, "scratchpad", {
 });
 
 impl Scratchpad {
+    #[must_use]
     pub fn new(user_id: String, title: String) -> Self {
         let now = ChronoUtc::now();
         Self {

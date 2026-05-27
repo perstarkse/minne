@@ -60,6 +60,7 @@ where
 }
 
 impl Conversation {
+    #[must_use]
     pub fn new(user_id: String, title: String) -> Self {
         let now = Utc::now();
         Self {

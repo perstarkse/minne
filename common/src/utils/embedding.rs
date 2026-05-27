@@ -78,6 +78,7 @@ enum EmbeddingInner {
 }
 
 impl EmbeddingProvider {
+    #[must_use]
     pub fn backend_label(&self) -> &'static str {
         match self.inner {
             EmbeddingInner::Hashed { .. } => "hashed",
@@ -86,6 +87,7 @@ impl EmbeddingProvider {
         }
     }
 
+    #[must_use]
     pub fn dimension(&self) -> usize {
         match &self.inner {
             EmbeddingInner::Hashed { dimension } | EmbeddingInner::FastEmbed { dimension, .. } => {
@@ -95,6 +97,7 @@ impl EmbeddingProvider {
         }
     }
 
+    #[must_use]
     pub fn model_code(&self) -> Option<String> {
         match &self.inner {
             EmbeddingInner::FastEmbed { model_name, .. } => Some(model_name.to_string()),

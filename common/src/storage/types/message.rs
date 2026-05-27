@@ -21,6 +21,7 @@ stored_object!(Message, "message", {
 });
 
 impl Message {
+    #[must_use]
     pub fn new(
         conversation_id: String,
         role: MessageRole,
@@ -57,6 +58,7 @@ impl fmt::Display for Message {
 }
 
 // helper function to format a vector of messages
+#[must_use]
 pub fn format_history(history: &[Message]) -> String {
     let mut out = String::new();
     for (i, msg) in history.iter().enumerate() {

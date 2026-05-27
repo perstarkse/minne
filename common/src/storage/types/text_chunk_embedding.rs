@@ -41,6 +41,7 @@ impl TextChunkEmbedding {
     ///
     /// `chunk_id` is the **key** part of the text_chunk id (e.g. the UUID),
     /// not "text_chunk:uuid".
+    #[must_use]
     pub fn new(chunk_id: &str, source_id: String, embedding: Vec<f32>, user_id: String) -> Self {
         let now = Utc::now();
 

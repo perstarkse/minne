@@ -46,6 +46,7 @@ impl StorageManager {
     ///
     /// This method is useful for testing scenarios where you want to inject
     /// a specific storage backend.
+    #[must_use]
     pub fn with_backend(store: DynStorage, backend_kind: StorageKind) -> Self {
         Self {
             store,
@@ -55,11 +56,13 @@ impl StorageManager {
     }
 
     /// Get the storage backend kind.
+    #[must_use]
     pub fn backend_kind(&self) -> &StorageKind {
         &self.backend_kind
     }
 
     /// Access the resolved local base directory when using the local backend.
+    #[must_use]
     pub fn local_base_path(&self) -> Option<&Path> {
         self.local_base.as_deref()
     }
@@ -68,6 +71,7 @@ impl StorageManager {
     ///
     /// Returns `None` when the backend is not local or when the provided location includes
     /// unsupported components (absolute paths or parent traversals).
+    #[must_use]
     pub fn resolve_local_path(&self, location: &str) -> Option<PathBuf> {
         let base = self.local_base_path()?;
         let relative = Path::new(location);
@@ -544,6 +548,7 @@ pub mod testing {
 /// Resolve the absolute base directory used for local storage from config.
 ///
 /// If `data_dir` is relative, it is resolved against the current working directory.
+#[must_use]
 pub fn resolve_base_dir(cfg: &AppConfig) -> PathBuf {
     if cfg.data_dir.starts_with('/') {
         PathBuf::from(&cfg.data_dir)

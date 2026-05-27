@@ -28,6 +28,7 @@ pub struct TextChunkSearchResult {
 }
 
 impl TextChunk {
+    #[must_use]
     pub fn new(source_id: String, chunk: String, user_id: String) -> Self {
         let now = Utc::now();
         Self {

@@ -55,6 +55,7 @@ impl FromStr for Theme {
 }
 
 impl Theme {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Light => "light",
@@ -67,6 +68,7 @@ impl Theme {
 
     /// Returns the theme that should be initially applied.
     /// For "system", defaults to "light".
+    #[must_use]
     pub fn initial_theme(&self) -> &'static str {
         match self {
             Self::System => "light",
