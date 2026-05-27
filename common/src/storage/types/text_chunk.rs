@@ -237,7 +237,9 @@ impl TextChunk {
         new_model: &str,
         new_dimensions: u32,
     ) -> Result<(), AppError> {
-        info!("Starting re-embedding process for all text chunks. New dimensions: {new_dimensions}");
+        info!(
+            "Starting re-embedding process for all text chunks. New dimensions: {new_dimensions}"
+        );
 
         // Fetch all chunks first
         let all_chunks: Vec<TextChunk> = db.select(Self::table_name()).await?;
@@ -451,6 +453,7 @@ impl TextChunk {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use anyhow::{self, Context};
 
     use super::*;
@@ -501,7 +504,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let source_id = "source123".to_string();
         let user_id = "user123".to_string();
@@ -580,7 +585,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
         TextChunkEmbedding::redefine_hnsw_index(&db, 5)
             .await
             .with_context(|| "redefine index".to_string())?;
@@ -672,7 +679,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let source_id = "store-src".to_string();
         let user_id = "user_store".to_string();
@@ -686,7 +695,8 @@ mod tests {
             .await
             .with_context(|| "store with embedding".to_string())?;
 
-        let stored_chunk: Option<TextChunk> = db.get_item(&chunk.id)
+        let stored_chunk: Option<TextChunk> = db
+            .get_item(&chunk.id)
             .await
             .with_context(|| "get_item".to_string())?;
         let stored_chunk = stored_chunk.with_context(|| "expected stored chunk".to_string())?;
@@ -711,7 +721,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let embedding_dimension = 3usize;
         ensure_runtime(&db, embedding_dimension)
@@ -728,7 +740,8 @@ mod tests {
             .await
             .with_context(|| "store with embedding".to_string())?;
 
-        let stored_chunk: Option<TextChunk> = db.get_item(&chunk.id)
+        let stored_chunk: Option<TextChunk> = db
+            .get_item(&chunk.id)
             .await
             .with_context(|| "get_item".to_string())?;
         let stored_chunk = stored_chunk.with_context(|| "chunk should be stored".to_string())?;
@@ -754,7 +767,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
@@ -775,7 +790,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
@@ -813,7 +830,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
@@ -836,14 +855,8 @@ mod tests {
                 .with_context(|| "vector_search".to_string())?;
 
         assert_eq!(results.len(), 2);
-        assert_eq!(
-            results.first().map(|r| &r.chunk.id),
-            Some(&chunk2.id)
-        );
-        assert_eq!(
-            results.get(1).map(|r| &r.chunk.id),
-            Some(&chunk1.id)
-        );
+        assert_eq!(results.first().map(|r| &r.chunk.id), Some(&chunk2.id));
+        assert_eq!(results.get(1).map(|r| &r.chunk.id), Some(&chunk1.id));
         let r0 = results.first().context("expected first result")?;
         let r1 = results.get(1).context("expected second result")?;
         assert!(r0.score >= r1.score);
@@ -857,9 +870,13 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
         ensure_chunk_fts_index(&db).await?;
-        rebuild(&db).await.with_context(|| "rebuild indexes".to_string())?;
+        rebuild(&db)
+            .await
+            .with_context(|| "rebuild indexes".to_string())?;
 
         let results = TextChunk::fts_search(5, "hello", &db, "user")
             .await
@@ -876,7 +893,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
         ensure_chunk_fts_index(&db).await?;
 
         let user_id = "fts_user";
@@ -885,8 +904,12 @@ mod tests {
             "rustaceans love rust".to_string(),
             user_id.to_string(),
         );
-        db.store_item(chunk.clone()).await.with_context(|| "store chunk".to_string())?;
-        rebuild(&db).await.with_context(|| "rebuild indexes".to_string())?;
+        db.store_item(chunk.clone())
+            .await
+            .with_context(|| "store chunk".to_string())?;
+        rebuild(&db)
+            .await
+            .with_context(|| "rebuild indexes".to_string())?;
 
         let results = TextChunk::fts_search(3, "rust", &db, user_id)
             .await
@@ -906,7 +929,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
         ensure_chunk_fts_index(&db).await?;
 
         let user_id = "fts_user_order";
@@ -935,7 +960,9 @@ mod tests {
         db.store_item(other_user_chunk)
             .await
             .with_context(|| "store other user chunk".to_string())?;
-        rebuild(&db).await.with_context(|| "rebuild indexes".to_string())?;
+        rebuild(&db)
+            .await
+            .with_context(|| "rebuild indexes".to_string())?;
 
         let results = TextChunk::fts_search(3, "apple", &db, user_id)
             .await

@@ -216,6 +216,7 @@ impl Scratchpad {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use anyhow::{self, Context};
 
     use super::*;
@@ -289,9 +290,15 @@ mod tests {
         // Store them
         let scratchpad1_id = scratchpad1.id.clone();
         let scratchpad2_id = scratchpad2.id.clone();
-        db.store_item(scratchpad1).await.with_context(|| "store scratchpad1".to_string())?;
-        db.store_item(scratchpad2).await.with_context(|| "store scratchpad2".to_string())?;
-        db.store_item(scratchpad3).await.with_context(|| "store scratchpad3".to_string())?;
+        db.store_item(scratchpad1)
+            .await
+            .with_context(|| "store scratchpad1".to_string())?;
+        db.store_item(scratchpad2)
+            .await
+            .with_context(|| "store scratchpad2".to_string())?;
+        db.store_item(scratchpad3)
+            .await
+            .with_context(|| "store scratchpad3".to_string())?;
 
         // Archive one of the user's scratchpads
         Scratchpad::archive(&scratchpad2_id, user_id, &db, false)
@@ -303,7 +310,10 @@ mod tests {
             .await
             .with_context(|| "get_by_user".to_string())?;
         assert_eq!(user_scratchpads.len(), 1);
-        assert_eq!(user_scratchpads.first().map(|s| &s.id), Some(&scratchpad1_id));
+        assert_eq!(
+            user_scratchpads.first().map(|s| &s.id),
+            Some(&scratchpad1_id)
+        );
 
         // Verify they belong to the user
         for scratchpad in &user_scratchpads {
@@ -335,7 +345,9 @@ mod tests {
         let user_id = "test_user";
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
-        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
+        db.store_item(scratchpad)
+            .await
+            .with_context(|| "store scratchpad".to_string())?;
 
         let archived = Scratchpad::archive(&scratchpad_id, user_id, &db, true)
             .await
@@ -369,7 +381,9 @@ mod tests {
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
+        db.store_item(scratchpad)
+            .await
+            .with_context(|| "store scratchpad".to_string())?;
 
         let new_content = "Updated content";
         let updated = Scratchpad::update_content(&scratchpad_id, user_id, new_content, &db)
@@ -398,7 +412,9 @@ mod tests {
         let scratchpad = Scratchpad::new(owner_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
+        db.store_item(scratchpad)
+            .await
+            .with_context(|| "store scratchpad".to_string())?;
 
         let result = Scratchpad::update_content(&scratchpad_id, other_user, "Hacked", &db).await;
         assert!(result.is_err());
@@ -425,14 +441,19 @@ mod tests {
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
+        db.store_item(scratchpad)
+            .await
+            .with_context(|| "store scratchpad".to_string())?;
 
         // Delete should succeed
         let result = Scratchpad::delete(&scratchpad_id, user_id, &db).await;
         assert!(result.is_ok());
 
         // Verify it's gone
-        let retrieved: Option<Scratchpad> = db.get_item(&scratchpad_id).await.with_context(|| "get_item".to_string())?;
+        let retrieved: Option<Scratchpad> = db
+            .get_item(&scratchpad_id)
+            .await
+            .with_context(|| "get_item".to_string())?;
         assert!(retrieved.is_none());
         Ok(())
     }
@@ -454,7 +475,9 @@ mod tests {
         let scratchpad = Scratchpad::new(owner_id.to_string(), "Test".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
+        db.store_item(scratchpad)
+            .await
+            .with_context(|| "store scratchpad".to_string())?;
 
         let result = Scratchpad::delete(&scratchpad_id, other_user, &db).await;
         assert!(result.is_err());
@@ -464,7 +487,10 @@ mod tests {
         }
 
         // Verify it still exists
-        let retrieved: Option<Scratchpad> = db.get_item(&scratchpad_id).await.with_context(|| "get_item".to_string())?;
+        let retrieved: Option<Scratchpad> = db
+            .get_item(&scratchpad_id)
+            .await
+            .with_context(|| "get_item".to_string())?;
         assert!(retrieved.is_some());
         Ok(())
     }
@@ -484,7 +510,9 @@ mod tests {
             Scratchpad::new(user_id.to_string(), "Test Timezone Scratchpad".to_string());
         let scratchpad_id = scratchpad.id.clone();
 
-        db.store_item(scratchpad).await.with_context(|| "store scratchpad".to_string())?;
+        db.store_item(scratchpad)
+            .await
+            .with_context(|| "store scratchpad".to_string())?;
 
         let retrieved = Scratchpad::get_by_id(&scratchpad_id, user_id, &db)
             .await
@@ -505,7 +533,13 @@ mod tests {
             .with_context(|| "archive".to_string())?;
 
         assert!(archived.archived_at.is_some());
-        assert!(archived.archived_at.with_context(|| "expected archived_at".to_string())?.timestamp() > 0);
+        assert!(
+            archived
+                .archived_at
+                .with_context(|| "expected archived_at".to_string())?
+                .timestamp()
+                > 0
+        );
         assert!(archived.ingested_at.is_none());
         Ok(())
     }

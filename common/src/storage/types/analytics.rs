@@ -88,6 +88,7 @@ impl Analytics {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
     use crate::stored_object;
     use anyhow::{self};

@@ -64,14 +64,13 @@ impl SystemSettings {
         let mut needs_update = false;
 
         let backend_label = provider.backend_label().to_string();
-        let provider_dimensions = u32::try_from(provider.dimension())
-            .unwrap_or_else(|_| {
-                tracing::warn!(
-                    "Provider dimension {} exceeds u32 max; falling back to 0",
-                    provider.dimension()
-                );
-                0u32
-            });
+        let provider_dimensions = u32::try_from(provider.dimension()).unwrap_or_else(|_| {
+            tracing::warn!(
+                "Provider dimension {} exceeds u32 max; falling back to 0",
+                provider.dimension()
+            );
+            0u32
+        });
         let provider_model = provider.model_code();
 
         // Sync backend label
@@ -114,9 +113,10 @@ impl SystemSettings {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{self, Context};
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use crate::storage::indexes::ensure_runtime;
     use crate::storage::types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk};
+    use anyhow::{self, Context};
     use async_openai::Client;
 
     use super::*;
@@ -138,8 +138,8 @@ mod tests {
             .take(0)
             .with_context(|| "Failed to extract table info response".to_string())?;
 
-        let info_json: serde_json::Value =
-            serde_json::to_value(info).with_context(|| "Failed to convert info to json".to_string())?;
+        let info_json: serde_json::Value = serde_json::to_value(info)
+            .with_context(|| "Failed to convert info to json".to_string())?;
 
         let indexes = info_json
             .get("Object")
@@ -383,7 +383,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_should_change_embedding_length_on_indexes_when_switching_length() -> anyhow::Result<()> {
+    async fn test_should_change_embedding_length_on_indexes_when_switching_length(
+    ) -> anyhow::Result<()> {
         let db = SurrealDbClient::memory("test", &Uuid::new_v4().to_string())
             .await
             .with_context(|| "Failed to start DB".to_string())?;
@@ -436,7 +437,9 @@ mod tests {
             .with_context(|| "TextChunk re-embedding should succeed on fresh DB".to_string())?;
         KnowledgeEntity::update_all_embeddings(&db, &openai_client, &new_model, new_dimension)
             .await
-            .with_context(|| "KnowledgeEntity re-embedding should succeed on fresh DB".to_string())?;
+            .with_context(|| {
+                "KnowledgeEntity re-embedding should succeed on fresh DB".to_string()
+            })?;
 
         let text_chunk_dimension = get_hnsw_index_dimension(
             &db,

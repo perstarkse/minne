@@ -175,10 +175,7 @@ pub async fn rebuild(db: &SurrealDbClient) -> Result<(), AppError> {
         .map_err(|err| AppError::InternalError(err.to_string()))
 }
 
-async fn ensure_runtime_inner(
-    db: &SurrealDbClient,
-    embedding_dimension: usize,
-) -> Result<()> {
+async fn ensure_runtime_inner(db: &SurrealDbClient, embedding_dimension: usize) -> Result<()> {
     create_fts_analyzer(db).await?;
 
     for spec in fts_index_specs() {
@@ -629,7 +626,10 @@ fn parse_index_build_info(
         if total == 0 {
             0.0
         } else {
-            ((f64::from(u32::try_from(processed).unwrap_or(u32::MAX)) / f64::from(u32::try_from(total).unwrap_or(1))).min(1.0)) * 100.0
+            ((f64::from(u32::try_from(processed).unwrap_or(u32::MAX))
+                / f64::from(u32::try_from(total).unwrap_or(1)))
+            .min(1.0))
+                * 100.0
         }
     });
 
@@ -698,8 +698,9 @@ async fn index_exists(db: &SurrealDbClient, table: &str, index_name: &str) -> Re
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{self, Context};
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use crate::storage::db::SurrealDbClient;
+    use anyhow::{self, Context};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -716,8 +717,7 @@ mod tests {
             }
         });
 
-        let snapshot = parse_index_build_info(Some(info), Some(61081))
-            .context("snapshot")?;
+        let snapshot = parse_index_build_info(Some(info), Some(61081)).context("snapshot")?;
         assert_eq!(
             snapshot,
             IndexBuildSnapshot {
@@ -738,8 +738,7 @@ mod tests {
     fn parse_index_build_info_defaults_to_ready_when_no_building_block() -> anyhow::Result<()> {
         // Surreal returns `{}` when the index exists but isn't building.
         let info = json!({});
-        let snapshot = parse_index_build_info(Some(info), Some(10))
-            .context("snapshot")?;
+        let snapshot = parse_index_build_info(Some(info), Some(10)).context("snapshot")?;
         assert!(snapshot.is_ready());
         assert_eq!(snapshot.processed, 0);
         assert_eq!(snapshot.progress_pct, Some(0.0));
@@ -764,9 +763,11 @@ mod tests {
             .await
             .context("migrations should succeed")?;
 
-        ensure_runtime(&db, 1536).await
+        ensure_runtime(&db, 1536)
+            .await
             .context("first call should succeed")?;
-        ensure_runtime(&db, 1536).await
+        ensure_runtime(&db, 1536)
+            .await
             .context("second index creation")?;
         Ok(())
     }
@@ -783,9 +784,11 @@ mod tests {
             .await
             .context("migrations should succeed")?;
 
-        ensure_runtime(&db, 1536).await
+        ensure_runtime(&db, 1536)
+            .await
             .context("initial index creation")?;
-        ensure_runtime(&db, 128).await
+        ensure_runtime(&db, 128)
+            .await
             .context("overwritten index creation")?;
         Ok(())
     }

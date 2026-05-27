@@ -320,6 +320,7 @@ impl FileInfo {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use anyhow::{self, Context};
 
     use super::*;
@@ -330,8 +331,12 @@ mod tests {
     use tempfile::NamedTempFile;
 
     /// Creates a test temporary file with the given content
-    fn create_test_file(content: &[u8], file_name: &str) -> anyhow::Result<FieldData<NamedTempFile>> {
-        let mut temp_file = NamedTempFile::new().with_context(|| "Failed to create temp file".to_string())?;
+    fn create_test_file(
+        content: &[u8],
+        file_name: &str,
+    ) -> anyhow::Result<FieldData<NamedTempFile>> {
+        let mut temp_file =
+            NamedTempFile::new().with_context(|| "Failed to create temp file".to_string())?;
         temp_file
             .write_all(content)
             .with_context(|| "Failed to write to temp file".to_string())?;
@@ -356,7 +361,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let content = b"This is a test file for StorageManager operations";
         let file_name = "storage_manager_test.txt";
@@ -411,7 +418,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let content = b"filename sanitization";
         let original_name = "Complex name (1).txt";
@@ -444,7 +453,9 @@ mod tests {
         let db = SurrealDbClient::memory(namespace, database)
             .await
             .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let content = b"This is a test file for StorageManager duplicate detection";
         let file_name = "storage_manager_duplicate.txt";
@@ -462,7 +473,9 @@ mod tests {
         let original_file_info =
             FileInfo::new_with_storage(field_data, &db, user_id, test_storage.storage())
                 .await
-                .with_context(|| "Failed to create original file with StorageManager".to_string())?;
+                .with_context(|| {
+                    "Failed to create original file with StorageManager".to_string()
+                })?;
 
         // Create another file with the same content but different name
         let duplicate_name = "storage_manager_duplicate_2.txt";
@@ -472,7 +485,9 @@ mod tests {
         let duplicate_file_info =
             FileInfo::new_with_storage(field_data2, &db, user_id, test_storage.storage())
                 .await
-                .with_context(|| "Failed to process duplicate file with StorageManager".to_string())?;
+                .with_context(|| {
+                    "Failed to process duplicate file with StorageManager".to_string()
+                })?;
 
         // Verify duplicate detection worked
         assert_eq!(duplicate_file_info.id, original_file_info.id);
@@ -520,8 +535,7 @@ mod tests {
             .await
             .with_context(|| "create test storage manager".to_string())?;
         let file_info =
-            FileInfo::new_with_storage(field_data, &db, user_id, test_storage.storage())
-                .await?;
+            FileInfo::new_with_storage(field_data, &db, user_id, test_storage.storage()).await?;
 
         // Check essential properties
         assert!(!file_info.id.is_empty());
@@ -876,7 +890,9 @@ mod tests {
         let db = SurrealDbClient::memory("test_ns", "test_file_storage_memory")
             .await
             .with_context(|| "Failed to start DB".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let content = b"This is a test file for StorageManager";
         let field_data = create_test_file(content, "test_storage.txt")?;
@@ -922,7 +938,9 @@ mod tests {
         let db = SurrealDbClient::memory("test_ns", "test_file_storage_local")
             .await
             .with_context(|| "Failed to start DB".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let content = b"This is a test file for StorageManager with local storage";
         let field_data = create_test_file(content, "test_local.txt")?;
@@ -968,7 +986,9 @@ mod tests {
         let db = SurrealDbClient::memory("test_ns", "test_file_persistence")
             .await
             .with_context(|| "Failed to start DB".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let content = b"Test content for persistence";
         let field_data = create_test_file(content, "persistence_test.txt")?;
@@ -1015,7 +1035,9 @@ mod tests {
         let db = SurrealDbClient::memory("test_ns", "test_file_equivalence")
             .await
             .with_context(|| "Failed to start DB".to_string())?;
-        db.apply_migrations().await.with_context(|| "migrations".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
 
         let content = b"Test content for equivalence testing";
         let field_data1 = create_test_file(content, "equivalence_test_1.txt")?;

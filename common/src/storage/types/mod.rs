@@ -1,6 +1,5 @@
 #![allow(clippy::unsafe_derive_deserialize)]
 use serde::{Deserialize, Serialize};
-pub mod serde_helpers;
 pub mod analytics;
 pub mod conversation;
 pub mod file_info;
@@ -11,6 +10,7 @@ pub mod knowledge_entity_embedding;
 pub mod knowledge_relationship;
 pub mod message;
 pub mod scratchpad;
+pub mod serde_helpers;
 pub mod system_prompts;
 pub mod system_settings;
 pub mod text_chunk;

@@ -11,6 +11,7 @@ stored_object!(Conversation, "conversation", {
 });
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[allow(clippy::module_name_repetitions)]
 pub struct SidebarConversation {
     #[serde(deserialize_with = "deserialize_sidebar_id")]
     pub id: String,
@@ -144,8 +145,9 @@ impl Conversation {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{self, Context};
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use crate::storage::types::message::MessageRole;
+    use anyhow::{self, Context};
 
     use super::*;
 
@@ -173,7 +175,8 @@ mod tests {
             .await
             .with_context(|| "Failed to retrieve conversation".to_string())?;
 
-        let retrieved = retrieved.ok_or_else(|| anyhow::anyhow!("Expected conversation to exist"))?;
+        let retrieved =
+            retrieved.ok_or_else(|| anyhow::anyhow!("Expected conversation to exist"))?;
         assert_eq!(retrieved.id, conversation.id);
         assert_eq!(retrieved.user_id, user_id);
         assert_eq!(retrieved.title, title);
@@ -354,12 +357,15 @@ mod tests {
             .expect("Failed to get sidebar conversations");
 
         assert_eq!(sidebar_items.len(), 3);
-        assert_eq!(sidebar_items[0].id, newest.id);
-        assert_eq!(sidebar_items[0].title, "Newest");
-        assert_eq!(sidebar_items[1].id, middle.id);
-        assert_eq!(sidebar_items[1].title, "Middle");
-        assert_eq!(sidebar_items[2].id, oldest.id);
-        assert_eq!(sidebar_items[2].title, "Oldest");
+        let s0 = sidebar_items.first().expect("expected 3 items");
+        let s1 = sidebar_items.get(1).expect("expected 3 items");
+        let s2 = sidebar_items.get(2).expect("expected 3 items");
+        assert_eq!(s0.id, newest.id);
+        assert_eq!(s0.title, "Newest");
+        assert_eq!(s1.id, middle.id);
+        assert_eq!(s1.title, "Middle");
+        assert_eq!(s2.id, oldest.id);
+        assert_eq!(s2.title, "Oldest");
     }
 
     #[tokio::test]
@@ -389,7 +395,8 @@ mod tests {
         let before_patch = Conversation::get_user_sidebar_conversations(user_id, &db)
             .await
             .expect("Failed to get sidebar conversations before patch");
-        assert_eq!(before_patch[0].id, second.id);
+        let before = before_patch.first().expect("expected at least 1 item");
+        assert_eq!(before.id, second.id);
 
         Conversation::patch_title(&first.id, user_id, "First (renamed)", &db)
             .await
@@ -398,8 +405,9 @@ mod tests {
         let after_patch = Conversation::get_user_sidebar_conversations(user_id, &db)
             .await
             .expect("Failed to get sidebar conversations after patch");
-        assert_eq!(after_patch[0].id, first.id);
-        assert_eq!(after_patch[0].title, "First (renamed)");
+        let after = after_patch.first().expect("expected at least 1 item");
+        assert_eq!(after.id, first.id);
+        assert_eq!(after.title, "First (renamed)");
     }
 
     #[tokio::test]
@@ -451,8 +459,8 @@ mod tests {
             Conversation::get_complete_conversation(&conversation_id, user_id_1, &db).await;
         assert!(result.is_ok(), "Failed to retrieve complete conversation");
 
-        let (retrieved_conversation, retrieved_messages) = result
-            .with_context(|| "Failed to retrieve complete conversation".to_string())?;
+        let (retrieved_conversation, retrieved_messages) =
+            result.with_context(|| "Failed to retrieve complete conversation".to_string())?;
 
         assert_eq!(retrieved_conversation.id, conversation_id);
         assert_eq!(retrieved_conversation.user_id, user_id_1);
@@ -460,8 +468,10 @@ mod tests {
 
         assert_eq!(retrieved_messages.len(), 3);
 
-        let message_contents: Vec<&str> =
-            retrieved_messages.iter().map(|m| m.content.as_str()).collect();
+        let message_contents: Vec<&str> = retrieved_messages
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect();
         assert!(message_contents.contains(&"Hello, AI!"));
         assert!(message_contents.contains(&"Hello, human! How can I help you today?"));
         assert!(message_contents.contains(&"Tell me about Rust programming."));

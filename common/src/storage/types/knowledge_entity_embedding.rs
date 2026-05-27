@@ -137,10 +137,11 @@ impl KnowledgeEntityEmbedding {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{self, Context};
+    #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
     use crate::storage::db::SurrealDbClient;
     use crate::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
+    use anyhow::{self, Context};
     use chrono::Utc;
     use surrealdb::Value as SurrealValue;
     use uuid::Uuid;
@@ -270,7 +271,8 @@ mod tests {
         let stored_embedding = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
             .await
             .with_context(|| "Failed to fetch embedding".to_string())?;
-        let stored_embedding = stored_embedding.ok_or_else(|| anyhow::anyhow!("Expected embedding to exist"))?;
+        let stored_embedding =
+            stored_embedding.ok_or_else(|| anyhow::anyhow!("Expected embedding to exist"))?;
         assert_eq!(stored_embedding.user_id, user_id);
         assert_eq!(stored_embedding.entity_id, entity_rid);
 
@@ -399,7 +401,10 @@ mod tests {
             .with_context(|| "failed to deserialize fetch rows".to_string())?;
 
         assert_eq!(rows.len(), 1);
-        let fetched_entity = &rows.first().context("Expected at least one result")?.entity_id;
+        let fetched_entity = &rows
+            .first()
+            .context("Expected at least one result")?
+            .entity_id;
         assert_eq!(fetched_entity.id, entity_key);
         assert_eq!(fetched_entity.name, "Test entity");
         assert_eq!(fetched_entity.user_id, user_id);
