@@ -291,7 +291,7 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding_str = serde_json::to_string(&embedding)
+            let embedding = serde_json::to_string(&embedding)
                 .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
             write!(
                 &mut transaction_query,
@@ -302,10 +302,6 @@ impl TextChunk {
                     user_id = '{user_id}', \
                     created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
                     updated_at = time::now();",
-                id = id,
-                embedding = embedding_str,
-                source_id = source_id,
-                user_id = user_id,
             )
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
@@ -406,7 +402,7 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding_str = serde_json::to_string(&embedding)
+            let embedding = serde_json::to_string(&embedding)
                 .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
             write!(
                 &mut transaction_query,
@@ -417,10 +413,6 @@ impl TextChunk {
                     user_id = '{user_id}', \
                     created_at = time::now(), \
                     updated_at = time::now();",
-                id = id,
-                embedding = embedding_str,
-                source_id = source_id,
-                user_id = user_id,
             )
             .map_err(|e| AppError::InternalError(e.to_string()))?;
         }
