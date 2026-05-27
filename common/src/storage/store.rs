@@ -31,6 +31,11 @@ impl StorageManager {
     ///
     /// This method validates the configuration and creates the appropriate
     /// storage backend with proper initialization.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the storage backend cannot be created or initialised
+    /// (e.g. missing S3 bucket, local filesystem permission error).
     pub async fn new(cfg: &AppConfig) -> object_store::Result<Self> {
         let backend_kind = cfg.storage;
         let (store, local_base) = create_storage_backend(cfg).await?;
@@ -90,6 +95,10 @@ impl StorageManager {
     ///
     /// This operation persists data using the underlying storage backend.
     /// For memory backends, data persists for the lifetime of the StorageManager.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the underlying storage backend fails to persist the data.
     pub async fn put(&self, location: &str, data: Bytes) -> object_store::Result<()> {
         let path = ObjPath::from(location);
         let payload = object_store::PutPayload::from_bytes(data);
@@ -99,6 +108,10 @@ impl StorageManager {
     /// Retrieve bytes from the specified location.
     ///
     /// Returns the full contents buffered in memory.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the location does not exist or the underlying backend fails.
     pub async fn get(&self, location: &str) -> object_store::Result<Bytes> {
         let path = ObjPath::from(location);
         let result = self.store.get(&path).await?;
@@ -108,6 +121,10 @@ impl StorageManager {
     /// Get a streaming handle for large objects.
     ///
     /// Returns a fallible stream of Bytes chunks suitable for large file processing.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the location does not exist or the underlying backend fails.
     pub async fn get_stream(
         &self,
         location: &str,
@@ -120,6 +137,10 @@ impl StorageManager {
     /// Delete all objects below the specified prefix.
     ///
     /// For local filesystem backends, this also attempts to clean up empty directories.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the underlying backend fails during deletion.
     pub async fn delete_prefix(&self, prefix: &str) -> object_store::Result<()> {
         let prefix_path = ObjPath::from(prefix);
         let locations = self
@@ -141,6 +162,10 @@ impl StorageManager {
     }
 
     /// List all objects below the specified prefix.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the underlying backend fails to list objects.
     pub async fn list(
         &self,
         prefix: Option<&str>,
@@ -150,6 +175,10 @@ impl StorageManager {
     }
 
     /// Check if an object exists at the specified location.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the underlying backend returns a non-NotFound error.
     pub async fn exists(&self, location: &str) -> object_store::Result<bool> {
         let path = ObjPath::from(location);
         self.store

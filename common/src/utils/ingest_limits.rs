@@ -6,6 +6,15 @@ pub enum IngestValidationError {
     BadRequest(String),
 }
 
+/// Validates ingestion input against configured limits.
+///
+/// Checks file count, content size, context size, and category length.
+///
+/// # Errors
+///
+/// Returns `IngestValidationError::BadRequest` if the file count exceeds the maximum.
+/// Returns `IngestValidationError::PayloadTooLarge` if content, context, or
+/// category exceed their configured byte limits.
 pub fn validate_ingest_input(
     config: &AppConfig,
     content: Option<&str>,
