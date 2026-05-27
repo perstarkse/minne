@@ -21,6 +21,7 @@ pub struct KnowledgeRelationship {
 }
 
 impl KnowledgeRelationship {
+    #[must_use]
     pub fn new(
         in_: String,
         out: String,

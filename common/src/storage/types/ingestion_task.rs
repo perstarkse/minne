@@ -33,6 +33,7 @@ pub enum TaskState {
 }
 
 impl TaskState {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             TaskState::Pending => "Pending",
@@ -45,6 +46,7 @@ impl TaskState {
         }
     }
 
+    #[must_use]
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
@@ -52,6 +54,7 @@ impl TaskState {
         )
     }
 
+    #[must_use]
     pub fn display_label(&self) -> &'static str {
         match self {
             TaskState::Pending => "Pending",
@@ -170,6 +173,7 @@ stored_object!(IngestionTask, "ingestion_task", {
 });
 
 impl IngestionTask {
+    #[must_use]
     pub fn new(content: IngestionPayload, user_id: String) -> Self {
         let now = chrono::Utc::now();
 
@@ -193,10 +197,12 @@ impl IngestionTask {
         }
     }
 
+    #[must_use]
     pub fn can_retry(&self) -> bool {
         self.attempts < self.max_attempts
     }
 
+    #[must_use]
     pub fn lease_duration(&self) -> Duration {
         Duration::from_secs(u64::try_from(self.lease_duration_secs.max(0)).unwrap_or(0))
     }

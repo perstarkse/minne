@@ -69,6 +69,7 @@ stored_object!(TextContent, "text_content", {
 });
 
 impl TextContent {
+    #[must_use]
     pub fn new(
         text: String,
         context: Option<String>,

@@ -32,6 +32,7 @@ impl KnowledgeEntityEmbedding {
     }
 
     /// Create a new knowledge entity embedding
+    #[must_use]
     pub fn new(entity_id: &str, embedding: Vec<f32>, user_id: String) -> Self {
         let now = Utc::now();
         Self {

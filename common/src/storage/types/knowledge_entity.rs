@@ -34,6 +34,7 @@ pub enum KnowledgeEntityType {
     // Add more types as needed
 }
 impl KnowledgeEntityType {
+    #[must_use]
     pub fn variants() -> &'static [&'static str] {
         &["Idea", "Project", "Document", "Page", "TextSnippet"]
     }
@@ -101,6 +102,7 @@ pub struct KnowledgeEntityVectorResult {
 }
 
 impl KnowledgeEntity {
+    #[must_use]
     pub fn new(
         source_id: String,
         name: String,
