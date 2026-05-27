@@ -575,7 +575,7 @@ fn validate_answers(
             if chunk_text.contains(&needle)
                 || (!needle_norm.is_empty() && chunk_norm.contains(&needle_norm))
             {
-                matches.insert(chunk.chunk.get_id().to_string());
+                matches.insert(chunk.chunk.id().to_string());
                 found_any = true;
             }
         }

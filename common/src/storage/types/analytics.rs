@@ -16,7 +16,7 @@ impl StoredObject for Analytics {
         "analytics"
     }
 
-    fn get_id(&self) -> &str {
+    fn id(&self) -> &str {
         &self.id
     }
 }

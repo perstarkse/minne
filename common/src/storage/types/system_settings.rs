@@ -28,7 +28,7 @@ impl StoredObject for SystemSettings {
         "system_settings"
     }
 
-    fn get_id(&self) -> &str {
+    fn id(&self) -> &str {
         &self.id
     }
 }

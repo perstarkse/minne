@@ -20,7 +20,7 @@ pub mod user;
 
 pub trait StoredObject: Serialize + for<'de> Deserialize<'de> {
     fn table_name() -> &'static str;
-    fn get_id(&self) -> &str;
+    fn id(&self) -> &str;
 }
 
 #[macro_export]
@@ -52,7 +52,7 @@ macro_rules! stored_object {
                 $table
             }
 
-            fn get_id(&self) -> &str {
+            fn id(&self) -> &str {
                 &self.id
             }
         }

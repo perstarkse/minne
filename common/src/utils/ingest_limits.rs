@@ -1,8 +1,11 @@
 use super::config::AppConfig;
 
+/// Errors raised when validating ingestion payloads against configured limits.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IngestValidationError {
+    /// The payload exceeds a configured size limit (content, context, or category).
     PayloadTooLarge(String),
+    /// The request violates a non-size constraint (e.g., too many files).
     BadRequest(String),
 }
 

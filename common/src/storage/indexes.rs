@@ -581,14 +581,22 @@ async fn poll_index_build_status(
     Ok(())
 }
 
+/// Snapshot of an index build progress as reported by SurrealDB's `INFO FOR INDEX`.
 #[derive(Debug, PartialEq)]
 struct IndexBuildSnapshot {
+    /// Current build status string (e.g., `"indexing"`, `"ready"`, `"error"`).
     status: String,
+    /// Number of rows present when the build started.
     initial: u64,
+    /// Number of rows still pending processing.
     pending: u64,
+    /// Number of rows updated since the build started.
     updated: u64,
+    /// Total rows processed so far (`initial + updated`).
     processed: u64,
+    /// Total rows expected (from `SELECT count()` before the build), if available.
     total_rows: Option<u64>,
+    /// Progress as a percentage of `processed / total_rows`, if `total_rows` is known.
     progress_pct: Option<f64>,
 }
 

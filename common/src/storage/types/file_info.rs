@@ -19,26 +19,34 @@ use crate::{
     stored_object,
 };
 
+/// Errors that can occur during file storage operations.
 #[derive(Error, Debug)]
 pub enum FileError {
+    /// No file record found with the given UUID.
     #[error("file not found for uuid: {0}")]
     FileNotFound(String),
 
+    /// Underlying I/O operation failed.
     #[error("io error occurred: {0}")]
     Io(#[from] std::io::Error),
 
+    /// A file with the same SHA-256 hash already exists.
     #[error("duplicate file detected with sha256: {0}")]
     DuplicateFile(String),
 
+    /// Database operation on the file record failed.
     #[error("surrealdb error: {0}")]
     SurrealError(#[from] surrealdb::Error),
 
+    /// Failed to persist the temporary file to its final location.
     #[error("failed to persist file: {0}")]
     PersistError(#[from] tempfile::PersistError),
 
+    /// Upload metadata did not include a file name.
     #[error("file name missing in metadata")]
     MissingFileName,
 
+    /// The underlying object store operation failed.
     #[error("object store error: {0}")]
     ObjectStore(#[from] ObjectStoreError),
 }

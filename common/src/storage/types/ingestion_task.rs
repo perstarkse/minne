@@ -68,12 +68,16 @@ impl TaskState {
     }
 }
 
+/// Information about an error that occurred during task processing.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Default)]
 pub struct TaskErrorInfo {
+    /// Machine-readable error code (e.g., `"pipeline_error"`).
     pub code: Option<String>,
+    /// Human-readable error description.
     pub message: String,
 }
 
+/// Internal events that drive the task state machine transitions.
 #[derive(Debug, Clone, Copy)]
 enum TaskTransition {
     StartProcessing,
