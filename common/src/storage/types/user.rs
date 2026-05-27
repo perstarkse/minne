@@ -371,7 +371,7 @@ impl User {
             .client
             .query(
                 "UPDATE type::thing('user', $id) 
-                SET api_key = test_string_nullish
+                SET api_key = NONE
                 RETURN AFTER",
             )
             .bind(("id", id.to_owned()))
@@ -532,7 +532,6 @@ impl User {
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
         db.query("UPDATE type::thing('user', $user_id) SET timezone = $timezone")
-            .bind(("table_name", Self::table_name()))
             .bind(("user_id", user_id.to_string()))
             .bind(("timezone", timezone.to_string()))
             .await?;
@@ -579,7 +578,7 @@ impl User {
         let entity: KnowledgeEntity = db
             .get_item(id)
             .await?
-            .ok_or_else(|| AppError::NotFound("Entity not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("entity not found".into()))?;
 
         if entity.user_id != user_id {
             return Err(AppError::Auth("Access denied".into()));
@@ -596,7 +595,7 @@ impl User {
         let text_content: TextContent = db
             .get_item(id)
             .await?
-            .ok_or_else(|| AppError::NotFound("Content not found".into()))?;
+            .ok_or_else(|| AppError::NotFound("content not found".into()))?;
 
         if text_content.user_id != user_id {
             return Err(AppError::Auth("Access denied".into()));

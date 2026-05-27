@@ -75,7 +75,7 @@ pub async fn extract_text_from_url(
     }
 
     let parsed_url =
-        url::Url::parse(url).map_err(|_| AppError::Validation("Invalid URL".to_string()))?;
+        url::Url::parse(url).map_err(|_| AppError::Validation("invalid URL".to_string()))?;
 
     let domain = ensure_ingestion_url_allowed(&parsed_url)?;
     let timestamp = Utc::now().format("%Y%m%d%H%M%S");
