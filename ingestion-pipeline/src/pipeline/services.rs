@@ -240,7 +240,7 @@ impl PipelineServices for DefaultPipelineServices {
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         analysis
             .to_database_entities(
-                content.get_id(),
+                content.id(),
                 &content.user_id,
                 &self.openai_client,
                 &self.db,
@@ -271,7 +271,7 @@ impl PipelineServices for DefaultPipelineServices {
                 .await
                 .map_err(|e| AppError::InternalError(format!("FastEmbed embedding for chunk failed: {e}")))?;
             let chunk_struct = TextChunk::new(
-                content.get_id().to_string(),
+                content.id().to_string(),
                 chunk_text,
                 content.user_id.clone(),
             );

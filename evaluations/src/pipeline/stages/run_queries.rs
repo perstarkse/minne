@@ -247,7 +247,7 @@ pub(crate) async fn run_queries(
                             || candidate
                                 .chunks
                                 .iter()
-                                .any(|chunk| expected_chunk_ids_set.contains(&chunk.chunk.get_id()))
+                                .any(|chunk| expected_chunk_ids_set.contains(&chunk.chunk.id()))
                     } else {
                         true
                     };

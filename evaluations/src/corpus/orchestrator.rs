@@ -340,7 +340,7 @@ pub async fn ensure_corpus(
         corpus_questions.push(CorpusQuestion {
             question_id: case.question.id.clone(),
             paragraph_id: case.paragraph.id.clone(),
-            text_content_id: record.shard.text_content.get_id().to_string(),
+            text_content_id: record.shard.text_content.id().to_string(),
             question_text: case.question.question.clone(),
             answers: case.question.answers.clone(),
             is_impossible: case.question.is_impossible,

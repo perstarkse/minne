@@ -143,7 +143,7 @@ impl SurrealDbClient {
         T: StoredObject + Send + Sync + 'static,
     {
         self.client
-            .create((T::table_name(), item.get_id()))
+            .create((T::table_name(), item.id()))
             .content(item)
             .await
     }
@@ -159,7 +159,7 @@ impl SurrealDbClient {
     where
         T: StoredObject + Send + Sync + 'static,
     {
-        let id = item.get_id().to_string();
+        let id = item.id().to_string();
         self.client
             .upsert((T::table_name(), id))
             .content(item)

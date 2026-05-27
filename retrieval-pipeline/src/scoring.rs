@@ -188,7 +188,7 @@ pub fn merge_scored_by_id<T, S: std::hash::BuildHasher>(
     T: StoredObject + Clone,
 {
     for scored in incoming {
-        let id = scored.item.get_id().to_owned();
+        let id = scored.item.id().to_owned();
         target
             .entry(id)
             .and_modify(|existing| {
@@ -218,7 +218,7 @@ where
         b.fused
             .partial_cmp(&a.fused)
             .unwrap_or(Ordering::Equal)
-            .then_with(|| a.item.get_id().cmp(b.item.get_id()))
+            .then_with(|| a.item.id().cmp(b.item.id()))
     });
 }
 
@@ -250,11 +250,11 @@ where
             b_score
                 .partial_cmp(&a_score)
                 .unwrap_or(Ordering::Equal)
-                .then_with(|| a.item.get_id().cmp(b.item.get_id()))
+                .then_with(|| a.item.id().cmp(b.item.id()))
         });
 
         for (rank, candidate) in vector_ranked.into_iter().enumerate() {
-            let id = candidate.item.get_id().to_owned();
+            let id = candidate.item.id().to_owned();
             let entry = merged
                 .entry(id.clone())
                 .or_insert_with(|| Scored::new(candidate.item.clone()));
@@ -280,11 +280,11 @@ where
             b_score
                 .partial_cmp(&a_score)
                 .unwrap_or(Ordering::Equal)
-                .then_with(|| a.item.get_id().cmp(b.item.get_id()))
+                .then_with(|| a.item.id().cmp(b.item.id()))
         });
 
         for (rank, candidate) in fts_ranked.into_iter().enumerate() {
-            let id = candidate.item.get_id().to_owned();
+            let id = candidate.item.id().to_owned();
             let entry = merged
                 .entry(id.clone())
                 .or_insert_with(|| Scored::new(candidate.item.clone()));

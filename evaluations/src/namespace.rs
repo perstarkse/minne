@@ -216,7 +216,7 @@ pub(crate) async fn ensure_eval_user(db: &SurrealDbClient) -> Result<User> {
         theme: Theme::System,
     };
 
-    if let Some(existing) = db.get_item::<User>(user.get_id()).await? {
+    if let Some(existing) = db.get_item::<User>(user.id()).await? {
         return Ok(existing);
     }
 
