@@ -25,7 +25,8 @@ use retrieval_pipeline::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
-use tokio::sync::{mpsc::channel, Mutex};
+use std::sync::Mutex;
+use tokio::sync::mpsc::channel;
 use tracing::{debug, error, info};
 
 use common::storage::{
@@ -220,10 +221,11 @@ pub async fn get_response_stream(
         return create_replayed_response_stream(&state, existing_ai_message);
     }
 
-    let (request, allowed_reference_ids) = match prepare_chat_request(&state, &user_message, &user, &history).await {
-        Ok(result) => result,
-        Err(sse) => return sse,
-    };
+    let (request, allowed_reference_ids) =
+        match prepare_chat_request(&state, &user_message, &user, &history).await {
+            Ok(result) => result,
+            Err(sse) => return sse,
+        };
 
     let openai_stream = match state.openai_client.chat().create_stream(request).await {
         Ok(stream) => stream,
@@ -232,12 +234,24 @@ pub async fn get_response_stream(
         }
     };
 
-    build_chat_event_stream(state, openai_stream, &user_message, user.id.clone(), allowed_reference_ids)
+    build_chat_event_stream(
+        state,
+        openai_stream,
+        &user_message,
+        user.id.clone(),
+        allowed_reference_ids,
+    )
 }
 
 fn build_chat_event_stream(
     state: HtmlState,
-    openai_stream: impl Stream<Item = Result<async_openai::types::CreateChatCompletionStreamResponse, async_openai::error::OpenAIError>> + Send + 'static,
+    openai_stream: impl Stream<
+            Item = Result<
+                async_openai::types::CreateChatCompletionStreamResponse,
+                async_openai::error::OpenAIError,
+            >,
+        > + Send
+        + 'static,
     user_message: &Message,
     user_id: String,
     allowed_reference_ids: Vec<String>,
@@ -245,7 +259,14 @@ fn build_chat_event_stream(
     let (tx, rx) = channel::<String>(1000);
     let (tx_final, mut rx_final) = channel::<Message>(1);
 
-    spawn_storage_task(Arc::clone(&state.db), rx, tx_final, user_message, user_id, allowed_reference_ids);
+    spawn_storage_task(
+        Arc::clone(&state.db),
+        rx,
+        tx_final,
+        user_message,
+        user_id,
+        allowed_reference_ids,
+    );
 
     let json_state = Arc::new(Mutex::new(StreamParserState::new()));
 
@@ -267,9 +288,10 @@ fn build_chat_event_stream(
                         if !content.is_empty() {
                             let _ = tx_storage.send(content.clone()).await;
 
-                            let mut state = json_state.lock().await;
-                            let display_content = state.process_chunk(&content);
-                            drop(state);
+                            let display_content = {
+                                let mut state = json_state.lock().expect("json parser mutex poisoned");
+                                state.process_chunk(&content)
+                            };
                             if !display_content.is_empty() {
                                 yield Ok(Event::default()
                                     .event("chat_message")
@@ -332,7 +354,10 @@ async fn prepare_chat_request(
     user: &User,
     history: &[Message],
 ) -> Result<
-    (async_openai::types::CreateChatCompletionRequest, Vec<String>),
+    (
+        async_openai::types::CreateChatCompletionRequest,
+        Vec<String>,
+    ),
     SseResponse,
 > {
     let rerank_lease = match state.reranker_pool.as_ref() {
@@ -356,7 +381,9 @@ async fn prepare_chat_request(
     {
         Ok(result) => result,
         Err(_e) => {
-            return Err(sse_with_keep_alive(create_error_stream("Failed to retrieve knowledge")));
+            return Err(sse_with_keep_alive(create_error_stream(
+                "Failed to retrieve knowledge",
+            )));
         }
     };
 
@@ -374,10 +401,14 @@ async fn prepare_chat_request(
     let formatted_user_message =
         create_user_message_with_history(&context_json, history, &user_message.content);
     let Ok(settings) = SystemSettings::get_current(&state.db).await else {
-        return Err(sse_with_keep_alive(create_error_stream("Failed to retrieve system settings")));
+        return Err(sse_with_keep_alive(create_error_stream(
+            "Failed to retrieve system settings",
+        )));
     };
     let Ok(request) = create_chat_request(formatted_user_message, &settings) else {
-        return Err(sse_with_keep_alive(create_error_stream("Failed to create chat request")));
+        return Err(sse_with_keep_alive(create_error_stream(
+            "Failed to create chat request",
+        )));
     };
 
     Ok((request, allowed_reference_ids))

@@ -285,5 +285,3 @@ const fn default_chunk_rrf_vector_weight() -> f32 {
 const fn default_chunk_rrf_fts_weight() -> f32 {
     1.0
 }
-
-

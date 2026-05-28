@@ -4,6 +4,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use tracing::warn;
 
 use common::storage::{db::ProvidesDb, types::analytics::Analytics};
 
@@ -23,10 +24,14 @@ where
     // Only count visits/page loads for GET requests to non-asset, non-static paths
     if request.method() == Method::GET && !path.starts_with("/assets") && !path.contains('.') {
         if !session.get::<bool>("counted_visitor").unwrap_or(false) {
-            let _ = Analytics::increment_visitors(state.db()).await;
+            if let Err(e) = Analytics::increment_visitors(state.db()).await {
+                warn!("failed to increment visitor count: {e}");
+            }
             session.set("counted_visitor", true);
         }
-        let _ = Analytics::increment_page_loads(state.db()).await;
+        if let Err(e) = Analytics::increment_page_loads(state.db()).await {
+            warn!("failed to increment page load count: {e}");
+        }
     }
     next.run(request).await
 }
