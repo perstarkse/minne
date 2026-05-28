@@ -1,11 +1,15 @@
+use thiserror::Error;
+
 use super::config::AppConfig;
 
 /// Errors raised when validating ingestion payloads against configured limits.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum IngestValidationError {
     /// The payload exceeds a configured size limit (content, context, or category).
+    #[error("payload too large: {0}")]
     PayloadTooLarge(String),
     /// The request violates a non-size constraint (e.g., too many files).
+    #[error("bad request: {0}")]
     BadRequest(String),
 }
 
@@ -27,7 +31,7 @@ pub fn validate_ingest_input(
 ) -> Result<(), IngestValidationError> {
     if file_count > config.ingest_max_files {
         return Err(IngestValidationError::BadRequest(format!(
-            "Too many files. Maximum allowed is {}",
+            "too many files: maximum allowed is {}",
             config.ingest_max_files
         )));
     }
@@ -35,7 +39,7 @@ pub fn validate_ingest_input(
     if let Some(content) = content {
         if content.len() > config.ingest_max_content_bytes {
             return Err(IngestValidationError::PayloadTooLarge(format!(
-                "Content is too large. Maximum allowed is {} bytes",
+                "content is too large: maximum allowed is {} bytes",
                 config.ingest_max_content_bytes
             )));
         }
@@ -43,14 +47,14 @@ pub fn validate_ingest_input(
 
     if ctx.len() > config.ingest_max_context_bytes {
         return Err(IngestValidationError::PayloadTooLarge(format!(
-            "Context is too large. Maximum allowed is {} bytes",
+            "context is too large: maximum allowed is {} bytes",
             config.ingest_max_context_bytes
         )));
     }
 
     if category.len() > config.ingest_max_category_bytes {
         return Err(IngestValidationError::PayloadTooLarge(format!(
-            "Category is too large. Maximum allowed is {} bytes",
+            "category is too large: maximum allowed is {} bytes",
             config.ingest_max_category_bytes
         )));
     }

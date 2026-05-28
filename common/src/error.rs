@@ -39,3 +39,11 @@ pub enum AppError {
     #[error("internal service error: {0}")]
     InternalError(String),
 }
+
+impl AppError {
+    /// Builds an [`AppError::InternalError`] from a displayable message.
+    #[must_use]
+    pub fn internal(msg: impl std::fmt::Display) -> Self {
+        Self::InternalError(msg.to_string())
+    }
+}

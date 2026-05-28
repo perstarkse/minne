@@ -124,7 +124,7 @@ impl SurrealDbClient {
             .load_files(&MIGRATIONS_DIR)
             .up()
             .await
-            .map_err(|e| AppError::InternalError(e.to_string()))?;
+            .map_err(AppError::internal)?;
 
         Ok(())
     }

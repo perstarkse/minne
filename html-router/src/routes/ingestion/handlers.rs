@@ -142,8 +142,8 @@ pub async fn process_ingest_form(
         input.content,
         input.context,
         input.category,
-        &file_infos,
-        user.id.as_str(),
+        file_infos,
+        user.id.clone(),
     )?;
 
     let futures: Vec<_> = payloads

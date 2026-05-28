@@ -261,7 +261,7 @@ impl FileInfo {
 
         // Remove the object's parent prefix in the object store
         let (parent_prefix, _file_name) = store::split_object_path(&file_info.path)
-            .map_err(|e| AppError::InternalError(e.to_string()))?;
+            .map_err(AppError::internal)?;
         storage
             .delete_prefix(&parent_prefix)
             .await

@@ -250,7 +250,7 @@ impl KnowledgeEntity {
             .bind(("embedding", query_embedding))
             .bind(("user_id", user_id.to_string()))
             .await
-            .map_err(|e| AppError::InternalError(format!("Surreal query failed: {e}")))?;
+            .map_err(AppError::Database)?;
 
         response = response.check().map_err(AppError::Database)?;
 
@@ -326,7 +326,7 @@ impl KnowledgeEntity {
         let rows: Vec<Row> = response.take(0).map_err(AppError::Database)?;
         rows.first()
             .map(|r| r.user_id.clone())
-            .ok_or_else(|| AppError::InternalError("user not found for entity".to_string()))
+            .ok_or_else(|| AppError::internal("user not found for entity"))
     }
 
     /// Re-creates embeddings for all knowledge entities in the database.
@@ -385,7 +385,7 @@ impl KnowledgeEntity {
                 entity.id, embedding.len(), new_dimensions
             );
                 error!("{err_msg}");
-                return Err(AppError::InternalError(err_msg));
+                return Err(AppError::internal(err_msg));
             }
             new_embeddings.insert(entity.id.clone(), (embedding, entity.user_id.clone()));
         }
@@ -397,8 +397,9 @@ impl KnowledgeEntity {
 
         // Add all update statements to the embedding table
         for (id, (embedding, user_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding)
-                .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
+            let embedding = serde_json::to_string(&embedding).map_err(|e| {
+                AppError::internal(format!("embedding serialization failed: {e}"))
+            })?;
             write!(
                 transaction_query,
                 "UPSERT type::thing('knowledge_entity_embedding', '{id}') SET \
@@ -408,14 +409,14 @@ impl KnowledgeEntity {
                     created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
                     updated_at = time::now();",
             )
-            .map_err(|e| AppError::InternalError(e.to_string()))?;
+            .map_err(AppError::internal)?;
         }
 
         write!(
             transaction_query,
             "DEFINE INDEX OVERWRITE idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
         )
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+        .map_err(AppError::internal)?;
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 
@@ -472,7 +473,7 @@ impl KnowledgeEntity {
             let embedding = provider
                 .embed(&embedding_input)
                 .await
-                .map_err(|e| AppError::InternalError(format!("Embedding failed: {e}")))?;
+                .map_err(AppError::internal)?;
 
             // Safety check: ensure the generated embedding has the correct dimension.
             if embedding.len() != new_dimensions {
@@ -481,7 +482,7 @@ impl KnowledgeEntity {
                     entity.id, embedding.len(), new_dimensions
                 );
                 error!("{err_msg}");
-                return Err(AppError::InternalError(err_msg));
+                return Err(AppError::internal(err_msg));
             }
             new_embeddings.insert(entity.id.clone(), (embedding, entity.user_id.clone()));
         }
@@ -517,8 +518,9 @@ impl KnowledgeEntity {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding)
-                .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
+            let embedding = serde_json::to_string(&embedding).map_err(|e| {
+                AppError::internal(format!("embedding serialization failed: {e}"))
+            })?;
             write!(
                 transaction_query,
                 "CREATE type::thing('knowledge_entity_embedding', '{id}') SET \
@@ -528,14 +530,14 @@ impl KnowledgeEntity {
                     created_at = time::now(), \
                     updated_at = time::now();",
             )
-            .map_err(|e| AppError::InternalError(e.to_string()))?;
+            .map_err(AppError::internal)?;
         }
 
         write!(
             transaction_query,
             "DEFINE INDEX OVERWRITE idx_embedding_knowledge_entity_embedding ON TABLE knowledge_entity_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
         )
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+        .map_err(AppError::internal)?;
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 
