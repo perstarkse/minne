@@ -1,4 +1,5 @@
 use crate::storage::types::serde_helpers::deserialize_flexible_id;
+use crate::storage::types::user::User;
 use crate::{error::AppError, storage::db::SurrealDbClient};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -40,7 +41,21 @@ impl KnowledgeRelationship {
             },
         }
     }
+
     pub async fn store_relationship(&self, db_client: &SurrealDbClient) -> Result<(), AppError> {
+        User::get_and_validate_knowledge_entity(
+            &self.in_,
+            &self.metadata.user_id,
+            db_client,
+        )
+        .await?;
+        User::get_and_validate_knowledge_entity(
+            &self.out,
+            &self.metadata.user_id,
+            db_client,
+        )
+        .await?;
+
         db_client
             .client
             .query(
@@ -61,22 +76,30 @@ impl KnowledgeRelationship {
             .bind(("user_id", self.metadata.user_id.clone()))
             .bind(("source_id", self.metadata.source_id.clone()))
             .bind(("relationship_type", self.metadata.relationship_type.clone()))
-            .await?
-            .check()?;
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
 
         Ok(())
     }
 
     pub async fn delete_relationships_by_source_id(
         source_id: &str,
+        user_id: &str,
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
         db_client
             .client
-            .query("DELETE FROM relates_to WHERE metadata.source_id = $source_id")
+            .query(
+                "DELETE FROM relates_to WHERE metadata.source_id = $source_id AND metadata.user_id = $user_id",
+            )
             .bind(("source_id", source_id.to_owned()))
-            .await?
-            .check()?;
+            .bind(("user_id", user_id.to_owned()))
+            .await
+            .map_err(AppError::Database)?
+            .check()
+            .map_err(AppError::Database)?;
 
         Ok(())
     }
@@ -86,39 +109,37 @@ impl KnowledgeRelationship {
         user_id: &str,
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        let mut authorized_result = db_client
+        let mut delete_result = db_client
             .client
             .query(
-                "SELECT * FROM relates_to WHERE id = type::thing('relates_to', $id) AND metadata.user_id = $user_id",
+                "DELETE type::thing('relates_to', $id) WHERE metadata.user_id = $user_id RETURN BEFORE;",
             )
             .bind(("id", id.to_owned()))
             .bind(("user_id", user_id.to_owned()))
-            .await?;
-        let authorized: Vec<KnowledgeRelationship> = authorized_result.take(0)?;
+            .await
+            .map_err(AppError::Database)?;
+        let deleted: Vec<KnowledgeRelationship> =
+            delete_result.take(0).map_err(AppError::Database)?;
 
-        if authorized.is_empty() {
-            let mut exists_result = db_client
-                .client
-                .query("SELECT * FROM type::thing('relates_to', $id)")
-                .bind(("id", id.to_owned()))
-                .await?;
-            let existing: Option<KnowledgeRelationship> = exists_result.take(0)?;
+        if !deleted.is_empty() {
+            return Ok(());
+        }
 
-            if existing.is_some() {
-                Err(AppError::Auth(
-                    "Not authorized to delete relationship".into(),
-                ))
-            } else {
-                Err(AppError::NotFound(format!("Relationship {id} not found")))
-            }
+        let mut exists_result = db_client
+            .client
+            .query("SELECT * FROM type::thing('relates_to', $id)")
+            .bind(("id", id.to_owned()))
+            .await
+            .map_err(AppError::Database)?;
+        let existing: Option<KnowledgeRelationship> =
+            exists_result.take(0).map_err(AppError::Database)?;
+
+        if existing.is_some() {
+            Err(AppError::Auth(
+                "Not authorized to delete relationship".into(),
+            ))
         } else {
-            db_client
-                .client
-                .query("DELETE type::thing('relates_to', $id)")
-                .bind(("id", id.to_owned()))
-                .await?
-                .check()?;
-            Ok(())
+            Err(AppError::NotFound(format!("Relationship {id} not found")))
         }
     }
 }
@@ -158,11 +179,14 @@ mod tests {
         result.take(0).expect("failed to take relationship by id")
     }
 
-    async fn create_test_entity(name: &str, db_client: &SurrealDbClient) -> anyhow::Result<String> {
+    async fn create_test_entity(
+        name: &str,
+        user_id: &str,
+        db_client: &SurrealDbClient,
+    ) -> anyhow::Result<String> {
         let source_id = "source123".to_string();
         let description = format!("Description for {name}");
         let entity_type = KnowledgeEntityType::Document;
-        let user_id = "user123".to_string();
 
         let entity = KnowledgeEntity::new(
             source_id,
@@ -170,7 +194,7 @@ mod tests {
             description,
             entity_type,
             None,
-            user_id,
+            user_id.to_string(),
         );
 
         let stored: Option<KnowledgeEntity> = db_client
@@ -211,18 +235,18 @@ mod tests {
     #[tokio::test]
     async fn test_store_and_verify_by_source_id() -> anyhow::Result<()> {
         let db = setup_test_db().await;
+        let user_id = "user123";
 
-        let entity1_id = create_test_entity("Entity 1", &db).await?;
-        let entity2_id = create_test_entity("Entity 2", &db).await?;
+        let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
+        let entity2_id = create_test_entity("Entity 2", user_id, &db).await?;
 
-        let user_id = "user123".to_string();
         let source_id = "source123".to_string();
         let relationship_type = "references".to_string();
 
         let relationship = KnowledgeRelationship::new(
             entity1_id.clone(),
             entity2_id.clone(),
-            user_id.clone(),
+            user_id.to_string(),
             source_id.clone(),
             relationship_type,
         );
@@ -257,16 +281,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_store_relationship_resists_query_injection() -> anyhow::Result<()> {
+    async fn test_store_relationship_rejects_foreign_entity() -> anyhow::Result<()> {
         let db = setup_test_db().await;
 
-        let entity1_id = create_test_entity("Entity 1", &db).await?;
-        let entity2_id = create_test_entity("Entity 2", &db).await?;
+        let owner_entity = create_test_entity("Owner entity", "owner-user", &db).await?;
+        let other_entity = create_test_entity("Other entity", "other-user", &db).await?;
+
+        let relationship = KnowledgeRelationship::new(
+            owner_entity,
+            other_entity,
+            "owner-user".to_string(),
+            "source123".to_string(),
+            "references".to_string(),
+        );
+
+        let result = relationship.store_relationship(&db).await;
+        assert!(matches!(result, Err(AppError::Auth(_))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_store_relationship_resists_query_injection() -> anyhow::Result<()> {
+        let db = setup_test_db().await;
+        let user_id = "user123";
+
+        let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
+        let entity2_id = create_test_entity("Entity 2", user_id, &db).await?;
 
         let relationship = KnowledgeRelationship::new(
             entity1_id,
             entity2_id,
-            "user'123".to_string(),
+            user_id.to_string(),
             "source123'; DELETE FROM relates_to; --".to_string(),
             "references'; UPDATE user SET admin = true; --".to_string(),
         );
@@ -297,18 +343,18 @@ mod tests {
     #[tokio::test]
     async fn test_store_and_delete_relationship() -> anyhow::Result<()> {
         let db = setup_test_db().await;
+        let user_id = "user123";
 
-        let entity1_id = create_test_entity("Entity 1", &db).await?;
-        let entity2_id = create_test_entity("Entity 2", &db).await?;
+        let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
+        let entity2_id = create_test_entity("Entity 2", user_id, &db).await?;
 
-        let user_id = "user123".to_string();
         let source_id = "source123".to_string();
         let relationship_type = "references".to_string();
 
         let relationship = KnowledgeRelationship::new(
             entity1_id.clone(),
             entity2_id.clone(),
-            user_id.clone(),
+            user_id.to_string(),
             source_id.clone(),
             relationship_type,
         );
@@ -319,9 +365,9 @@ mod tests {
             .with_context(|| "Failed to store relationship".to_string())?;
 
         let mut existing_before_delete = db
-            .query(format!(
-                "SELECT * FROM relates_to WHERE metadata.user_id = '{user_id}' AND metadata.source_id = '{source_id}'"
-            ))
+            .query("SELECT * FROM relates_to WHERE metadata.user_id = $user_id AND metadata.source_id = $source_id")
+            .bind(("user_id", user_id.to_string()))
+            .bind(("source_id", source_id.clone()))
             .await
             .with_context(|| "Query failed".to_string())?;
         let before_results: Vec<KnowledgeRelationship> =
@@ -331,14 +377,14 @@ mod tests {
             "Relationship should exist before deletion"
         );
 
-        KnowledgeRelationship::delete_relationship_by_id(&relationship.id, &user_id, &db)
+        KnowledgeRelationship::delete_relationship_by_id(&relationship.id, user_id, &db)
             .await
             .with_context(|| "Failed to delete relationship by ID".to_string())?;
 
         let mut result = db
-            .query(format!(
-                "SELECT * FROM relates_to WHERE metadata.user_id = '{user_id}' AND metadata.source_id = '{source_id}'"
-            ))
+            .query("SELECT * FROM relates_to WHERE metadata.user_id = $user_id AND metadata.source_id = $source_id")
+            .bind(("user_id", user_id.to_string()))
+            .bind(("source_id", source_id))
             .await
             .with_context(|| "Query failed".to_string())?;
         let results: Vec<KnowledgeRelationship> = result.take(0).unwrap_or_default();
@@ -351,17 +397,17 @@ mod tests {
     #[tokio::test]
     async fn test_delete_relationship_by_id_unauthorized() -> anyhow::Result<()> {
         let db = setup_test_db().await;
+        let owner_user_id = "owner-user";
 
-        let entity1_id = create_test_entity("Entity 1", &db).await?;
-        let entity2_id = create_test_entity("Entity 2", &db).await?;
+        let entity1_id = create_test_entity("Entity 1", owner_user_id, &db).await?;
+        let entity2_id = create_test_entity("Entity 2", owner_user_id, &db).await?;
 
-        let owner_user_id = "owner-user".to_string();
         let source_id = "source123".to_string();
 
         let relationship = KnowledgeRelationship::new(
             entity1_id.clone(),
             entity2_id.clone(),
-            owner_user_id.clone(),
+            owner_user_id.to_string(),
             source_id,
             "references".to_string(),
         );
@@ -372,9 +418,8 @@ mod tests {
             .with_context(|| "Failed to store relationship".to_string())?;
 
         let mut before_attempt = db
-            .query(format!(
-                "SELECT * FROM relates_to WHERE metadata.user_id = '{owner_user_id}'"
-            ))
+            .query("SELECT * FROM relates_to WHERE metadata.user_id = $user_id")
+            .bind(("user_id", owner_user_id.to_string()))
             .await
             .with_context(|| "Query failed".to_string())?;
         let before_results: Vec<KnowledgeRelationship> = before_attempt.take(0).unwrap_or_default();
@@ -398,9 +443,8 @@ mod tests {
         }
 
         let mut after_attempt = db
-            .query(format!(
-                "SELECT * FROM relates_to WHERE metadata.user_id = '{owner_user_id}'"
-            ))
+            .query("SELECT * FROM relates_to WHERE metadata.user_id = $user_id")
+            .bind(("user_id", owner_user_id.to_string()))
             .await
             .with_context(|| "Query failed".to_string())?;
         let results: Vec<KnowledgeRelationship> = after_attempt.take(0).unwrap_or_default();
@@ -416,19 +460,19 @@ mod tests {
     #[tokio::test]
     async fn test_store_relationship_exists() -> anyhow::Result<()> {
         let db = setup_test_db().await;
+        let user_id = "user123";
 
-        let entity1_id = create_test_entity("Entity 1", &db).await?;
-        let entity2_id = create_test_entity("Entity 2", &db).await?;
-        let entity3_id = create_test_entity("Entity 3", &db).await?;
+        let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
+        let entity2_id = create_test_entity("Entity 2", user_id, &db).await?;
+        let entity3_id = create_test_entity("Entity 3", user_id, &db).await?;
 
-        let user_id = "user123".to_string();
         let source_id = "source123".to_string();
         let different_source_id = "different_source".to_string();
 
         let relationship1 = KnowledgeRelationship::new(
             entity1_id.clone(),
             entity2_id.clone(),
-            user_id.clone(),
+            user_id.to_string(),
             source_id.clone(),
             "references".to_string(),
         );
@@ -436,7 +480,7 @@ mod tests {
         let relationship2 = KnowledgeRelationship::new(
             entity2_id.clone(),
             entity3_id.clone(),
-            user_id.clone(),
+            user_id.to_string(),
             source_id.clone(),
             "contains".to_string(),
         );
@@ -444,7 +488,7 @@ mod tests {
         let different_relationship = KnowledgeRelationship::new(
             entity1_id.clone(),
             entity3_id.clone(),
-            user_id.clone(),
+            user_id.to_string(),
             different_source_id.clone(),
             "mentions".to_string(),
         );
@@ -480,7 +524,7 @@ mod tests {
             before_delete_different.take(0).unwrap_or_default();
         assert_eq!(before_delete_different_rows.len(), 1);
 
-        KnowledgeRelationship::delete_relationships_by_source_id(&source_id, &db)
+        KnowledgeRelationship::delete_relationships_by_source_id(&source_id, user_id, &db)
             .await
             .with_context(|| "Failed to delete relationships by source_id".to_string())?;
 
@@ -498,18 +542,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_delete_relationships_by_source_id_scoped_to_user() -> anyhow::Result<()> {
+        let db = setup_test_db().await;
+
+        let user_a = "user-a";
+        let user_b = "user-b";
+        let shared_source = "shared-source";
+
+        let a1 = create_test_entity("A1", user_a, &db).await?;
+        let a2 = create_test_entity("A2", user_a, &db).await?;
+        let b1 = create_test_entity("B1", user_b, &db).await?;
+        let b2 = create_test_entity("B2", user_b, &db).await?;
+
+        let rel_a = KnowledgeRelationship::new(
+            a1,
+            a2,
+            user_a.to_string(),
+            shared_source.to_string(),
+            "references".to_string(),
+        );
+        let rel_b = KnowledgeRelationship::new(
+            b1,
+            b2,
+            user_b.to_string(),
+            shared_source.to_string(),
+            "references".to_string(),
+        );
+
+        rel_a.store_relationship(&db).await?;
+        rel_b.store_relationship(&db).await?;
+
+        KnowledgeRelationship::delete_relationships_by_source_id(shared_source, user_a, &db)
+            .await?;
+
+        assert!(get_relationship_by_id(&rel_a.id, &db).await.is_none());
+        assert!(get_relationship_by_id(&rel_b.id, &db).await.is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_delete_relationships_by_source_id_resists_query_injection() -> anyhow::Result<()>
     {
         let db = setup_test_db().await;
+        let user_id = "user123";
 
-        let entity1_id = create_test_entity("Entity 1", &db).await?;
-        let entity2_id = create_test_entity("Entity 2", &db).await?;
-        let entity3_id = create_test_entity("Entity 3", &db).await?;
+        let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
+        let entity2_id = create_test_entity("Entity 2", user_id, &db).await?;
+        let entity3_id = create_test_entity("Entity 3", user_id, &db).await?;
 
         let safe_relationship = KnowledgeRelationship::new(
             entity1_id.clone(),
             entity2_id.clone(),
-            "user123".to_string(),
+            user_id.to_string(),
             "safe_source".to_string(),
             "references".to_string(),
         );
@@ -517,7 +602,7 @@ mod tests {
         let other_relationship = KnowledgeRelationship::new(
             entity2_id,
             entity3_id,
-            "user123".to_string(),
+            user_id.to_string(),
             "other_source".to_string(),
             "contains".to_string(),
         );
@@ -531,9 +616,13 @@ mod tests {
             .await
             .expect("store other relationship");
 
-        KnowledgeRelationship::delete_relationships_by_source_id("safe_source' OR 1=1 --", &db)
-            .await
-            .expect("delete call should succeed");
+        KnowledgeRelationship::delete_relationships_by_source_id(
+            "safe_source' OR 1=1 --",
+            user_id,
+            &db,
+        )
+        .await
+        .expect("delete call should succeed");
 
         let remaining_safe = get_relationship_by_id(&safe_relationship.id, &db).await;
         let remaining_other = get_relationship_by_id(&other_relationship.id, &db).await;

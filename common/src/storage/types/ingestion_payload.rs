@@ -80,7 +80,7 @@ impl IngestionPayload {
         });
 
         for (index, file) in files.into_iter().enumerate() {
-            let is_last_file = index + 1 == file_count;
+            let is_last_file = index.saturating_add(1) == file_count;
             if content_follows || !is_last_file {
                 let Some(shared) = fields.as_ref() else {
                     return Err(AppError::internal("shared ingest fields consumed early"));
@@ -411,7 +411,9 @@ mod tests {
         )?;
 
         assert_eq!(result.len(), 2);
-        match (&result[0], &result[1]) {
+        let first = result.first().expect("expected first payload");
+        let second = result.get(1).expect("expected second payload");
+        match (first, second) {
             (
                 IngestionPayload::File {
                     file_info: payload_file,
@@ -499,8 +501,8 @@ mod tests {
         )?;
 
         assert_eq!(result.len(), 2);
-        assert!(matches!(result[0], IngestionPayload::File { .. }));
-        assert!(matches!(result[1], IngestionPayload::File { .. }));
+        assert!(matches!(result.first(), Some(IngestionPayload::File { .. })));
+        assert!(matches!(result.get(1), Some(IngestionPayload::File { .. })));
         Ok(())
     }
 }

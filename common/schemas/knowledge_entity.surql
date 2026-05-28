@@ -1,6 +1,6 @@
 # Defines the schema for the 'knowledge_entity' table.
 
-DEFINE TABLE IF NOT EXISTS knowledge_entity SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS knowledge_entity SCHEMAFULL;
 
 # Standard fields
 DEFINE FIELD IF NOT EXISTS created_at ON knowledge_entity TYPE datetime;
@@ -22,5 +22,6 @@ DEFINE FIELD IF NOT EXISTS user_id ON knowledge_entity TYPE string;
 -- DEFINE INDEX IF NOT EXISTS idx_embedding_entities ON knowledge_entity FIELDS embedding HNSW DIMENSION 1536;
 DEFINE INDEX IF NOT EXISTS knowledge_entity_source_id_idx ON knowledge_entity FIELDS source_id;
 DEFINE INDEX IF NOT EXISTS knowledge_entity_user_id_idx ON knowledge_entity FIELDS user_id;
+DEFINE INDEX IF NOT EXISTS knowledge_entity_user_source_idx ON knowledge_entity FIELDS user_id, source_id;
 DEFINE INDEX IF NOT EXISTS knowledge_entity_entity_type_idx ON knowledge_entity FIELDS entity_type;
 DEFINE INDEX IF NOT EXISTS knowledge_entity_created_at_idx ON knowledge_entity FIELDS created_at;

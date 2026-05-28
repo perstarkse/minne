@@ -150,8 +150,8 @@ fn invalid_transition(state: TaskState, event: TaskTransition) -> AppError {
     ))
 }
 
-fn worker_id_for_bind(worker_id: &Option<String>) -> String {
-    worker_id.as_deref().unwrap_or("").to_string()
+fn worker_id_for_bind(worker_id: Option<&String>) -> String {
+    worker_id.cloned().unwrap_or_default()
 }
 
 stored_object!(IngestionTask, "ingestion_task", {
@@ -360,7 +360,7 @@ impl IngestionTask {
         "#;
 
         let now = chrono::Utc::now();
-        let worker_id = worker_id_for_bind(&self.worker_id);
+        let worker_id = worker_id_for_bind(self.worker_id.as_ref());
         let mut result = db
             .client
             .query(START_PROCESSING_QUERY)
@@ -398,7 +398,7 @@ impl IngestionTask {
         "#;
 
         let now = chrono::Utc::now();
-        let worker_id = worker_id_for_bind(&self.worker_id);
+        let worker_id = worker_id_for_bind(self.worker_id.as_ref());
         let mut result = db
             .client
             .query(COMPLETE_QUERY)
@@ -450,7 +450,7 @@ impl IngestionTask {
             )
             .unwrap_or(now);
 
-        let worker_id = worker_id_for_bind(&self.worker_id);
+        let worker_id = worker_id_for_bind(self.worker_id.as_ref());
         let mut result = db
             .client
             .query(FAIL_QUERY)
@@ -680,7 +680,9 @@ mod tests {
             IngestionTask::create_all_and_add_to_db(payloads, user_id, &db).await?;
 
         assert_eq!(created.len(), 2);
-        assert_ne!(created[0].id, created[1].id);
+        let first = created.first().expect("expected first task");
+        let second = created.get(1).expect("expected second task");
+        assert_ne!(first.id, second.id);
 
         for task in &created {
             let stored: Option<IngestionTask> = db.get_item::<IngestionTask>(&task.id).await?;
