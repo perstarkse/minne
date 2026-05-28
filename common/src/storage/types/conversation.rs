@@ -88,10 +88,15 @@ impl Conversation {
             ));
         }
 
-        let messages:Vec<Message> = db.client.
-            query("SELECT * FROM type::table($table_name) WHERE conversation_id = $conversation_id ORDER BY updated_at").
-            bind(("table_name", Message::table_name())).
-            bind(("conversation_id", conversation_id.to_string()))
+        let messages: Vec<Message> = db
+            .client
+            .query(
+                "SELECT * FROM type::table($message_table) WHERE conversation_id = $conversation_id AND type::thing($conversation_table, $conversation_id).user_id = $user_id ORDER BY updated_at",
+            )
+            .bind(("message_table", Message::table_name()))
+            .bind(("conversation_table", Self::table_name()))
+            .bind(("conversation_id", conversation_id.to_string()))
+            .bind(("user_id", user_id.to_string()))
             .await?
             .take(0)?;
 
@@ -114,7 +119,7 @@ impl Conversation {
             ));
         }
 
-        let _updated: Option<Self> = db
+        let updated: Option<Self> = db
             .update((Self::table_name(), id))
             .patch(PatchOp::replace("/title", new_title.to_string()))
             .patch(PatchOp::replace(
@@ -122,6 +127,10 @@ impl Conversation {
                 surrealdb::Datetime::from(Utc::now()),
             ))
             .await?;
+
+        if updated.is_none() {
+            return Err(AppError::NotFound("conversation not found".to_string()));
+        }
 
         Ok(())
     }
@@ -151,6 +160,24 @@ mod tests {
     use anyhow::{self, Context};
 
     use super::*;
+
+    const MESSAGE_QUERY_FOR_OWNER: &str = "SELECT * FROM type::table($message_table) WHERE conversation_id = $conversation_id AND type::thing($conversation_table, $conversation_id).user_id = $user_id ORDER BY updated_at";
+
+    async fn fetch_messages_for_owner(
+        db: &SurrealDbClient,
+        conversation_id: &str,
+        user_id: &str,
+    ) -> Result<Vec<Message>, AppError> {
+        db.client
+            .query(MESSAGE_QUERY_FOR_OWNER)
+            .bind(("message_table", Message::table_name()))
+            .bind(("conversation_table", Conversation::table_name()))
+            .bind(("conversation_id", conversation_id.to_string()))
+            .bind(("user_id", user_id.to_string()))
+            .await?
+            .take(0)
+            .map_err(AppError::from)
+    }
 
     #[tokio::test]
     async fn test_create_conversation() -> anyhow::Result<()> {
@@ -487,5 +514,147 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_sidebar_conversation_deserializes_plain_string_id() {
+        let item: SidebarConversation =
+            serde_json::from_str(r#"{"id":"conv-plain","title":"My chat"}"#).unwrap();
+        assert_eq!(item.id, "conv-plain");
+        assert_eq!(item.title, "My chat");
+    }
+
+    #[tokio::test]
+    async fn test_sidebar_conversation_deserializes_id_from_db_record() {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .expect("Failed to start in-memory surrealdb");
+
+        let owner = "sidebar_owner";
+        let conversation = Conversation::new(owner.to_string(), "Sidebar title".to_string());
+        let expected_id = conversation.id.clone();
+        db.store_item(conversation)
+            .await
+            .expect("Failed to store conversation");
+
+        let items = Conversation::get_user_sidebar_conversations(owner, &db)
+            .await
+            .expect("Failed to load sidebar");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, expected_id);
+        assert_eq!(items[0].title, "Sidebar title");
+    }
+
+    #[tokio::test]
+    async fn test_message_query_filters_by_owner_user_id_in_sql() -> anyhow::Result<()> {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database).await?;
+
+        let owner = "owner_user";
+        let intruder = "intruder_user";
+        let conversation = Conversation::new(owner.to_string(), "Private".to_string());
+        let conversation_id = conversation.id.clone();
+
+        db.store_item(conversation).await?;
+        db.store_item(Message::new(
+            conversation_id.clone(),
+            MessageRole::User,
+            "secret message".to_string(),
+            None,
+        ))
+        .await?;
+
+        let owner_messages =
+            fetch_messages_for_owner(&db, &conversation_id, owner).await?;
+        assert_eq!(owner_messages.len(), 1);
+        assert_eq!(owner_messages[0].content, "secret message");
+
+        let intruder_messages =
+            fetch_messages_for_owner(&db, &conversation_id, intruder).await?;
+        assert!(
+            intruder_messages.is_empty(),
+            "SQL owner filter must not return messages for a non-owner user_id"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_complete_conversation_orders_messages_by_updated_at() -> anyhow::Result<()> {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database).await?;
+
+        let user_id = "order_user";
+        let conversation = Conversation::new(user_id.to_string(), "Ordered".to_string());
+        let conversation_id = conversation.id.clone();
+        db.store_item(conversation).await?;
+
+        let base = Utc::now();
+        let mut first = Message::new(
+            conversation_id.clone(),
+            MessageRole::User,
+            "first".to_string(),
+            None,
+        );
+        first.updated_at = base - chrono::Duration::minutes(20);
+
+        let mut second = Message::new(
+            conversation_id.clone(),
+            MessageRole::AI,
+            "second".to_string(),
+            None,
+        );
+        second.updated_at = base - chrono::Duration::minutes(5);
+
+        db.store_item(first).await?;
+        db.store_item(second).await?;
+
+        let (_, messages) =
+            Conversation::get_complete_conversation(&conversation_id, user_id, &db).await?;
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].content, "first");
+        assert_eq!(messages[1].content, "second");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_patch_title_not_found_when_conversation_deleted() -> anyhow::Result<()> {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database).await?;
+
+        let owner = "owner";
+        let conversation = Conversation::new(owner.to_string(), "To delete".to_string());
+        let conversation_id = conversation.id.clone();
+        db.store_item(conversation).await?;
+        db.delete_item::<Conversation>(&conversation_id).await?;
+
+        let result = Conversation::patch_title(&conversation_id, owner, "New title", &db).await;
+        assert!(result.is_err());
+        match result {
+            Err(AppError::NotFound(_)) => {}
+            other => anyhow::bail!("expected NotFound, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_conversation_new_initializes_timestamps_and_id() {
+        let before = Utc::now();
+        let conversation = Conversation::new("user".to_string(), "Title".to_string());
+        let after = Utc::now();
+
+        assert!(!conversation.id.is_empty());
+        assert!(conversation.created_at >= before && conversation.created_at <= after);
+        assert_eq!(conversation.created_at, conversation.updated_at);
+        assert_eq!(conversation.user_id, "user");
+        assert_eq!(conversation.title, "Title");
     }
 }
