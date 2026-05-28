@@ -77,12 +77,7 @@ pub async fn ingest_data(
         user_id.clone(),
     )?;
 
-    let futures: Vec<_> = payloads
-        .into_iter()
-        .map(|object| IngestionTask::create_and_add_to_db(object, user_id.clone(), &state.db))
-        .collect();
-
-    try_join_all(futures).await?;
+    IngestionTask::create_all_and_add_to_db(payloads, &user_id, &state.db).await?;
 
     Ok((StatusCode::OK, Json(json!({ "status": "success" }))))
 }
