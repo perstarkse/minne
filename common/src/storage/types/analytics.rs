@@ -22,24 +22,24 @@ impl StoredObject for Analytics {
 }
 
 impl Analytics {
+    const RECORD_ID: &'static str = "current";
+
+    /// Ensures the singleton analytics record exists (idempotent).
+    ///
+    /// Production databases are also seeded by `20250503_215025_initial_setup.surql`;
+    /// this uses an atomic `UPSERT` for tests and recovery.
     pub async fn ensure_initialized(db: &SurrealDbClient) -> Result<Self, AppError> {
-        let analytics = db.get_item::<Self>("current").await?;
-
-        if analytics.is_none() {
-            let created_analytics = Analytics {
-                id: "current".to_string(),
-                visitors: 0,
-                page_loads: 0,
-            };
-
-            let stored: Option<Self> = db.store_item(created_analytics).await?;
-            return stored.ok_or(AppError::Validation(
-"failed to initialize analytics".into(),
-            ));
-        }
+        let analytics: Option<Self> = db
+            .client
+            .query(
+                "UPSERT type::thing('analytics', $id) SET visitors = visitors ?? 0, page_loads = page_loads ?? 0 RETURN AFTER",
+            )
+            .bind(("id", Self::RECORD_ID))
+            .await?
+            .take(0)?;
 
         analytics.ok_or(AppError::Validation(
-            "Failed to initialize analytics".into(),
+            "failed to initialize analytics".into(),
         ))
     }
     pub async fn get_current(db: &SurrealDbClient) -> Result<Self, AppError> {
@@ -50,7 +50,10 @@ impl Analytics {
     pub async fn increment_visitors(db: &SurrealDbClient) -> Result<Self, AppError> {
         let updated: Option<Self> = db
             .client
-            .query("UPDATE type::thing('analytics', 'current') SET visitors += 1 RETURN AFTER")
+            .query(
+                "UPSERT type::thing('analytics', $id) SET visitors = (visitors ?? 0) + 1, page_loads = page_loads ?? 0 RETURN AFTER",
+            )
+            .bind(("id", Self::RECORD_ID))
             .await?
             .take(0)?;
 
@@ -60,7 +63,10 @@ impl Analytics {
     pub async fn increment_page_loads(db: &SurrealDbClient) -> Result<Self, AppError> {
         let updated: Option<Self> = db
             .client
-            .query("UPDATE type::thing('analytics', 'current') SET page_loads += 1 RETURN AFTER")
+            .query(
+                "UPSERT type::thing('analytics', $id) SET page_loads = (page_loads ?? 0) + 1, visitors = visitors ?? 0 RETURN AFTER",
+            )
+            .bind(("id", Self::RECORD_ID))
             .await?
             .take(0)?;
 
@@ -223,6 +229,53 @@ mod tests {
         // Test users amount after adding users
         let count = Analytics::get_users_amount(&db).await?;
         assert_eq!(count, 3);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_increment_visitors_without_prior_init() -> anyhow::Result<()> {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database).await?;
+
+        let analytics = Analytics::increment_visitors(&db).await?;
+        assert_eq!(analytics.visitors, 1);
+        assert_eq!(analytics.page_loads, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_increment_page_loads_without_prior_init() -> anyhow::Result<()> {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database).await?;
+
+        let analytics = Analytics::increment_page_loads(&db).await?;
+        assert_eq!(analytics.page_loads, 1);
+        assert_eq!(analytics.visitors, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_visitor_and_page_load_increments_are_independent() -> anyhow::Result<()> {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database).await?;
+
+        let after_visitors = Analytics::increment_visitors(&db).await?;
+        assert_eq!(after_visitors.visitors, 1);
+        assert_eq!(after_visitors.page_loads, 0);
+
+        let after_page_load = Analytics::increment_page_loads(&db).await?;
+        assert_eq!(after_page_load.visitors, 1);
+        assert_eq!(after_page_load.page_loads, 1);
+
+        let after_second_visitor = Analytics::increment_visitors(&db).await?;
+        assert_eq!(after_second_visitor.visitors, 2);
+        assert_eq!(after_second_visitor.page_loads, 1);
 
         Ok(())
     }
