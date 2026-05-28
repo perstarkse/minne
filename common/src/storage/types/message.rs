@@ -62,7 +62,7 @@ impl fmt::Display for Message {
 pub fn format_history(history: &[Message]) -> String {
     let estimated: usize = history
         .iter()
-        .map(|m| m.content.len() + 10)
+        .map(|m| m.content.len().saturating_add(10))
         .sum();
     let mut out = String::with_capacity(estimated);
     for (i, msg) in history.iter().enumerate() {

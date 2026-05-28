@@ -86,7 +86,7 @@ pub async fn delete_text_content(
     // Delete the text content and any related data
     TextChunk::delete_by_source_id(&text_content.id, &state.db).await?;
     KnowledgeEntity::delete_by_source_id(&text_content.id, &state.db).await?;
-    KnowledgeRelationship::delete_relationships_by_source_id(&text_content.id, &state.db).await?;
+    KnowledgeRelationship::delete_relationships_by_source_id(&text_content.id, &user.id, &state.db).await?;
     state
         .db
         .delete_item::<TextContent>(&text_content.id)

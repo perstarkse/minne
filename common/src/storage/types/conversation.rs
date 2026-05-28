@@ -518,8 +518,8 @@ mod tests {
 
     #[test]
     fn test_sidebar_conversation_deserializes_plain_string_id() {
-        let item: SidebarConversation =
-            serde_json::from_str(r#"{"id":"conv-plain","title":"My chat"}"#).unwrap();
+        let item: SidebarConversation = serde_json::from_str(r#"{"id":"conv-plain","title":"My chat"}"#)
+            .expect("valid sidebar conversation json");
         assert_eq!(item.id, "conv-plain");
         assert_eq!(item.title, "My chat");
     }
@@ -543,8 +543,9 @@ mod tests {
             .await
             .expect("Failed to load sidebar");
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].id, expected_id);
-        assert_eq!(items[0].title, "Sidebar title");
+        let item = items.first().expect("expected one sidebar item");
+        assert_eq!(item.id, expected_id);
+        assert_eq!(item.title, "Sidebar title");
     }
 
     #[tokio::test]
@@ -570,7 +571,13 @@ mod tests {
         let owner_messages =
             fetch_messages_for_owner(&db, &conversation_id, owner).await?;
         assert_eq!(owner_messages.len(), 1);
-        assert_eq!(owner_messages[0].content, "secret message");
+        assert_eq!(
+            owner_messages
+                .first()
+                .expect("expected owner message")
+                .content,
+            "secret message"
+        );
 
         let intruder_messages =
             fetch_messages_for_owner(&db, &conversation_id, intruder).await?;
@@ -617,8 +624,14 @@ mod tests {
             Conversation::get_complete_conversation(&conversation_id, user_id, &db).await?;
 
         assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0].content, "first");
-        assert_eq!(messages[1].content, "second");
+        assert_eq!(
+            messages.first().expect("expected first message").content,
+            "first"
+        );
+        assert_eq!(
+            messages.get(1).expect("expected second message").content,
+            "second"
+        );
 
         Ok(())
     }

@@ -90,9 +90,9 @@ impl FileInfo {
     /// Replaces any non-alphanumeric characters (excluding '.' and '_') with underscores in
     /// both the stem and extension.
     fn sanitize_file_name(file_name: &str) -> String {
-        if let Some(idx) = file_name.rfind('.') {
-            let name = Self::sanitize_name_segment(&file_name[..idx]);
-            let ext = Self::sanitize_name_segment(&file_name[idx + 1..]);
+        if let Some((stem, ext)) = file_name.rsplit_once('.') {
+            let name = Self::sanitize_name_segment(stem);
+            let ext = Self::sanitize_name_segment(ext);
             if ext.is_empty() {
                 name
             } else {
@@ -321,7 +321,6 @@ mod tests {
     use anyhow::{self, Context};
 
     use super::*;
-    use crate::error::AppError;
     use crate::storage::store::testing::TestStorageManager;
     use axum::http::HeaderMap;
     use axum_typed_multipart::FieldMetadata;
@@ -844,8 +843,7 @@ mod tests {
         assert!(file_info.sha256.len() == 64);
         let bytes = file_info
             .get_content_with_storage(test_storage.storage())
-            .await
-            .map_err(AppError::from)?;
+            .await?;
         assert!(bytes.is_empty());
 
         Ok(())

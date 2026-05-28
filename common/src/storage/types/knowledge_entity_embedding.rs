@@ -2,11 +2,17 @@ use std::collections::HashMap;
 
 use surrealdb::RecordId;
 
-use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
+use crate::{
+    error::AppError,
+    storage::{db::SurrealDbClient, indexes::hnsw_index_redefine_transaction_sql},
+    stored_object,
+};
 
 stored_object!(KnowledgeEntityEmbedding, "knowledge_entity_embedding", {
     entity_id: RecordId,
     embedding: Vec<f32>,
+    /// Denormalized source id for bulk deletes
+    source_id: String,
     /// Denormalized user id for query scoping
     user_id: String
 });
@@ -17,12 +23,10 @@ impl KnowledgeEntityEmbedding {
         db: &SurrealDbClient,
         dimension: usize,
     ) -> Result<(), AppError> {
-        let query = format!(
-            "BEGIN TRANSACTION;
-             REMOVE INDEX IF EXISTS idx_embedding_knowledge_entity_embedding ON TABLE {table};
-             DEFINE INDEX idx_embedding_knowledge_entity_embedding ON TABLE {table} FIELDS embedding HNSW DIMENSION {dimension};
-             COMMIT TRANSACTION;",
-            table = Self::table_name(),
+        let query = hnsw_index_redefine_transaction_sql(
+            "idx_embedding_knowledge_entity_embedding",
+            Self::table_name(),
+            dimension,
         );
 
         let res = db.client.query(query).await.map_err(AppError::Database)?;
@@ -31,16 +35,36 @@ impl KnowledgeEntityEmbedding {
         Ok(())
     }
 
-    /// Create a new knowledge entity embedding
+    /// Validates that an embedding vector matches the configured HNSW dimension.
+    #[allow(clippy::result_large_err)]
+    pub fn validate_dimension(embedding: &[f32], expected: usize) -> Result<(), AppError> {
+        if embedding.len() != expected {
+            return Err(AppError::Validation(format!(
+                "embedding dimension mismatch: got {}, expected {expected}",
+                embedding.len()
+            )));
+        }
+        Ok(())
+    }
+
+    /// Create a new knowledge entity embedding.
+    ///
+    /// The embedding record id equals `entity_id` so each entity has at most one embedding row.
     #[must_use]
-    pub fn new(entity_id: &str, embedding: Vec<f32>, user_id: String) -> Self {
+    pub fn new(
+        entity_id: &str,
+        source_id: String,
+        embedding: Vec<f32>,
+        user_id: String,
+    ) -> Self {
         let now = Utc::now();
         Self {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: entity_id.to_owned(),
             created_at: now,
             updated_at: now,
             entity_id: RecordId::from_table_key("knowledge_entity", entity_id),
             embedding,
+            source_id,
             user_id,
         }
     }
@@ -73,8 +97,6 @@ impl KnowledgeEntityEmbedding {
             return Ok(HashMap::new());
         }
 
-        let ids_list: Vec<RecordId> = entity_ids.to_vec();
-
         let query = format!(
             "SELECT * FROM {} WHERE entity_id INSIDE $entity_ids",
             Self::table_name()
@@ -82,7 +104,7 @@ impl KnowledgeEntityEmbedding {
         let mut result = db
             .client
             .query(query)
-            .bind(("entity_ids", ids_list))
+            .bind(("entity_ids", entity_ids.to_vec()))
             .await
             .map_err(AppError::Database)?;
         let embeddings: Vec<Self> = result.take(0).map_err(AppError::Database)?;
@@ -106,32 +128,28 @@ impl KnowledgeEntityEmbedding {
             .query(query)
             .bind(("entity_id", entity_id.clone()))
             .await
+            .map_err(AppError::Database)?
+            .check()
             .map_err(AppError::Database)?;
         Ok(())
     }
 
-    /// Delete embeddings by source_id (via joining to knowledge_entity table)
+    /// Delete all embeddings with the given denormalized `source_id`.
     pub async fn delete_by_source_id(
         source_id: &str,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        #[derive(Deserialize)]
-        struct IdRow {
-            id: RecordId,
-        }
-
-        let query = "SELECT id FROM knowledge_entity WHERE source_id = $source_id";
-        let mut res = db
-            .client
+        let query = format!(
+            "DELETE FROM {} WHERE source_id = $source_id",
+            Self::table_name()
+        );
+        db.client
             .query(query)
             .bind(("source_id", source_id.to_owned()))
             .await
+            .map_err(AppError::Database)?
+            .check()
             .map_err(AppError::Database)?;
-        let ids: Vec<IdRow> = res.take(0).map_err(AppError::Database)?;
-
-        for row in ids {
-            Self::delete_by_entity_id(&row.id, db).await?;
-        }
         Ok(())
     }
 }
@@ -142,6 +160,7 @@ mod tests {
     use super::*;
     use crate::storage::db::SurrealDbClient;
     use crate::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
+    use crate::storage::types::system_settings::SystemSettings;
     use anyhow::{self, Context};
     use chrono::Utc;
     use surrealdb::Value as SurrealValue;
@@ -158,6 +177,24 @@ mod tests {
             .await
             .with_context(|| "Failed to apply migrations".to_string())?;
 
+        Ok(db)
+    }
+
+    async fn setup_test_db_with_embedding_dimension(
+        dimension: u32,
+    ) -> anyhow::Result<SurrealDbClient> {
+        let db = setup_test_db().await?;
+        let mut settings = SystemSettings::get_current(&db).await?;
+        settings.embedding_dimensions = dimension;
+        SystemSettings::update(&db, settings).await?;
+        Ok(db)
+    }
+
+    async fn prepare_test_db(dimension: u32) -> anyhow::Result<SurrealDbClient> {
+        let db = setup_test_db_with_embedding_dimension(dimension).await?;
+        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, dimension as usize)
+            .await
+            .with_context(|| format!("set test index dimension to {dimension}"))?;
         Ok(db)
     }
 
@@ -179,12 +216,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn new_uses_entity_id_as_record_id() {
+        let emb = KnowledgeEntityEmbedding::new(
+            "entity-abc",
+            "source-1".to_owned(),
+            vec![0.1, 0.2],
+            "user-1".to_owned(),
+        );
+        assert_eq!(emb.id, "entity-abc");
+    }
+
+    #[test]
+    fn validate_dimension_rejects_mismatch() {
+        let err = KnowledgeEntityEmbedding::validate_dimension(&[0.1, 0.2, 0.3], 2)
+            .expect_err("expected dimension mismatch");
+        assert!(matches!(err, AppError::Validation(_)));
+    }
+
     #[tokio::test]
     async fn test_create_and_get_by_entity_id() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "set test index dimension".to_string())?;
+        let db = prepare_test_db(3).await?;
         let user_id = "user_ke";
         let entity_key = "entity-1";
         let source_id = "source-ke";
@@ -203,7 +255,9 @@ mod tests {
             .with_context(|| "Failed to get embedding by entity_id".to_string())?
             .ok_or_else(|| anyhow::anyhow!("Expected embedding to exist"))?;
 
+        assert_eq!(fetched.id, entity_key);
         assert_eq!(fetched.user_id, user_id);
+        assert_eq!(fetched.source_id, source_id);
         assert_eq!(fetched.entity_id, entity_rid);
         assert_eq!(fetched.embedding, embedding_vec);
 
@@ -212,10 +266,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_entity_id() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "set test index dimension".to_string())?;
+        let db = prepare_test_db(3).await?;
         let user_id = "user_ke";
         let entity_key = "entity-delete";
         let source_id = "source-del";
@@ -247,14 +298,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_with_embedding_creates_entity_and_embedding() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
+        let db = prepare_test_db(3).await?;
         let user_id = "user_store";
         let source_id = "source_store";
         let embedding = vec![0.2_f32, 0.3, 0.4];
-
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, embedding.len())
-            .await
-            .with_context(|| "set test index dimension".to_string())?;
 
         let entity = build_knowledge_entity_with_id("entity-store", source_id, user_id);
 
@@ -274,18 +321,30 @@ mod tests {
             .with_context(|| "Failed to fetch embedding".to_string())?;
         let stored_embedding =
             stored_embedding.ok_or_else(|| anyhow::anyhow!("Expected embedding to exist"))?;
+        assert_eq!(stored_embedding.id, entity.id);
         assert_eq!(stored_embedding.user_id, user_id);
+        assert_eq!(stored_embedding.source_id, source_id);
         assert_eq!(stored_embedding.entity_id, entity_rid);
 
         Ok(())
     }
 
     #[tokio::test]
+    async fn test_store_with_embedding_rejects_wrong_dimension() -> anyhow::Result<()> {
+        let db = prepare_test_db(3).await?;
+
+        let entity = build_knowledge_entity_with_id("entity-dim", "source-dim", "user-dim");
+        let result =
+            KnowledgeEntity::store_with_embedding(entity, vec![0.1, 0.2], &db).await;
+
+        assert!(matches!(result, Err(AppError::Validation(_))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_delete_by_source_id() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "set test index dimension".to_string())?;
+        let db = prepare_test_db(3).await?;
         let user_id = "user_ke";
         let source_id = "shared-ke";
         let other_source = "other-ke";
@@ -363,6 +422,10 @@ mod tests {
             idx_sql.contains("DIMENSION 16"),
             "expected index definition to contain new dimension, got: {idx_sql}"
         );
+        assert!(
+            idx_sql.contains("DIST COSINE"),
+            "expected index definition to use cosine distance, got: {idx_sql}"
+        );
 
         Ok(())
     }
@@ -374,10 +437,7 @@ mod tests {
             entity_id: KnowledgeEntity,
         }
 
-        let db = setup_test_db().await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "set test index dimension".to_string())?;
+        let db = prepare_test_db(3).await?;
         let user_id = "user_ke";
         let entity_key = "entity-fetch";
         let source_id = "source-fetch";
@@ -409,6 +469,49 @@ mod tests {
         assert_eq!(fetched_entity.id, entity_key);
         assert_eq!(fetched_entity.name, "Test entity");
         assert_eq!(fetched_entity.user_id, user_id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_upsert_replaces_existing_embedding_row() -> anyhow::Result<()> {
+        let db = prepare_test_db(3).await?;
+
+        let user_id = "user-upsert";
+        let source_id = "source-upsert";
+        let entity = build_knowledge_entity_with_id("entity-upsert", source_id, user_id);
+
+        KnowledgeEntity::store_with_embedding(entity.clone(), vec![1.0_f32, 0.0, 0.0], &db)
+            .await
+            .with_context(|| "initial store".to_string())?;
+
+        let replacement = KnowledgeEntityEmbedding::new(
+            &entity.id,
+            source_id.to_owned(),
+            vec![0.0, 1.0, 0.0],
+            user_id.to_owned(),
+        );
+        db.upsert_item(replacement)
+            .await
+            .with_context(|| "upsert replacement embedding".to_string())?;
+
+        let entity_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
+        let rows: Vec<KnowledgeEntityEmbedding> = db
+            .client
+            .query(format!(
+                "SELECT * FROM {} WHERE entity_id = $entity_id",
+                KnowledgeEntityEmbedding::table_name()
+            ))
+            .bind(("entity_id", entity_rid))
+            .await
+            .with_context(|| "count embeddings".to_string())?
+            .take(0)
+            .with_context(|| "take embeddings".to_string())?;
+
+        assert_eq!(rows.len(), 1);
+        let row = rows.first().expect("expected one embedding row");
+        assert_eq!(row.id, entity.id);
+        assert_eq!(row.embedding, vec![0.0, 1.0, 0.0]);
 
         Ok(())
     }

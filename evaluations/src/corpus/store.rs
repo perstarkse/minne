@@ -308,6 +308,7 @@ fn build_manifest_batches(manifest: &CorpusManifest) -> Result<ManifestBatches> 
                 entities.push(entity.clone());
                 entity_embeddings.push(KnowledgeEntityEmbedding::new(
                     &entity.id,
+                    entity.source_id.clone(),
                     embedded_entity.embedding.clone(),
                     entity.user_id.clone(),
                 ));

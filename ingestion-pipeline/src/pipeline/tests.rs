@@ -293,7 +293,7 @@ async fn reserve_task(
     payload: IngestionPayload,
     user_id: &str,
 ) -> anyhow::Result<IngestionTask> {
-    let task = IngestionTask::create_and_add_to_db(payload, user_id.into(), db).await?;
+    let task = IngestionTask::create_and_add_to_db(payload, user_id, db).await?;
     let lease = task.lease_duration();
     let claimed = IngestionTask::claim_next_ready(db, worker_id, Utc::now(), lease)
         .await?

@@ -11,6 +11,31 @@ use crate::{error::AppError, storage::db::SurrealDbClient};
 const INDEX_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const FTS_ANALYZER_NAME: &str = "app_en_fts_analyzer";
 
+/// HNSW index options used by runtime index creation (includes CONCURRENTLY).
+pub const HNSW_INDEX_OPTIONS: &str = "DIST COSINE TYPE F32 EFC 100 M 8 CONCURRENTLY";
+/// HNSW index options for use inside transactions (CONCURRENTLY not supported).
+pub const HNSW_INDEX_OPTIONS_SYNC: &str = "DIST COSINE TYPE F32 EFC 100 M 8";
+
+/// Builds a `DEFINE INDEX OVERWRITE ... HNSW` statement matching runtime index options.
+#[must_use]
+pub fn hnsw_index_overwrite_sql(index_name: &str, table: &str, dimension: usize) -> String {
+    format!(
+        "DEFINE INDEX OVERWRITE {index_name} ON TABLE {table} \
+         FIELDS embedding HNSW DIMENSION {dimension} {HNSW_INDEX_OPTIONS};"
+    )
+}
+
+/// Recreates an HNSW index inside a transaction (for tests and dimension migrations).
+#[must_use]
+pub fn hnsw_index_redefine_transaction_sql(index_name: &str, table: &str, dimension: usize) -> String {
+    format!(
+        "BEGIN TRANSACTION;
+         REMOVE INDEX IF EXISTS {index_name} ON TABLE {table};
+         DEFINE INDEX {index_name} ON TABLE {table} FIELDS embedding HNSW DIMENSION {dimension} {HNSW_INDEX_OPTIONS_SYNC};
+         COMMIT TRANSACTION;"
+    )
+}
+
 #[derive(Clone, Copy)]
 struct HnswIndexSpec {
     index_name: &'static str,
@@ -23,12 +48,12 @@ const fn hnsw_index_specs() -> [HnswIndexSpec; 2] {
         HnswIndexSpec {
             index_name: "idx_embedding_text_chunk_embedding",
             table: "text_chunk_embedding",
-            options: "DIST COSINE TYPE F32 EFC 100 M 8 CONCURRENTLY",
+            options: HNSW_INDEX_OPTIONS,
         },
         HnswIndexSpec {
             index_name: "idx_embedding_knowledge_entity_embedding",
             table: "knowledge_entity_embedding",
-            options: "DIST COSINE TYPE F32 EFC 100 M 8 CONCURRENTLY",
+            options: HNSW_INDEX_OPTIONS,
         },
     ]
 }
