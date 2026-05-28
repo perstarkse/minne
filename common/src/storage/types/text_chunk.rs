@@ -2,6 +2,8 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
+use crate::storage::indexes::hnsw_index_overwrite_sql;
+use crate::storage::types::system_settings::SystemSettings;
 use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 use async_openai::{config::OpenAIConfig, Client};
@@ -10,7 +12,7 @@ use tokio_retry::{
     Retry,
 };
 
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 stored_object!(TextChunk, "text_chunk", {
@@ -45,14 +47,17 @@ impl TextChunk {
         source_id: &str,
         db_client: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        // Delete embeddings first
-        TextChunkEmbedding::delete_by_source_id(source_id, db_client).await?;
-
         db_client
             .client
-            .query("DELETE FROM type::table($table) WHERE source_id = $source_id")
-            .bind(("table", Self::table_name()))
+            .query("BEGIN TRANSACTION;")
+            .query(format!(
+                "DELETE FROM {} WHERE source_id = $source_id;",
+                TextChunkEmbedding::table_name()
+            ))
+            .query("DELETE FROM type::table($table) WHERE source_id = $source_id;")
+            .query("COMMIT TRANSACTION;")
             .bind(("source_id", source_id.to_owned()))
+            .bind(("table", Self::table_name()))
             .await
             .map_err(AppError::Database)?
             .check()
@@ -68,33 +73,40 @@ impl TextChunk {
         embedding: Vec<f32>,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
+        let settings = SystemSettings::get_current(db).await?;
+        TextChunkEmbedding::validate_dimension(
+            &embedding,
+            settings.embedding_dimensions as usize,
+        )?;
+
         let chunk_id = chunk.id.clone();
-        let source_id = chunk.source_id.clone();
-        let user_id = chunk.user_id.clone();
+        let emb = TextChunkEmbedding::new(
+            &chunk_id,
+            chunk.source_id.clone(),
+            embedding,
+            chunk.user_id.clone(),
+        );
 
-        let emb = TextChunkEmbedding::new(&chunk_id, source_id.clone(), embedding, user_id.clone());
+        let query = format!(
+            "
+            BEGIN TRANSACTION;
+              CREATE type::thing('{chunk_table}', $chunk_id) CONTENT $chunk;
+              UPSERT type::thing('{emb_table}', $chunk_id) CONTENT $emb;
+            COMMIT TRANSACTION;
+            ",
+            chunk_table = Self::table_name(),
+            emb_table = TextChunkEmbedding::table_name(),
+        );
 
-        // Create both records in a single transaction so we don't orphan embeddings or chunks
-        let response = db
-            .client
-            .query("BEGIN TRANSACTION;")
-            .query(format!(
-                "CREATE type::thing('{chunk_table}', $chunk_id) CONTENT $chunk;",
-                chunk_table = Self::table_name(),
-            ))
-            .query(format!(
-                "CREATE type::thing('{emb_table}', $emb_id) CONTENT $emb;",
-                emb_table = TextChunkEmbedding::table_name(),
-            ))
-            .query("COMMIT TRANSACTION;")
-            .bind(("chunk_id", chunk_id.clone()))
+        db.client
+            .query(query)
+            .bind(("chunk_id", chunk_id))
             .bind(("chunk", chunk))
-            .bind(("emb_id", emb.id.clone()))
             .bind(("emb", emb))
             .await
+            .map_err(AppError::Database)?
+            .check()
             .map_err(AppError::Database)?;
-
-        response.check().map_err(AppError::Database)?;
 
         Ok(())
     }
@@ -147,6 +159,9 @@ impl TextChunk {
                 r.chunk_id.map(|chunk| TextChunkSearchResult {
                     chunk,
                     score: r.score,
+                }).or_else(|| {
+                    warn!("vector search hit orphaned text_chunk_embedding row with missing chunk");
+                    None
                 })
             })
             .collect())
@@ -296,22 +311,32 @@ impl TextChunk {
             let embedding = serde_json::to_string(&embedding).map_err(|e| {
                 AppError::internal(format!("embedding serialization failed: {e}"))
             })?;
+            let id = surql_json_string(&id)?;
+            let user_id = surql_json_string(&user_id)?;
+            let source_id = surql_json_string(&source_id)?;
             write!(
                 &mut transaction_query,
-                "UPSERT type::thing('text_chunk_embedding', '{id}') SET \
-                    chunk_id = type::thing('text_chunk', '{id}'), \
-                    source_id = '{source_id}', \
+                "UPSERT type::thing('{emb_table}', {id}) SET \
+                    chunk_id = type::thing('{chunk_table}', {id}), \
+                    source_id = {source_id}, \
                     embedding = {embedding}, \
-                    user_id = '{user_id}', \
+                    user_id = {user_id}, \
                     created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
                     updated_at = time::now();",
+                emb_table = TextChunkEmbedding::table_name(),
+                chunk_table = Self::table_name(),
             )
             .map_err(AppError::internal)?;
         }
 
         write!(
             &mut transaction_query,
-            "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
+            "{}",
+            hnsw_index_overwrite_sql(
+                "idx_embedding_text_chunk_embedding",
+                TextChunkEmbedding::table_name(),
+                new_dimensions as usize,
+            )
         )
         .map_err(AppError::internal)?;
 
@@ -408,22 +433,32 @@ impl TextChunk {
             let embedding = serde_json::to_string(&embedding).map_err(|e| {
                 AppError::internal(format!("embedding serialization failed: {e}"))
             })?;
+            let id = surql_json_string(&id)?;
+            let user_id = surql_json_string(&user_id)?;
+            let source_id = surql_json_string(&source_id)?;
             write!(
                 &mut transaction_query,
-                "CREATE type::thing('text_chunk_embedding', '{id}') SET \
-                    chunk_id = type::thing('text_chunk', '{id}'), \
-                    source_id = '{source_id}', \
+                "CREATE type::thing('{emb_table}', {id}) SET \
+                    chunk_id = type::thing('{chunk_table}', {id}), \
+                    source_id = {source_id}, \
                     embedding = {embedding}, \
-                    user_id = '{user_id}', \
+                    user_id = {user_id}, \
                     created_at = time::now(), \
                     updated_at = time::now();",
+                emb_table = TextChunkEmbedding::table_name(),
+                chunk_table = Self::table_name(),
             )
             .map_err(AppError::internal)?;
         }
 
         write!(
             &mut transaction_query,
-            "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
+            "{}",
+            hnsw_index_overwrite_sql(
+                "idx_embedding_text_chunk_embedding",
+                TextChunkEmbedding::table_name(),
+                new_dimensions,
+            )
         )
         .map_err(AppError::internal)?;
 
@@ -441,6 +476,12 @@ impl TextChunk {
     }
 }
 
+#[allow(clippy::result_large_err)]
+fn surql_json_string(value: &str) -> Result<String, AppError> {
+    serde_json::to_string(value)
+        .map_err(|e| AppError::internal(format!("string serialization failed: {e}")))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::must_use_candidate)]
@@ -448,9 +489,20 @@ mod tests {
 
     use super::*;
     use crate::storage::indexes::{ensure_runtime, rebuild};
+    use crate::storage::types::system_settings::SystemSettings;
     use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
     use surrealdb::RecordId;
     use uuid::Uuid;
+
+    async fn configure_embedding_dimension(
+        db: &SurrealDbClient,
+        dimension: u32,
+    ) -> anyhow::Result<()> {
+        let mut settings = SystemSettings::get_current(db).await?;
+        settings.embedding_dimensions = dimension;
+        SystemSettings::update(db, settings).await?;
+        Ok(())
+    }
 
     async fn ensure_chunk_fts_index(db: &SurrealDbClient) -> anyhow::Result<()> {
         let snowball_sql = r#"
@@ -500,6 +552,7 @@ mod tests {
 
         let source_id = "source123".to_string();
         let user_id = "user123".to_string();
+        configure_embedding_dimension(&db, 5).await?;
         TextChunkEmbedding::redefine_hnsw_index(&db, 5)
             .await
             .with_context(|| "redefine index".to_string())?;
@@ -578,6 +631,7 @@ mod tests {
         db.apply_migrations()
             .await
             .with_context(|| "migrations".to_string())?;
+        configure_embedding_dimension(&db, 5).await?;
         TextChunkEmbedding::redefine_hnsw_index(&db, 5)
             .await
             .with_context(|| "redefine index".to_string())?;
@@ -619,6 +673,7 @@ mod tests {
             .await
             .expect("Failed to start in-memory surrealdb");
         db.apply_migrations().await.expect("migrations");
+        configure_embedding_dimension(&db, 5).await.expect("configure dim");
         TextChunkEmbedding::redefine_hnsw_index(&db, 5)
             .await
             .expect("redefine index");
@@ -677,6 +732,7 @@ mod tests {
         let user_id = "user_store".to_string();
         let chunk = TextChunk::new(source_id.clone(), "chunk body".to_string(), user_id.clone());
 
+        configure_embedding_dimension(&db, 3).await?;
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
             .with_context(|| "redefine index".to_string())?;
@@ -699,6 +755,7 @@ mod tests {
             .with_context(|| "get embedding".to_string())?
             .with_context(|| "expected embedding".to_string())?;
         assert_eq!(embedding.chunk_id, rid);
+        assert_eq!(embedding.id, chunk.id);
         assert_eq!(embedding.user_id, user_id);
         assert_eq!(embedding.source_id, source_id);
         Ok(())
@@ -716,6 +773,11 @@ mod tests {
             .with_context(|| "migrations".to_string())?;
 
         let embedding_dimension = 3usize;
+        configure_embedding_dimension(
+            &db,
+            u32::try_from(embedding_dimension).expect("test embedding dimension fits in u32"),
+        )
+        .await?;
         ensure_runtime(&db, embedding_dimension)
             .await
             .with_context(|| "ensure runtime indexes".to_string())?;
@@ -761,6 +823,7 @@ mod tests {
             .await
             .with_context(|| "migrations".to_string())?;
 
+        configure_embedding_dimension(&db, 3).await?;
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
             .with_context(|| "redefine index".to_string())?;
@@ -784,6 +847,7 @@ mod tests {
             .await
             .with_context(|| "migrations".to_string())?;
 
+        configure_embedding_dimension(&db, 3).await?;
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
             .with_context(|| "redefine index".to_string())?;
@@ -824,6 +888,7 @@ mod tests {
             .await
             .with_context(|| "migrations".to_string())?;
 
+        configure_embedding_dimension(&db, 3).await?;
         TextChunkEmbedding::redefine_hnsw_index(&db, 3)
             .await
             .with_context(|| "redefine index".to_string())?;
@@ -971,6 +1036,79 @@ mod tests {
             r0.score >= r1.score,
             "expected results ordered by descending score"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_store_with_embedding_rejects_wrong_dimension() -> anyhow::Result<()> {
+        let namespace = "test_ns_dim";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
+        configure_embedding_dimension(&db, 3).await?;
+
+        let chunk = TextChunk::new(
+            "src".to_string(),
+            "body".to_string(),
+            "user".to_string(),
+        );
+
+        let err = TextChunk::store_with_embedding(chunk, vec![0.1, 0.2], &db)
+            .await
+            .expect_err("expected dimension validation failure");
+        assert!(matches!(err, AppError::Validation(_)));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_with_orphaned_embedding() -> anyhow::Result<()> {
+        let namespace = "test_ns_orphan_chunk";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
+        configure_embedding_dimension(&db, 3).await?;
+        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
+            .await
+            .with_context(|| "redefine index".to_string())?;
+
+        let user_id = "user".to_string();
+        let chunk = TextChunk::new(
+            "src".to_string(),
+            "orphan chunk".to_string(),
+            user_id.clone(),
+        );
+
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
+            .await
+            .with_context(|| "store chunk with embedding".to_string())?;
+
+        db.client
+            .query(format!(
+                "DELETE type::thing('{table}', $id);",
+                table = TextChunk::table_name()
+            ))
+            .bind(("id", chunk.id.clone()))
+            .await
+            .with_context(|| "delete chunk".to_string())?;
+
+        let results = TextChunk::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
+            .await
+            .with_context(|| "search should succeed even with orphans".to_string())?;
+
+        assert!(
+            results.is_empty(),
+            "should return empty result for orphan, got: {results:?}"
+        );
+
         Ok(())
     }
 }

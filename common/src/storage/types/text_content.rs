@@ -101,7 +101,7 @@ impl TextContent {
     ) -> Result<(), AppError> {
         let now = Utc::now();
 
-        let _res: Option<Self> = db
+        let updated: Option<Self> = db
             .update((Self::table_name(), id))
             .patch(PatchOp::replace("/context", context))
             .patch(PatchOp::replace("/category", category))
@@ -110,7 +110,14 @@ impl TextContent {
                 "/updated_at",
                 surrealdb::Datetime::from(now),
             ))
-            .await?;
+            .await
+            .map_err(AppError::Database)?;
+
+        if updated.is_none() {
+            return Err(AppError::NotFound(format!(
+                "text content {id} not found"
+            )));
+        }
 
         Ok(())
     }
@@ -128,9 +135,10 @@ impl TextContent {
             .bind(("table_name", TextContent::table_name()))
             .bind(("file_id", file_id.to_owned()))
             .bind(("exclude_id", exclude_id.to_owned()))
-            .await?;
+            .await
+            .map_err(AppError::Database)?;
 
-        let existing: Option<surrealdb::sql::Thing> = response.take(0)?;
+        let existing: Option<surrealdb::sql::Thing> = response.take(0).map_err(AppError::Database)?;
 
         Ok(existing.is_some())
     }
@@ -141,7 +149,8 @@ impl TextContent {
         user_id: &str,
         limit: usize,
     ) -> Result<Vec<TextContentSearchResult>, AppError> {
-        let sql = r#"
+        let sql = format!(
+            r#"
             SELECT
                 *, 
                 search::highlight('<b>', '</b>', 0) AS highlighted_text,
@@ -158,7 +167,7 @@ impl TextContent {
                     IF search::score(4) != NONE THEN search::score(4) ELSE 0 END +  
                     IF search::score(5) != NONE THEN search::score(5) ELSE 0 END    
                 ) AS score  
-            FROM text_content
+            FROM {table}
             WHERE
                 (
                     text @0@ $terms OR
@@ -171,16 +180,19 @@ impl TextContent {
                 AND user_id = $user_id
             ORDER BY score DESC
             LIMIT $limit;
-        "#;
+            "#,
+            table = Self::table_name(),
+        );
 
-        Ok(db
-            .client
+        db.client
             .query(sql)
             .bind(("terms", search_terms.to_owned()))
             .bind(("user_id", user_id.to_owned()))
             .bind(("limit", limit))
-            .await?
-            .take(0)?)
+            .await
+            .map_err(AppError::Database)?
+            .take(0)
+            .map_err(AppError::Database)
     }
 }
 
@@ -190,6 +202,25 @@ mod tests {
     use anyhow::{self, Context};
 
     use super::*;
+    use crate::storage::indexes::{ensure_runtime, rebuild};
+
+    async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
+        let namespace = "test_ns";
+        let database = Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, &database)
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+        ensure_runtime(&db, 1536)
+            .await
+            .with_context(|| "ensure runtime indexes".to_string())?;
+        rebuild(&db)
+            .await
+            .with_context(|| "rebuild indexes".to_string())?;
+        Ok(db)
+    }
 
     #[tokio::test]
     async fn test_text_content_creation() -> anyhow::Result<()> {
@@ -307,6 +338,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_text_content_patch_not_found() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
+
+        let err = TextContent::patch("missing-id", "ctx", "cat", "text", &db)
+            .await
+            .expect_err("expected not found");
+
+        assert!(matches!(err, AppError::NotFound(_)));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_has_other_with_file_detects_shared_usage() -> anyhow::Result<()> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
@@ -364,6 +407,62 @@ mod tests {
             .await
             .with_context(|| "Failed to check shared usage after delete".to_string())?;
         assert!(!has_other_after);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_search_returns_empty_when_no_content() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
+
+        let results = TextContent::search(&db, "hello", "user", 5)
+            .await
+            .with_context(|| "search".to_string())?;
+
+        assert!(results.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_search_finds_matching_text_and_filters_user() -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
+        let user_id = "search_user";
+
+        let matching = TextContent::new(
+            "rust programming language".to_string(),
+            Some("context".to_string()),
+            "notes".to_string(),
+            None,
+            None,
+            user_id.to_string(),
+        );
+        let other_user = TextContent::new(
+            "rust programming language".to_string(),
+            None,
+            "notes".to_string(),
+            None,
+            None,
+            "other_user".to_string(),
+        );
+
+        db.store_item(matching.clone())
+            .await
+            .with_context(|| "store matching".to_string())?;
+        db.store_item(other_user)
+            .await
+            .with_context(|| "store other user".to_string())?;
+        rebuild(&db)
+            .await
+            .with_context(|| "rebuild indexes".to_string())?;
+
+        let results = TextContent::search(&db, "rust", user_id, 5)
+            .await
+            .with_context(|| "search".to_string())?;
+
+        assert_eq!(results.len(), 1);
+        let row = results.first().context("expected one result")?;
+        assert_eq!(row.id, matching.id);
+        assert_eq!(row.user_id, user_id);
+        assert!(row.score.is_finite());
         Ok(())
     }
 }

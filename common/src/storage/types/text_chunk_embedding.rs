@@ -1,7 +1,11 @@
 use surrealdb::RecordId;
 
 use crate::storage::types::text_chunk::TextChunk;
-use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
+use crate::{
+    error::AppError,
+    storage::{db::SurrealDbClient, indexes::hnsw_index_redefine_transaction_sql},
+    stored_object,
+};
 
 stored_object!(TextChunkEmbedding, "text_chunk_embedding", {
     /// Record link to the owning text_chunk
@@ -23,12 +27,10 @@ impl TextChunkEmbedding {
         db: &SurrealDbClient,
         dimension: usize,
     ) -> Result<(), AppError> {
-        let query = format!(
-            "BEGIN TRANSACTION;
-             REMOVE INDEX IF EXISTS idx_embedding_text_chunk_embedding ON TABLE {table};
-             DEFINE INDEX idx_embedding_text_chunk_embedding ON TABLE {table} FIELDS embedding HNSW DIMENSION {dimension};
-             COMMIT TRANSACTION;",
-            table = Self::table_name(),
+        let query = hnsw_index_redefine_transaction_sql(
+            "idx_embedding_text_chunk_embedding",
+            Self::table_name(),
+            dimension,
         );
 
         let res = db.client.query(query).await.map_err(AppError::Database)?;
@@ -37,20 +39,30 @@ impl TextChunkEmbedding {
         Ok(())
     }
 
-    /// Create a new text chunk embedding
+    /// Validates that an embedding vector matches the configured HNSW dimension.
+    #[allow(clippy::result_large_err)]
+    pub fn validate_dimension(embedding: &[f32], expected: usize) -> Result<(), AppError> {
+        if embedding.len() != expected {
+            return Err(AppError::Validation(format!(
+                "embedding dimension mismatch: got {}, expected {expected}",
+                embedding.len()
+            )));
+        }
+        Ok(())
+    }
+
+    /// Create a new text chunk embedding.
     ///
-    /// `chunk_id` is the **key** part of the text_chunk id (e.g. the UUID),
-    /// not "text_chunk:uuid".
+    /// The embedding record id equals `chunk_id` so each chunk has at most one embedding row.
+    /// `chunk_id` is the **key** part of the text_chunk id (e.g. the UUID), not "text_chunk:uuid".
     #[must_use]
     pub fn new(chunk_id: &str, source_id: String, embedding: Vec<f32>, user_id: String) -> Self {
         let now = Utc::now();
 
         Self {
-            // NOTE: `stored_object!` macro defines `id` as `String`
-            id: uuid::Uuid::new_v4().to_string(),
+            id: chunk_id.to_owned(),
             created_at: now,
             updated_at: now,
-            // Create a record<text_chunk> link: text_chunk:<chunk_id>
             chunk_id: RecordId::from_table_key(TextChunk::table_name(), chunk_id),
             source_id,
             embedding,
@@ -132,10 +144,10 @@ mod tests {
 
     use super::*;
     use crate::storage::db::SurrealDbClient;
+    use crate::storage::types::system_settings::SystemSettings;
     use surrealdb::Value as SurrealValue;
     use uuid::Uuid;
 
-    /// Helper to create an in-memory DB and apply migrations
     async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
         let namespace = "test_ns";
         let database = Uuid::new_v4().to_string();
@@ -150,7 +162,24 @@ mod tests {
         Ok(db)
     }
 
-    /// Helper: create a text_chunk with a known key, return its RecordId
+    async fn setup_test_db_with_embedding_dimension(
+        dimension: u32,
+    ) -> anyhow::Result<SurrealDbClient> {
+        let db = setup_test_db().await?;
+        let mut settings = SystemSettings::get_current(&db).await?;
+        settings.embedding_dimensions = dimension;
+        SystemSettings::update(&db, settings).await?;
+        Ok(db)
+    }
+
+    async fn prepare_test_db(dimension: u32) -> anyhow::Result<SurrealDbClient> {
+        let db = setup_test_db_with_embedding_dimension(dimension).await?;
+        TextChunkEmbedding::redefine_hnsw_index(&db, dimension as usize)
+            .await
+            .with_context(|| format!("set test index dimension to {dimension}"))?;
+        Ok(db)
+    }
+
     async fn create_text_chunk_with_id(
         db: &SurrealDbClient,
         key: &str,
@@ -196,18 +225,34 @@ mod tests {
         Ok(idx_sql)
     }
 
+    #[test]
+    fn new_uses_chunk_id_as_record_id() {
+        let emb = TextChunkEmbedding::new(
+            "chunk-abc",
+            "source-1".to_owned(),
+            vec![0.1, 0.2],
+            "user-1".to_owned(),
+        );
+        assert_eq!(emb.id, "chunk-abc");
+    }
+
+    #[test]
+    fn validate_dimension_rejects_mismatch() {
+        let err = TextChunkEmbedding::validate_dimension(&[0.1, 0.2, 0.3], 2)
+            .expect_err("expected dimension mismatch");
+        assert!(matches!(err, AppError::Validation(_)));
+    }
+
     #[tokio::test]
     async fn test_create_and_get_by_chunk_id() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
+        let db = prepare_test_db(3).await?;
 
         let user_id = "user_a";
         let chunk_key = "chunk-123";
         let source_id = "source-1";
 
-        // 1) Create a text_chunk with a known key
         let chunk_rid = create_text_chunk_with_id(&db, chunk_key, source_id, user_id).await?;
 
-        // 2) Create and store an embedding for that chunk
         let embedding_vec = vec![0.1_f32, 0.2, 0.3];
         let emb = TextChunkEmbedding::new(
             chunk_key,
@@ -216,24 +261,16 @@ mod tests {
             user_id.to_string(),
         );
 
-        TextChunkEmbedding::redefine_hnsw_index(&db, emb.embedding.len())
+        db.upsert_item(emb)
             .await
-            .with_context(|| "Failed to redefine index length".to_string())?;
+            .with_context(|| "Failed to store embedding".to_string())?;
 
-        let _: Option<TextChunkEmbedding> = db
-            .client
-            .create(TextChunkEmbedding::table_name())
-            .content(emb)
-            .await
-            .with_context(|| "Failed to store embedding".to_string())?
-            .with_context(|| "Failed to deserialize stored embedding".to_string())?;
-
-        // 3) Fetch it via get_by_chunk_id
         let fetched = TextChunkEmbedding::get_by_chunk_id(&chunk_rid, &db)
             .await
             .with_context(|| "Failed to get embedding by chunk_id".to_string())?
             .with_context(|| "Expected an embedding to be found".to_string())?;
 
+        assert_eq!(fetched.id, chunk_key);
         assert_eq!(fetched.user_id, user_id);
         assert_eq!(fetched.chunk_id, chunk_rid);
         assert_eq!(fetched.embedding, embedding_vec);
@@ -242,7 +279,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_chunk_id() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
+        let db = prepare_test_db(3).await?;
 
         let user_id = "user_b";
         let chunk_key = "chunk-delete";
@@ -257,30 +294,19 @@ mod tests {
             user_id.to_string(),
         );
 
-        TextChunkEmbedding::redefine_hnsw_index(&db, emb.embedding.len())
+        db.upsert_item(emb)
             .await
-            .with_context(|| "Failed to redefine index length".to_string())?;
+            .with_context(|| "Failed to store embedding".to_string())?;
 
-        let _: Option<TextChunkEmbedding> = db
-            .client
-            .create(TextChunkEmbedding::table_name())
-            .content(emb)
-            .await
-            .with_context(|| "Failed to store embedding".to_string())?
-            .with_context(|| "Failed to deserialize stored embedding".to_string())?;
-
-        // Ensure it exists
         let existing = TextChunkEmbedding::get_by_chunk_id(&chunk_rid, &db)
             .await
             .with_context(|| "Failed to get embedding before delete".to_string())?;
         assert!(existing.is_some(), "Embedding should exist before delete");
 
-        // Delete by chunk_id
         TextChunkEmbedding::delete_by_chunk_id(&chunk_rid, &db)
             .await
             .with_context(|| "Failed to delete by chunk_id".to_string())?;
 
-        // Ensure it no longer exists
         let after = TextChunkEmbedding::get_by_chunk_id(&chunk_rid, &db)
             .await
             .with_context(|| "Failed to get embedding after delete".to_string())?;
@@ -290,56 +316,33 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_source_id() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
+        let db = prepare_test_db(1).await?;
 
         let user_id = "user_c";
         let source_id = "shared-source";
         let other_source = "other-source";
 
-        // Two chunks with the same source_id
         let chunk1_rid = create_text_chunk_with_id(&db, "chunk-s1", source_id, user_id).await?;
         let chunk2_rid = create_text_chunk_with_id(&db, "chunk-s2", source_id, user_id).await?;
-
-        // One chunk with a different source_id
         let chunk_other_rid =
             create_text_chunk_with_id(&db, "chunk-other", other_source, user_id).await?;
 
-        // Create embeddings for all three
-        let emb1 = TextChunkEmbedding::new(
-            "chunk-s1",
-            source_id.to_string(),
-            vec![0.1],
-            user_id.to_string(),
-        );
-        let emb2 = TextChunkEmbedding::new(
-            "chunk-s2",
-            source_id.to_string(),
-            vec![0.2],
-            user_id.to_string(),
-        );
-        let emb3 = TextChunkEmbedding::new(
-            "chunk-other",
-            other_source.to_string(),
-            vec![0.3],
-            user_id.to_string(),
-        );
-
-        // Update length on index
-        TextChunkEmbedding::redefine_hnsw_index(&db, emb1.embedding.len())
-            .await
-            .with_context(|| "Failed to redefine index length".to_string())?;
-
-        for emb in [emb1, emb2, emb3] {
-            let _: Option<TextChunkEmbedding> = db
-                .client
-                .create(TextChunkEmbedding::table_name())
-                .content(emb)
+        for (key, src, vec) in [
+            ("chunk-s1", source_id, vec![0.1]),
+            ("chunk-s2", source_id, vec![0.2]),
+            ("chunk-other", other_source, vec![0.3]),
+        ] {
+            let emb = TextChunkEmbedding::new(
+                key,
+                src.to_string(),
+                vec,
+                user_id.to_string(),
+            );
+            db.upsert_item(emb)
                 .await
-                .with_context(|| "Failed to store embedding".to_string())?
-                .with_context(|| "Failed to deserialize stored embedding".to_string())?;
+                .with_context(|| format!("store embedding for {key}"))?;
         }
 
-        // Sanity check: they all exist
         assert!(TextChunkEmbedding::get_by_chunk_id(&chunk1_rid, &db)
             .await
             .with_context(|| "get chunk1".to_string())?
@@ -353,12 +356,10 @@ mod tests {
             .with_context(|| "get chunk_other".to_string())?
             .is_some());
 
-        // Delete embeddings by source_id (shared-source)
         TextChunkEmbedding::delete_by_source_id(source_id, &db)
             .await
             .with_context(|| "Failed to delete by source_id".to_string())?;
 
-        // Chunks from shared-source should have no embeddings
         assert!(TextChunkEmbedding::get_by_chunk_id(&chunk1_rid, &db)
             .await
             .with_context(|| "check chunk1".to_string())?
@@ -367,8 +368,6 @@ mod tests {
             .await
             .with_context(|| "check chunk2".to_string())?
             .is_none());
-
-        // The other chunk should still have its embedding
         assert!(TextChunkEmbedding::get_by_chunk_id(&chunk_other_rid, &db)
             .await
             .with_context(|| "check chunk_other".to_string())?
@@ -377,10 +376,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_upsert_replaces_existing_embedding_row() -> anyhow::Result<()> {
+        let db = prepare_test_db(3).await?;
+
+        let user_id = "user-upsert";
+        let source_id = "source-upsert";
+        let chunk_key = "chunk-upsert";
+
+        create_text_chunk_with_id(&db, chunk_key, source_id, user_id).await?;
+
+        let initial = TextChunkEmbedding::new(
+            chunk_key,
+            source_id.to_owned(),
+            vec![1.0_f32, 0.0, 0.0],
+            user_id.to_owned(),
+        );
+        db.upsert_item(initial)
+            .await
+            .with_context(|| "initial upsert".to_string())?;
+
+        let replacement = TextChunkEmbedding::new(
+            chunk_key,
+            source_id.to_owned(),
+            vec![0.0, 1.0, 0.0],
+            user_id.to_owned(),
+        );
+        db.upsert_item(replacement)
+            .await
+            .with_context(|| "upsert replacement embedding".to_string())?;
+
+        let chunk_rid = RecordId::from_table_key(TextChunk::table_name(), chunk_key);
+        let rows: Vec<TextChunkEmbedding> = db
+            .client
+            .query(format!(
+                "SELECT * FROM {} WHERE chunk_id = $chunk_id",
+                TextChunkEmbedding::table_name()
+            ))
+            .bind(("chunk_id", chunk_rid))
+            .await
+            .with_context(|| "count embeddings".to_string())?
+            .take(0)
+            .with_context(|| "take embeddings".to_string())?;
+
+        assert_eq!(rows.len(), 1);
+        let row = rows.first().expect("expected one embedding row");
+        assert_eq!(row.id, chunk_key);
+        assert_eq!(row.embedding, vec![0.0, 1.0, 0.0]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_redefine_hnsw_index_updates_dimension() -> anyhow::Result<()> {
         let db = setup_test_db().await?;
 
-        // Change the index dimension from default (1536) to a smaller test value.
         TextChunkEmbedding::redefine_hnsw_index(&db, 8)
             .await
             .with_context(|| "failed to redefine index".to_string())?;
@@ -390,6 +439,10 @@ mod tests {
         assert!(
             idx_sql.contains("DIMENSION 8"),
             "expected index definition to contain new dimension, got: {idx_sql}"
+        );
+        assert!(
+            idx_sql.contains("DIST COSINE"),
+            "expected index definition to use cosine distance, got: {idx_sql}"
         );
         Ok(())
     }
