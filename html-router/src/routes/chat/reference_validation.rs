@@ -1,4 +1,4 @@
-#![allow(clippy::arithmetic_side_effects, clippy::missing_docs_in_private_items)]
+#![allow(clippy::missing_docs_in_private_items)]
 
 use std::collections::HashSet;
 
@@ -49,14 +49,24 @@ pub(crate) struct ReferenceReasonStats {
 impl ReferenceReasonStats {
     fn record(&mut self, reason: &InvalidReferenceReason) {
         match reason {
-            InvalidReferenceReason::Empty => self.empty += 1,
-            InvalidReferenceReason::UnsupportedPrefix => self.unsupported_prefix += 1,
-            InvalidReferenceReason::MalformedUuid => self.malformed_uuid += 1,
-            InvalidReferenceReason::Duplicate => self.duplicate += 1,
-            InvalidReferenceReason::NotInContext => self.not_in_context += 1,
-            InvalidReferenceReason::NotFound => self.not_found += 1,
-            InvalidReferenceReason::WrongUser => self.wrong_user += 1,
-            InvalidReferenceReason::OverLimit => self.over_limit += 1,
+            InvalidReferenceReason::Empty => self.empty = self.empty.saturating_add(1),
+            InvalidReferenceReason::UnsupportedPrefix => {
+                self.unsupported_prefix = self.unsupported_prefix.saturating_add(1)
+            }
+            InvalidReferenceReason::MalformedUuid => {
+                self.malformed_uuid = self.malformed_uuid.saturating_add(1)
+            }
+            InvalidReferenceReason::Duplicate => self.duplicate = self.duplicate.saturating_add(1),
+            InvalidReferenceReason::NotInContext => {
+                self.not_in_context = self.not_in_context.saturating_add(1)
+            }
+            InvalidReferenceReason::NotFound => self.not_found = self.not_found.saturating_add(1),
+            InvalidReferenceReason::WrongUser => {
+                self.wrong_user = self.wrong_user.saturating_add(1)
+            }
+            InvalidReferenceReason::OverLimit => {
+                self.over_limit = self.over_limit.saturating_add(1)
+            }
         }
     }
 }
