@@ -94,7 +94,7 @@ impl KnowledgeRelationship {
             .bind(("id", id.to_owned()))
             .bind(("user_id", user_id.to_owned()))
             .await?;
-        let authorized: Vec<KnowledgeRelationship> = authorized_result.take(0).unwrap_or_default();
+        let authorized: Vec<KnowledgeRelationship> = authorized_result.take(0)?;
 
         if authorized.is_empty() {
             let mut exists_result = db_client

@@ -1,9 +1,4 @@
-#![allow(
-    clippy::result_large_err,
-    clippy::needless_pass_by_value,
-    clippy::implicit_clone,
-    clippy::semicolon_if_nothing_returned
-)]
+#![allow(clippy::result_large_err)]
 use crate::{error::AppError, storage::types::file_info::FileInfo};
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -49,48 +44,49 @@ impl IngestionPayload {
         content: Option<String>,
         context: String,
         category: String,
-        files: &[FileInfo],
-        user_id: &str,
+        files: Vec<FileInfo>,
+        user_id: String,
     ) -> Result<Vec<IngestionPayload>, AppError> {
-        // Initialize list
-        let mut object_list = Vec::new();
+        let has_content = content
+            .as_ref()
+            .is_some_and(|c| c.len() > 2);
+        #[allow(clippy::arithmetic_side_effects)]
+        let capacity = files.len() + usize::from(has_content);
+        let mut object_list = Vec::with_capacity(capacity);
+        for file in files {
+            object_list.push(IngestionPayload::File {
+                file_info: file,
+                context: context.clone(),
+                category: category.clone(),
+                user_id: user_id.clone(),
+            });
+        }
 
-        // Create a IngestionPayload from content if it exists, checking for URL or text
         if let Some(input_content) = content {
             match Url::parse(&input_content) {
                 Ok(url) => {
                     info!("Detected URL: {}", url);
                     object_list.push(IngestionPayload::Url {
                         url: url.to_string(),
-                        context: context.clone(),
-                        category: category.clone(),
-                        user_id: user_id.into(),
+                        context,
+                        category,
+                        user_id,
                     });
                 }
                 Err(_) => {
                     if input_content.len() > 2 {
                         info!("Treating input as plain text");
                         object_list.push(IngestionPayload::Text {
-                            text: input_content.to_string(),
-                            context: context.clone(),
-                            category: category.clone(),
-                            user_id: user_id.into(),
+                            text: input_content,
+                            context,
+                            category,
+                            user_id,
                         });
                     }
                 }
             }
         }
 
-        for file in files {
-            object_list.push(IngestionPayload::File {
-                file_info: file.clone(),
-                context: context.clone(),
-                category: category.clone(),
-                user_id: user_id.into(),
-            })
-        }
-
-        // If no objects are constructed, we return Err
         if object_list.is_empty() {
             return Err(AppError::NotFound(
                 "No valid content or files provided".into(),
@@ -138,14 +134,13 @@ mod tests {
         let context = "Process this URL";
         let category = "websites";
         let user_id = "user123";
-        let files = vec![];
 
         let result = IngestionPayload::create_ingestion_payload(
             Some(url.to_string()),
             context.to_string(),
             category.to_string(),
-            &files,
-            user_id,
+            vec![],
+            user_id.to_string(),
         )
         .with_context(|| "create_ingestion_payload".to_string())?;
 
@@ -174,14 +169,13 @@ mod tests {
         let context = "Process this text";
         let category = "notes";
         let user_id = "user123";
-        let files = vec![];
 
         let result = IngestionPayload::create_ingestion_payload(
             Some(text.to_string()),
             context.to_string(),
             category.to_string(),
-            &files,
-            user_id,
+            vec![],
+            user_id.to_string(),
         )
         .with_context(|| "create_ingestion_payload".to_string())?;
 
@@ -215,16 +209,15 @@ mod tests {
         };
 
         let file_info: FileInfo = mock_file.into();
-        let files = vec![file_info.clone()];
+        let file_id = file_info.id.clone();
 
         let result = IngestionPayload::create_ingestion_payload(
             None,
             context.to_string(),
             category.to_string(),
-            &files,
-            user_id,
-        )
-        .with_context(|| "create_ingestion_payload".to_string())?;
+            vec![file_info],
+            user_id.to_string(),
+        )?;
 
         assert_eq!(result.len(), 1);
         match result.first().context("expected one result")? {
@@ -234,7 +227,7 @@ mod tests {
                 category: payload_category,
                 user_id: payload_user_id,
             } => {
-                assert_eq!(payload_file_info.id, file_info.id);
+                assert_eq!(payload_file_info.id, file_id);
                 assert_eq!(payload_context, context);
                 assert_eq!(payload_category, category);
                 assert_eq!(payload_user_id, user_id);
@@ -257,39 +250,38 @@ mod tests {
         };
 
         let file_info: FileInfo = mock_file.into();
-        let files = vec![file_info.clone()];
+        let file_id = file_info.id.clone();
 
         let result = IngestionPayload::create_ingestion_payload(
             Some(url.to_string()),
             context.to_string(),
             category.to_string(),
-            &files,
-            user_id,
-        )
-        .with_context(|| "create_ingestion_payload".to_string())?;
+            vec![file_info],
+            user_id.to_string(),
+        )?;
 
         assert_eq!(result.len(), 2);
 
-        // Check first item is URL
+        // Check first item is File (files processed first to minimize clones)
         match result.first().context("expected first item")? {
+            IngestionPayload::File {
+                file_info: payload_file_info,
+                ..
+            } => {
+                assert_eq!(payload_file_info.id, file_id);
+            }
+            _ => anyhow::bail!("Expected first item to be File variant"),
+        }
+
+        // Check second item is URL
+        match result.get(1).context("expected second item")? {
             IngestionPayload::Url {
                 url: payload_url, ..
             } => {
                 // URL parser may normalize the URL by adding a trailing slash
                 assert!(payload_url == &url.to_string() || payload_url == &format!("{url}/"));
             }
-            _ => anyhow::bail!("Expected first item to be Url variant"),
-        }
-
-        // Check second item is File
-        match result.get(1).context("expected second item")? {
-            IngestionPayload::File {
-                file_info: payload_file_info,
-                ..
-            } => {
-                assert_eq!(payload_file_info.id, file_info.id);
-            }
-            _ => anyhow::bail!("Expected second item to be File variant"),
+            _ => anyhow::bail!("Expected second item to be Url variant"),
         }
         Ok(())
     }
@@ -299,14 +291,13 @@ mod tests {
         let context = "Process something";
         let category = "empty";
         let user_id = "user123";
-        let files = vec![];
 
         let result = IngestionPayload::create_ingestion_payload(
             None,
             context.to_string(),
             category.to_string(),
-            &files,
-            user_id,
+            vec![],
+            user_id.to_string(),
         );
 
         assert!(result.is_err());
@@ -325,14 +316,13 @@ mod tests {
         let context = "Process this";
         let category = "notes";
         let user_id = "user123";
-        let files = vec![];
 
         let result = IngestionPayload::create_ingestion_payload(
             Some(text.to_string()),
             context.to_string(),
             category.to_string(),
-            &files,
-            user_id,
+            vec![],
+            user_id.to_string(),
         );
 
         assert!(result.is_err());

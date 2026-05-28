@@ -169,7 +169,7 @@ pub async fn ensure_runtime(
 ) -> Result<(), AppError> {
     ensure_runtime_inner(db, embedding_dimension)
         .await
-        .map_err(|err| AppError::InternalError(err.to_string()))
+        .map_err(AppError::internal)
 }
 
 /// Rebuild known FTS and HNSW indexes, skipping any that are not yet defined.
@@ -180,7 +180,7 @@ pub async fn ensure_runtime(
 pub async fn rebuild(db: &SurrealDbClient) -> Result<(), AppError> {
     rebuild_inner(db)
         .await
-        .map_err(|err| AppError::InternalError(err.to_string()))
+        .map_err(AppError::internal)
 }
 
 async fn ensure_runtime_inner(db: &SurrealDbClient, embedding_dimension: usize) -> Result<()> {

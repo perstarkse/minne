@@ -135,9 +135,11 @@ impl TextChunk {
             .bind(("embedding", query_embedding))
             .bind(("user_id", user_id.to_string()))
             .await
-            .map_err(|e| AppError::InternalError(format!("Surreal query failed: {e}")))?;
+            .map_err(AppError::Database)?;
 
-        let rows: Vec<Row> = response.take::<Vec<Row>>(0).unwrap_or_default();
+        response = response.check().map_err(AppError::Database)?;
+
+        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::Database)?;
 
         Ok(rows
             .into_iter()
@@ -198,7 +200,7 @@ impl TextChunk {
             .bind(("user_id", user_id.to_owned()))
             .bind(("limit", limit))
             .await
-            .map_err(|e| AppError::InternalError(format!("Surreal query failed: {e}")))?;
+            .map_err(AppError::Database)?;
 
         response = response.check().map_err(AppError::Database)?;
 
@@ -277,7 +279,7 @@ impl TextChunk {
                     chunk.id, embedding.len(), new_dimensions
                 );
                 error!("{err_msg}");
-                return Err(AppError::InternalError(err_msg));
+                return Err(AppError::internal(err_msg));
             }
             new_embeddings.insert(
                 chunk.id.clone(),
@@ -291,8 +293,9 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding)
-                .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
+            let embedding = serde_json::to_string(&embedding).map_err(|e| {
+                AppError::internal(format!("embedding serialization failed: {e}"))
+            })?;
             write!(
                 &mut transaction_query,
                 "UPSERT type::thing('text_chunk_embedding', '{id}') SET \
@@ -303,14 +306,14 @@ impl TextChunk {
                     created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
                     updated_at = time::now();",
             )
-            .map_err(|e| AppError::InternalError(e.to_string()))?;
+            .map_err(AppError::internal)?;
         }
 
         write!(
             &mut transaction_query,
             "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
         )
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+        .map_err(AppError::internal)?;
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 
@@ -357,7 +360,7 @@ impl TextChunk {
             let embedding = provider
                 .embed(&chunk.chunk)
                 .await
-                .map_err(|e| AppError::InternalError(format!("Embedding failed: {e}")))?;
+                .map_err(AppError::internal)?;
 
             // Safety check: ensure the generated embedding has the correct dimension.
             if embedding.len() != new_dimensions {
@@ -366,7 +369,7 @@ impl TextChunk {
                     chunk.id, embedding.len(), new_dimensions
                 );
                 error!("{err_msg}");
-                return Err(AppError::InternalError(err_msg));
+                return Err(AppError::internal(err_msg));
             }
             new_embeddings.insert(
                 chunk.id.clone(),
@@ -402,8 +405,9 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding)
-                .map_err(|e| AppError::InternalError(format!("embedding serialization failed: {e}")))?;
+            let embedding = serde_json::to_string(&embedding).map_err(|e| {
+                AppError::internal(format!("embedding serialization failed: {e}"))
+            })?;
             write!(
                 &mut transaction_query,
                 "CREATE type::thing('text_chunk_embedding', '{id}') SET \
@@ -414,14 +418,14 @@ impl TextChunk {
                     created_at = time::now(), \
                     updated_at = time::now();",
             )
-            .map_err(|e| AppError::InternalError(e.to_string()))?;
+            .map_err(AppError::internal)?;
         }
 
         write!(
             &mut transaction_query,
             "DEFINE INDEX OVERWRITE idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION {new_dimensions};",
         )
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
+        .map_err(AppError::internal)?;
 
         transaction_query.push_str("COMMIT TRANSACTION;");
 

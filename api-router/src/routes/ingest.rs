@@ -73,8 +73,8 @@ pub async fn ingest_data(
         input.content,
         input.context,
         input.category,
-        &file_infos,
-        &user_id,
+        file_infos,
+        user_id.clone(),
     )?;
 
     let futures: Vec<_> = payloads

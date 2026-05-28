@@ -69,7 +69,7 @@ pub fn format_history(history: &[Message]) -> String {
         if i > 0 {
             out.push('\n');
         }
-        write!(out, "{msg}").unwrap_or_default();
+        let _ = write!(out, "{msg}");
     }
     out
 }
