@@ -1,6 +1,7 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use chrono::Duration as ChronoDuration;
+use futures::future::try_join_all;
 use state_machines::state_machine;
 use surrealdb::sql::Datetime as SurrealDatetime;
 use uuid::Uuid;
@@ -143,10 +144,14 @@ mod lifecycle {
 
 fn invalid_transition(state: TaskState, event: TaskTransition) -> AppError {
     AppError::Validation(format!(
-        "Invalid task transition: {} -> {}",
+        "invalid task transition: {} -> {}",
         state.as_str(),
         event.as_str()
     ))
+}
+
+fn worker_id_for_bind(worker_id: &Option<String>) -> String {
+    worker_id.as_deref().unwrap_or("").to_string()
 }
 
 stored_object!(IngestionTask, "ingestion_task", {
@@ -216,14 +221,44 @@ impl IngestionTask {
     /// # Errors
     ///
     /// Returns `AppError::Database` if the store operation fails.
+    /// Returns `AppError::internal` if the database returns no stored record.
     pub async fn create_and_add_to_db(
         content: IngestionPayload,
-        user_id: String,
+        user_id: impl AsRef<str>,
         db: &SurrealDbClient,
     ) -> Result<IngestionTask, AppError> {
-        let task = Self::new(content, user_id);
-        db.store_item(task.clone()).await?;
-        Ok(task)
+        let task = Self::new(content, user_id.as_ref().to_string());
+        db.store_item(task)
+            .await?
+            .ok_or_else(|| AppError::internal("ingestion task store returned no record"))
+    }
+
+    /// Create and persist multiple tasks concurrently (one `CREATE` per payload).
+    ///
+    /// Use this when ingest produces several payloads (files plus URL/text). For a
+    /// single payload, call [`Self::create_and_add_to_db`] instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`AppError`] from any failed store, same as [`try_join_all`].
+    pub async fn create_all_and_add_to_db(
+        contents: Vec<IngestionPayload>,
+        user_id: impl AsRef<str>,
+        db: &SurrealDbClient,
+    ) -> Result<Vec<IngestionTask>, AppError> {
+        if contents.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let user_id = Arc::new(user_id.as_ref().to_string());
+        let db = db.clone();
+
+        try_join_all(contents.into_iter().map(|content| {
+            let user_id = Arc::clone(&user_id);
+            let db = db.clone();
+            async move { Self::create_and_add_to_db(content, user_id.as_ref(), &db).await }
+        }))
+        .await
     }
 
     /// Claim the next ready task for processing.
@@ -325,6 +360,7 @@ impl IngestionTask {
         "#;
 
         let now = chrono::Utc::now();
+        let worker_id = worker_id_for_bind(&self.worker_id);
         let mut result = db
             .client
             .query(START_PROCESSING_QUERY)
@@ -333,7 +369,7 @@ impl IngestionTask {
             .bind(("processing", TaskState::Processing.as_str()))
             .bind(("reserved", TaskState::Reserved.as_str()))
             .bind(("now", SurrealDatetime::from(now)))
-            .bind(("worker_id", self.worker_id.clone().unwrap_or_default()))
+            .bind(("worker_id", worker_id))
             .await?;
 
         let updated: Option<IngestionTask> = result.take(0)?;
@@ -362,6 +398,7 @@ impl IngestionTask {
         "#;
 
         let now = chrono::Utc::now();
+        let worker_id = worker_id_for_bind(&self.worker_id);
         let mut result = db
             .client
             .query(COMPLETE_QUERY)
@@ -370,7 +407,7 @@ impl IngestionTask {
             .bind(("succeeded", TaskState::Succeeded.as_str()))
             .bind(("processing", TaskState::Processing.as_str()))
             .bind(("now", SurrealDatetime::from(now)))
-            .bind(("worker_id", self.worker_id.clone().unwrap_or_default()))
+            .bind(("worker_id", worker_id))
             .await?;
 
         let updated: Option<IngestionTask> = result.take(0)?;
@@ -413,6 +450,7 @@ impl IngestionTask {
             )
             .unwrap_or(now);
 
+        let worker_id = worker_id_for_bind(&self.worker_id);
         let mut result = db
             .client
             .query(FAIL_QUERY)
@@ -424,7 +462,7 @@ impl IngestionTask {
             .bind(("retry_at", SurrealDatetime::from(retry_at)))
             .bind(("error_code", error.code.clone()))
             .bind(("error_message", error.message.clone()))
-            .bind(("worker_id", self.worker_id.clone().unwrap_or_default()))
+            .bind(("worker_id", worker_id))
             .await?;
 
         let updated: Option<IngestionTask> = result.take(0)?;
@@ -613,6 +651,44 @@ mod tests {
         assert_eq!(task.max_attempts, MAX_ATTEMPTS);
         assert!(task.locked_at.is_none());
         assert!(task.worker_id.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_create_all_and_add_to_db_empty() -> anyhow::Result<()> {
+        let db = memory_db().await?;
+        let tasks = IngestionTask::create_all_and_add_to_db(vec![], "user123", &db).await?;
+        assert!(tasks.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_create_all_and_add_to_db_stores_multiple() -> anyhow::Result<()> {
+        let db = memory_db().await?;
+        let user_id = "user123";
+        let payloads = vec![
+            create_payload(user_id),
+            IngestionPayload::Text {
+                text: "second payload".to_string(),
+                context: "ctx".to_string(),
+                category: "cat".to_string(),
+                user_id: user_id.to_string(),
+            },
+        ];
+
+        let created =
+            IngestionTask::create_all_and_add_to_db(payloads, user_id, &db).await?;
+
+        assert_eq!(created.len(), 2);
+        assert_ne!(created[0].id, created[1].id);
+
+        for task in &created {
+            let stored: Option<IngestionTask> = db.get_item::<IngestionTask>(&task.id).await?;
+            let stored = stored.with_context(|| format!("task {} should exist", task.id))?;
+            assert_eq!(stored.id, task.id);
+            assert_eq!(stored.state, TaskState::Pending);
+            assert_eq!(stored.user_id, user_id);
+        }
         Ok(())
     }
 

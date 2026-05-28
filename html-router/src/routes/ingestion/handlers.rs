@@ -146,12 +146,8 @@ pub async fn process_ingest_form(
         user.id.clone(),
     )?;
 
-    let futures: Vec<_> = payloads
-        .into_iter()
-        .map(|object| IngestionTask::create_and_add_to_db(object, user.id.clone(), &state.db))
-        .collect();
-
-    let tasks = try_join_all(futures).await?;
+    let tasks =
+        IngestionTask::create_all_and_add_to_db(payloads, &user.id, &state.db).await?;
 
     #[derive(Serialize)]
     struct NewTasksData {

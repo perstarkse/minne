@@ -26,19 +26,39 @@ pub enum IngestionPayload {
     },
 }
 
+/// Shared ingest metadata moved or cloned into each payload variant.
+struct IngestFields {
+    context: String,
+    category: String,
+    user_id: String,
+}
+
+/// Result of parsing optional ingest content before file payloads are built.
+#[derive(Debug)]
+enum ParsedContent {
+    /// No URL or text payload should be appended.
+    Skip,
+    Url(String),
+    Text(String),
+}
+
+impl ParsedContent {
+    #[must_use]
+    fn follows(&self) -> bool {
+        !matches!(self, Self::Skip)
+    }
+}
+
 impl IngestionPayload {
     /// Creates ingestion payloads from the provided content, context, and files.
     ///
-    /// # Arguments
-    /// * `content` - Optional textual content to be ingressed
-    /// * `context` - context for processing the ingress content
-    /// * `category` - Category to classify the ingressed content
-    /// * `files` - Vector of `FileInfo` objects containing information about uploaded files
-    /// * `user_id` - Identifier of the user performing the ingress operation
+    /// Files are emitted first. When both files and content are present, shared
+    /// metadata is cloned per file; otherwise the last file-only payload moves
+    /// `context`, `category`, and `user_id` without cloning.
     ///
-    /// # Returns
-    /// * `Result<Vec<IngestionPayload>, AppError>` - On success, returns a vector of ingress objects
-    ///   (one per file/content type). On failure, returns an `AppError`.
+    /// # Errors
+    ///
+    /// Returns [`AppError::NotFound`] when no valid files or content are provided.
     #[allow(clippy::similar_names)]
     pub fn create_ingestion_payload(
         content: Option<String>,
@@ -47,53 +67,89 @@ impl IngestionPayload {
         files: Vec<FileInfo>,
         user_id: String,
     ) -> Result<Vec<IngestionPayload>, AppError> {
-        let has_content = content
-            .as_ref()
-            .is_some_and(|c| c.len() > 2);
+        let parsed = Self::parse_content(content);
+        let content_follows = parsed.follows();
+        let file_count = files.len();
         #[allow(clippy::arithmetic_side_effects)]
-        let capacity = files.len() + usize::from(has_content);
+        let capacity = file_count + usize::from(content_follows);
         let mut object_list = Vec::with_capacity(capacity);
-        for file in files {
-            object_list.push(IngestionPayload::File {
-                file_info: file,
-                context: context.clone(),
-                category: category.clone(),
-                user_id: user_id.clone(),
-            });
+        let mut fields = Some(IngestFields {
+            context,
+            category,
+            user_id,
+        });
+
+        for (index, file) in files.into_iter().enumerate() {
+            let is_last_file = index + 1 == file_count;
+            if content_follows || !is_last_file {
+                let Some(shared) = fields.as_ref() else {
+                    return Err(AppError::internal("shared ingest fields consumed early"));
+                };
+                object_list.push(Self::File {
+                    file_info: file,
+                    context: shared.context.clone(),
+                    category: shared.category.clone(),
+                    user_id: shared.user_id.clone(),
+                });
+            } else {
+                let Some(shared) = fields.take() else {
+                    return Err(AppError::internal("shared ingest fields missing for file"));
+                };
+                object_list.push(Self::File {
+                    file_info: file,
+                    context: shared.context,
+                    category: shared.category,
+                    user_id: shared.user_id,
+                });
+            }
         }
 
-        if let Some(input_content) = content {
-            match Url::parse(&input_content) {
-                Ok(url) => {
-                    info!("Detected URL: {}", url);
-                    object_list.push(IngestionPayload::Url {
-                        url: url.to_string(),
-                        context,
-                        category,
-                        user_id,
-                    });
-                }
-                Err(_) => {
-                    if input_content.len() > 2 {
-                        info!("Treating input as plain text");
-                        object_list.push(IngestionPayload::Text {
-                            text: input_content,
-                            context,
-                            category,
-                            user_id,
-                        });
-                    }
-                }
-            }
+        if let ParsedContent::Url(url) = parsed {
+            info!("Detected URL: {url}");
+            let Some(shared) = fields.take() else {
+                return Err(AppError::internal("shared ingest fields missing for url"));
+            };
+            object_list.push(Self::Url {
+                url,
+                context: shared.context,
+                category: shared.category,
+                user_id: shared.user_id,
+            });
+        } else if let ParsedContent::Text(text) = parsed {
+            info!("Treating input as plain text");
+            let Some(shared) = fields.take() else {
+                return Err(AppError::internal("shared ingest fields missing for text"));
+            };
+            object_list.push(Self::Text {
+                text,
+                context: shared.context,
+                category: shared.category,
+                user_id: shared.user_id,
+            });
         }
 
         if object_list.is_empty() {
             return Err(AppError::NotFound(
-                "No valid content or files provided".into(),
+                "no valid content or files provided".into(),
             ));
         }
 
         Ok(object_list)
+    }
+
+    fn parse_content(content: Option<String>) -> ParsedContent {
+        let Some(input_content) = content else {
+            return ParsedContent::Skip;
+        };
+
+        if input_content.len() <= 2 {
+            return ParsedContent::Skip;
+        }
+
+        match Url::parse(&input_content) {
+            Ok(url) => ParsedContent::Url(url.to_string()),
+            Err(_) => ParsedContent::Text(input_content),
+        }
     }
 }
 
@@ -303,7 +359,7 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(AppError::NotFound(msg)) => {
-                assert_eq!(msg, "No valid content or files provided");
+                assert_eq!(msg, "no valid content or files provided");
             }
             _ => anyhow::bail!("Expected NotFound error"),
         }
@@ -328,10 +384,123 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(AppError::NotFound(msg)) => {
-                assert_eq!(msg, "No valid content or files provided");
+                assert_eq!(msg, "no valid content or files provided");
             }
             _ => anyhow::bail!("Expected NotFound error"),
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_with_file_and_text() -> anyhow::Result<()> {
+        let text = "plain notes";
+        let context = "ctx";
+        let category = "cat";
+        let user_id = "user123";
+        let file_info: FileInfo = MockFileInfo {
+            id: "file1".to_string(),
+        }
+        .into();
+
+        let result = IngestionPayload::create_ingestion_payload(
+            Some(text.to_string()),
+            context.to_string(),
+            category.to_string(),
+            vec![file_info],
+            user_id.to_string(),
+        )?;
+
+        assert_eq!(result.len(), 2);
+        match (&result[0], &result[1]) {
+            (
+                IngestionPayload::File {
+                    file_info: payload_file,
+                    context: file_context,
+                    ..
+                },
+                IngestionPayload::Text {
+                    text: payload_text,
+                    context: text_context,
+                    category: text_category,
+                    user_id: text_user_id,
+                },
+            ) => {
+                assert_eq!(payload_file.id, "file1");
+                assert_eq!(file_context, context);
+                assert_eq!(payload_text, text);
+                assert_eq!(text_context, context);
+                assert_eq!(text_category, category);
+                assert_eq!(text_user_id, user_id);
+            }
+            _ => anyhow::bail!("expected File then Text"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_short_content_with_file_only_yields_file() -> anyhow::Result<()> {
+        let context = "ctx";
+        let category = "cat";
+        let user_id = "user123";
+        let file_info: FileInfo = MockFileInfo {
+            id: "file1".to_string(),
+        }
+        .into();
+
+        let result = IngestionPayload::create_ingestion_payload(
+            Some("ab".to_string()),
+            context.to_string(),
+            category.to_string(),
+            vec![file_info],
+            user_id.to_string(),
+        )?;
+
+        assert_eq!(result.len(), 1);
+        match result.first().context("expected one file payload")? {
+            IngestionPayload::File {
+                file_info,
+                context: payload_context,
+                category: payload_category,
+                user_id: payload_user_id,
+            } => {
+                assert_eq!(file_info.id, "file1");
+                assert_eq!(payload_context, context);
+                assert_eq!(payload_category, category);
+                assert_eq!(payload_user_id, user_id);
+            }
+            _ => anyhow::bail!("expected File variant only"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_ingestion_payload_two_files_without_content() -> anyhow::Result<()> {
+        let context = "ctx";
+        let category = "cat";
+        let user_id = "user123";
+
+        let files = vec![
+            MockFileInfo {
+                id: "file1".to_string(),
+            }
+            .into(),
+            MockFileInfo {
+                id: "file2".to_string(),
+            }
+            .into(),
+        ];
+
+        let result = IngestionPayload::create_ingestion_payload(
+            None,
+            context.to_string(),
+            category.to_string(),
+            files,
+            user_id.to_string(),
+        )?;
+
+        assert_eq!(result.len(), 2);
+        assert!(matches!(result[0], IngestionPayload::File { .. }));
+        assert!(matches!(result[1], IngestionPayload::File { .. }));
         Ok(())
     }
 }
