@@ -1,9 +1,18 @@
 use config::{Config, ConfigError, Environment, File};
-use serde::Deserialize;
-use std::env;
+use serde::{Deserialize, Serialize};
+use std::{env, sync::Once, str::FromStr};
+use thiserror::Error;
+
+/// Error returned when parsing an embedding backend name.
+#[derive(Debug, Error, PartialEq, Eq)]
+#[error("unknown embedding backend '{input}': expected 'openai', 'hashed', or 'fastembed'")]
+pub struct ParseEmbeddingBackendError {
+    /// The unrecognized input string.
+    pub input: String,
+}
 
 /// Selects the embedding backend for vector generation.
-#[derive(Clone, Copy, Deserialize, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Deserialize, Serialize, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum EmbeddingBackend {
     /// Use OpenAI-compatible API for embeddings.
@@ -13,6 +22,32 @@ pub enum EmbeddingBackend {
     FastEmbed,
     /// Use deterministic hashed embeddings (for testing).
     Hashed,
+}
+
+impl EmbeddingBackend {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAI => "openai",
+            Self::FastEmbed => "fastembed",
+            Self::Hashed => "hashed",
+        }
+    }
+}
+
+impl FromStr for EmbeddingBackend {
+    type Err = ParseEmbeddingBackendError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "openai" => Ok(Self::OpenAI),
+            "hashed" => Ok(Self::Hashed),
+            "fastembed" | "fast-embed" | "fast" => Ok(Self::FastEmbed),
+            other => Err(ParseEmbeddingBackendError {
+                input: other.to_string(),
+            }),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Deserialize, Debug, PartialEq)]
@@ -133,11 +168,17 @@ fn default_ingest_max_category_bytes() -> usize {
     128
 }
 
+static ORT_PATH_INIT: Once = Once::new();
+
+/// Sets `ORT_DYLIB_PATH` once per process when a bundled ONNX runtime library is found.
 pub fn ensure_ort_path() {
-    if env::var_os("ORT_DYLIB_PATH").is_some() {
-        return;
-    }
-    if let Ok(mut exe) = env::current_exe() {
+    ORT_PATH_INIT.call_once(|| {
+        if env::var_os("ORT_DYLIB_PATH").is_some() {
+            return;
+        }
+        let Ok(mut exe) = env::current_exe() else {
+            return;
+        };
         exe.pop();
 
         if cfg!(target_os = "windows") {
@@ -160,7 +201,7 @@ pub fn ensure_ort_path() {
         if p.exists() {
             env::set_var("ORT_DYLIB_PATH", p);
         }
-    }
+    });
 }
 
 impl Default for AppConfig {

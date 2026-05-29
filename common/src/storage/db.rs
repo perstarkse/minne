@@ -13,8 +13,8 @@ use surrealdb::{
 use surrealdb_migrations::MigrationRunner;
 use tracing::debug;
 
-/// Embedded SurrealDB migration directory packaged with the crate.
-static MIGRATIONS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/");
+/// Embedded SurrealDB project root (`migrations/`, `schemas/`, `.surrealdb`).
+static MIGRATIONS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/db");
 
 #[derive(Clone)]
 pub struct SurrealDbClient {

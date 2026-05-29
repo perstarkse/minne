@@ -27,8 +27,7 @@
           filter = let
             extraPaths = [
               (toString ./Cargo.lock)
-              (toString ./common/migrations)
-              (toString ./common/schemas)
+              (toString ./common/db)
               (toString ./html-router/templates)
               (toString ./html-router/assets)
             ];

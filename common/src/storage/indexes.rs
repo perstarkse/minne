@@ -9,6 +9,7 @@ use tracing::{debug, info, warn};
 use crate::{error::AppError, storage::db::SurrealDbClient};
 
 const INDEX_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const INDEX_BUILD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const FTS_ANALYZER_NAME: &str = "app_en_fts_analyzer";
 
 /// HNSW index options used by runtime index creation (includes CONCURRENTLY).
@@ -296,14 +297,10 @@ async fn get_index_status(db: &SurrealDbClient, index_name: &str, table: &str) -
         return Ok("unknown".to_string());
     };
 
-    let building = info.get("building");
-    let status = building
-        .and_then(|b| b.get("status"))
-        .and_then(|s| s.as_str())
-        .unwrap_or("ready")
-        .to_string();
+    let parsed: IndexInfoForIndex = serde_json::from_value(info)
+        .context("deserializing INFO FOR INDEX response")?;
 
-    Ok(status)
+    Ok(parsed.building_status())
 }
 
 async fn rebuild_inner(db: &SurrealDbClient) -> Result<()> {
@@ -531,8 +528,21 @@ async fn poll_index_build_status(
     poll_every: Duration,
 ) -> Result<()> {
     let started_at = std::time::Instant::now();
+    let mut last_snapshot: Option<IndexBuildSnapshot> = None;
 
     loop {
+        if started_at.elapsed() >= INDEX_BUILD_TIMEOUT {
+            return Err(anyhow::anyhow!(
+                "index build timed out after {:?} for {index_name} on {table} (last status: {})",
+                INDEX_BUILD_TIMEOUT,
+                last_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.status.as_str())
+                    .unwrap_or("unknown")
+            ))
+            .with_context(|| format!("index {index_name} on table {table} did not become ready"));
+        }
+
         tokio::time::sleep(poll_every).await;
 
         let info_query = format!("INFO FOR INDEX {index_name} ON TABLE {table};");
@@ -546,13 +556,12 @@ async fn poll_index_build_status(
             .context("failed to deserialize INFO FOR INDEX result")?;
 
         let Some(snapshot) = parse_index_build_info(info, total_rows) else {
-            warn!(
-                index = %index_name,
-                table = %table,
-                "INFO FOR INDEX returned no data; assuming index definition might be missing"
-            );
-            break;
+            return Err(anyhow::anyhow!(
+                "INFO FOR INDEX returned no data for {index_name} on {table}"
+            ));
         };
+
+        last_snapshot = Some(snapshot.clone());
 
         if let Some(pct) = snapshot.progress_pct {
             debug!(
@@ -589,25 +598,87 @@ async fn poll_index_build_status(
                 total = snapshot.total_rows,
                 "Index is ready"
             );
-            break;
+            return Ok(());
         }
 
         if snapshot.status.eq_ignore_ascii_case("error") {
-            warn!(
-                index = %index_name,
-                table = %table,
-                status = snapshot.status,
-                "Index build reported error status; stopping polling"
-            );
-            break;
+            return Err(anyhow::anyhow!(
+                "index build failed for {index_name} on {table}: status=error, processed={}, total={:?}",
+                snapshot.processed,
+                snapshot.total_rows
+            ));
+        }
+    }
+}
+
+/// `building` block from SurrealDB `INFO FOR INDEX` (concurrent index builds).
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct IndexBuildingProgress {
+    #[serde(default)]
+    initial: u64,
+    #[serde(default)]
+    pending: u64,
+    #[serde(default)]
+    updated: u64,
+    #[serde(default)]
+    status: String,
+}
+
+/// Top-level `INFO FOR INDEX` payload shape (SurrealDB v2.x).
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+struct IndexInfoForIndex {
+    #[serde(default)]
+    building: Option<IndexBuildingProgress>,
+}
+
+impl IndexInfoForIndex {
+    fn building_status(&self) -> String {
+        match &self.building {
+            None => "ready".to_string(),
+            Some(progress) if progress.status.is_empty() => "ready".to_string(),
+            Some(progress) => progress.status.clone(),
         }
     }
 
-    Ok(())
+    fn into_build_snapshot(self, total_rows: Option<u64>) -> IndexBuildSnapshot {
+        let (initial, pending, updated, status) = match self.building {
+            None => (0, 0, 0, "ready".to_string()),
+            Some(progress) => {
+                let status = if progress.status.is_empty() {
+                    "ready".to_string()
+                } else {
+                    progress.status
+                };
+                (progress.initial, progress.pending, progress.updated, status)
+            }
+        };
+
+        let processed = initial.saturating_add(updated);
+        let progress_pct = total_rows.map(|total| {
+            if total == 0 {
+                0.0
+            } else {
+                ((f64::from(u32::try_from(processed).unwrap_or(u32::MAX))
+                    / f64::from(u32::try_from(total).unwrap_or(1)))
+                .min(1.0))
+                    * 100.0
+            }
+        });
+
+        IndexBuildSnapshot {
+            status,
+            initial,
+            pending,
+            updated,
+            processed,
+            total_rows,
+            progress_pct,
+        }
+    }
 }
 
 /// Snapshot of an index build progress as reported by SurrealDB's `INFO FOR INDEX`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct IndexBuildSnapshot {
     /// Current build status string (e.g., `"indexing"`, `"ready"`, `"error"`).
     status: String,
@@ -636,53 +707,8 @@ fn parse_index_build_info(
     total_rows: Option<u64>,
 ) -> Option<IndexBuildSnapshot> {
     let info = info?;
-    let building = info.get("building");
-
-    let status = building
-        .and_then(|b| b.get("status"))
-        .and_then(|s| s.as_str())
-        // If there's no `building` block at all, treat as "ready" (index not building anymore)
-        .unwrap_or("ready")
-        .to_string();
-
-    let initial = building
-        .and_then(|b| b.get("initial"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-
-    let pending = building
-        .and_then(|b| b.get("pending"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-
-    let updated = building
-        .and_then(|b| b.get("updated"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-
-    // `initial` is the number of rows seen when the build started; `updated` accounts for later writes.
-    let processed = initial.saturating_add(updated);
-
-    let progress_pct = total_rows.map(|total| {
-        if total == 0 {
-            0.0
-        } else {
-            ((f64::from(u32::try_from(processed).unwrap_or(u32::MAX))
-                / f64::from(u32::try_from(total).unwrap_or(1)))
-            .min(1.0))
-                * 100.0
-        }
-    });
-
-    Some(IndexBuildSnapshot {
-        status,
-        initial,
-        pending,
-        updated,
-        processed,
-        total_rows,
-        progress_pct,
-    })
+    let parsed: IndexInfoForIndex = serde_json::from_value(info).ok()?;
+    Some(parsed.into_build_snapshot(total_rows))
 }
 
 #[derive(Debug, Deserialize)]
@@ -783,6 +809,72 @@ mod tests {
         assert!(snapshot.is_ready());
         assert_eq!(snapshot.processed, 0);
         assert_eq!(snapshot.progress_pct, Some(0.0));
+        Ok(())
+    }
+
+    #[test]
+    fn index_info_for_index_deserializes_ready_status_shape() -> anyhow::Result<()> {
+        let info = json!({
+            "building": {
+                "status": "ready"
+            }
+        });
+
+        let parsed: IndexInfoForIndex =
+            serde_json::from_value(info).context("deserialize ready shape")?;
+        assert_eq!(parsed.building_status(), "ready");
+
+        let snapshot = parse_index_build_info(
+            Some(json!({
+                "building": { "status": "ready" }
+            })),
+            None,
+        )
+        .context("snapshot")?;
+        assert!(snapshot.is_ready());
+        assert_eq!(snapshot.initial, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn index_info_for_index_deserializes_indexing_shape_from_surreal_docs() -> anyhow::Result<()> {
+        let info = json!({
+            "building": {
+                "initial": 8143,
+                "pending": 19,
+                "status": "indexing",
+                "updated": 80
+            }
+        });
+
+        let parsed: IndexInfoForIndex =
+            serde_json::from_value(info.clone()).context("deserialize indexing shape")?;
+        assert_eq!(parsed.building_status(), "indexing");
+
+        let snapshot = parse_index_build_info(Some(info), None).context("snapshot")?;
+        assert_eq!(snapshot.status, "indexing");
+        assert_eq!(snapshot.initial, 8143);
+        assert_eq!(snapshot.pending, 19);
+        assert_eq!(snapshot.updated, 80);
+        assert_eq!(snapshot.processed, 8223);
+        assert!(!snapshot.is_ready());
+        Ok(())
+    }
+
+    #[test]
+    fn parse_index_build_info_reports_error_status() -> anyhow::Result<()> {
+        let info = json!({
+            "building": {
+                "initial": 100,
+                "pending": 5,
+                "status": "error",
+                "updated": 10
+            }
+        });
+
+        let snapshot = parse_index_build_info(Some(info), Some(200)).context("snapshot")?;
+        assert_eq!(snapshot.status, "error");
+        assert!(!snapshot.is_ready());
         Ok(())
     }
 

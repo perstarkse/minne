@@ -8,59 +8,15 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use async_openai::{types::CreateEmbeddingRequestArgs, Client};
 use fastembed::{EmbeddingModel, ModelTrait, TextEmbedding, TextInitOptions};
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use tracing::debug;
 
 use crate::{
     error::AppError,
     storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
+    utils::config::AppConfig,
 };
 
-/// Error returned when parsing an embedding backend name.
-#[derive(Debug, Error, PartialEq, Eq)]
-#[error("unknown embedding backend '{input}': expected 'openai', 'hashed', or 'fastembed'")]
-pub struct ParseEmbeddingBackendError {
-    /// The unrecognized input string.
-    pub input: String,
-}
-
-/// Supported embedding backends.
-#[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum EmbeddingBackend {
-    #[default]
-    OpenAI,
-    FastEmbed,
-    Hashed,
-}
-
-impl EmbeddingBackend {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::OpenAI => "openai",
-            Self::FastEmbed => "fastembed",
-            Self::Hashed => "hashed",
-        }
-    }
-}
-
-impl std::str::FromStr for EmbeddingBackend {
-    type Err = ParseEmbeddingBackendError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "openai" => Ok(Self::OpenAI),
-            "hashed" => Ok(Self::Hashed),
-            "fastembed" | "fast-embed" | "fast" => Ok(Self::FastEmbed),
-            other => Err(ParseEmbeddingBackendError {
-                input: other.to_string(),
-            }),
-        }
-    }
-}
+pub use crate::utils::config::{EmbeddingBackend, ParseEmbeddingBackendError};
 
 /// Wrapper around the chosen embedding backend.
 #[allow(clippy::module_name_repetitions)]
@@ -281,30 +237,31 @@ impl EmbeddingProvider {
         })
     }
 
-    /// Creates an embedding provider based on application configuration.
+    /// Creates an embedding provider from persisted settings and bootstrap config.
     ///
-    /// Dispatches to the appropriate constructor based on `config.embedding_backend`:
-    /// - `OpenAI`: Requires a valid OpenAI client
-    /// - `FastEmbed`: Uses local embedding model
-    /// - `Hashed`: Uses deterministic hashed embeddings (for testing)
-    pub async fn from_config(
-        config: &crate::utils::config::AppConfig,
+    /// Model name and dimensions come from [`SystemSettings`]. The active backend is taken
+    /// from `config.embedding_backend` at startup; [`SystemSettings::sync_from_embedding_provider`]
+    /// persists the resolved backend to the database.
+    pub async fn from_system_settings(
+        settings: &SystemSettings,
+        config: &AppConfig,
         openai_client: Option<Arc<Client<async_openai::config::OpenAIConfig>>>,
     ) -> Result<Self> {
-        use crate::utils::config::EmbeddingBackend;
-
+        let dimensions = settings.embedding_dimensions;
         match config.embedding_backend {
             EmbeddingBackend::OpenAI => {
                 let client = openai_client
                     .ok_or_else(|| anyhow!("OpenAI embedding backend requires an OpenAI client"))?;
-                // Use defaults that match SystemSettings initial values
-                Self::new_openai(client, "text-embedding-3-small".to_string(), 1536)
+                Self::new_openai(client, settings.embedding_model.clone(), dimensions)
             }
             EmbeddingBackend::FastEmbed => {
-                // Use nomic-embed-text-v1.5 as the default FastEmbed model
-                Self::new_fastembed(Some("nomic-ai/nomic-embed-text-v1.5".to_string())).await
+                Self::new_fastembed(Some(settings.embedding_model.clone())).await
             }
-            EmbeddingBackend::Hashed => Self::new_hashed(384),
+            EmbeddingBackend::Hashed => {
+                let dimension = usize::try_from(dimensions)
+                    .map_err(|_| anyhow!("embedding_dimensions exceeds usize::MAX"))?;
+                Self::new_hashed(dimension)
+            }
         }
     }
 }
@@ -459,6 +416,14 @@ mod tests {
     use super::{EmbeddingBackend, ParseEmbeddingBackendError};
     use crate::storage::types::system_settings::SystemSettings;
     use serde_json::json;
+
+    #[test]
+    fn embedding_backend_defaults_to_fastembed() {
+        assert_eq!(
+            EmbeddingBackend::default(),
+            EmbeddingBackend::FastEmbed
+        );
+    }
 
     #[test]
     fn embedding_backend_as_str_matches_serde_names() {
