@@ -17,9 +17,10 @@ use common::{
             DEFAULT_IMAGE_PROCESSING_PROMPT, DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT,
             DEFAULT_QUERY_SYSTEM_PROMPT,
         },
-        system_settings::SystemSettings,
+        system_settings::{SystemSettings, SystemSettingsPatch},
         text_chunk::TextChunk,
     },
+    utils::embedding::EmbeddingBackend,
 };
 use tracing::{error, info};
 
@@ -124,14 +125,12 @@ pub async fn toggle_registration_status(
     State(state): State<HtmlState>,
     Form(input): Form<RegistrationToggleInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let current_settings = SystemSettings::get_current(&state.db).await?;
-
-    let new_settings = SystemSettings {
-        registrations_enabled: input.registration_open,
-        ..current_settings.clone()
-    };
-
-    SystemSettings::update(&state.db, new_settings.clone()).await?;
+    let new_settings = SystemSettingsPatch {
+        registrations_enabled: Some(input.registration_open),
+        ..Default::default()
+    }
+    .apply(&state.db)
+    .await?;
 
     Ok(TemplateResponse::new_partial(
         "admin/sections/overview.html",
@@ -165,10 +164,9 @@ pub async fn update_model_settings(
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
     // Check if using FastEmbed - if so, embedding model/dimensions cannot be changed via UI
-    let uses_local_embeddings = current_settings
-        .embedding_backend
-        .as_deref()
-        .is_some_and(|b| b == "fastembed" || b == "hashed");
+    let uses_local_embeddings = current_settings.embedding_backend.is_some_and(
+        |backend| matches!(backend, EmbeddingBackend::FastEmbed | EmbeddingBackend::Hashed),
+    );
 
     // For local embeddings, ignore any embedding model/dimension changes from the form
     let (final_embedding_model, final_embedding_dimensions, reembedding_needed) =
@@ -199,17 +197,17 @@ pub async fn update_model_settings(
             )
         };
 
-    let new_settings = SystemSettings {
-        query_model: input.query_model,
-        processing_model: input.processing_model,
-        image_processing_model: input.image_processing_model,
-        voice_processing_model: input.voice_processing_model,
-        embedding_model: final_embedding_model,
-        embedding_dimensions: final_embedding_dimensions,
-        ..current_settings.clone()
-    };
-
-    SystemSettings::update(&state.db, new_settings.clone()).await?;
+    let new_settings = SystemSettingsPatch {
+        query_model: Some(input.query_model),
+        processing_model: Some(input.processing_model),
+        image_processing_model: Some(input.image_processing_model),
+        voice_processing_model: Some(input.voice_processing_model),
+        embedding_model: Some(final_embedding_model),
+        embedding_dimensions: Some(final_embedding_dimensions),
+        ..Default::default()
+    }
+    .apply(&state.db)
+    .await?;
 
     if reembedding_needed {
         info!("Embedding dimensions changed. Spawning background re-embedding task...");
@@ -300,14 +298,12 @@ pub async fn patch_query_prompt(
     State(state): State<HtmlState>,
     Form(input): Form<SystemPromptUpdateInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let current_settings = SystemSettings::get_current(&state.db).await?;
-
-    let new_settings = SystemSettings {
-        query_system_prompt: input.query_system_prompt,
-        ..current_settings.clone()
-    };
-
-    SystemSettings::update(&state.db, new_settings.clone()).await?;
+    let new_settings = SystemSettingsPatch {
+        query_system_prompt: Some(input.query_system_prompt),
+        ..Default::default()
+    }
+    .apply(&state.db)
+    .await?;
 
     Ok(TemplateResponse::new_partial(
         "admin/sections/overview.html",
@@ -347,14 +343,12 @@ pub async fn patch_ingestion_prompt(
     State(state): State<HtmlState>,
     Form(input): Form<IngestionPromptUpdateInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let current_settings = SystemSettings::get_current(&state.db).await?;
-
-    let new_settings = SystemSettings {
-        ingestion_system_prompt: input.ingestion_system_prompt,
-        ..current_settings.clone()
-    };
-
-    SystemSettings::update(&state.db, new_settings.clone()).await?;
+    let new_settings = SystemSettingsPatch {
+        ingestion_system_prompt: Some(input.ingestion_system_prompt),
+        ..Default::default()
+    }
+    .apply(&state.db)
+    .await?;
 
     Ok(TemplateResponse::new_partial(
         "admin/sections/overview.html",
@@ -394,14 +388,12 @@ pub async fn patch_image_prompt(
     State(state): State<HtmlState>,
     Form(input): Form<ImagePromptUpdateInput>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let current_settings = SystemSettings::get_current(&state.db).await?;
-
-    let new_settings = SystemSettings {
-        image_processing_prompt: input.image_processing_prompt,
-        ..current_settings.clone()
-    };
-
-    SystemSettings::update(&state.db, new_settings.clone()).await?;
+    let new_settings = SystemSettingsPatch {
+        image_processing_prompt: Some(input.image_processing_prompt),
+        ..Default::default()
+    }
+    .apply(&state.db)
+    .await?;
 
     Ok(TemplateResponse::new_partial(
         "admin/sections/overview.html",

@@ -28,9 +28,7 @@ use text_splitter::{ChunkCapacity, ChunkConfig, TextSplitter};
 
 use super::{enrichment_result::LLMEnrichmentResult, preparation::to_text_content};
 use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
-use crate::utils::llm_instructions::{
-    get_ingress_analysis_schema, INGRESS_ANALYSIS_SYSTEM_MESSAGE,
-};
+use crate::utils::llm_instructions::get_ingress_analysis_schema;
 
 const EMBEDDING_QUERY_CHAR_LIMIT: usize = 12_000;
 #[async_trait]
@@ -121,7 +119,8 @@ impl DefaultPipelineServices {
         let request = CreateChatCompletionRequestArgs::default()
             .model(&settings.processing_model)
             .messages([
-                ChatCompletionRequestSystemMessage::from(INGRESS_ANALYSIS_SYSTEM_MESSAGE).into(),
+                ChatCompletionRequestSystemMessage::from(settings.ingestion_system_prompt.as_str())
+                    .into(),
                 ChatCompletionRequestUserMessage::from(user_message).into(),
             ])
             .response_format(response_format)

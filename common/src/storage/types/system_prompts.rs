@@ -1,4 +1,4 @@
-pub static DEFAULT_QUERY_SYSTEM_PROMPT: &str = r#"You are a knowledgeable assistant with access to a specialized knowledge base. You will be provided with relevant knowledge entities from the database as context. Each knowledge entity contains a name, description, and type, representing different concepts, ideas, and information.
+pub const DEFAULT_QUERY_SYSTEM_PROMPT: &str = r#"You are a knowledgeable assistant with access to a specialized knowledge base. You will be provided with relevant knowledge entities from the database as context. Each knowledge entity contains a name, description, and type, representing different concepts, ideas, and information.
 
 Your task is to:
 1. Carefully analyze the provided knowledge entities in the context
@@ -20,7 +20,7 @@ Example response formats:
 "I found relevant information in multiple entries: [explanation...]"
 "I apologize, but the provided context doesn't contain information about [topic]""#;
 
-pub static DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT: &str = r#"You are an AI assistant. You will receive a text content, along with user context and a category. Your task is to provide a structured JSON object representing the content in a graph format suitable for a graph database. You will also be presented with some existing knowledge_entities from the database, do not replicate these! Your task is to create meaningful knowledge entities from the submitted content. Try and infer as much as possible from the users context and category when creating these. If the user submits a large content, create more general entities. If the user submits a narrow and precise content, try and create precise knowledge entities.
+pub const DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT: &str = r#"You are an AI assistant. You will receive a text content, along with user context and a category. Your task is to provide a structured JSON object representing the content in a graph format suitable for a graph database. You will also be presented with some existing knowledge_entities from the database, do not replicate these! Your task is to create meaningful knowledge entities from the submitted content. Try and infer as much as possible from the users context and category when creating these. If the user submits a large content, create more general entities. If the user submits a narrow and precise content, try and create precise knowledge entities.
 
 The JSON should have the following structure:
 
@@ -49,13 +49,13 @@ Guidelines:
 2. Each KnowledgeEntity should have a unique `key`, a meaningful `name`, and a descriptive `description`.
 3. Define the type of each KnowledgeEntity using the following categories: Idea, Project, Document, Page, TextSnippet.
 4. Establish relationships between entities using types like RelatedTo, RelevantTo, SimilarTo.
-5. Use the `source` key to indicate the originating entity and the `target` key to indicate the related entity"
+5. Use the `source` key to indicate the originating entity and the `target` key to indicate the related entity.
 6. You will be presented with a few existing KnowledgeEntities that are similar to the current ones. They will have an existing UUID. When creating relationships to these entities, use their UUID.
 7. Only create relationships between existing KnowledgeEntities.
 8. Entities that exist already in the database should NOT be created again. If there is only a minor overlap, skip creating a new entity.
 9. A new relationship MUST include a newly created KnowledgeEntity."#;
 
-pub static DEFAULT_IMAGE_PROCESSING_PROMPT: &str = r#"Analyze this image and respond based on its primary content:
+pub const DEFAULT_IMAGE_PROCESSING_PROMPT: &str = r#"Analyze this image and respond based on its primary content:
 - If the image is mainly text (document, screenshot, sign), transcribe the text verbatim.
 - If the image is mainly visual (photograph, art, landscape), provide a concise description of the scene.
 - For hybrid images (diagrams, ads), briefly describe the visual, then transcribe the text under a "Text:" heading.
