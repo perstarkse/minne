@@ -384,8 +384,7 @@ impl TextChunk {
 
             let embedding = provider
                 .embed(&chunk.chunk)
-                .await
-                .map_err(AppError::internal)?;
+                .await?;
 
             // Safety check: ensure the generated embedding has the correct dimension.
             if embedding.len() != new_dimensions {
@@ -489,20 +488,10 @@ mod tests {
 
     use super::*;
     use crate::storage::indexes::{ensure_runtime, rebuild};
-    use crate::storage::types::system_settings::SystemSettings;
     use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
+    use crate::test_utils::configure_embedding_dimension;
     use surrealdb::RecordId;
     use uuid::Uuid;
-
-    async fn configure_embedding_dimension(
-        db: &SurrealDbClient,
-        dimension: u32,
-    ) -> anyhow::Result<()> {
-        let mut settings = SystemSettings::get_current(db).await?;
-        settings.embedding_dimensions = dimension;
-        SystemSettings::update(db, settings).await?;
-        Ok(())
-    }
 
     async fn ensure_chunk_fts_index(db: &SurrealDbClient) -> anyhow::Result<()> {
         let snowball_sql = r#"

@@ -158,45 +158,11 @@ impl KnowledgeEntityEmbedding {
 mod tests {
     #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
-    use crate::storage::db::SurrealDbClient;
     use crate::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
-    use crate::storage::types::system_settings::SystemSettings;
+    use crate::test_utils::{prepare_knowledge_entity_test_db, setup_test_db};
     use anyhow::{self, Context};
     use chrono::Utc;
     use surrealdb::Value as SurrealValue;
-    use uuid::Uuid;
-
-    async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
-        let namespace = "test_ns";
-        let database = Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, &database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
-        Ok(db)
-    }
-
-    async fn setup_test_db_with_embedding_dimension(
-        dimension: u32,
-    ) -> anyhow::Result<SurrealDbClient> {
-        let db = setup_test_db().await?;
-        let mut settings = SystemSettings::get_current(&db).await?;
-        settings.embedding_dimensions = dimension;
-        SystemSettings::update(&db, settings).await?;
-        Ok(db)
-    }
-
-    async fn prepare_test_db(dimension: u32) -> anyhow::Result<SurrealDbClient> {
-        let db = setup_test_db_with_embedding_dimension(dimension).await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, dimension as usize)
-            .await
-            .with_context(|| format!("set test index dimension to {dimension}"))?;
-        Ok(db)
-    }
 
     fn build_knowledge_entity_with_id(
         key: &str,
@@ -236,7 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_get_by_entity_id() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
         let user_id = "user_ke";
         let entity_key = "entity-1";
         let source_id = "source-ke";
@@ -266,7 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_entity_id() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
         let user_id = "user_ke";
         let entity_key = "entity-delete";
         let source_id = "source-del";
@@ -298,7 +264,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_with_embedding_creates_entity_and_embedding() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
         let user_id = "user_store";
         let source_id = "source_store";
         let embedding = vec![0.2_f32, 0.3, 0.4];
@@ -331,7 +297,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_with_embedding_rejects_wrong_dimension() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
 
         let entity = build_knowledge_entity_with_id("entity-dim", "source-dim", "user-dim");
         let result =
@@ -344,7 +310,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_source_id() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
         let user_id = "user_ke";
         let source_id = "shared-ke";
         let other_source = "other-ke";
@@ -437,7 +403,7 @@ mod tests {
             entity_id: KnowledgeEntity,
         }
 
-        let db = prepare_test_db(3).await?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
         let user_id = "user_ke";
         let entity_key = "entity-fetch";
         let source_id = "source-fetch";
@@ -475,7 +441,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_upsert_replaces_existing_embedding_row() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
 
         let user_id = "user-upsert";
         let source_id = "source-upsert";

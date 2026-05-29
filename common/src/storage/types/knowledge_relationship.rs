@@ -151,19 +151,7 @@ mod tests {
     use crate::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
     use anyhow::{self, Context};
 
-    async fn setup_test_db() -> SurrealDbClient {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
-
-        db.apply_migrations()
-            .await
-            .expect("Failed to apply migrations");
-
-        db
-    }
+    use crate::test_utils::setup_test_db;
 
     async fn get_relationship_by_id(
         relationship_id: &str,
@@ -234,7 +222,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_and_verify_by_source_id() -> anyhow::Result<()> {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
         let user_id = "user123";
 
         let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
@@ -282,7 +270,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_relationship_rejects_foreign_entity() -> anyhow::Result<()> {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
 
         let owner_entity = create_test_entity("Owner entity", "owner-user", &db).await?;
         let other_entity = create_test_entity("Other entity", "other-user", &db).await?;
@@ -303,7 +291,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_relationship_resists_query_injection() -> anyhow::Result<()> {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
         let user_id = "user123";
 
         let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
@@ -342,7 +330,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_and_delete_relationship() -> anyhow::Result<()> {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
         let user_id = "user123";
 
         let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
@@ -396,7 +384,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_relationship_by_id_unauthorized() -> anyhow::Result<()> {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
         let owner_user_id = "owner-user";
 
         let entity1_id = create_test_entity("Entity 1", owner_user_id, &db).await?;
@@ -459,7 +447,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_relationship_exists() -> anyhow::Result<()> {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
         let user_id = "user123";
 
         let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;
@@ -543,7 +531,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_relationships_by_source_id_scoped_to_user() -> anyhow::Result<()> {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
 
         let user_a = "user-a";
         let user_b = "user-b";
@@ -584,7 +572,7 @@ mod tests {
     #[tokio::test]
     async fn test_delete_relationships_by_source_id_resists_query_injection() -> anyhow::Result<()>
     {
-        let db = setup_test_db().await;
+        let db = setup_test_db().await?;
         let user_id = "user123";
 
         let entity1_id = create_test_entity("Entity 1", user_id, &db).await?;

@@ -256,11 +256,7 @@ pub async fn embed(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
     } else {
         debug!("Generating query embedding for hybrid retrieval");
         let embedding = if let Some(provider) = ctx.embedding_provider {
-            provider.embed(&ctx.input_text).await.map_err(|e| {
-                AppError::InternalError(format!(
-                    "Failed to generate embedding with provider: {e}",
-                ))
-            })?
+            provider.embed(&ctx.input_text).await?
         } else {
             generate_embedding(ctx.openai_client, &ctx.input_text, ctx.db_client).await?
         };

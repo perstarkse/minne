@@ -2,8 +2,11 @@ use common::storage::types::conversation::SidebarConversation;
 use common::storage::{db::SurrealDbClient, store::StorageManager};
 use common::utils::embedding::EmbeddingProvider;
 use common::utils::template_engine::{ProvidesTemplateEngine, TemplateEngine};
-use common::{create_template_engine, storage::db::ProvidesDb, utils::config::AppConfig};
-use retrieval_pipeline::{reranking::RerankerPool, RetrievalStrategy};
+use common::{
+    create_template_engine, storage::db::ProvidesDb,
+    utils::config::{AppConfig, RetrievalStrategy},
+};
+use retrieval_pipeline::reranking::RerankerPool;
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -16,6 +19,7 @@ use tracing::debug;
 use crate::{OpenAIClientType, SessionStoreType};
 
 #[derive(Clone)]
+/// Shared application state for HTML handlers and middleware.
 pub struct HtmlState {
     pub db: Arc<SurrealDbClient>,
     pub openai_client: Arc<OpenAIClientType>,
@@ -31,7 +35,7 @@ pub struct HtmlState {
 
 #[derive(Clone)]
 struct ConversationArchiveCacheEntry {
-    conversations: Vec<SidebarConversation>,
+    conversations: Arc<[SidebarConversation]>,
     expires_at: Instant,
 }
 
@@ -72,23 +76,19 @@ impl HtmlState {
     }
 
     pub fn retrieval_strategy(&self) -> RetrievalStrategy {
-        self.config
-            .retrieval_strategy
-            .as_deref()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(RetrievalStrategy::Default)
+        self.config.resolved_retrieval_strategy()
     }
 
     pub async fn get_cached_conversation_archive(
         &self,
         user_id: &str,
-    ) -> Option<Vec<SidebarConversation>> {
+    ) -> Option<Arc<[SidebarConversation]>> {
         let now = Instant::now();
         let should_evict_expired = {
             let cache = self.conversation_archive_cache.read().await;
             if let Some(entry) = cache.get(user_id) {
                 if entry.expires_at > now {
-                    return Some(entry.conversations.clone());
+                    return Some(Arc::clone(&entry.conversations));
                 }
                 true
             } else {
@@ -107,7 +107,7 @@ impl HtmlState {
     pub async fn set_cached_conversation_archive(
         &self,
         user_id: &str,
-        conversations: Vec<SidebarConversation>,
+        conversations: Arc<[SidebarConversation]>,
     ) {
         let now = Instant::now();
         let mut cache = self.conversation_archive_cache.write().await;
@@ -235,10 +235,10 @@ mod tests {
             cache.insert(
                 user_id.to_string(),
                 ConversationArchiveCacheEntry {
-                    conversations: vec![SidebarConversation {
+                    conversations: Arc::from([SidebarConversation {
                         id: "conv-1".to_string(),
                         title: "A stale chat".to_string(),
-                    }],
+                    }]),
                     expires_at: Instant::now() - Duration::from_secs(1),
                 },
             );
