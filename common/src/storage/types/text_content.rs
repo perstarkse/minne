@@ -202,25 +202,7 @@ mod tests {
     use anyhow::{self, Context};
 
     use super::*;
-    use crate::storage::indexes::{ensure_runtime, rebuild};
-
-    async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
-        let namespace = "test_ns";
-        let database = Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, &database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-        ensure_runtime(&db, 1536)
-            .await
-            .with_context(|| "ensure runtime indexes".to_string())?;
-        rebuild(&db)
-            .await
-            .with_context(|| "rebuild indexes".to_string())?;
-        Ok(db)
-    }
+    use crate::test_utils::setup_test_db_with_runtime_indexes;
 
     #[tokio::test]
     async fn test_text_content_creation() -> anyhow::Result<()> {
@@ -339,7 +321,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_text_content_patch_not_found() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
+        let db = setup_test_db_with_runtime_indexes().await?;
 
         let err = TextContent::patch("missing-id", "ctx", "cat", "text", &db)
             .await
@@ -412,7 +394,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_search_returns_empty_when_no_content() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
+        let db = setup_test_db_with_runtime_indexes().await?;
 
         let results = TextContent::search(&db, "hello", "user", 5)
             .await
@@ -424,7 +406,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_search_finds_matching_text_and_filters_user() -> anyhow::Result<()> {
-        let db = setup_test_db().await?;
+        let db = setup_test_db_with_runtime_indexes().await?;
         let user_id = "search_user";
 
         let matching = TextContent::new(
@@ -450,9 +432,6 @@ mod tests {
         db.store_item(other_user)
             .await
             .with_context(|| "store other user".to_string())?;
-        rebuild(&db)
-            .await
-            .with_context(|| "rebuild indexes".to_string())?;
 
         let results = TextContent::search(&db, "rust", user_id, 5)
             .await

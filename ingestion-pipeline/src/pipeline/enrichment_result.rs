@@ -158,10 +158,7 @@ async fn create_single_entity(
     );
 
     let embedding = if let Some(provider) = embedding_provider {
-        provider
-            .embed(&embedding_input)
-            .await
-            .map_err(|e| AppError::InternalError(format!("FastEmbed embedding for entity failed: {e}")))?
+        provider.embed(&embedding_input).await?
     } else {
         generate_embedding(openai_client, &embedding_input, db_client).await?
     };

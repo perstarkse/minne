@@ -4,6 +4,36 @@ use tokio::task::JoinError;
 
 use crate::storage::types::file_info::FileError;
 
+/// Errors from embedding provider operations.
+#[allow(clippy::module_name_repetitions)]
+#[derive(Error, Debug)]
+pub enum EmbeddingError {
+    #[error("openai error: {0}")]
+    OpenAI(#[from] OpenAIError),
+    #[error("fastembed error: {0}")]
+    FastEmbed(String),
+    #[error("task join error: {0}")]
+    Join(#[from] JoinError),
+    #[error("fastembed model mutex poisoned: {0}")]
+    MutexPoisoned(String),
+    #[error("no embedding data received")]
+    NoData,
+    #[error("embedding configuration error: {0}")]
+    Config(String),
+    #[error("unknown fastembed model: {0}")]
+    UnknownModel(String),
+}
+
+impl EmbeddingError {
+    pub(crate) fn fastembed(err: impl std::fmt::Display) -> Self {
+        Self::FastEmbed(err.to_string())
+    }
+
+    pub(crate) fn mutex_poisoned(err: impl std::fmt::Display) -> Self {
+        Self::MutexPoisoned(err.to_string())
+    }
+}
+
 // Core internal errors
 #[allow(clippy::module_name_repetitions)]
 #[derive(Error, Debug)]
@@ -12,6 +42,8 @@ pub enum AppError {
     Database(#[from] surrealdb::Error),
     #[error("openai error: {0}")]
     OpenAI(#[from] OpenAIError),
+    #[error("embedding error: {0}")]
+    Embedding(#[from] EmbeddingError),
     #[error("file error: {0}")]
     File(#[from] FileError),
     #[error("not found: {0}")]

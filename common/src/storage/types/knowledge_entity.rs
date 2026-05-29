@@ -499,8 +499,7 @@ impl KnowledgeEntity {
 
             let embedding = provider
                 .embed(&embedding_input)
-                .await
-                .map_err(AppError::internal)?;
+                .await?;
 
             // Safety check: ensure the generated embedding has the correct dimension.
             if embedding.len() != new_dimensions {
@@ -599,20 +598,10 @@ mod tests {
     #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
     use crate::storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding;
-    use crate::storage::types::system_settings::SystemSettings;
+    use crate::test_utils::configure_embedding_dimension;
     use anyhow::{self, Context};
     use serde_json::json;
     use uuid::Uuid;
-
-    async fn configure_embedding_dimension(
-        db: &SurrealDbClient,
-        dimension: u32,
-    ) -> anyhow::Result<()> {
-        let mut settings = SystemSettings::get_current(db).await?;
-        settings.embedding_dimensions = dimension;
-        SystemSettings::update(db, settings).await?;
-        Ok(())
-    }
 
     #[tokio::test]
     async fn test_knowledge_entity_creation() -> anyhow::Result<()> {

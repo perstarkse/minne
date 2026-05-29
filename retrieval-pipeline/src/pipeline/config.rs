@@ -1,21 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
 
 use crate::scoring::FusionWeights;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum RetrievalStrategy {
-    /// Primary hybrid chunk retrieval for search/chat (formerly Revised)
-    #[default]
-    Default,
-    /// Entity retrieval for suggesting relationships when creating manual entities
-    RelationshipSuggestion,
-    /// Entity retrieval for context during content ingestion
-    Ingestion,
-    /// Unified search returning both chunks and entities
-    Search,
-}
+pub use common::utils::config::RetrievalStrategy;
 
 /// Configures which result types to include in Search strategy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -28,41 +15,6 @@ pub enum SearchTarget {
     /// Return both chunks and entities (default)
     #[default]
     Both,
-}
-
-impl std::str::FromStr for RetrievalStrategy {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value.to_ascii_lowercase().as_str() {
-            "default" => Ok(Self::Default),
-            // Backward compatibility: treat "initial" and "revised" as "default"
-            "initial" | "revised" => {
-                tracing::warn!(
-                    "Retrieval strategy '{}' is deprecated. Use 'default' instead. \
-                     The 'initial' strategy has been removed in favor of the simpler hybrid chunk retrieval.",
-                    value
-                );
-                Ok(Self::Default)
-            }
-            "relationship_suggestion" => Ok(Self::RelationshipSuggestion),
-            "ingestion" => Ok(Self::Ingestion),
-            "search" => Ok(Self::Search),
-            other => Err(format!("unknown retrieval strategy '{other}'")),
-        }
-    }
-}
-
-impl fmt::Display for RetrievalStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let label = match self {
-            RetrievalStrategy::Default => "default",
-            RetrievalStrategy::RelationshipSuggestion => "relationship_suggestion",
-            RetrievalStrategy::Ingestion => "ingestion",
-            RetrievalStrategy::Search => "search",
-        };
-        f.write_str(label)
-    }
 }
 
 /// Two-variant flag that serializes as a bool for backward compatibility.

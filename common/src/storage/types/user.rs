@@ -732,20 +732,7 @@ mod tests {
     use crate::storage::types::ingestion_task::{IngestionTask, TaskState, MAX_ATTEMPTS};
     use std::collections::HashSet;
 
-    // Helper function to set up a test database with SystemSettings
-    async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
-        let namespace = "test_ns";
-        let database = Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, &database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to setup the migrations".to_string())?;
-
-        Ok(db)
-    }
+    use crate::test_utils::setup_test_db;
 
     #[tokio::test]
     async fn test_user_creation() -> anyhow::Result<()> {

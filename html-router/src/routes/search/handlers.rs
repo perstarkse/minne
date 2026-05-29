@@ -20,6 +20,7 @@ use crate::{
         auth_middleware::RequireUser,
         response_middleware::{HtmlError, TemplateResponse},
     },
+    utils::truncate::{first_non_empty_line, truncate_with_ellipsis},
 };
 
 /// Serde deserialization decorator to map empty Strings to None,
@@ -39,31 +40,6 @@ where
 fn source_id_suffix(source_id: &str) -> String {
     let start = source_id.len().saturating_sub(8);
     source_id[start..].to_string()
-}
-
-fn truncate_label(value: &str, max_chars: usize) -> String {
-    let mut end = None;
-    for (count, (idx, _)) in value.char_indices().enumerate() {
-        if count == max_chars {
-            end = Some(idx);
-            break;
-        }
-    }
-
-    match end {
-        Some(idx) => format!("{}...", &value[..idx]),
-        None => value.to_string(),
-    }
-}
-
-fn first_non_empty_line(text: &str, max_chars: usize) -> Option<String> {
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if !trimmed.is_empty() {
-            return Some(truncate_label(trimmed, max_chars));
-        }
-    }
-    None
 }
 
 #[derive(Deserialize)]
@@ -121,7 +97,7 @@ fn build_source_label(row: &SourceLabelRow) -> String {
     if let Some(context) = row.context.as_ref() {
         let trimmed = context.trim();
         if !trimmed.is_empty() {
-            return truncate_label(trimmed, MAX_LABEL_CHARS);
+            return truncate_with_ellipsis(trimmed, MAX_LABEL_CHARS);
         }
     }
 
@@ -131,7 +107,7 @@ fn build_source_label(row: &SourceLabelRow) -> String {
 
     let category = row.category.trim();
     if !category.is_empty() {
-        return truncate_label(category, MAX_LABEL_CHARS);
+        return truncate_with_ellipsis(category, MAX_LABEL_CHARS);
     }
 
     format!("Text snippet: {}", source_id_suffix(&row.id))

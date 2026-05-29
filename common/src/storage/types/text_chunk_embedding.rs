@@ -144,41 +144,8 @@ mod tests {
 
     use super::*;
     use crate::storage::db::SurrealDbClient;
-    use crate::storage::types::system_settings::SystemSettings;
+    use crate::test_utils::{prepare_text_chunk_test_db, setup_test_db};
     use surrealdb::Value as SurrealValue;
-    use uuid::Uuid;
-
-    async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
-        let namespace = "test_ns";
-        let database = Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, &database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
-        Ok(db)
-    }
-
-    async fn setup_test_db_with_embedding_dimension(
-        dimension: u32,
-    ) -> anyhow::Result<SurrealDbClient> {
-        let db = setup_test_db().await?;
-        let mut settings = SystemSettings::get_current(&db).await?;
-        settings.embedding_dimensions = dimension;
-        SystemSettings::update(&db, settings).await?;
-        Ok(db)
-    }
-
-    async fn prepare_test_db(dimension: u32) -> anyhow::Result<SurrealDbClient> {
-        let db = setup_test_db_with_embedding_dimension(dimension).await?;
-        TextChunkEmbedding::redefine_hnsw_index(&db, dimension as usize)
-            .await
-            .with_context(|| format!("set test index dimension to {dimension}"))?;
-        Ok(db)
-    }
 
     async fn create_text_chunk_with_id(
         db: &SurrealDbClient,
@@ -245,7 +212,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_get_by_chunk_id() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_text_chunk_test_db(3).await?;
 
         let user_id = "user_a";
         let chunk_key = "chunk-123";
@@ -279,7 +246,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_chunk_id() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_text_chunk_test_db(3).await?;
 
         let user_id = "user_b";
         let chunk_key = "chunk-delete";
@@ -316,7 +283,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_source_id() -> anyhow::Result<()> {
-        let db = prepare_test_db(1).await?;
+        let db = prepare_text_chunk_test_db(1).await?;
 
         let user_id = "user_c";
         let source_id = "shared-source";
@@ -377,7 +344,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_upsert_replaces_existing_embedding_row() -> anyhow::Result<()> {
-        let db = prepare_test_db(3).await?;
+        let db = prepare_text_chunk_test_db(3).await?;
 
         let user_id = "user-upsert";
         let source_id = "source-upsert";
