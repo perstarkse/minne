@@ -1,4 +1,4 @@
-use crate::storage::types::serde_helpers::deserialize_flexible_id;
+use crate::utils::serde_helpers::deserialize_flexible_id;
 use serde::{Deserialize, Serialize};
 
 use crate::{error::AppError, storage::db::SurrealDbClient, storage::types::StoredObject};
