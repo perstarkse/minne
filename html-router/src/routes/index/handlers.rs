@@ -15,7 +15,7 @@ use crate::{
         response_middleware::{HtmlError, TemplateResponse},
     },
     utils::text_content_preview::truncate_text_contents,
-    AuthSessionType,
+    utils::truncate::with_ellipsis,
 };
 use common::storage::types::user::DashboardStats;
 use common::{
@@ -36,13 +36,9 @@ pub struct IndexPageData {
 
 pub async fn index_handler(
     State(state): State<HtmlState>,
-    auth: AuthSessionType,
+    RequireUser(user): RequireUser,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let Some(user) = auth.current_user else {
-        return Ok(TemplateResponse::redirect("/signin"));
-    };
-
-    let (text_contents, stats, active_jobs) = try_join!(
+    let (text_contents, dashboard_stats, active_jobs) = try_join!(
         User::get_latest_text_contents(&user.id, &state.db),
         User::get_dashboard_stats(&user.id, &state.db),
         User::get_unfinished_ingestion_tasks(&user.id, &state.db)
@@ -54,7 +50,7 @@ pub async fn index_handler(
         "dashboard/base.html",
         IndexPageData {
             text_contents,
-            stats,
+            stats: dashboard_stats,
             active_jobs,
         },
     ))
@@ -223,7 +219,7 @@ pub async fn show_task_archive(
 fn summarize_task_content(task: &IngestionTask) -> (String, String) {
     match &task.content {
         common::storage::types::ingestion_payload::IngestionPayload::Text { text, .. } => {
-            ("Text".to_string(), truncate_summary(text, 80))
+            ("Text".to_string(), with_ellipsis(text, 80))
         }
         common::storage::types::ingestion_payload::IngestionPayload::Url { url, .. } => {
             ("URL".to_string(), url.clone())
@@ -231,15 +227,6 @@ fn summarize_task_content(task: &IngestionTask) -> (String, String) {
         common::storage::types::ingestion_payload::IngestionPayload::File { file_info, .. } => {
             ("File".to_string(), file_info.file_name.clone())
         }
-    }
-}
-
-fn truncate_summary(input: &str, max_chars: usize) -> String {
-    if input.chars().count() <= max_chars {
-        input.to_string()
-    } else {
-        let truncated: String = input.chars().take(max_chars).collect();
-        format!("{truncated}…")
     }
 }
 

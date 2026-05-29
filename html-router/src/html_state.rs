@@ -115,15 +115,17 @@ impl HtmlState {
             user_id.to_string(),
             ConversationArchiveCacheEntry {
                 conversations,
-                expires_at: now + CONVERSATION_ARCHIVE_CACHE_TTL,
+                expires_at: now
+                    .checked_add(CONVERSATION_ARCHIVE_CACHE_TTL)
+                    .unwrap_or(now),
             },
         );
 
         let writes = self
             .conversation_archive_cache_writes
             .fetch_add(1, Ordering::Relaxed)
-            + 1;
-        if writes % CONVERSATION_ARCHIVE_CACHE_CLEANUP_WRITE_INTERVAL == 0 {
+            .saturating_add(1);
+        if writes.is_multiple_of(CONVERSATION_ARCHIVE_CACHE_CLEANUP_WRITE_INTERVAL) {
             Self::purge_expired_entries(&mut cache, now);
         }
 
@@ -147,7 +149,7 @@ impl HtmlState {
             return;
         }
 
-        let overflow = cache.len() - CONVERSATION_ARCHIVE_CACHE_MAX_USERS;
+        let overflow = cache.len().saturating_sub(CONVERSATION_ARCHIVE_CACHE_MAX_USERS);
         let mut by_expiry: Vec<(String, Instant)> = cache
             .iter()
             .map(|(user_id, entry)| (user_id.clone(), entry.expires_at))
@@ -178,6 +180,8 @@ impl crate::middlewares::response_middleware::ProvidesHtmlState for HtmlState {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use common::{
         storage::types::conversation::SidebarConversation,
@@ -202,8 +206,10 @@ mod tests {
                 .expect("Failed to create session store"),
         );
 
-        let mut config = AppConfig::default();
-        config.storage = StorageKind::Memory;
+        let config = AppConfig {
+            storage: StorageKind::Memory,
+            ..Default::default()
+        };
 
         let storage = StorageManager::new(&config)
             .await
@@ -239,7 +245,9 @@ mod tests {
                         id: "conv-1".to_string(),
                         title: "A stale chat".to_string(),
                     }]),
-                    expires_at: Instant::now() - Duration::from_secs(1),
+                    expires_at: Instant::now()
+                        .checked_sub(Duration::from_secs(1))
+                        .unwrap_or_else(Instant::now),
                 },
             );
         }

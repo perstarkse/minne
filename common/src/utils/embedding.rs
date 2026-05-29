@@ -15,6 +15,7 @@ use crate::{
     utils::config::AppConfig,
 };
 
+#[allow(clippy::module_name_repetitions)]
 pub use crate::utils::config::{EmbeddingBackend, ParseEmbeddingBackendError};
 
 /// Wrapper around the chosen embedding backend.
@@ -431,6 +432,8 @@ pub async fn generate_embedding_with_params(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::{EmbeddingBackend, ParseEmbeddingBackendError};
     use crate::storage::types::system_settings::SystemSettings;
     use serde_json::json;

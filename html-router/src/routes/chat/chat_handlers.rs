@@ -1,20 +1,16 @@
 use axum::{
     extract::{Path, State},
     http::HeaderValue,
-    response::{IntoResponse, Redirect},
+    response::IntoResponse,
     Form,
 };
-use axum_session_auth::AuthSession;
-use axum_session_surreal::SessionSurrealPool;
 use serde::{Deserialize, Serialize};
-use surrealdb::{engine::any::Any, Surreal};
 
 use common::{
     error::AppError,
     storage::types::{
         conversation::Conversation,
         message::{Message, MessageRole},
-        user::User,
     },
 };
 
@@ -26,73 +22,10 @@ use crate::{
     },
 };
 
-#[derive(Debug, Deserialize)]
-pub struct ChatStartParams {
-    user_query: String,
-    llm_response: String,
-    #[serde(deserialize_with = "deserialize_references")]
-    references: Vec<String>,
-}
-
-// Custom deserializer function
-fn deserialize_references<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    serde_json::from_str(&s).map_err(serde::de::Error::custom)
-}
-
 #[derive(Serialize)]
 pub struct ChatPageData {
     history: Vec<Message>,
     conversation: Option<Conversation>,
-}
-
-/// # Panics
-/// Panics if the HX-Push header value cannot be parsed.
-pub async fn show_initialized_chat(
-    State(state): State<HtmlState>,
-    RequireUser(user): RequireUser,
-    Form(form): Form<ChatStartParams>,
-) -> Result<impl IntoResponse, HtmlError> {
-    let conversation = Conversation::new(user.id.clone(), "Test".to_owned());
-
-    let user_message = Message::new(
-        conversation.id.clone(),
-        MessageRole::User,
-        form.user_query,
-        None,
-    );
-
-    let ai_message = Message::new(
-        conversation.id.clone(),
-        MessageRole::AI,
-        form.llm_response,
-        Some(form.references),
-    );
-
-    state.db.store_item(conversation.clone()).await?;
-    state.db.store_item(ai_message.clone()).await?;
-    state.db.store_item(user_message.clone()).await?;
-    state.invalidate_conversation_archive_cache(&user.id).await;
-
-    let messages = vec![user_message, ai_message];
-
-    let mut response = TemplateResponse::new_template(
-        "chat/base.html",
-        ChatPageData {
-            history: messages,
-            conversation: Some(conversation.clone()),
-        },
-    )
-    .into_response();
-
-    if let Ok(header_value) = HeaderValue::from_str(&format!("/chat/{}", conversation.id)) {
-        response.headers_mut().insert("HX-Push", header_value);
-    }
-
-    Ok(response)
 }
 
 pub async fn show_chat_base(
@@ -131,8 +64,6 @@ pub async fn show_existing_chat(
     ))
 }
 
-/// # Panics
-/// Panics if the HX-Push header value cannot be parsed.
 pub async fn new_user_message(
     Path(conversation_id): Path<String>,
     State(state): State<HtmlState>,
@@ -171,11 +102,9 @@ pub async fn new_user_message(
     Ok(response)
 }
 
-/// # Panics
-/// Panics if the HX-Push header value cannot be parsed.
 pub async fn new_chat_user_message(
     State(state): State<HtmlState>,
-    auth: AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>,
+    RequireUser(user): RequireUser,
     Form(form): Form<NewMessageForm>,
 ) -> Result<impl IntoResponse, HtmlError> {
     #[derive(Serialize)]
@@ -183,10 +112,6 @@ pub async fn new_chat_user_message(
         user_message: Message,
         conversation: Conversation,
     }
-
-    let Some(user) = auth.current_user else {
-        return Ok(Redirect::to("/").into_response());
-    };
 
     let conversation = Conversation::new(user.id.clone(), "New chat".to_string());
     let user_message = Message::new(
@@ -213,7 +138,7 @@ pub async fn new_chat_user_message(
         response.headers_mut().insert("HX-Push", header_value);
     }
 
-    Ok(response.into_response())
+    Ok(response)
 }
 
 #[derive(Deserialize)]

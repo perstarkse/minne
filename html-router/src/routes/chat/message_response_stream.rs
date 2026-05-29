@@ -25,7 +25,7 @@ use retrieval_pipeline::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use tokio::sync::mpsc::channel;
 use tracing::{debug, error, info};
 
@@ -39,7 +39,10 @@ use common::storage::{
     },
 };
 
-use crate::{html_state::HtmlState, AuthSessionType};
+use crate::{
+    html_state::HtmlState,
+    middlewares::auth_middleware::RequireUser,
+};
 
 use super::reference_validation::{collect_reference_ids_from_retrieval, validate_references};
 
@@ -61,15 +64,9 @@ fn create_error_stream(message: impl Into<String>) -> EventStream {
 
 async fn get_message_and_user(
     db: &SurrealDbClient,
-    current_user: Option<User>,
+    user: User,
     message_id: &str,
 ) -> Result<(Message, User, Conversation, Vec<Message>, Option<Message>), SseResponse> {
-    let Some(user) = current_user else {
-        return Err(sse_with_keep_alive(create_error_stream(
-            "You must be signed in to use this feature",
-        )));
-    };
-
     let message = match db.get_item::<Message>(message_id).await {
         Ok(Some(message)) => message,
         Ok(None) => {
@@ -136,7 +133,7 @@ fn find_message_index(messages: &[Message], message_id: &str) -> Option<usize> {
 fn find_existing_ai_response(messages: &[Message], user_message_index: usize) -> Option<Message> {
     messages
         .iter()
-        .skip(user_message_index + 1)
+        .skip(user_message_index.saturating_add(1))
         .take_while(|message| message.role != MessageRole::User)
         .find(|message| message.role == MessageRole::AI)
         .cloned()
@@ -202,11 +199,11 @@ fn extract_reference_strings(response: &LLMResponseFormat) -> Vec<String> {
 #[allow(clippy::too_many_lines)]
 pub async fn get_response_stream(
     State(state): State<HtmlState>,
-    auth: AuthSessionType,
+    RequireUser(user): RequireUser,
     Query(params): Query<QueryParams>,
 ) -> SseResponse {
     let (user_message, user, _conversation, history, existing_ai_response) =
-        match get_message_and_user(&state.db, auth.current_user, &params.message_id).await {
+        match get_message_and_user(&state.db, user, &params.message_id).await {
             Ok((user_message, user, conversation, history, existing_ai_response)) => (
                 user_message,
                 user,
@@ -289,7 +286,7 @@ fn build_chat_event_stream(
                             let _ = tx_storage.send(content.clone()).await;
 
                             let display_content = {
-                                let mut state = json_state.lock().expect("json parser mutex poisoned");
+                                let mut state = json_state.lock().await;
                                 state.process_chunk(&content)
                             };
                             if !display_content.is_empty() {
@@ -540,6 +537,8 @@ impl StreamParserState {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::missing_docs_in_private_items)]
+
     use super::*;
     use chrono::{Duration as ChronoDuration, Utc};
     use common::storage::{
@@ -707,7 +706,7 @@ mod tests {
             .expect("failed to store second user message");
 
         let (_, _, _, history_for_first_turn, existing_ai_for_first_turn) =
-            get_message_and_user(&db, Some(user.clone()), &user_message.id)
+            get_message_and_user(&db, user.clone(), &user_message.id)
                 .await
                 .expect("expected first turn to load");
 
@@ -717,7 +716,7 @@ mod tests {
         assert_eq!(existing_ai_for_first_turn.id, ai_message.id);
 
         let (_, _, _, history_for_second_turn, existing_ai_for_second_turn) =
-            get_message_and_user(&db, Some(user), &second_user_message.id)
+            get_message_and_user(&db, user, &second_user_message.id)
                 .await
                 .expect("expected second turn to load");
 

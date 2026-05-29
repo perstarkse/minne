@@ -1,18 +1,13 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt,
-    str::FromStr,
-};
+use std::collections::HashSet;
 
 use axum::{
     extract::{Query, State},
     response::IntoResponse,
 };
-use common::storage::types::{text_content::TextContent, user::User, StoredObject};
-use common::utils::serde_helpers::deserialize_flexible_id;
+use common::storage::types::{text_content::TextContent, user::User};
 use retrieval_pipeline::{RetrievalConfig, SearchResult, SearchTarget, StrategyOutput};
 use serde::{de, Deserialize, Deserializer, Serialize};
-use surrealdb::RecordId;
+use std::{fmt, str::FromStr};
 
 use crate::{
     html_state::HtmlState,
@@ -20,7 +15,6 @@ use crate::{
         auth_middleware::RequireUser,
         response_middleware::{HtmlError, TemplateResponse},
     },
-    utils::truncate::{first_non_empty_line, truncate_with_ellipsis},
 };
 
 /// Serde deserialization decorator to map empty Strings to None,
@@ -35,86 +29,6 @@ where
         None | Some("") => Ok(None),
         Some(s) => FromStr::from_str(s).map_err(de::Error::custom).map(Some),
     }
-}
-
-fn source_id_suffix(source_id: &str) -> String {
-    let start = source_id.len().saturating_sub(8);
-    source_id[start..].to_string()
-}
-
-#[derive(Deserialize)]
-struct UrlInfoLabel {
-    #[serde(default)]
-    title: String,
-    #[serde(default)]
-    url: String,
-}
-
-#[derive(Deserialize)]
-struct FileInfoLabel {
-    #[serde(default)]
-    file_name: String,
-}
-
-#[derive(Deserialize)]
-struct SourceLabelRow {
-    #[serde(deserialize_with = "deserialize_flexible_id")]
-    id: String,
-    #[serde(default)]
-    url_info: Option<UrlInfoLabel>,
-    #[serde(default)]
-    file_info: Option<FileInfoLabel>,
-    #[serde(default)]
-    context: Option<String>,
-    #[serde(default)]
-    category: String,
-    #[serde(default)]
-    text: String,
-}
-
-fn build_source_label(row: &SourceLabelRow) -> String {
-    const MAX_LABEL_CHARS: usize = 80;
-
-    if let Some(url_info) = row.url_info.as_ref() {
-        let title = url_info.title.trim();
-        if !title.is_empty() {
-            return title.to_string();
-        }
-
-        let url = url_info.url.trim();
-        if !url.is_empty() {
-            return url.to_string();
-        }
-    }
-
-    if let Some(file_info) = row.file_info.as_ref() {
-        let name = file_info.file_name.trim();
-        if !name.is_empty() {
-            return name.to_string();
-        }
-    }
-
-    if let Some(context) = row.context.as_ref() {
-        let trimmed = context.trim();
-        if !trimmed.is_empty() {
-            return truncate_with_ellipsis(trimmed, MAX_LABEL_CHARS);
-        }
-    }
-
-    if let Some(text_label) = first_non_empty_line(&row.text, MAX_LABEL_CHARS) {
-        return text_label;
-    }
-
-    let category = row.category.trim();
-    if !category.is_empty() {
-        return truncate_with_ellipsis(category, MAX_LABEL_CHARS);
-    }
-
-    format!("Text snippet: {}", source_id_suffix(&row.id))
-}
-
-fn fallback_source_label(source_id: &str) -> String {
-    format!("Text snippet: {}", source_id_suffix(source_id))
 }
 
 #[derive(Deserialize)]
@@ -218,7 +132,7 @@ async fn perform_search(
         _ => SearchResult::new(vec![], vec![]),
     };
 
-    let source_label_map = resolve_source_labels(state, user, &search_result).await?;
+    let source_label_map = collect_source_label_map(state, user, &search_result).await?;
 
     let mut combined_results: Vec<SearchResultForTemplate> =
         Vec::with_capacity(search_result.chunks.len().saturating_add(search_result.entities.len()));
@@ -227,7 +141,7 @@ async fn perform_search(
         let source_label = source_label_map
             .get(&chunk_result.chunk.source_id)
             .cloned()
-            .unwrap_or_else(|| fallback_source_label(&chunk_result.chunk.source_id));
+            .unwrap_or_else(|| TextContent::fallback_source_label(&chunk_result.chunk.source_id));
         combined_results.push(SearchResultForTemplate {
             result_type: "text_chunk".to_string(),
             score: chunk_result.score,
@@ -246,7 +160,9 @@ async fn perform_search(
         let source_label = source_label_map
             .get(&entity_result.entity.source_id)
             .cloned()
-            .unwrap_or_else(|| fallback_source_label(&entity_result.entity.source_id));
+            .unwrap_or_else(|| {
+                TextContent::fallback_source_label(&entity_result.entity.source_id)
+            });
         combined_results.push(SearchResultForTemplate {
             result_type: "knowledge_entity".to_string(),
             score: entity_result.score,
@@ -269,11 +185,11 @@ async fn perform_search(
     Ok((combined_results, trimmed_query.to_string()))
 }
 
-async fn resolve_source_labels(
+async fn collect_source_label_map(
     state: &HtmlState,
     user: &User,
     search_result: &SearchResult,
-) -> Result<HashMap<String, String>, HtmlError> {
+) -> Result<std::collections::HashMap<String, String>, HtmlError> {
     let mut source_ids = HashSet::new();
     for chunk_result in &search_result.chunks {
         source_ids.insert(chunk_result.chunk.source_id.clone());
@@ -282,47 +198,5 @@ async fn resolve_source_labels(
         source_ids.insert(entity_result.entity.source_id.clone());
     }
 
-    if source_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let record_ids: Vec<RecordId> = source_ids
-        .iter()
-        .filter_map(|id| {
-            if id.contains(':') {
-                RecordId::from_str(id).ok()
-            } else {
-                Some(RecordId::from_table_key(TextContent::table_name(), id))
-            }
-        })
-        .collect();
-    let mut response = state
-            .db
-            .client
-            .query(
-                "SELECT id, url_info, file_info, context, category, text FROM type::table($table_name) WHERE user_id = $user_id AND id INSIDE $record_ids",
-            )
-            .bind(("table_name", TextContent::table_name()))
-            .bind(("user_id", user.id.clone()))
-            .bind(("record_ids", record_ids))
-            .await?;
-    let contents: Vec<SourceLabelRow> = response.take(0)?;
-
-    tracing::debug!(
-        source_id_count = source_ids.len(),
-        label_row_count = contents.len(),
-        "Resolved search source labels"
-    );
-
-    let mut labels = HashMap::new();
-    for content in contents {
-        let label = build_source_label(&content);
-        labels.insert(content.id.clone(), label.clone());
-        labels.insert(
-            format!("{}:{}", TextContent::table_name(), content.id),
-            label,
-        );
-    }
-
-    Ok(labels)
+    Ok(TextContent::resolve_source_labels(&state.db, &user.id, source_ids).await?)
 }

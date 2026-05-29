@@ -33,7 +33,6 @@ use crate::{
         auth_middleware::RequireUser,
         response_middleware::{HtmlError, TemplateResponse},
     },
-    AuthSessionType,
 };
 
 type EventStream = Pin<Box<dyn Stream<Item = Result<Event, axum::Error>> + Send>>;
@@ -73,6 +72,11 @@ pub async fn hide_ingest_form(
     ))
 }
 
+#[derive(Serialize)]
+struct NewTasksData {
+    tasks: Vec<IngestionTask>,
+}
+
 #[derive(Debug, TryFromMultipart)]
 pub struct IngestionParams {
     pub content: Option<String>,
@@ -95,9 +99,9 @@ pub async fn process_ingest_form(
         );
     }
 
-    let content_bytes = input.content.as_ref().map_or(0, |c| c.len());
+    let content_bytes = input.content.as_ref().map_or(0, String::len);
     let has_content = input.content.as_ref().is_some_and(|c| !c.trim().is_empty());
-    let context_bytes = input.context.len();
+    let ctx_len = input.context.len();
     let category_bytes = input.category.len();
     let file_count = input.files.len();
 
@@ -126,7 +130,7 @@ pub async fn process_ingest_form(
         user_id = %user.id,
         has_content,
         content_bytes,
-        context_bytes,
+        ctx_len,
         category_bytes,
         file_count,
         "Received ingest form submission"
@@ -149,11 +153,6 @@ pub async fn process_ingest_form(
     let tasks =
         IngestionTask::create_all_and_add_to_db(payloads, &user.id, &state.db).await?;
 
-    #[derive(Serialize)]
-    struct NewTasksData {
-        tasks: Vec<IngestionTask>,
-    }
-
     Ok(
         TemplateResponse::new_template("dashboard/current_task.html", NewTasksData { tasks })
             .into_response(),
@@ -172,21 +171,14 @@ fn create_error_stream(message: impl Into<String>) -> EventStream {
 
 pub async fn get_task_updates_stream(
     State(state): State<HtmlState>,
-    auth: AuthSessionType,
+    RequireUser(current_user): RequireUser,
     Query(params): Query<QueryParams>,
 ) -> TaskSse {
     let task_id = params.task_id.clone();
     let db = Arc::clone(&state.db);
 
-    // 1. Check for authenticated user
-    let Some(current_user) = auth.current_user else {
-        return sse_with_keep_alive(create_error_stream("User not authenticated"));
-    };
-
-    // 2. Fetch task for initial authorization and to ensure it exists
     match db.get_item::<IngestionTask>(&task_id).await {
         Ok(Some(task)) => {
-            // 3. Validate user ownership
             if task.user_id != current_user.id {
                 return sse_with_keep_alive(create_error_stream(
                     "Access denied: You do not have permission to view updates for this task.",

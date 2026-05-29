@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use axum::{
     extract::{Request, State},
@@ -36,6 +37,7 @@ pub enum TemplateKind {
 }
 
 #[derive(Clone)]
+/// Handler response that the template middleware renders into HTML.
 pub struct TemplateResponse {
     template_kind: TemplateKind,
     context: Value,
@@ -180,6 +182,7 @@ fn context_to_map(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn with_template_response<S>(
     State(state): State<S>,
     HxRequest(is_htmx): HxRequest,
@@ -221,14 +224,15 @@ where
                 if let Some(cached_archive) =
                     html_state.get_cached_conversation_archive(user_id).await
                 {
-                    conversation_archive = cached_archive;
+                    conversation_archive = cached_archive.to_vec();
                 } else if let Ok(archive) =
                     Conversation::get_user_sidebar_conversations(user_id, &html_state.db).await
                 {
+                    let cached = Arc::from(archive);
                     html_state
-                        .set_cached_conversation_archive(user_id, archive.clone())
+                        .set_cached_conversation_archive(user_id, Arc::clone(&cached))
                         .await;
-                    conversation_archive = archive;
+                    conversation_archive = cached.to_vec();
                 }
             }
         }
@@ -245,8 +249,8 @@ where
         };
 
         let context = ContextWrapper {
-            user_theme: &user_theme,
-            initial_theme: &initial_theme,
+            user_theme,
+            initial_theme,
             is_authenticated,
             user: current_user.as_ref(),
             conversation_archive,
@@ -290,13 +294,13 @@ where
                         .context
                         .get_attr("title")
                         .ok()
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
+                        .and_then(|v| v.as_str().map(str::to_string))
                         .unwrap_or_else(|| "Error".to_string());
                     let description = template_response
                         .context
                         .get_attr("description")
                         .ok()
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
+                        .and_then(|v| v.as_str().map(str::to_string))
                         .unwrap_or_else(|| "An error occurred.".to_string());
 
                     let trigger_payload = json!({"toast": {"title": title, "description": description, "type": "error"}});

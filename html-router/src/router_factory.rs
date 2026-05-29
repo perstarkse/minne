@@ -36,6 +36,7 @@ macro_rules! create_asset_service {
 
 pub type MiddleWareVecType<S> = Vec<Box<dyn FnOnce(Router<S>) -> Router<S> + Send>>;
 
+/// Builder for composing public/protected HTML routes and middleware layers.
 pub struct RouterFactory<S> {
     app_state: HtmlState,
     public_routers: Vec<Router<S>>,

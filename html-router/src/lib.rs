@@ -1,3 +1,9 @@
+//! SSR + HTMX HTML router for Minne.
+//!
+//! Handlers return [`middlewares::response_middleware::TemplateResponse`] values;
+//! the template middleware renders them with shared layout context. Route composition
+//! and middleware layering are handled by [`router_factory::RouterFactory`].
+
 pub mod html_state;
 pub mod middlewares;
 pub mod router_factory;
@@ -18,14 +24,13 @@ pub type SessionType = Session<SessionSurrealPool<Any>>;
 pub type SessionStoreType = SessionStore<SessionSurrealPool<Any>>;
 pub type OpenAIClientType = async_openai::Client<async_openai::config::OpenAIConfig>;
 
-/// Html routes
+/// Builds the HTML router with public/protected routes, assets, and middleware.
 pub fn html_routes<S>(app_state: &HtmlState) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
     HtmlState: FromRef<S>,
 {
     RouterFactory::new(app_state)
-        .add_public_routes(routes::index::public_router())
         .add_public_routes(routes::auth::router())
         .with_public_assets("/assets", "assets/")
         .add_protected_routes(routes::index::protected_router())

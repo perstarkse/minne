@@ -1,4 +1,8 @@
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
+
 use surrealdb::opt::PatchOp;
+use surrealdb::RecordId;
 use uuid::Uuid;
 
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
@@ -194,6 +198,169 @@ impl TextContent {
             .take(0)
             .map_err(AppError::Database)
     }
+
+    /// Builds a fallback display label for a source id when no matching content row exists.
+    #[must_use]
+    pub fn fallback_source_label(source_id: &str) -> String {
+        format!("Text snippet: {}", source_id_suffix(source_id))
+    }
+
+    /// Resolves human-readable labels for the given source ids owned by `user_id`.
+    pub async fn resolve_source_labels(
+        db: &SurrealDbClient,
+        user_id: &str,
+        source_ids: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Result<HashMap<String, String>, AppError> {
+        let source_ids: HashSet<String> = source_ids
+            .into_iter()
+            .map(|id| id.as_ref().to_string())
+            .collect();
+
+        if source_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let record_ids: Vec<RecordId> = source_ids
+            .iter()
+            .filter_map(|id| {
+                if id.contains(':') {
+                    RecordId::from_str(id).ok()
+                } else {
+                    Some(RecordId::from_table_key(Self::table_name(), id))
+                }
+            })
+            .collect();
+
+        let mut response = db
+            .client
+            .query(
+                "SELECT id, url_info, file_info, context, category, text FROM type::table($table_name) WHERE user_id = $user_id AND id INSIDE $record_ids",
+            )
+            .bind(("table_name", Self::table_name()))
+            .bind(("user_id", user_id.to_owned()))
+            .bind(("record_ids", record_ids))
+            .await
+            .map_err(AppError::Database)?;
+
+        let contents: Vec<SourceLabelRow> = response.take(0).map_err(AppError::Database)?;
+
+        tracing::debug!(
+            source_id_count = source_ids.len(),
+            label_row_count = contents.len(),
+            "resolved source labels"
+        );
+
+        let mut labels = HashMap::new();
+        for content in contents {
+            let label = build_source_label(&content);
+            labels.insert(content.id.clone(), label.clone());
+            labels.insert(
+                format!("{}:{}", Self::table_name(), content.id),
+                label,
+            );
+        }
+
+        Ok(labels)
+    }
+}
+
+const SOURCE_LABEL_MAX_CHARS: usize = 80;
+
+#[derive(Deserialize)]
+struct SourceLabelRow {
+    #[serde(deserialize_with = "deserialize_flexible_id")]
+    id: String,
+    #[serde(default)]
+    url_info: Option<UrlInfo>,
+    #[serde(default)]
+    file_info: Option<FileInfo>,
+    #[serde(default)]
+    context: Option<String>,
+    #[serde(default)]
+    category: String,
+    #[serde(default)]
+    text: String,
+}
+
+fn source_id_suffix(source_id: &str) -> String {
+    let start = source_id.len().saturating_sub(8);
+    source_id[start..].to_string()
+}
+
+fn truncate_with_ellipsis(value: &str, max_chars: usize) -> String {
+    const ELLIPSIS: &str = "…";
+
+    if max_chars == 0 {
+        return if value.is_empty() {
+            String::new()
+        } else {
+            ELLIPSIS.to_string()
+        };
+    }
+
+    let mut end_byte = value.len();
+    for (count, (idx, _)) in value.char_indices().enumerate() {
+        if count == max_chars {
+            end_byte = idx;
+            break;
+        }
+    }
+
+    if end_byte == value.len() {
+        return value.to_string();
+    }
+
+    format!("{}{}", &value[..end_byte], ELLIPSIS)
+}
+
+fn first_non_empty_line(text: &str, max_chars: usize) -> Option<String> {
+    text.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(truncate_with_ellipsis(trimmed, max_chars))
+        }
+    })
+}
+
+fn build_source_label(row: &SourceLabelRow) -> String {
+    if let Some(url_info) = row.url_info.as_ref() {
+        let title = url_info.title.trim();
+        if !title.is_empty() {
+            return title.to_string();
+        }
+
+        let url = url_info.url.trim();
+        if !url.is_empty() {
+            return url.to_string();
+        }
+    }
+
+    if let Some(file_info) = row.file_info.as_ref() {
+        let name = file_info.file_name.trim();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+    }
+
+    if let Some(context) = row.context.as_ref() {
+        let trimmed = context.trim();
+        if !trimmed.is_empty() {
+            return truncate_with_ellipsis(trimmed, SOURCE_LABEL_MAX_CHARS);
+        }
+    }
+
+    if let Some(text_label) = first_non_empty_line(&row.text, SOURCE_LABEL_MAX_CHARS) {
+        return text_label;
+    }
+
+    let category = row.category.trim();
+    if !category.is_empty() {
+        return truncate_with_ellipsis(category, SOURCE_LABEL_MAX_CHARS);
+    }
+
+    TextContent::fallback_source_label(&row.id)
 }
 
 #[cfg(test)]
@@ -442,6 +609,38 @@ mod tests {
         assert_eq!(row.id, matching.id);
         assert_eq!(row.user_id, user_id);
         assert!(row.score.is_finite());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_resolve_source_labels_uses_url_title() -> anyhow::Result<()> {
+        let db = setup_test_db_with_runtime_indexes().await?;
+        let user_id = "label_user";
+
+        let content = TextContent::new(
+            "body".to_string(),
+            None,
+            "notes".to_string(),
+            None,
+            Some(UrlInfo {
+                url: "https://example.com/doc".to_string(),
+                title: "Example Document".to_string(),
+                image_id: String::new(),
+            }),
+            user_id.to_string(),
+        );
+        db.store_item(content.clone()).await?;
+
+        let labels = TextContent::resolve_source_labels(&db, user_id, [content.id.clone()]).await?;
+
+        assert_eq!(
+            labels.get(&content.id),
+            Some(&"Example Document".to_string())
+        );
+        assert_eq!(
+            labels.get(&format!("text_content:{}", content.id)),
+            Some(&"Example Document".to_string())
+        );
         Ok(())
     }
 }
