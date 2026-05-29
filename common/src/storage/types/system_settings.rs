@@ -1,4 +1,4 @@
-use crate::utils::embedding::EmbeddingBackend;
+use crate::utils::config::EmbeddingBackend;
 use crate::utils::serde_helpers::deserialize_flexible_id;
 use serde::{Deserialize, Serialize};
 

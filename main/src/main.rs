@@ -2,50 +2,17 @@ mod bootstrap;
 
 use std::sync::Arc;
 
-use api_router::{api_routes_v1, api_state::ApiState};
-use axum::{extract::FromRef, Router};
-use common::{
-    storage::{
-        indexes::ensure_runtime,
-        types::{
-            knowledge_entity::KnowledgeEntity, system_settings::SystemSettings,
-            text_chunk::TextChunk,
-        },
-    },
-};
-use html_router::{
-    html_routes,
-    html_state::{HtmlState, StateResources},
+use axum::extract::FromRef;
+use bootstrap::{
+    init, prepare_embedding_runtime,
+    wiring::{build_api_state, build_html_state, minne_routes},
 };
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
-use tracing::{error, info, warn};
-use tokio::task::LocalSet;
-
-fn spawn_server_thread(
-    listener: tokio::net::TcpListener,
-    app: Router,
-) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || {
-        let rt = match tokio::runtime::Runtime::new() {
-            Ok(rt) => rt,
-            Err(e) => {
-                error!("Failed to create server runtime: {e}");
-                return;
-            }
-        };
-        rt.block_on(async {
-            if let Err(e) = axum::serve(listener, app).await {
-                error!("Server error: {}", e);
-            }
-        });
-    })
-}
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let services = bootstrap::init().await?;
-
-    let session_store = Arc::new(services.db.create_session_store().await?);
+    let services = init().await?;
 
     info!(
         embedding_backend = ?services.config.embedding_backend,
@@ -53,63 +20,15 @@ async fn main() -> anyhow::Result<()> {
         "Embedding provider initialized"
     );
 
-    let (settings, dimensions_changed) =
-        SystemSettings::sync_from_embedding_provider(&services.db, &services.embedding_provider)
-            .await?;
+    prepare_embedding_runtime(&services).await?;
 
-    if dimensions_changed {
-        warn!(
-            new_dimensions = settings.embedding_dimensions,
-            "Embedding configuration changed; re-embedding existing data"
-        );
+    let html_state = build_html_state(&services).await?;
+    let api_state = build_api_state(&services);
 
-        info!("Re-embedding TextChunks");
-        if let Err(e) =
-            TextChunk::update_all_embeddings_with_provider(&services.db, &services.embedding_provider)
-                .await
-        {
-            error!(
-                "Failed to re-embed TextChunks: {}. Search results may be stale.",
-                e
-            );
-        }
-
-        info!("Re-embedding KnowledgeEntities");
-        if let Err(e) =
-            KnowledgeEntity::update_all_embeddings_with_provider(&services.db, &services.embedding_provider)
-                .await
-        {
-            error!(
-                "Failed to re-embed KnowledgeEntities: {}. Search results may be stale.",
-                e
-            );
-        }
-
-        info!("Re-embedding complete.");
-    }
-
-    ensure_runtime(&services.db, settings.embedding_dimensions as usize).await?;
-
-    let html_state = HtmlState::new_with_resources(StateResources {
-        db: Arc::clone(&services.db),
-        openai_client: Arc::clone(&services.openai_client),
-        session_store,
-        storage: services.storage.clone(),
-        config: services.config.clone(),
-        reranker_pool: services.reranker_pool.clone(),
-        embedding_provider: Arc::clone(&services.embedding_provider),
-        template_engine: None,
+    let app = minne_routes(&api_state, &html_state).with_state(AppState {
+        api_state,
+        html_state,
     });
-
-    let api_state = ApiState::new(&services.config, services.storage.clone()).await?;
-
-    let app = Router::new()
-        .nest("/api/v1", api_routes_v1(&api_state))
-        .merge(html_routes(&html_state))
-        .with_state(AppState {
-            api_state,
-            html_state,
-        });
 
     info!(
         "Starting server listening on 0.0.0.0:{}",
@@ -118,28 +37,32 @@ async fn main() -> anyhow::Result<()> {
     let serve_address = format!("0.0.0.0:{}", services.config.http_port);
     let listener = tokio::net::TcpListener::bind(serve_address).await?;
 
-    let server_handle = spawn_server_thread(listener, app);
+    let worker_db = Arc::clone(&services.db);
+    let worker_openai = Arc::clone(&services.openai_client);
+    let worker_embedding = Arc::clone(&services.embedding_provider);
+    let worker_config = services.config.clone();
+    let worker_reranker = services.reranker_pool.clone();
+    let worker_storage = services.storage.clone();
 
-    let ingestion_pipeline = Arc::new(IngestionPipeline::new(
-        Arc::clone(&services.db),
-        Arc::clone(&services.openai_client),
-        services.config.clone(),
-        services.reranker_pool.clone(),
-        services.storage,
-        Arc::clone(&services.embedding_provider),
-    )?);
-
-    let local = LocalSet::new();
-    local.spawn_local(async move {
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+    let worker = tokio::spawn(async move {
         info!("Starting worker process");
-        if let Err(e) = run_worker_loop(services.db, ingestion_pipeline).await {
-            error!("Worker error: {}", e);
-        }
-    });
-    local.await;
 
-    if let Err(e) = server_handle.join() {
-        error!("Server thread panicked: {:?}", e);
+        let ingestion_pipeline = Arc::new(IngestionPipeline::new(
+            Arc::clone(&worker_db),
+            worker_openai,
+            worker_config,
+            worker_reranker,
+            worker_storage,
+            worker_embedding,
+        )?);
+
+        run_worker_loop(worker_db, ingestion_pipeline).await
+    });
+
+    tokio::select! {
+        result = server => result??,
+        result = worker => result??,
     }
 
     Ok(())
@@ -147,8 +70,8 @@ async fn main() -> anyhow::Result<()> {
 
 #[derive(Clone, FromRef)]
 struct AppState {
-    api_state: ApiState,
-    html_state: HtmlState,
+    api_state: api_router::api_state::ApiState,
+    html_state: html_router::html_state::HtmlState,
 }
 
 #[cfg(test)]
@@ -160,78 +83,32 @@ mod tests {
         response::Response,
         Router,
     };
-    use common::storage::{
-        db::SurrealDbClient,
-        store::StorageManager,
-        types::{system_settings::SystemSettings, user::User},
+    use bootstrap::{
+        prepare_embedding_runtime,
+        tests::init_smoke_services,
+        wiring::{build_api_state, build_html_state, minne_routes},
     };
-    use common::utils::config::{AppConfig, EmbeddingBackend, PdfIngestMode, StorageKind};
-    use std::{path::Path, sync::Arc};
+    use common::storage::types::{system_settings::SystemSettings, user::User};
     use tower::ServiceExt;
-    use uuid::Uuid;
 
-    fn smoke_test_config(namespace: &str, database: &str, data_dir: &Path) -> AppConfig {
-        AppConfig {
-            openai_api_key: "test-key".into(),
-            surrealdb_address: "mem://".into(),
-            surrealdb_username: "root".into(),
-            surrealdb_password: "root".into(),
-            surrealdb_namespace: namespace.into(),
-            surrealdb_database: database.into(),
-            data_dir: data_dir.to_string_lossy().into_owned(),
-            http_port: 0,
-            openai_base_url: "https://example.com".into(),
-            storage: StorageKind::Local,
-            pdf_ingest_mode: PdfIngestMode::LlmFirst,
-            embedding_backend: EmbeddingBackend::Hashed,
-            ..Default::default()
-        }
-    }
-
-    async fn build_test_app() -> (Router, Arc<SurrealDbClient>, std::path::PathBuf) {
-        let namespace = "test_ns";
-        let database = format!("test_db_{}", Uuid::new_v4());
-        let data_dir = std::env::temp_dir().join(format!("minne_smoke_{}", Uuid::new_v4()));
-        tokio::fs::create_dir_all(&data_dir).await
-            .expect("failed to create temp data directory");
-
-        let config = smoke_test_config(namespace, &database, &data_dir);
-        let services = crate::bootstrap::init_with_config(config.clone())
+    async fn build_test_app() -> (Router, Arc<common::storage::db::SurrealDbClient>, std::path::PathBuf) {
+        let (services, data_dir) = init_smoke_services()
             .await
             .expect("failed to init services");
 
-        let session_store = Arc::new(
-            services
-                .db
-                .create_session_store()
-                .await
-                .expect("failed to create session store"),
-        );
+        prepare_embedding_runtime(&services)
+            .await
+            .expect("failed to prepare embedding runtime");
 
-        let html_state = HtmlState::new_with_resources(StateResources {
-            db: Arc::clone(&services.db),
-            openai_client: Arc::clone(&services.openai_client),
-            session_store,
-            storage: services.storage.clone(),
-            config: services.config.clone(),
-            reranker_pool: services.reranker_pool.clone(),
-            embedding_provider: Arc::clone(&services.embedding_provider),
-            template_engine: None,
+        let html_state = build_html_state(&services)
+            .await
+            .expect("failed to build html state");
+        let api_state = build_api_state(&services);
+
+        let app = minne_routes(&api_state, &html_state).with_state(AppState {
+            api_state,
+            html_state,
         });
-
-        let api_state = ApiState {
-            db: Arc::clone(&services.db),
-            config: services.config.clone(),
-            storage: services.storage,
-        };
-
-        let app = Router::new()
-            .nest("/api/v1", api_routes_v1(&api_state))
-            .merge(html_routes(&html_state))
-            .with_state(AppState {
-                api_state,
-                html_state,
-            });
 
         (app, services.db, data_dir)
     }

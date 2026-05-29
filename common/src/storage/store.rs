@@ -2,7 +2,7 @@ use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result as AnyResult};
+use anyhow::{anyhow, Context, Result as AnyResult};
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
@@ -107,15 +107,18 @@ impl StorageManager {
 
     /// Retrieve bytes from the specified location.
     ///
-    /// Returns the full contents buffered in memory.
+    /// Reads via [`Self::get_stream`] and buffers the full object in memory.
     ///
     /// # Errors
     ///
     /// Returns `Err` if the location does not exist or the underlying backend fails.
     pub async fn get(&self, location: &str) -> object_store::Result<Bytes> {
-        let path = ObjPath::from(location);
-        let result = self.store.get(&path).await?;
-        result.bytes().await
+        let mut stream = self.get_stream(location).await?;
+        let mut collected = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            collected.extend_from_slice(&chunk?);
+        }
+        Ok(Bytes::from(collected))
     }
 
     /// Get a streaming handle for large objects.
@@ -252,7 +255,10 @@ async fn create_storage_backend(
 ) -> object_store::Result<(DynStorage, Option<PathBuf>)> {
     match cfg.storage {
         StorageKind::Local => {
-            let base = resolve_base_dir(cfg);
+            let base = resolve_base_dir(cfg).map_err(|err| object_store::Error::Generic {
+                store: "LocalFileSystem",
+                source: err.into(),
+            })?;
             if !base.exists() {
                 tokio::fs::create_dir_all(&base).await.map_err(|e| {
                     object_store::Error::Generic {
@@ -576,15 +582,22 @@ pub mod testing {
 
 /// Resolve the absolute base directory used for local storage from config.
 ///
-/// If `data_dir` is relative, it is resolved against the current working directory.
-#[must_use]
-pub fn resolve_base_dir(cfg: &AppConfig) -> PathBuf {
+/// If `data_dir` is relative, it is resolved against the process current working directory.
+///
+/// # Errors
+///
+/// Returns `Err` when `data_dir` is relative and the current working directory cannot be read.
+pub fn resolve_base_dir(cfg: &AppConfig) -> AnyResult<PathBuf> {
     if cfg.data_dir.starts_with('/') {
-        PathBuf::from(&cfg.data_dir)
+        Ok(PathBuf::from(&cfg.data_dir))
     } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(&cfg.data_dir)
+        let cwd = std::env::current_dir().with_context(|| {
+            format!(
+                "failed to resolve relative data_dir '{}' against the current working directory",
+                cfg.data_dir
+            )
+        })?;
+        Ok(cwd.join(&cfg.data_dir))
     }
 }
 

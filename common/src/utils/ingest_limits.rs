@@ -29,6 +29,14 @@ pub fn validate_ingest_input(
     category: &str,
     file_count: usize,
 ) -> Result<(), IngestValidationError> {
+    let text_field_bytes = content.map(str::len).unwrap_or(0) + ctx.len() + category.len();
+    if text_field_bytes > config.ingest_max_body_bytes {
+        return Err(IngestValidationError::PayloadTooLarge(format!(
+            "request text fields exceed maximum allowed body size of {} bytes",
+            config.ingest_max_body_bytes
+        )));
+    }
+
     if file_count > config.ingest_max_files {
         return Err(IngestValidationError::BadRequest(format!(
             "too many files: maximum allowed is {}",
@@ -126,5 +134,19 @@ mod tests {
         let result = validate_ingest_input(&config, Some("ok"), "ctx", "cat", 1);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_ingest_input_rejects_oversized_text_fields() {
+        let config = AppConfig {
+            ingest_max_body_bytes: 10,
+            ..Default::default()
+        };
+        let result = validate_ingest_input(&config, Some("123456"), "ctx", "cat", 0);
+
+        assert!(matches!(
+            result,
+            Err(IngestValidationError::PayloadTooLarge(_))
+        ));
     }
 }
