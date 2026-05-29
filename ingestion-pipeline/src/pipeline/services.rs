@@ -348,3 +348,84 @@ fn truncate_for_embedding(text: &str, max_chars: usize) -> String {
     truncated.push('…');
     truncated
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use anyhow::Context;
+    use async_openai::{config::OpenAIConfig, types::ChatCompletionRequestMessage, Client};
+    use common::{
+        storage::{
+            db::SurrealDbClient,
+            store::StorageManager,
+            types::system_settings::SystemSettingsPatch,
+        },
+        utils::{
+            config::{AppConfig, StorageKind},
+            embedding::EmbeddingProvider,
+        },
+    };
+    use uuid::Uuid;
+
+    use super::DefaultPipelineServices;
+
+    fn system_prompt_from_request(
+        request: &async_openai::types::CreateChatCompletionRequest,
+    ) -> String {
+        let ChatCompletionRequestMessage::System(system) = &request.messages[0] else {
+            panic!("expected first message to be system");
+        };
+        match &system.content {
+            async_openai::types::ChatCompletionRequestSystemMessageContent::Text(text) => {
+                text.clone()
+            }
+            other => panic!("unexpected system message content: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn prepare_llm_request_uses_ingestion_prompt_from_system_settings(
+    ) -> anyhow::Result<()> {
+        const SENTINEL: &str = "ingestion-prompt-sentinel-from-db";
+
+        let db = Arc::new(
+            SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+                .await
+                .context("start in-memory db")?,
+        );
+        db.apply_migrations().await.context("apply migrations")?;
+        SystemSettingsPatch {
+            ingestion_system_prompt: Some(SENTINEL.to_string()),
+            ..Default::default()
+        }
+        .apply(&db)
+        .await
+        .context("patch ingestion prompt")?;
+
+        let config = AppConfig {
+            storage: StorageKind::Memory,
+            ..Default::default()
+        };
+        let storage = StorageManager::new(&config).await.context("storage manager")?;
+        let openai_client = Arc::new(Client::with_config(OpenAIConfig::default()));
+        let embedding_provider = Arc::new(EmbeddingProvider::new_hashed(384)?);
+
+        let services = DefaultPipelineServices::new(
+            db,
+            openai_client,
+            config,
+            None,
+            storage,
+            embedding_provider,
+        );
+
+        let request = services
+            .prepare_llm_request("notes", None, "hello world", &[])
+            .await
+            .context("prepare llm request")?;
+
+        assert_eq!(system_prompt_from_request(&request), SENTINEL);
+        Ok(())
+    }
+}

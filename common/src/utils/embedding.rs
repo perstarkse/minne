@@ -453,3 +453,72 @@ pub async fn generate_embedding_with_params(
 
     Ok(embedding)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{EmbeddingBackend, ParseEmbeddingBackendError};
+    use crate::storage::types::system_settings::SystemSettings;
+    use serde_json::json;
+
+    #[test]
+    fn embedding_backend_as_str_matches_serde_names() {
+        assert_eq!(EmbeddingBackend::OpenAI.as_str(), "openai");
+        assert_eq!(EmbeddingBackend::FastEmbed.as_str(), "fastembed");
+        assert_eq!(EmbeddingBackend::Hashed.as_str(), "hashed");
+
+        assert_eq!(
+            serde_json::to_string(&EmbeddingBackend::FastEmbed).expect("serialize"),
+            "\"fastembed\""
+        );
+    }
+
+    #[test]
+    fn embedding_backend_deserializes_lowercase_values() {
+        let openai: EmbeddingBackend = serde_json::from_str("\"openai\"").expect("openai");
+        let fastembed: EmbeddingBackend = serde_json::from_str("\"fastembed\"").expect("fastembed");
+        let hashed: EmbeddingBackend = serde_json::from_str("\"hashed\"").expect("hashed");
+
+        assert_eq!(openai, EmbeddingBackend::OpenAI);
+        assert_eq!(fastembed, EmbeddingBackend::FastEmbed);
+        assert_eq!(hashed, EmbeddingBackend::Hashed);
+    }
+
+    #[test]
+    fn embedding_backend_from_str_accepts_aliases() {
+        assert_eq!(
+            "fast-embed".parse::<EmbeddingBackend>().expect("fast-embed"),
+            EmbeddingBackend::FastEmbed
+        );
+        assert_eq!(
+            "FASTEMBED".parse::<EmbeddingBackend>().expect("FASTEMBED"),
+            EmbeddingBackend::FastEmbed
+        );
+        assert!(matches!(
+            "unknown-backend".parse::<EmbeddingBackend>(),
+            Err(ParseEmbeddingBackendError { .. })
+        ));
+    }
+
+    #[test]
+    fn system_settings_deserializes_embedding_backend_field() {
+        let value = json!({
+            "id": "current",
+            "registrations_enabled": true,
+            "require_email_verification": false,
+            "query_model": "gpt-4o-mini",
+            "processing_model": "gpt-4o-mini",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_dimensions": 1536,
+            "embedding_backend": "hashed",
+            "query_system_prompt": "query",
+            "ingestion_system_prompt": "ingestion",
+            "image_processing_model": "gpt-4o-mini",
+            "image_processing_prompt": "image",
+            "voice_processing_model": "whisper-1",
+        });
+
+        let settings: SystemSettings =
+            serde_json::from_value(value).expect("deserialize system settings");
+        assert_eq!(settings.embedding_backend, Some(EmbeddingBackend::Hashed));
+    }
+}

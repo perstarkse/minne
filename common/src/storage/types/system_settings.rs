@@ -500,6 +500,181 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_patch_leaves_unmentioned_fields_unchanged() -> anyhow::Result<()> {
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let original = SystemSettings::get_current(&db)
+            .await
+            .with_context(|| "Failed to get system settings".to_string())?;
+        let sentinel = "custom-query-prompt-sentinel".to_string();
+
+        let patched = SystemSettingsPatch {
+            query_system_prompt: Some(sentinel.clone()),
+            ..Default::default()
+        }
+        .apply(&db)
+        .await
+        .with_context(|| "Failed to patch query prompt".to_string())?;
+
+        assert_eq!(patched.query_system_prompt, sentinel);
+        assert_eq!(patched.ingestion_system_prompt, original.ingestion_system_prompt);
+        assert_eq!(patched.query_model, original.query_model);
+        assert_eq!(
+            patched.registrations_enabled,
+            original.registrations_enabled
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_rejects_empty_model_name() -> anyhow::Result<()> {
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let mut invalid_settings = SystemSettings::get_current(&db)
+            .await
+            .with_context(|| "Failed to get system settings".to_string())?;
+        invalid_settings.query_model = "   ".to_string();
+
+        let result = SystemSettings::update(&db, invalid_settings).await;
+        assert!(matches!(result, Err(AppError::Validation(_))));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_normalizes_record_id() -> anyhow::Result<()> {
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let mut settings = SystemSettings::get_current(&db)
+            .await
+            .with_context(|| "Failed to get system settings".to_string())?;
+        settings.id = "wrong-id".to_string();
+
+        let updated = SystemSettings::update(&db, settings)
+            .await
+            .with_context(|| "Failed to update settings".to_string())?;
+        assert_eq!(updated.id, SystemSettings::RECORD_ID);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_preserves_embedding_backend() -> anyhow::Result<()> {
+        use crate::utils::embedding::EmbeddingProvider;
+
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let provider = EmbeddingProvider::new_hashed(384)
+            .with_context(|| "Failed to create hashed embedding provider".to_string())?;
+        SystemSettings::sync_from_embedding_provider(&db, &provider)
+            .await
+            .with_context(|| "Failed to sync embedding provider".to_string())?;
+
+        let synced = SystemSettings::get_current(&db)
+            .await
+            .with_context(|| "Failed to get synced settings".to_string())?;
+        assert_eq!(synced.embedding_backend, Some(EmbeddingBackend::Hashed));
+
+        let mut tampered = synced;
+        tampered.embedding_backend = Some(EmbeddingBackend::OpenAI);
+        let updated = SystemSettings::update(&db, tampered)
+            .await
+            .with_context(|| "Failed to update settings".to_string())?;
+
+        assert_eq!(updated.embedding_backend, Some(EmbeddingBackend::Hashed));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sync_from_embedding_provider_updates_mismatched_settings() -> anyhow::Result<()> {
+        use crate::utils::embedding::EmbeddingProvider;
+
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let provider = EmbeddingProvider::new_hashed(384)
+            .with_context(|| "Failed to create hashed embedding provider".to_string())?;
+        let (settings, changed) = SystemSettings::sync_from_embedding_provider(&db, &provider)
+            .await
+            .with_context(|| "Failed to sync embedding provider".to_string())?;
+
+        assert!(changed);
+        assert_eq!(settings.embedding_backend, Some(EmbeddingBackend::Hashed));
+        assert_eq!(settings.embedding_dimensions, 384);
+
+        let persisted = SystemSettings::get_current(&db)
+            .await
+            .with_context(|| "Failed to reload synced settings".to_string())?;
+        assert_eq!(persisted.embedding_backend, Some(EmbeddingBackend::Hashed));
+        assert_eq!(persisted.embedding_dimensions, 384);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sync_from_embedding_provider_is_noop_when_already_synced() -> anyhow::Result<()> {
+        use crate::utils::embedding::EmbeddingProvider;
+
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let provider = EmbeddingProvider::new_hashed(384)
+            .with_context(|| "Failed to create hashed embedding provider".to_string())?;
+        SystemSettings::sync_from_embedding_provider(&db, &provider)
+            .await
+            .with_context(|| "Failed to initial sync".to_string())?;
+
+        let (_, changed) = SystemSettings::sync_from_embedding_provider(&db, &provider)
+            .await
+            .with_context(|| "Failed to repeat sync".to_string())?;
+        assert!(!changed);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sync_rejects_provider_dimension_above_u32_max() -> anyhow::Result<()> {
+        use crate::utils::embedding::EmbeddingProvider;
+
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let provider = EmbeddingProvider::new_hashed((u32::MAX as usize) + 1)
+            .with_context(|| "Failed to create oversized hashed provider".to_string())?;
+        let result = SystemSettings::sync_from_embedding_provider(&db, &provider).await;
+        assert!(matches!(result, Err(AppError::Validation(_))));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_migration_after_changing_embedding_length() -> anyhow::Result<()> {
         let db = SurrealDbClient::memory("test", &Uuid::new_v4().to_string())
             .await
