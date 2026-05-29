@@ -1,3 +1,4 @@
+use crate::utils::embedding::EmbeddingBackend;
 use crate::utils::serde_helpers::deserialize_flexible_id;
 use serde::{Deserialize, Serialize};
 
@@ -13,14 +14,35 @@ pub struct SystemSettings {
     pub processing_model: String,
     pub embedding_model: String,
     pub embedding_dimensions: u32,
-    /// Active embedding backend ("openai", "fastembed", "hashed"). Read-only, synced from config.
+    /// Active embedding backend. Read-only for admin updates; synced from config at startup.
     #[serde(default)]
-    pub embedding_backend: Option<String>,
+    pub embedding_backend: Option<EmbeddingBackend>,
     pub query_system_prompt: String,
     pub ingestion_system_prompt: String,
     pub image_processing_model: String,
     pub image_processing_prompt: String,
     pub voice_processing_model: String,
+}
+
+/// Partial update for singleton system settings without cloning unchanged fields.
+#[derive(Debug, Default, Clone)]
+pub struct SystemSettingsPatch {
+    pub registrations_enabled: Option<bool>,
+    pub require_email_verification: Option<bool>,
+    pub query_model: Option<String>,
+    pub processing_model: Option<String>,
+    pub embedding_model: Option<String>,
+    pub embedding_dimensions: Option<u32>,
+    pub query_system_prompt: Option<String>,
+    pub ingestion_system_prompt: Option<String>,
+    pub image_processing_model: Option<String>,
+    pub image_processing_prompt: Option<String>,
+    pub voice_processing_model: Option<String>,
+}
+
+enum UpdateMode {
+    User,
+    EmbeddingSync,
 }
 
 impl StoredObject for SystemSettings {
@@ -33,29 +55,128 @@ impl StoredObject for SystemSettings {
     }
 }
 
+impl SystemSettingsPatch {
+    pub fn apply_to(self, settings: &mut SystemSettings) {
+        if let Some(value) = self.registrations_enabled {
+            settings.registrations_enabled = value;
+        }
+        if let Some(value) = self.require_email_verification {
+            settings.require_email_verification = value;
+        }
+        if let Some(value) = self.query_model {
+            settings.query_model = value;
+        }
+        if let Some(value) = self.processing_model {
+            settings.processing_model = value;
+        }
+        if let Some(value) = self.embedding_model {
+            settings.embedding_model = value;
+        }
+        if let Some(value) = self.embedding_dimensions {
+            settings.embedding_dimensions = value;
+        }
+        if let Some(value) = self.query_system_prompt {
+            settings.query_system_prompt = value;
+        }
+        if let Some(value) = self.ingestion_system_prompt {
+            settings.ingestion_system_prompt = value;
+        }
+        if let Some(value) = self.image_processing_model {
+            settings.image_processing_model = value;
+        }
+        if let Some(value) = self.image_processing_prompt {
+            settings.image_processing_prompt = value;
+        }
+        if let Some(value) = self.voice_processing_model {
+            settings.voice_processing_model = value;
+        }
+    }
+
+    #[must_use]
+    pub async fn apply(self, db: &SurrealDbClient) -> Result<SystemSettings, AppError> {
+        let mut current = SystemSettings::get_current(db).await?;
+        self.apply_to(&mut current);
+        SystemSettings::update(db, current).await
+    }
+}
+
 impl SystemSettings {
+    pub const RECORD_ID: &'static str = "current";
+
+    fn validate(&self) -> Result<(), AppError> {
+        if self.embedding_dimensions == 0 {
+            return Err(AppError::Validation(
+                "embedding_dimensions must be greater than 0".into(),
+            ));
+        }
+
+        let model_fields = [
+            ("query_model", &self.query_model),
+            ("processing_model", &self.processing_model),
+            ("embedding_model", &self.embedding_model),
+            ("image_processing_model", &self.image_processing_model),
+            ("voice_processing_model", &self.voice_processing_model),
+        ];
+        for (name, value) in model_fields {
+            if value.trim().is_empty() {
+                return Err(AppError::Validation(format!("{name} must not be empty")));
+            }
+        }
+
+        let prompt_fields = [
+            ("query_system_prompt", &self.query_system_prompt),
+            ("ingestion_system_prompt", &self.ingestion_system_prompt),
+            ("image_processing_prompt", &self.image_processing_prompt),
+        ];
+        for (name, value) in prompt_fields {
+            if value.trim().is_empty() {
+                return Err(AppError::Validation(format!("{name} must not be empty")));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[must_use]
     pub async fn get_current(db: &SurrealDbClient) -> Result<Self, AppError> {
-        let settings: Option<Self> = db.get_item("current").await?;
+        let settings: Option<Self> = db.get_item(Self::RECORD_ID).await?;
         settings.ok_or(AppError::NotFound("system settings not found".into()))
     }
 
+    #[must_use]
     pub async fn update(db: &SurrealDbClient, changes: Self) -> Result<Self, AppError> {
-        // We need to use a direct query for the update with MERGE
+        Self::update_with_mode(db, changes, UpdateMode::User).await
+    }
+
+    async fn update_with_mode(
+        db: &SurrealDbClient,
+        mut changes: Self,
+        mode: UpdateMode,
+    ) -> Result<Self, AppError> {
+        let current = Self::get_current(db).await?;
+        if matches!(mode, UpdateMode::User) {
+            changes.embedding_backend = current.embedding_backend;
+        }
+        changes.id = Self::RECORD_ID.to_string();
+        changes.validate()?;
+
         let updated: Option<Self> = db
             .client
-            .query("UPDATE type::thing('system_settings', 'current') MERGE $changes RETURN AFTER")
+            .query("UPDATE type::thing('system_settings', $id) MERGE $changes RETURN AFTER")
+            .bind(("id", Self::RECORD_ID))
             .bind(("changes", changes))
             .await?
             .take(0)?;
 
-        updated.ok_or(AppError::Validation(
-            "something went wrong updating the settings".into(),
+        updated.ok_or(AppError::NotFound(
+            "system settings record missing after update".into(),
         ))
     }
 
     /// Syncs SystemSettings with the active embedding provider's properties.
     /// Updates embedding_backend, embedding_model, and embedding_dimensions if they differ.
     /// Returns true if any settings were changed.
+    #[must_use]
     pub async fn sync_from_embedding_provider(
         db: &SurrealDbClient,
         provider: &crate::utils::embedding::EmbeddingProvider,
@@ -63,23 +184,23 @@ impl SystemSettings {
         let mut settings = Self::get_current(db).await?;
         let mut needs_update = false;
 
-        let backend_label = provider.backend_label().to_string();
-        let provider_dimensions = u32::try_from(provider.dimension()).unwrap_or_else(|_| {
-            tracing::warn!(
-                "Provider dimension {} exceeds u32 max; falling back to 0",
+        let provider_backend = provider
+            .backend_label()
+            .parse::<EmbeddingBackend>()
+            .map_err(|e| AppError::Validation(e.to_string()))?;
+        let provider_dimensions = u32::try_from(provider.dimension()).map_err(|_| {
+            AppError::Validation(format!(
+                "embedding provider dimension {} exceeds u32::MAX",
                 provider.dimension()
-            );
-            0u32
-        });
+            ))
+        })?;
         let provider_model = provider.model_code();
 
-        // Sync backend label
-        if settings.embedding_backend.as_deref() != Some(&backend_label) {
-            settings.embedding_backend = Some(backend_label);
+        if settings.embedding_backend != Some(provider_backend) {
+            settings.embedding_backend = Some(provider_backend);
             needs_update = true;
         }
 
-        // Sync dimensions
         if settings.embedding_dimensions != provider_dimensions {
             tracing::info!(
                 old_dimensions = settings.embedding_dimensions,
@@ -90,7 +211,6 @@ impl SystemSettings {
             needs_update = true;
         }
 
-        // Sync model if provider has one
         if let Some(model) = provider_model {
             if settings.embedding_model != model {
                 tracing::info!(
@@ -104,7 +224,7 @@ impl SystemSettings {
         }
 
         if needs_update {
-            settings = Self::update(db, settings).await?;
+            settings = Self::update_with_mode(db, settings, UpdateMode::EmbeddingSync).await?;
         }
 
         Ok((settings, needs_update))
@@ -225,15 +345,8 @@ mod tests {
         assert_eq!(settings.query_model, "gpt-4o-mini");
         assert_eq!(settings.processing_model, "gpt-4o-mini");
         assert_eq!(settings.image_processing_model, "gpt-4o-mini");
-        // Dont test these for now, having a hard time getting the formatting exactly the same
-        // assert_eq!(
-        //     settings.query_system_prompt,
-        //     crate::storage::types::system_prompts::DEFAULT_QUERY_SYSTEM_PROMPT
-        // );
-        // assert_eq!(
-        //     settings.ingestion_system_prompt,
-        //     crate::storage::types::system_prompts::DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT
-        // );
+        assert!(!settings.ingestion_system_prompt.contains("entity\"\n6."));
+        assert!(settings.ingestion_system_prompt.contains("related entity."));
 
         // Test idempotency - ensure calling it again doesn't change anything
         db.apply_migrations()
@@ -298,7 +411,6 @@ mod tests {
         let mut updated_settings = SystemSettings::get_current(&db)
             .await
             .with_context(|| "get_current".to_string())?;
-        updated_settings.id = "current".to_string();
         updated_settings.registrations_enabled = false;
         updated_settings.require_email_verification = true;
         updated_settings.query_model = "gpt-4".to_string();
@@ -344,6 +456,46 @@ mod tests {
             Err(e) => anyhow::bail!("Expected NotFound error, got: {e:?}"),
             Ok(_) => anyhow::bail!("Expected error but got Ok"),
         }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_rejects_zero_embedding_dimensions() -> anyhow::Result<()> {
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let mut invalid_settings = SystemSettings::get_current(&db)
+            .await
+            .with_context(|| "Failed to get system settings".to_string())?;
+        invalid_settings.embedding_dimensions = 0;
+
+        let result = SystemSettings::update(&db, invalid_settings).await;
+        assert!(matches!(result, Err(AppError::Validation(_))));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_patch_updates_without_cloning_full_settings() -> anyhow::Result<()> {
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "Failed to apply migrations".to_string())?;
+
+        let updated = SystemSettingsPatch {
+            registrations_enabled: Some(false),
+            ..Default::default()
+        }
+        .apply(&db)
+        .await
+        .with_context(|| "Failed to patch settings".to_string())?;
+
+        assert!(!updated.registrations_enabled);
         Ok(())
     }
 

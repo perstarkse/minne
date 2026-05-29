@@ -8,6 +8,7 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use async_openai::{types::CreateEmbeddingRequestArgs, Client};
 use fastembed::{EmbeddingModel, ModelTrait, TextEmbedding, TextInitOptions};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::debug;
 
@@ -26,12 +27,24 @@ pub struct ParseEmbeddingBackendError {
 
 /// Supported embedding backends.
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum EmbeddingBackend {
     #[default]
     OpenAI,
     FastEmbed,
     Hashed,
+}
+
+impl EmbeddingBackend {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAI => "openai",
+            Self::FastEmbed => "fastembed",
+            Self::Hashed => "hashed",
+        }
+    }
 }
 
 impl std::str::FromStr for EmbeddingBackend {

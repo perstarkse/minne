@@ -1,7 +1,4 @@
-use common::storage::types::system_prompts::DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT;
 use serde_json::json;
-
-pub static INGRESS_ANALYSIS_SYSTEM_MESSAGE: &str = DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT;
 
 pub fn get_ingress_analysis_schema() -> serde_json::Value {
     json!({
