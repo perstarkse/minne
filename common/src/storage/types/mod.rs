@@ -10,7 +10,6 @@ pub mod knowledge_entity_embedding;
 pub mod knowledge_relationship;
 pub mod message;
 pub mod scratchpad;
-pub mod serde_helpers;
 pub mod system_prompts;
 pub mod system_settings;
 pub mod text_chunk;
@@ -29,7 +28,7 @@ macro_rules! stored_object {
         use serde::{Deserialize, Serialize};
         use $crate::storage::types::StoredObject;
         #[allow(unused_imports)]
-        use $crate::storage::types::serde_helpers::{
+        use $crate::utils::serde_helpers::{
             deserialize_flexible_id, serialize_datetime, deserialize_datetime,
             serialize_option_datetime, deserialize_option_datetime,
         };

@@ -94,6 +94,7 @@ mod tests {
     use anyhow::{self};
     use async_openai::Client;
     use common::storage::indexes::ensure_runtime;
+    use common::storage::types::system_settings::SystemSettings;
     use uuid::Uuid;
 
     fn test_embedding() -> Vec<f32> {
@@ -108,6 +109,16 @@ mod tests {
         vec![0.2, 0.8, 0.0]
     }
 
+    async fn configure_embedding_dimension(
+        db: &SurrealDbClient,
+        dimension: u32,
+    ) -> anyhow::Result<()> {
+        let mut settings = SystemSettings::get_current(db).await?;
+        settings.embedding_dimensions = dimension;
+        SystemSettings::update(db, settings).await?;
+        Ok(())
+    }
+
     async fn setup_test_db() -> anyhow::Result<SurrealDbClient> {
         let namespace = "test_ns";
         let database = &Uuid::new_v4().to_string();
@@ -115,6 +126,7 @@ mod tests {
 
         db.apply_migrations().await?;
 
+        configure_embedding_dimension(&db, 3).await?;
         ensure_runtime(&db, 3).await?;
 
         Ok(db)

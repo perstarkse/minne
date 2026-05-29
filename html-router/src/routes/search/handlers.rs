@@ -8,12 +8,8 @@ use axum::{
     extract::{Query, State},
     response::IntoResponse,
 };
-use common::storage::types::{
-    serde_helpers::deserialize_flexible_id,
-    text_content::TextContent,
-    user::User,
-    StoredObject,
-};
+use common::storage::types::{text_content::TextContent, user::User, StoredObject};
+use common::utils::serde_helpers::deserialize_flexible_id;
 use retrieval_pipeline::{RetrievalConfig, SearchResult, SearchTarget, StrategyOutput};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use surrealdb::RecordId;
