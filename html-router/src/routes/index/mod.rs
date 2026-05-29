@@ -11,20 +11,13 @@ use handlers::{
 
 use crate::html_state::HtmlState;
 
-pub fn public_router<S>() -> Router<S>
-where
-    S: Clone + Send + Sync + 'static,
-    HtmlState: FromRef<S>,
-{
-    Router::new().route("/", get(index_handler))
-}
-
 pub fn protected_router<S>() -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
     HtmlState: FromRef<S>,
 {
     Router::new()
+        .route("/", get(index_handler))
         .route("/jobs/{job_id}", delete(delete_job))
         .route("/jobs/archive", get(show_task_archive))
         .route("/active-jobs", get(show_active_jobs))

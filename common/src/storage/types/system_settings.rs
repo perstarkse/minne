@@ -26,6 +26,7 @@ pub struct SystemSettings {
 
 /// Partial update for singleton system settings without cloning unchanged fields.
 #[derive(Debug, Default, Clone)]
+#[allow(clippy::module_name_repetitions)]
 pub struct SystemSettingsPatch {
     pub registrations_enabled: Option<bool>,
     pub require_email_verification: Option<bool>,
@@ -92,7 +93,6 @@ impl SystemSettingsPatch {
         }
     }
 
-    #[must_use]
     pub async fn apply(self, db: &SurrealDbClient) -> Result<SystemSettings, AppError> {
         let mut current = SystemSettings::get_current(db).await?;
         self.apply_to(&mut current);
@@ -103,6 +103,7 @@ impl SystemSettingsPatch {
 impl SystemSettings {
     pub const RECORD_ID: &'static str = "current";
 
+    #[allow(clippy::result_large_err)]
     fn validate(&self) -> Result<(), AppError> {
         if self.embedding_dimensions == 0 {
             return Err(AppError::Validation(
@@ -137,13 +138,11 @@ impl SystemSettings {
         Ok(())
     }
 
-    #[must_use]
     pub async fn get_current(db: &SurrealDbClient) -> Result<Self, AppError> {
         let settings: Option<Self> = db.get_item(Self::RECORD_ID).await?;
         settings.ok_or(AppError::NotFound("system settings not found".into()))
     }
 
-    #[must_use]
     pub async fn update(db: &SurrealDbClient, changes: Self) -> Result<Self, AppError> {
         Self::update_with_mode(db, changes, UpdateMode::User).await
     }
@@ -176,7 +175,6 @@ impl SystemSettings {
     /// Syncs SystemSettings with the active embedding provider's properties.
     /// Updates embedding_backend, embedding_model, and embedding_dimensions if they differ.
     /// Returns true if any settings were changed.
-    #[must_use]
     pub async fn sync_from_embedding_provider(
         db: &SurrealDbClient,
         provider: &crate::utils::embedding::EmbeddingProvider,

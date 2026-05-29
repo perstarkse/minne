@@ -62,12 +62,22 @@ impl Analytics {
     }
 
     pub async fn increment_page_loads(db: &SurrealDbClient) -> Result<Self, AppError> {
+        Self::record_page_view(db, false).await
+    }
+
+    /// Records a page view, optionally counting the visitor as new.
+    pub async fn record_page_view(
+        db: &SurrealDbClient,
+        is_new_visitor: bool,
+    ) -> Result<Self, AppError> {
+        let visitor_delta = i64::from(is_new_visitor);
         let updated: Option<Self> = db
             .client
             .query(
-                "UPSERT type::thing('analytics', $id) SET page_loads = (page_loads ?? 0) + 1, visitors = visitors ?? 0 RETURN AFTER",
+                "UPSERT type::thing('analytics', $id) SET page_loads = (page_loads ?? 0) + 1, visitors = (visitors ?? 0) + $visitor_delta RETURN AFTER",
             )
             .bind(("id", Self::RECORD_ID))
+            .bind(("visitor_delta", visitor_delta))
             .await?
             .take(0)?;
 
@@ -277,6 +287,23 @@ mod tests {
         let after_second_visitor = Analytics::increment_visitors(&db).await?;
         assert_eq!(after_second_visitor.visitors, 2);
         assert_eq!(after_second_visitor.page_loads, 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_record_page_view() -> anyhow::Result<()> {
+        let namespace = "test_ns";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database).await?;
+
+        let first_view = Analytics::record_page_view(&db, true).await?;
+        assert_eq!(first_view.visitors, 1);
+        assert_eq!(first_view.page_loads, 1);
+
+        let returning_view = Analytics::record_page_view(&db, false).await?;
+        assert_eq!(returning_view.visitors, 1);
+        assert_eq!(returning_view.page_loads, 2);
 
         Ok(())
     }

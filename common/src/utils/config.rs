@@ -338,6 +338,8 @@ pub fn get_config() -> Result<AppConfig, ConfigError> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::{ParseRetrievalStrategyError, RetrievalStrategy};
     #[test]
     fn retrieval_strategy_defaults_to_default() {

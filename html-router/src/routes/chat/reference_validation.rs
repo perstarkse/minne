@@ -51,21 +51,21 @@ impl ReferenceReasonStats {
         match reason {
             InvalidReferenceReason::Empty => self.empty = self.empty.saturating_add(1),
             InvalidReferenceReason::UnsupportedPrefix => {
-                self.unsupported_prefix = self.unsupported_prefix.saturating_add(1)
+                self.unsupported_prefix = self.unsupported_prefix.saturating_add(1);
             }
             InvalidReferenceReason::MalformedUuid => {
-                self.malformed_uuid = self.malformed_uuid.saturating_add(1)
+                self.malformed_uuid = self.malformed_uuid.saturating_add(1);
             }
             InvalidReferenceReason::Duplicate => self.duplicate = self.duplicate.saturating_add(1),
             InvalidReferenceReason::NotInContext => {
-                self.not_in_context = self.not_in_context.saturating_add(1)
+                self.not_in_context = self.not_in_context.saturating_add(1);
             }
             InvalidReferenceReason::NotFound => self.not_found = self.not_found.saturating_add(1),
             InvalidReferenceReason::WrongUser => {
-                self.wrong_user = self.wrong_user.saturating_add(1)
+                self.wrong_user = self.wrong_user.saturating_add(1);
             }
             InvalidReferenceReason::OverLimit => {
-                self.over_limit = self.over_limit.saturating_add(1)
+                self.over_limit = self.over_limit.saturating_add(1);
             }
         }
     }

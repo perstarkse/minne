@@ -10,7 +10,7 @@ use crate::{
 use common::storage::types::user::User;
 
 #[derive(Deserialize, Serialize)]
-pub struct SignupParams {
+pub struct SignInParams {
     pub email: String,
     pub password: String,
     pub remember_me: Option<String>,
@@ -20,7 +20,7 @@ pub async fn show_signin_form(
     auth: AuthSessionType,
     HxBoosted(boosted): HxBoosted,
 ) -> Result<impl IntoResponse, HtmlError> {
-    if auth.is_authenticated() {
+    if auth.current_user.is_some() {
         return Ok(TemplateResponse::redirect("/"));
     }
     if boosted {
@@ -37,13 +37,10 @@ pub async fn show_signin_form(
 pub async fn authenticate_user(
     State(state): State<HtmlState>,
     auth: AuthSessionType,
-    Form(form): Form<SignupParams>,
+    Form(form): Form<SignInParams>,
 ) -> Result<impl IntoResponse, HtmlError> {
-    let user = match User::authenticate(&form.email, &form.password, &state.db).await {
-        Ok(user) => user,
-        Err(_) => {
-            return Ok(TemplateResponse::bad_request("Incorrect email or password").into_response());
-        }
+    let Ok(user) = User::authenticate(&form.email, &form.password, &state.db).await else {
+        return Ok(TemplateResponse::bad_request("Incorrect email or password").into_response());
     };
 
     auth.login_user(user.id);

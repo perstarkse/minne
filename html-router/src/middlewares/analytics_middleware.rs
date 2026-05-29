@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
     extract::{Request, State},
     http::Method,
@@ -10,7 +12,7 @@ use common::storage::{db::ProvidesDb, types::analytics::Analytics};
 
 use crate::SessionType;
 
-/// Middleware to count unique visitors and page loads
+/// Middleware to count unique visitors and page loads.
 pub async fn analytics_middleware<S>(
     State(state): State<S>,
     session: SessionType,
@@ -21,17 +23,18 @@ where
     S: ProvidesDb + Clone + Send + Sync + 'static,
 {
     let path = request.uri().path();
-    // Only count visits/page loads for GET requests to non-asset, non-static paths
     if request.method() == Method::GET && !path.starts_with("/assets") && !path.contains('.') {
-        if !session.get::<bool>("counted_visitor").unwrap_or(false) {
-            if let Err(e) = Analytics::increment_visitors(state.db()).await {
-                warn!("failed to increment visitor count: {e}");
-            }
+        let is_new_visitor = !session.get::<bool>("counted_visitor").unwrap_or(false);
+        if is_new_visitor {
             session.set("counted_visitor", true);
         }
-        if let Err(e) = Analytics::increment_page_loads(state.db()).await {
-            warn!("failed to increment page load count: {e}");
-        }
+
+        let db = Arc::clone(state.db());
+        tokio::spawn(async move {
+            if let Err(error) = Analytics::record_page_view(&db, is_new_visitor).await {
+                warn!("failed to record page view: {error}");
+            }
+        });
     }
     next.run(request).await
 }

@@ -11,6 +11,7 @@ use crate::AuthSessionType;
 use super::response_middleware::TemplateResponse;
 
 #[derive(Debug, Clone)]
+/// Authenticated user extracted from request extensions by [`require_auth`].
 pub struct RequireUser(pub User);
 
 // Implement FromRequestParts for RequireUser

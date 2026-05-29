@@ -2,7 +2,7 @@ use axum::{extract::State, response::IntoResponse, Form};
 use axum_htmx::HxBoosted;
 use serde::{Deserialize, Serialize};
 
-use common::storage::types::user::{Theme, User};
+use common::{error::AppError, storage::types::user::{Theme, User}};
 
 use crate::{
     html_state::HtmlState,
@@ -17,11 +17,18 @@ pub struct Params {
     pub timezone: String,
 }
 
+fn signup_error_message(err: &AppError) -> &str {
+    match err {
+        AppError::Auth(message) if message == "Registration is not allowed" => message,
+        _ => "Could not create account. Please try again.",
+    }
+}
+
 pub async fn show_signup_form(
     auth: AuthSessionType,
     HxBoosted(boosted): HxBoosted,
 ) -> Result<impl IntoResponse, HtmlError> {
-    if auth.is_authenticated() {
+    if auth.current_user.is_some() {
         return Ok(TemplateResponse::redirect("/"));
     }
 
@@ -51,9 +58,9 @@ pub async fn process_signup_and_show_verification(
     .await
     {
         Ok(user) => user,
-        Err(e) => {
-            tracing::error!("{:?}", e);
-            return Ok(TemplateResponse::bad_request(&e.to_string()).into_response());
+        Err(err) => {
+            tracing::error!(?err, "signup failed");
+            return Ok(TemplateResponse::bad_request(signup_error_message(&err)).into_response());
         }
     };
 
