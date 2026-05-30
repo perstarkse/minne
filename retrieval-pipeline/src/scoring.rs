@@ -1,14 +1,12 @@
 use std::{cmp::Ordering, collections::HashMap};
 
 use common::storage::types::StoredObject;
-use serde::{Deserialize, Serialize};
 
-/// Holds optional subscores gathered from different retrieval signals.
+/// Holds optional subscores gathered from the vector and full-text retrieval signals.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Scores {
     pub fts: Option<f32>,
     pub vector: Option<f32>,
-    pub graph: Option<f32>,
 }
 
 /// Generic wrapper combining an item with its accumulated retrieval scores.
@@ -40,37 +38,8 @@ impl<T> Scored<T> {
         self
     }
 
-    #[must_use]
-    pub const fn with_graph_score(mut self, score: f32) -> Self {
-        self.scores.graph = Some(score);
-        self
-    }
-
     pub const fn update_fused(&mut self, fused: f32) {
         self.fused = fused;
-    }
-}
-
-/// Weights used for linear score fusion.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct FusionWeights {
-    pub vector: f32,
-    pub fts: f32,
-    pub graph: f32,
-    pub multi_bonus: f32,
-}
-
-impl Default for FusionWeights {
-    fn default() -> Self {
-        // Default weights favor vector search, which typically performs better
-        // FTS is used as a complement when there's good overlap
-        // Higher multi_bonus to heavily favor chunks with both signals (the "golden chunk")
-        Self {
-            vector: 0.8,
-            fts: 0.2,
-            graph: 0.2,
-            multi_bonus: 0.3, // Increased to boost chunks with both signals
-        }
     }
 }
 
@@ -84,27 +53,8 @@ pub struct RrfConfig {
     pub use_fts: bool,
 }
 
-impl Default for RrfConfig {
-    fn default() -> Self {
-        Self {
-            k: 60.0,
-            vector_weight: 1.0,
-            fts_weight: 1.0,
-            use_vector: true,
-            use_fts: true,
-        }
-    }
-}
-
 pub const fn clamp_unit(value: f32) -> f32 {
     value.clamp(0.0, 1.0)
-}
-
-pub fn distance_to_similarity(distance: f32) -> f32 {
-    if !distance.is_finite() {
-        return 0.0;
-    }
-    clamp_unit(1.0 / (1.0 + distance.max(0.0)))
 }
 
 pub fn min_max_normalize(scores: &[f32]) -> Vec<f32> {
@@ -147,69 +97,6 @@ pub fn min_max_normalize(scores: &[f32]) -> Vec<f32> {
         .collect()
 }
 
-pub fn fuse_scores(scores: &Scores, weights: FusionWeights) -> f32 {
-    let vector = scores.vector.unwrap_or(0.0);
-    let fts = scores.fts.unwrap_or(0.0);
-    let graph = scores.graph.unwrap_or(0.0);
-
-    let mut fused = graph.mul_add(
-        weights.graph,
-        vector.mul_add(weights.vector, fts * weights.fts),
-    );
-
-    let signals_present = scores
-        .vector
-        .iter()
-        .chain(scores.fts.iter())
-        .chain(scores.graph.iter())
-        .count();
-
-    // Boost chunks with multiple signals (especially vector + FTS, the "golden chunk")
-    if signals_present >= 2 {
-        // For chunks with both vector and FTS, give a significant boost
-        // This helps identify the "golden chunk" that appears in both searches
-        if scores.vector.is_some() && scores.fts.is_some() {
-            // Multiplicative boost: multiply by (1 + bonus) to scale with the base score
-            // This ensures high-scoring golden chunks get boosted more than low-scoring ones
-            fused *= 1.0 + weights.multi_bonus;
-        } else {
-            // For other multi-signal combinations (e.g., vector + graph), use additive bonus
-            fused += weights.multi_bonus;
-        }
-    }
-
-    clamp_unit(fused)
-}
-
-pub fn merge_scored_by_id<T, S: std::hash::BuildHasher>(
-    target: &mut std::collections::HashMap<String, Scored<T>, S>,
-    incoming: Vec<Scored<T>>,
-) where
-    T: StoredObject + Clone,
-{
-    for scored in incoming {
-        let id = scored.item.id().to_owned();
-        target
-            .entry(id)
-            .and_modify(|existing| {
-                if let Some(score) = scored.scores.vector {
-                    existing.scores.vector = Some(score);
-                }
-                if let Some(score) = scored.scores.fts {
-                    existing.scores.fts = Some(score);
-                }
-                if let Some(score) = scored.scores.graph {
-                    existing.scores.graph = Some(score);
-                }
-            })
-            .or_insert_with(|| Scored {
-                item: scored.item.clone(),
-                scores: scored.scores,
-                fused: scored.fused,
-            });
-    }
-}
-
 pub fn sort_by_fused_desc<T>(items: &mut [Scored<T>])
 where
     T: StoredObject,
@@ -222,6 +109,10 @@ where
     });
 }
 
+/// Fuse two ranked candidate lists into a single ranking using reciprocal rank fusion.
+///
+/// This is the sole fusion mechanism for the retrieval pipeline: vector and full-text
+/// candidates each contribute `weight / (k + rank + 1)` to a shared fused score.
 pub fn reciprocal_rank_fusion<T>(
     mut vector_ranked: Vec<Scored<T>>,
     mut fts_ranked: Vec<Scored<T>>,
@@ -266,9 +157,7 @@ where
                 }
             }
             entry.item = candidate.item;
-            let rank_f32: f32 = u16::try_from(rank)
-                .map(f32::from)
-                .unwrap_or(f32::MAX);
+            let rank_f32: f32 = u16::try_from(rank).map_or(f32::MAX, f32::from);
             entry.fused += vector_weight / (k + rank_f32 + 1.0);
         }
     }
@@ -296,9 +185,7 @@ where
                 }
             }
             entry.item = candidate.item;
-            let rank_f32: f32 = u16::try_from(rank)
-                .map(f32::from)
-                .unwrap_or(f32::MAX);
+            let rank_f32: f32 = u16::try_from(rank).map_or(f32::MAX, f32::from);
             entry.fused += fts_weight / (k + rank_f32 + 1.0);
         }
     }

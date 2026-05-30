@@ -85,7 +85,7 @@ pub struct RetrievalSection {
     pub average_ndcg: f64,
     pub latency: LatencyStats,
     pub concurrency: usize,
-    pub strategy: String,
+    pub resolve_entities: bool,
     pub rerank_enabled: bool,
     pub rerank_pool_size: Option<usize>,
     pub rerank_keep_top: usize,
@@ -226,7 +226,7 @@ impl EvaluationReport {
             average_ndcg: summary.average_ndcg,
             latency: summary.latency_ms.clone(),
             concurrency: summary.concurrency,
-            strategy: summary.retrieval_strategy.clone(),
+            resolve_entities: summary.resolve_entities,
             rerank_enabled: summary.rerank_enabled,
             rerank_pool_size: summary.rerank_pool_size,
             rerank_keep_top: summary.rerank_keep_top,
@@ -463,7 +463,12 @@ fn render_markdown(report: &EvaluationReport) -> String {
     write!(md, "| MRR | {:.3} |\\n", report.retrieval.mrr).unwrap();
     write!(md, "| NDCG | {:.3} |\\n", report.retrieval.average_ndcg).unwrap();
     write!(md, "| Latency Avg / P50 / P95 (ms) | {:.1} / {} / {} |\\n", report.retrieval.latency.avg, report.retrieval.latency.p50, report.retrieval.latency.p95).unwrap();
-    write!(md, "| Strategy | `{}` |\\n", report.retrieval.strategy).unwrap();
+    write!(
+        md,
+        "| Resolve entities | {} |\\n",
+        bool_badge(report.retrieval.resolve_entities)
+    )
+    .unwrap();
     write!(md, "| Concurrency | {} |\\n", report.retrieval.concurrency).unwrap();
     if report.retrieval.rerank_enabled {
         let pool = report
@@ -510,28 +515,9 @@ fn render_markdown(report: &EvaluationReport) -> String {
 
     md.push_str("\\n## Retrieval Stage Timings\\n\\n");
     md.push_str("| Stage | Avg (ms) | P50 (ms) | P95 (ms) |\\n| --- | --- | --- | --- |\\n");
-    write_stage_row(&mut md, "Embed", &report.performance.stage_latency.embed);
-    write_stage_row(
-        &mut md,
-        "Collect Candidates",
-        &report.performance.stage_latency.collect_candidates,
-    );
-    write_stage_row(
-        &mut md,
-        "Graph Expansion",
-        &report.performance.stage_latency.graph_expansion,
-    );
-    write_stage_row(
-        &mut md,
-        "Chunk Attach",
-        &report.performance.stage_latency.chunk_attach,
-    );
-    write_stage_row(&mut md, "Rerank", &report.performance.stage_latency.rerank);
-    write_stage_row(
-        &mut md,
-        "Assemble",
-        &report.performance.stage_latency.assemble,
-    );
+    for stage in &report.performance.stage_latency.stages {
+        write_stage_row(&mut md, &prettify_stage(&stage.stage), &stage.stats);
+    }
 
     if report.misses.is_empty() {
         if report.detailed_report {
@@ -621,6 +607,20 @@ fn write_stage_row(buf: &mut String, label: &str, stats: &LatencyStats) {
         label, stats.avg, stats.p50, stats.p95
     )
     .unwrap();
+}
+
+/// Turn a stable stage label (e.g. `resolve_entities`) into a display title (`Resolve Entities`).
+fn prettify_stage(label: &str) -> String {
+    label
+        .split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().collect::<String>() + chars.as_str()
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn bool_badge(value: bool) -> &'static str {
@@ -740,17 +740,6 @@ struct LegacyHistoryDelta {
     latency_avg_ms: f64,
 }
 
-fn default_stage_latency() -> StageLatencyBreakdown {
-    StageLatencyBreakdown {
-        embed: LatencyStats::default(),
-        collect_candidates: LatencyStats::default(),
-        graph_expansion: LatencyStats::default(),
-        chunk_attach: LatencyStats::default(),
-        rerank: LatencyStats::default(),
-        assemble: LatencyStats::default(),
-    }
-}
-
 #[allow(clippy::too_many_lines)]
 fn convert_legacy_entry(entry: LegacyHistoryEntry) -> EvaluationReport {
     let overview = OverviewSection {
@@ -807,7 +796,7 @@ fn convert_legacy_entry(entry: LegacyHistoryEntry) -> EvaluationReport {
         average_ndcg: entry.average_ndcg,
         latency: entry.latency_ms,
         concurrency: 0,
-        strategy: "unknown".into(),
+        resolve_entities: false,
         rerank_enabled: entry.rerank_enabled,
         rerank_pool_size: entry.rerank_pool_size,
         rerank_keep_top: entry.rerank_keep_top,
@@ -840,7 +829,7 @@ fn convert_legacy_entry(entry: LegacyHistoryEntry) -> EvaluationReport {
         ingestion_ms: entry.ingestion_ms,
         namespace_seed_ms: entry.namespace_seed_ms,
         evaluation_stages_ms: EvaluationStageTimings::default(),
-        stage_latency: default_stage_latency(),
+        stage_latency: StageLatencyBreakdown::default(),
         namespace_reused: false,
         ingestion_reused: entry.ingestion_reused,
         embeddings_reused: entry.ingestion_embeddings_reused,
@@ -915,7 +904,8 @@ fn record_history(report: &EvaluationReport, report_dir: &Path) -> Result<PathBu
 mod tests {
     use super::*;
     use crate::eval::{
-        EvaluationStageTimings, PerformanceTimings, RetrievedSummary, StageLatencyBreakdown,
+        EvaluationStageTimings, PerformanceTimings, RetrievedSummary, StageLatency,
+        StageLatencyBreakdown,
     };
     use chrono::Utc;
     use tempfile::tempdir;
@@ -931,12 +921,28 @@ mod tests {
 
     fn sample_stage_latency() -> StageLatencyBreakdown {
         StageLatencyBreakdown {
-            embed: latency(9.0),
-            collect_candidates: latency(10.0),
-            graph_expansion: latency(11.0),
-            chunk_attach: latency(12.0),
-            rerank: latency(13.0),
-            assemble: latency(14.0),
+            stages: vec![
+                StageLatency {
+                    stage: "embed".to_string(),
+                    stats: latency(9.0),
+                },
+                StageLatency {
+                    stage: "search".to_string(),
+                    stats: latency(10.0),
+                },
+                StageLatency {
+                    stage: "rerank".to_string(),
+                    stats: latency(13.0),
+                },
+                StageLatency {
+                    stage: "resolve_entities".to_string(),
+                    stats: latency(11.0),
+                },
+                StageLatency {
+                    stage: "assemble".to_string(),
+                    stats: latency(14.0),
+                },
+            ],
         }
     }
 
@@ -1058,7 +1064,7 @@ mod tests {
             rerank_keep_top: 5,
             concurrency: 2,
             detailed_report: true,
-            retrieval_strategy: "initial".into(),
+            resolve_entities: false,
             chunk_result_cap: 5,
             chunk_rrf_k: 60.0,
             chunk_rrf_vector_weight: 1.0,
@@ -1071,7 +1077,6 @@ mod tests {
             ingest_chunks_only: false,
             chunk_vector_take: 50,
             chunk_fts_take: 50,
-            chunk_avg_chars_per_token: 4,
             max_chunks_per_entity: 4,
             cases,
         }
@@ -1097,7 +1102,7 @@ mod tests {
 
     #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
     #[test]
-    fn evaluations_history_captures_strategy_and_concurrency() {
+    fn evaluations_history_captures_resolve_entities_and_concurrency() {
         let tmp = tempdir().unwrap();
         let summary = sample_summary(false);
 
@@ -1109,7 +1114,7 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let stored = &entries[0];
         assert_eq!(stored.retrieval.concurrency, summary.concurrency);
-        assert_eq!(stored.retrieval.strategy, summary.retrieval_strategy);
+        assert_eq!(stored.retrieval.resolve_entities, summary.resolve_entities);
         assert_eq!(
             stored.performance.evaluation_stages_ms.run_queries_ms,
             summary.perf.evaluation_stage_ms.run_queries_ms

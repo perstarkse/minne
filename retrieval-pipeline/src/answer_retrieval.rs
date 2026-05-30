@@ -1,61 +1,66 @@
+//! Chat answer assembly: retrieval context formatting and structured LLM request/response types.
+
 use async_openai::{
     error::OpenAIError,
     types::{
         ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-        CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
-        ResponseFormat, ResponseFormatJsonSchema,
+        CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
+        ResponseFormatJsonSchema,
     },
 };
-use common::{
-    error::AppError,
-    storage::types::{
-        message::{format_history, Message},
-        system_settings::SystemSettings,
-    },
+use common::storage::types::{
+    message::{format_history, Message},
+    system_settings::SystemSettings,
 };
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
-use super::answer_retrieval_helper::get_query_response_schema;
+/// JSON schema describing the structured chat answer (answer text + references).
+fn get_query_response_schema() -> Value {
+    json!({
+       "type": "object",
+       "properties": {
+           "answer": { "type": "string" },
+           "references": {
+               "type": "array",
+               "items": {
+                   "type": "object",
+                   "properties": {
+                       "reference": { "type": "string" },
+                   },
+               "required": ["reference"],
+               "additionalProperties": false,
+               }
+           }
+       },
+       "required": ["answer", "references"],
+       "additionalProperties": false
+    })
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Reference {
-    #[allow(dead_code)]
     pub reference: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct LLMResponseFormat {
     pub answer: String,
-    #[allow(dead_code)]
     pub references: Vec<Reference>,
 }
 
-#[derive(Debug)]
-pub struct Answer {
-    pub content: String,
-    pub references: Vec<String>,
-}
-
-pub fn create_user_message(entities_json: &Value, query: &str) -> String {
-    format!(
-        r"
-        Context Information:
-        ==================
-        {entities_json}
-
-        User Question:
-        ==================
-        {query}
-        "
-    )
-}
-
-/// Convert chunk-based retrieval results to JSON format for LLM context
-pub fn chunks_to_chat_context(chunks: &[crate::RetrievedChunk]) -> Value {
-    fn round_score(value: f32) -> f64 {
-        (f64::from(value) * 1000.0).round() / 1000.0
+impl LLMResponseFormat {
+    pub fn reference_ids(&self) -> Vec<String> {
+        self.references
+            .iter()
+            .map(|entry| entry.reference.clone())
+            .collect()
     }
+}
+
+/// Convert chunk-based retrieval results to JSON format for LLM context.
+pub fn chunks_to_chat_context(chunks: &[crate::RetrievedChunk]) -> Value {
+    use crate::round_score;
 
     serde_json::json!(chunks
         .iter()
@@ -70,7 +75,7 @@ pub fn chunks_to_chat_context(chunks: &[crate::RetrievedChunk]) -> Value {
 }
 
 pub fn create_user_message_with_history(
-    entities_json: &Value,
+    context_json: &Value,
     history: &[Message],
     query: &str,
 ) -> String {
@@ -89,7 +94,7 @@ pub fn create_user_message_with_history(
         {}
         ",
         format_history(history),
-        entities_json,
+        context_json,
         query
     )
 }
@@ -115,19 +120,4 @@ pub fn create_chat_request(
         ])
         .response_format(response_format)
         .build()
-}
-
-pub fn process_llm_response(
-    response: &CreateChatCompletionResponse,
-) -> Result<LLMResponseFormat, Box<AppError>> {
-    response
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.as_ref())
-        .ok_or_else(|| Box::new(AppError::LLMParsing("No content found in LLM response".into())))
-        .and_then(|content| {
-            serde_json::from_str::<LLMResponseFormat>(content).map_err(|e| {
-                Box::new(AppError::LLMParsing(format!("Failed to parse LLM response into analysis: {e}")))
-            })
-        })
 }

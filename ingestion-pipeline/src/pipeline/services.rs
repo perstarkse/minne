@@ -183,10 +183,8 @@ impl PipelineServices for DefaultPipelineServices {
             None => None,
         };
 
-        let config = retrieval_pipeline::RetrievalConfig::for_search(
-            retrieval_pipeline::SearchTarget::EntitiesOnly,
-        );
-        match retrieval_pipeline::retrieve_entities(
+        let config = retrieval_pipeline::RetrievalConfig::with_entities();
+        match retrieval_pipeline::retrieve(
             &self.db,
             &self.openai_client,
             Some(&*self.embedding_provider),
@@ -197,19 +195,16 @@ impl PipelineServices for DefaultPipelineServices {
         )
         .await
         {
-            Ok(retrieval_pipeline::StrategyOutput::Entities(entities)) => Ok(entities),
-            Ok(retrieval_pipeline::StrategyOutput::Search(search)) => {
-                let chunk_count = search.chunks.len();
-                let entities = search.entities;
+            Ok(retrieval_pipeline::RetrievalOutput::WithEntities { chunks, entities }) => {
                 tracing::debug!(
-                    chunk_count,
+                    chunk_count = chunks.len(),
                     entity_count = entities.len(),
-                    "ingestion search results returned entities"
+                    "ingestion retrieval resolved entities from chunks"
                 );
                 Ok(entities)
             }
-            Ok(retrieval_pipeline::StrategyOutput::Chunks(_)) => Err(AppError::InternalError(
-                "Ingestion retrieval should return entities".into(),
+            Ok(retrieval_pipeline::RetrievalOutput::Chunks(_)) => Err(AppError::InternalError(
+                "Ingestion retrieval should resolve entities".into(),
             )),
             Err(e) => Err(e),
         }
@@ -372,16 +367,16 @@ mod tests {
 
     fn system_prompt_from_request(
         request: &async_openai::types::CreateChatCompletionRequest,
-    ) -> String {
-        let ChatCompletionRequestMessage::System(system) = &request.messages[0] else {
-            panic!("expected first message to be system");
+    ) -> anyhow::Result<String> {
+        let Some(ChatCompletionRequestMessage::System(system)) = request.messages.first() else {
+            anyhow::bail!("expected first message to be system");
         };
-        match &system.content {
-            async_openai::types::ChatCompletionRequestSystemMessageContent::Text(text) => {
-                text.clone()
-            }
-            other => panic!("unexpected system message content: {other:?}"),
-        }
+        let async_openai::types::ChatCompletionRequestSystemMessageContent::Text(text) =
+            &system.content
+        else {
+            anyhow::bail!("unexpected system message content: {:?}", system.content);
+        };
+        Ok(text.clone())
     }
 
     #[tokio::test]
@@ -425,7 +420,7 @@ mod tests {
             .await
             .context("prepare llm request")?;
 
-        assert_eq!(system_prompt_from_request(&request), SENTINEL);
+        assert_eq!(system_prompt_from_request(&request)?, SENTINEL);
         Ok(())
     }
 }

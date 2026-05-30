@@ -51,8 +51,8 @@ pub fn mirror_perf_outputs(
 pub fn print_console_summary(record: &EvaluationReport) {
     let perf = &record.performance;
     println!(
-        "[perf] retrieval strategy={} | concurrency={} | rerank={} (pool {:?}, keep {})",
-        record.retrieval.strategy,
+        "[perf] resolve_entities={} | concurrency={} | rerank={} (pool {:?}, keep {})",
+        record.retrieval.resolve_entities,
         record.retrieval.concurrency,
         record.retrieval.rerank_enabled,
         record.retrieval.rerank_pool_size,
@@ -63,16 +63,14 @@ pub fn print_console_summary(record: &EvaluationReport) {
         perf.ingestion_ms,
         format_duration(perf.namespace_seed_ms),
     );
-    let stage = &perf.stage_latency;
-    println!(
-        "[perf] stage avg ms → embed {:.1} | collect {:.1} | graph {:.1} | chunk {:.1} | rerank {:.1} | assemble {:.1}",
-        stage.embed.avg,
-        stage.collect_candidates.avg,
-        stage.graph_expansion.avg,
-        stage.chunk_attach.avg,
-        stage.rerank.avg,
-        stage.assemble.avg,
-    );
+    let stage_summary = perf
+        .stage_latency
+        .stages
+        .iter()
+        .map(|s| format!("{} {:.1}", s.stage, s.stats.avg))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    println!("[perf] stage avg ms → {stage_summary}");
     let eval = &perf.evaluation_stages_ms;
     println!(
         "[perf] eval stage ms → slice {} | db {} | corpus {} | namespace {} | queries {} | summarize {} | finalize {}",
@@ -107,12 +105,13 @@ mod tests {
 
     fn sample_stage_latency() -> crate::eval::StageLatencyBreakdown {
         crate::eval::StageLatencyBreakdown {
-            embed: sample_latency(),
-            collect_candidates: sample_latency(),
-            graph_expansion: sample_latency(),
-            chunk_attach: sample_latency(),
-            rerank: sample_latency(),
-            assemble: sample_latency(),
+            stages: ["embed", "search", "rerank", "resolve_entities", "assemble"]
+                .into_iter()
+                .map(|stage| crate::eval::StageLatency {
+                    stage: stage.to_string(),
+                    stats: sample_latency(),
+                })
+                .collect(),
         }
     }
 
@@ -193,7 +192,7 @@ mod tests {
             rerank_keep_top: 10,
             concurrency: 2,
             detailed_report: false,
-            retrieval_strategy: "initial".into(),
+            resolve_entities: false,
             chunk_result_cap: 5,
             chunk_rrf_k: 60.0,
             chunk_rrf_vector_weight: 1.0,
@@ -206,7 +205,6 @@ mod tests {
             ingest_chunk_overlap_tokens: 50,
             chunk_vector_take: 20,
             chunk_fts_take: 20,
-            chunk_avg_chars_per_token: 4,
             max_chunks_per_entity: 4,
             cases: Vec::new(),
         }

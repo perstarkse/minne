@@ -16,12 +16,9 @@ use futures::{
 };
 use json_stream_parser::JsonStreamParser;
 use minijinja::Value;
-use retrieval_pipeline::{
-    answer_retrieval::{
-        chunks_to_chat_context, create_chat_request, create_user_message_with_history,
-        LLMResponseFormat,
-    },
-    retrieved_entities_to_json,
+use retrieval_pipeline::answer_retrieval::{
+    chunks_to_chat_context, create_chat_request, create_user_message_with_history,
+    LLMResponseFormat,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
@@ -189,11 +186,7 @@ struct ReferenceData {
 }
 
 fn extract_reference_strings(response: &LLMResponseFormat) -> Vec<String> {
-    response
-        .references
-        .iter()
-        .map(|reference| reference.reference.clone())
-        .collect()
+    response.reference_ids()
 }
 
 #[allow(clippy::too_many_lines)]
@@ -362,10 +355,9 @@ async fn prepare_chat_request(
         None => None,
     };
 
-    let strategy = state.retrieval_strategy();
-    let config = retrieval_pipeline::RetrievalConfig::for_chat(strategy);
+    let config = retrieval_pipeline::RetrievalConfig::default();
 
-    let retrieval_result = match retrieval_pipeline::retrieve_entities(
+    let retrieval_result = match retrieval_pipeline::retrieve(
         &state.db,
         &state.openai_client,
         Some(&*state.embedding_provider),
@@ -387,12 +379,9 @@ async fn prepare_chat_request(
     let allowed_reference_ids = collect_reference_ids_from_retrieval(&retrieval_result);
 
     let context_json = match retrieval_result {
-        retrieval_pipeline::StrategyOutput::Chunks(chunks) => chunks_to_chat_context(&chunks),
-        retrieval_pipeline::StrategyOutput::Entities(entities) => {
-            retrieved_entities_to_json(&entities)
-        }
-        retrieval_pipeline::StrategyOutput::Search(search_result) => {
-            chunks_to_chat_context(&search_result.chunks)
+        retrieval_pipeline::RetrievalOutput::Chunks(chunks) => chunks_to_chat_context(&chunks),
+        retrieval_pipeline::RetrievalOutput::WithEntities { chunks, .. } => {
+            chunks_to_chat_context(&chunks)
         }
     };
     let formatted_user_message =

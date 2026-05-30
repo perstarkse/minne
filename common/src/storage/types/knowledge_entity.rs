@@ -164,6 +164,35 @@ impl KnowledgeEntity {
             .take(0)?)
     }
 
+    /// Fetch all knowledge entities owned by any of the provided source ids for a user.
+    ///
+    /// Used by retrieval to resolve the entities that own a set of retrieved chunks.
+    pub async fn find_by_source_ids(
+        db: &SurrealDbClient,
+        source_ids: &[String],
+        user_id: &str,
+    ) -> Result<Vec<KnowledgeEntity>, AppError> {
+        if source_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let entities: Vec<KnowledgeEntity> = db
+            .client
+            .query(
+                "SELECT * FROM type::table($table) \
+                 WHERE source_id IN $sources AND user_id = $user_id",
+            )
+            .bind(("table", Self::table_name()))
+            .bind(("sources", source_ids.to_vec()))
+            .bind(("user_id", user_id.to_owned()))
+            .await
+            .map_err(AppError::Database)?
+            .take(0)
+            .map_err(AppError::Database)?;
+
+        Ok(entities)
+    }
+
     pub async fn delete_by_source_id(
         source_id: &str,
         db_client: &SurrealDbClient,

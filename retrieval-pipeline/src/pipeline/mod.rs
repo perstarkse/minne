@@ -1,61 +1,68 @@
 mod config;
+mod context;
 mod diagnostics;
 mod stages;
-mod strategies;
 
-pub use config::{
-    RetrievalConfig, RetrievalStrategy, RetrievalTuning, RetrievalTuningFlags, SearchTarget,
-};
-pub use diagnostics::{
-    AssembleStats, ChunkEnrichmentStats, CollectCandidatesStats, EntityAssemblyTrace, Diagnostics,
-};
+pub use config::RetrievalConfig;
+pub use diagnostics::Diagnostics;
 
-use crate::{reranking::RerankerLease, RetrievedEntity, StrategyOutput};
+use crate::{round_score, RetrievalOutput, RetrievedEntity};
 use async_openai::Client;
 use async_trait::async_trait;
 use common::{error::AppError, storage::db::SurrealDbClient};
 use std::time::{Duration, Instant};
 use tracing::info;
 
-use stages::PipelineContext;
-use strategies::{
-    DefaultStrategyDriver, IngestionDriver, RelationshipSuggestionDriver, SearchStrategyDriver,
+use stages::{
+    ChunkAssembleStage, ChunkRerankStage, ChunkSearchStage, EmbedStage, ResolveEntitiesStage,
 };
 
-// Export StrategyOutput publicly from this module
-// (it's defined in lib.rs but we re-export it here)
-
-// Stage type enum
+/// Identifies a retrieval stage for timing and instrumentation.
+///
+/// [`StageKind::ALL`] lists every kind in pipeline order; consumers (e.g. the evaluation
+/// harness) iterate it generically so that adding a stage requires no changes outside this
+/// crate — add the variant, extend `ALL`, and give it a [`StageKind::label`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StageKind {
     Embed,
-    CollectCandidates,
-    GraphExpansion,
-    ChunkAttach,
+    Search,
     Rerank,
+    ResolveEntities,
     Assemble,
 }
 
-// Pipeline stage trait
+impl StageKind {
+    /// Every stage kind in canonical pipeline order.
+    pub const ALL: [StageKind; 5] = [
+        StageKind::Embed,
+        StageKind::Search,
+        StageKind::Rerank,
+        StageKind::ResolveEntities,
+        StageKind::Assemble,
+    ];
+
+    /// Stable, machine-friendly identifier for the stage (used as a metrics key).
+    pub const fn label(self) -> &'static str {
+        match self {
+            StageKind::Embed => "embed",
+            StageKind::Search => "search",
+            StageKind::Rerank => "rerank",
+            StageKind::ResolveEntities => "resolve_entities",
+            StageKind::Assemble => "assemble",
+        }
+    }
+}
+
+/// A single composable step in the retrieval pipeline.
 #[async_trait]
-pub trait Stage: Send + Sync {
+pub(crate) trait Stage: Send + Sync {
     fn kind(&self) -> StageKind;
-    async fn execute(&self, ctx: &mut PipelineContext<'_>) -> Result<(), AppError>;
+    async fn execute(&self, ctx: &mut context::PipelineContext<'_>) -> Result<(), AppError>;
 }
 
-// Type alias for boxed stages
-pub type BoxedStage = Box<dyn Stage>;
+pub(crate) type BoxedStage = Box<dyn Stage>;
 
-// Strategy driver trait
-#[async_trait]
-pub trait StrategyDriver: Send + Sync {
-    type Output;
-
-    fn stages(&self) -> Vec<BoxedStage>;
-    fn finalize(&self, ctx: &mut PipelineContext<'_>) -> Result<Self::Output, Box<AppError>>;
-}
-
-// Pipeline stage timings tracker
+/// Per-stage execution timings recorded during a run.
 #[derive(Debug, Default, Clone)]
 pub struct StageTimings {
     timings: Vec<(StageKind, Duration)>,
@@ -66,40 +73,12 @@ impl StageTimings {
         self.timings.push((kind, duration));
     }
 
-    pub fn into_vec(self) -> Vec<(StageKind, Duration)> {
-        self.timings
-    }
-
-    // Helper methods to get duration for each stage type (for backward compatibility)
-    fn get_stage_ms(&self, kind: StageKind) -> u128 {
+    /// Milliseconds recorded for `kind`, or `0` if the stage did not run.
+    pub fn stage_ms(&self, kind: StageKind) -> u128 {
         self.timings
             .iter()
             .find(|(k, _)| *k == kind)
             .map_or(0, |(_, d)| d.as_millis())
-    }
-
-    pub fn embed_ms(&self) -> u128 {
-        self.get_stage_ms(StageKind::Embed)
-    }
-
-    pub fn collect_candidates_ms(&self) -> u128 {
-        self.get_stage_ms(StageKind::CollectCandidates)
-    }
-
-    pub fn graph_expansion_ms(&self) -> u128 {
-        self.get_stage_ms(StageKind::GraphExpansion)
-    }
-
-    pub fn chunk_attach_ms(&self) -> u128 {
-        self.get_stage_ms(StageKind::ChunkAttach)
-    }
-
-    pub fn rerank_ms(&self) -> u128 {
-        self.get_stage_ms(StageKind::Rerank)
-    }
-
-    pub fn assemble_ms(&self) -> u128 {
-        self.get_stage_ms(StageKind::Assemble)
     }
 }
 
@@ -109,7 +88,35 @@ pub struct RunOutput<T> {
     pub stage_timings: StageTimings,
 }
 
-pub async fn execute(params: StrategyParams<'_>) -> Result<StrategyOutput, AppError> {
+/// Inputs required to run a retrieval.
+pub struct RetrievalParams<'a> {
+    pub db_client: &'a SurrealDbClient,
+    pub openai_client: &'a Client<async_openai::config::OpenAIConfig>,
+    pub embedding_provider: Option<&'a common::utils::embedding::EmbeddingProvider>,
+    pub input_text: &'a str,
+    pub user_id: &'a str,
+    pub config: RetrievalConfig,
+    pub reranker: Option<crate::reranking::RerankerLease>,
+}
+
+fn build_stages(config: &RetrievalConfig) -> Vec<BoxedStage> {
+    let mut stages: Vec<BoxedStage> = vec![
+        Box::new(EmbedStage),
+        Box::new(ChunkSearchStage),
+        Box::new(ChunkRerankStage),
+    ];
+    if config.resolve_entities {
+        stages.push(Box::new(ResolveEntitiesStage));
+    }
+    stages.push(Box::new(ChunkAssembleStage));
+    stages
+}
+
+async fn run(
+    params: RetrievalParams<'_>,
+    query_embedding: Option<Vec<f32>>,
+    capture_diagnostics: bool,
+) -> Result<RunOutput<RetrievalOutput>, AppError> {
     let input_chars = params.input_text.chars().count();
     let input_preview: String = params.input_text.chars().take(120).collect();
     let input_preview_clean = input_preview.replace('\n', " ");
@@ -119,110 +126,67 @@ pub async fn execute(params: StrategyParams<'_>) -> Result<StrategyOutput, AppEr
         input_chars,
         preview_truncated = input_chars > preview_len,
         preview = %input_preview_clean,
-        strategy = %params.config.strategy,
+        resolve_entities = params.config.resolve_entities,
         "Starting retrieval pipeline"
     );
 
-    let strategy = params.config.strategy;
-    let search_target = params.config.search_target;
+    let resolve_entities = params.config.resolve_entities;
+    let mut ctx = match query_embedding {
+        Some(embedding) => context::PipelineContext::with_embedding(params, embedding),
+        None => context::PipelineContext::new(params),
+    };
 
-    match strategy {
-        RetrievalStrategy::Default => {
-            let driver = DefaultStrategyDriver::new();
-            let run = execute_strategy(driver, params, None, false).await?;
-            Ok(StrategyOutput::Chunks(run.results))
-        }
-        RetrievalStrategy::RelationshipSuggestion => {
-            let driver = RelationshipSuggestionDriver::new();
-            let run = execute_strategy(driver, params, None, false).await?;
-            Ok(StrategyOutput::Entities(run.results))
-        }
-        RetrievalStrategy::Ingestion => {
-            let driver = IngestionDriver::new();
-            let run = execute_strategy(driver, params, None, false).await?;
-            Ok(StrategyOutput::Entities(run.results))
-        }
-        RetrievalStrategy::Search => {
-            let driver = SearchStrategyDriver::new(search_target);
-            let run = execute_strategy(driver, params, None, false).await?;
-            Ok(StrategyOutput::Search(run.results))
-        }
+    if capture_diagnostics {
+        ctx.enable_diagnostics();
     }
+
+    for stage in build_stages(&ctx.config) {
+        let start = Instant::now();
+        stage.execute(&mut ctx).await?;
+        ctx.record_stage_duration(stage.kind(), start.elapsed());
+    }
+
+    let diagnostics = ctx.take_diagnostics();
+    let stage_timings = ctx.take_stage_timings();
+    let chunks = ctx.take_chunk_results();
+    let results = if resolve_entities {
+        RetrievalOutput::WithEntities {
+            chunks,
+            entities: ctx.take_entity_results(),
+        }
+    } else {
+        RetrievalOutput::Chunks(chunks)
+    };
+
+    Ok(RunOutput {
+        results,
+        diagnostics,
+        stage_timings,
+    })
 }
 
-pub async fn run_pipeline_with_embedding(
-    params: StrategyParams<'_>,
-    query_embedding: Vec<f32>,
-) -> Result<StrategyOutput, AppError> {
-    let strategy = params.config.strategy;
-    let search_target = params.config.search_target;
-
-    match strategy {
-        RetrievalStrategy::Default => {
-            let driver = DefaultStrategyDriver::new();
-            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
-            Ok(StrategyOutput::Chunks(run.results))
-        }
-        RetrievalStrategy::RelationshipSuggestion => {
-            let driver = RelationshipSuggestionDriver::new();
-            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
-            Ok(StrategyOutput::Entities(run.results))
-        }
-        RetrievalStrategy::Ingestion => {
-            let driver = IngestionDriver::new();
-            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
-            Ok(StrategyOutput::Entities(run.results))
-        }
-        RetrievalStrategy::Search => {
-            let driver = SearchStrategyDriver::new(search_target);
-            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
-            Ok(StrategyOutput::Search(run.results))
-        }
-    }
+/// Run the retrieval pipeline, generating the query embedding internally if needed.
+pub async fn execute(params: RetrievalParams<'_>) -> Result<RetrievalOutput, AppError> {
+    Ok(run(params, None, false).await?.results)
 }
 
-pub async fn run_pipeline_with_embedding_with_metrics(
-    params: StrategyParams<'_>,
+/// Run the retrieval pipeline with a pre-computed query embedding.
+pub async fn run_with_embedding(
+    params: RetrievalParams<'_>,
     query_embedding: Vec<f32>,
-) -> Result<RunOutput<StrategyOutput>, AppError> {
-    let strategy = params.config.strategy;
-
-    match strategy {
-        RetrievalStrategy::Default => {
-            let driver = DefaultStrategyDriver::new();
-            let run = execute_strategy(driver, params, Some(query_embedding), false).await?;
-            Ok(RunOutput {
-                results: StrategyOutput::Chunks(run.results),
-                diagnostics: run.diagnostics,
-                stage_timings: run.stage_timings,
-            })
-        }
-        _ => Err(AppError::InternalError(
-            "Metrics not supported for this strategy".into(),
-        )),
-    }
+) -> Result<RetrievalOutput, AppError> {
+    Ok(run(params, Some(query_embedding), false).await?.results)
 }
 
-pub async fn run_pipeline_with_embedding_with_diagnostics(
-    params: StrategyParams<'_>,
+/// Run with a pre-computed embedding, returning results and per-stage timings.
+///
+/// When `capture_diagnostics` is true, pipeline search/assemble stats are included.
+pub async fn run_with_embedding_instrumented(
+    params: RetrievalParams<'_>,
     query_embedding: Vec<f32>,
-) -> Result<RunOutput<StrategyOutput>, AppError> {
-    let strategy = params.config.strategy;
-
-    match strategy {
-        RetrievalStrategy::Default => {
-            let driver = DefaultStrategyDriver::new();
-            let run = execute_strategy(driver, params, Some(query_embedding), true).await?;
-            Ok(RunOutput {
-                results: StrategyOutput::Chunks(run.results),
-                diagnostics: run.diagnostics,
-                stage_timings: run.stage_timings,
-            })
-        }
-        _ => Err(AppError::InternalError(
-            "Diagnostics not supported for this strategy".into(),
-        )),
-    }
+    capture_diagnostics: bool,
+) -> Result<RunOutput<RetrievalOutput>, AppError> {
+    run(params, Some(query_embedding), capture_diagnostics).await
 }
 
 pub fn retrieved_entities_to_json(entities: &[RetrievedEntity]) -> serde_json::Value {
@@ -245,58 +209,4 @@ pub fn retrieved_entities_to_json(entities: &[RetrievedEntity]) -> serde_json::V
             })
         })
         .collect::<Vec<_>>())
-}
-
-pub struct StrategyParams<'a> {
-    pub db_client: &'a SurrealDbClient,
-    pub openai_client: &'a Client<async_openai::config::OpenAIConfig>,
-    pub embedding_provider: Option<&'a common::utils::embedding::EmbeddingProvider>,
-    pub input_text: &'a str,
-    pub user_id: &'a str,
-    pub config: RetrievalConfig,
-    pub reranker: Option<RerankerLease>,
-}
-
-async fn execute_strategy<D: StrategyDriver>(
-    driver: D,
-    params: StrategyParams<'_>,
-    query_embedding: Option<Vec<f32>>,
-    capture_diagnostics: bool,
-) -> Result<RunOutput<D::Output>, AppError> {
-    let ctx = match query_embedding {
-        Some(embedding) => PipelineContext::with_embedding(params, embedding),
-        None => PipelineContext::new(params),
-    };
-
-    run_with_driver(driver, ctx, capture_diagnostics).await
-}
-
-async fn run_with_driver<D: StrategyDriver>(
-    driver: D,
-    mut ctx: PipelineContext<'_>,
-    capture_diagnostics: bool,
-) -> Result<RunOutput<D::Output>, AppError> {
-    if capture_diagnostics {
-        ctx.enable_diagnostics();
-    }
-
-    for stage in driver.stages() {
-        let start = Instant::now();
-        stage.execute(&mut ctx).await?;
-        ctx.record_stage_duration(stage.kind(), start.elapsed());
-    }
-
-    let diagnostics = ctx.take_diagnostics();
-    let stage_timings = ctx.take_stage_timings();
-    let results = driver.finalize(&mut ctx).map_err(|e| *e)?;
-
-    Ok(RunOutput {
-        results,
-        diagnostics,
-        stage_timings,
-    })
-}
-
-fn round_score(value: f32) -> f64 {
-    (f64::from(value) * 1000.0).round() / 1000.0
 }

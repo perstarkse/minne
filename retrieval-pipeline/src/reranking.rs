@@ -97,8 +97,7 @@ impl RerankerPool {
 
 fn default_pool_size() -> usize {
     available_parallelism()
-        .map(|value| value.get().min(2))
-        .unwrap_or(2)
+        .map_or(2, |value| value.get().min(2))
         .max(1)
 }
 
@@ -156,6 +155,7 @@ pub struct RerankerLease {
 }
 
 impl RerankerLease {
+    #[allow(clippy::result_large_err)]
     pub async fn rerank(
         &self,
         query: &str,
@@ -165,7 +165,9 @@ impl RerankerLease {
         let engine = Arc::clone(&self.engine);
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = engine.lock().expect("reranker engine mutex poisoned");
+            let mut guard = engine.lock().map_err(|_| {
+                AppError::InternalError("reranker engine mutex poisoned".into())
+            })?;
             guard
                 .rerank(query, documents, false, None)
                 .map_err(|e| AppError::InternalError(e.to_string()))

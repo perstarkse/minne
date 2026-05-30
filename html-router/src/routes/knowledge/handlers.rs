@@ -32,7 +32,7 @@ use crate::{
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{
-            template_with_headers, HtmlError, TemplateResponse, TemplateResult, ResponseResult,
+            template_with_headers, TemplateResponse, TemplateResult, ResponseResult,
         },
     },
     utils::pagination::{paginate_items, Pagination},
@@ -284,9 +284,9 @@ pub async fn suggest_knowledge_relationships(
             None => None,
         };
 
-        let config = retrieval_pipeline::RetrievalConfig::for_relationship_suggestion();
-        if let Ok(retrieval_pipeline::StrategyOutput::Entities(results)) =
-            retrieval_pipeline::retrieve_entities(
+        let config = retrieval_pipeline::RetrievalConfig::with_entities();
+        if let Ok(retrieval_pipeline::RetrievalOutput::WithEntities { entities, .. }) =
+            retrieval_pipeline::retrieve(
                 &state.db,
                 &state.openai_client,
                 Some(&*state.embedding_provider),
@@ -297,7 +297,7 @@ pub async fn suggest_knowledge_relationships(
             )
             .await
         {
-            for retrieval_pipeline::RetrievedEntity { entity, score, .. } in results {
+            for retrieval_pipeline::RetrievedEntity { entity, score, .. } in entities {
                 if suggestion_scores.len() >= MAX_RELATIONSHIP_SUGGESTIONS {
                     break;
                 }

@@ -13,7 +13,7 @@ use crate::{
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{
-            template_as_response, HtmlError, TemplateResponse, TemplateResult, ResponseResult,
+            template_as_response, TemplateResponse, TemplateResult, ResponseResult,
         },
     },
     utils::text_content_preview::truncate_text_contents,
