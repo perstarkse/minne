@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use axum::{
     extract::{Query, State},
-    response::IntoResponse,
 };
 use common::storage::types::{text_content::TextContent, user::User};
 use retrieval_pipeline::{RetrievalConfig, SearchResult, SearchTarget, StrategyOutput};
@@ -13,7 +12,7 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
+        response_middleware::{HtmlError, TemplateResponse, TemplateResult},
     },
 };
 
@@ -79,7 +78,7 @@ pub async fn search_result_handler(
     State(state): State<HtmlState>,
     Query(params): Query<SearchParams>,
     RequireUser(user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let (search_results_for_template, final_query_param_for_template) = if let Some(actual_query) =
         params.query
     {

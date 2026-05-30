@@ -31,7 +31,9 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
+        response_middleware::{
+            template_with_headers, HtmlError, TemplateResponse, TemplateResult, ResponseResult,
+        },
     },
     utils::pagination::{paginate_items, Pagination},
 };
@@ -120,12 +122,12 @@ fn collect_relationship_type_options(relationships: &[KnowledgeRelationship]) ->
     options
 }
 
-fn respond_with_graph_refresh(response: TemplateResponse) -> Response {
-    let mut response = response.into_response();
-    if let Ok(value) = HeaderValue::from_str(GRAPH_REFRESH_TRIGGER) {
-        response.headers_mut().insert(HX_TRIGGER, value);
-    }
-    response
+fn graph_refresh_response(template: TemplateResponse) -> Response {
+    template_with_headers(template, |headers| {
+        if let Ok(value) = HeaderValue::from_str(GRAPH_REFRESH_TRIGGER) {
+            headers.insert(HX_TRIGGER, value);
+        }
+    })
 }
 
 #[derive(Deserialize, Default)]
@@ -138,7 +140,7 @@ pub struct FilterParams {
 pub async fn show_new_knowledge_entity_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let entity_types: Vec<String> = KnowledgeEntityType::variants()
         .iter()
         .map(ToString::to_string)
@@ -170,7 +172,7 @@ pub async fn create_knowledge_entity(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Form(form): Form<CreateKnowledgeEntityParams>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     let name = form.name.trim().to_string();
     if name.is_empty() {
         return Err(AppError::Validation("name is required".into()).into());
@@ -230,7 +232,7 @@ pub async fn create_knowledge_entity(
 
     let default_params = FilterParams::default();
     let kb_data = build_knowledge_base_data(&state, &user, &default_params).await?;
-    Ok(respond_with_graph_refresh(TemplateResponse::new_partial(
+    Ok(graph_refresh_response(TemplateResponse::new_partial(
         "knowledge/base.html",
         "main",
         kb_data,
@@ -241,7 +243,7 @@ pub async fn suggest_knowledge_relationships(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Form(form): Form<SuggestRelationshipsParams>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let entity_lookup: HashMap<String, KnowledgeEntity> =
         User::get_knowledge_entities(&user.id, &state.db)
             .await?
@@ -723,7 +725,7 @@ pub async fn show_knowledge_page(
     HxRequest(is_htmx): HxRequest,
     HxBoosted(is_boosted): HxBoosted,
     Query(mut params): Query<FilterParams>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     // Normalize filters: treat empty or "none" as no filter
     params.entity_type = normalize_filter(params.entity_type.take());
     params.content_category = normalize_filter(params.content_category.take());
@@ -772,7 +774,7 @@ pub async fn get_knowledge_graph_json(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Query(mut params): Query<FilterParams>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     // Normalize filters: treat empty or "none" as no filter
     params.entity_type = normalize_filter(params.entity_type.take());
     params.content_category = normalize_filter(params.content_category.take());
@@ -821,7 +823,7 @@ pub async fn get_knowledge_graph_json(
         })
         .collect();
 
-    Ok(Json(GraphData { nodes, links }))
+    Ok(Json(GraphData { nodes, links }).into_response())
 }
 // Normalize filter parameters: convert empty strings or "none" (case-insensitive) to None
 fn normalize_filter(input: Option<String>) -> Option<String> {
@@ -851,7 +853,7 @@ pub async fn show_edit_knowledge_entity_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     #[derive(Serialize)]
     pub struct EntityData {
         entity: KnowledgeEntity,
@@ -899,7 +901,7 @@ pub async fn patch_knowledge_entity(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Form(form): Form<PatchKnowledgeEntityParams>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     // Get the existing entity and validate that the user is allowed
     User::get_and_validate_knowledge_entity(&form.id, &user.id, &state.db).await?;
 
@@ -930,7 +932,7 @@ pub async fn patch_knowledge_entity(
     let content_categories = User::get_user_categories(&user.id, &state.db).await?;
 
     // Render updated list
-    Ok(respond_with_graph_refresh(TemplateResponse::new_template(
+    Ok(graph_refresh_response(TemplateResponse::new_template(
         "knowledge/entity_list.html",
         EntityListData {
             visible_entities,
@@ -948,7 +950,7 @@ pub async fn delete_knowledge_entity(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     // Get the existing entity and validate that the user is allowed
     User::get_and_validate_knowledge_entity(&id, &user.id, &state.db).await?;
 
@@ -968,7 +970,7 @@ pub async fn delete_knowledge_entity(
     // Get content categories
     let content_categories = User::get_user_categories(&user.id, &state.db).await?;
 
-    Ok(respond_with_graph_refresh(TemplateResponse::new_template(
+    Ok(graph_refresh_response(TemplateResponse::new_template(
         "knowledge/entity_list.html",
         EntityListData {
             visible_entities,
@@ -994,7 +996,7 @@ pub async fn delete_knowledge_relationship(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     KnowledgeRelationship::delete_relationship_by_id(&id, &user.id, &state.db).await?;
 
     let entities = User::get_knowledge_entities(&user.id, &state.db).await?;
@@ -1003,7 +1005,7 @@ pub async fn delete_knowledge_relationship(
     let table_data = build_relationship_table_data(entities, relationships);
 
     // Render updated list
-    Ok(respond_with_graph_refresh(TemplateResponse::new_template(
+    Ok(graph_refresh_response(TemplateResponse::new_template(
         "knowledge/relationship_table.html",
         table_data,
     )))
@@ -1020,7 +1022,7 @@ pub async fn save_knowledge_relationship(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Form(form): Form<SaveKnowledgeRelationshipInput>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     // Construct relationship
     let relationship_type = canonicalize_relationship_type(&form.relationship_type);
     let relationship = KnowledgeRelationship::new(
@@ -1039,7 +1041,7 @@ pub async fn save_knowledge_relationship(
     let table_data = build_relationship_table_data(entities, relationships);
 
     // Render updated list
-    Ok(respond_with_graph_refresh(TemplateResponse::new_template(
+    Ok(graph_refresh_response(TemplateResponse::new_template(
         "knowledge/relationship_table.html",
         table_data,
     )))

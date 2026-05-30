@@ -3,7 +3,6 @@ use std::sync::Arc;
 use async_openai::types::ListModelResponse;
 use axum::{
     extract::{Query, State},
-    response::IntoResponse,
     Form,
 };
 use serde::{Deserialize, Serialize};
@@ -26,7 +25,7 @@ use tracing::{error, info};
 
 use crate::{
     html_state::HtmlState,
-    middlewares::response_middleware::{HtmlError, TemplateResponse},
+    middlewares::response_middleware::{TemplateResponse, TemplateResult},
 };
 
 #[derive(Serialize)]
@@ -57,7 +56,7 @@ pub struct AdminPanelQuery {
 pub async fn show_admin_panel(
     State(state): State<HtmlState>,
     Query(query): Query<AdminPanelQuery>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let section = match query.section.as_deref() {
         Some("models") => AdminSection::Models,
         _ => AdminSection::Overview,
@@ -124,7 +123,7 @@ pub struct RegistrationToggleData {
 pub async fn toggle_registration_status(
     State(state): State<HtmlState>,
     Form(input): Form<RegistrationToggleInput>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let new_settings = SystemSettingsPatch {
         registrations_enabled: Some(input.registration_open),
         ..Default::default()
@@ -160,7 +159,7 @@ pub struct ModelSettingsData {
 pub async fn update_model_settings(
     State(state): State<HtmlState>,
     Form(input): Form<ModelSettingsInput>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let current_settings = SystemSettings::get_current(&state.db).await?;
 
     // Check if using FastEmbed - if so, embedding model/dimensions cannot be changed via UI
@@ -272,7 +271,7 @@ pub struct SystemPromptEditData {
 
 pub async fn show_edit_system_prompt(
     State(state): State<HtmlState>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -297,7 +296,7 @@ pub struct SystemPromptSectionData {
 pub async fn patch_query_prompt(
     State(state): State<HtmlState>,
     Form(input): Form<SystemPromptUpdateInput>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let new_settings = SystemSettingsPatch {
         query_system_prompt: Some(input.query_system_prompt),
         ..Default::default()
@@ -322,7 +321,7 @@ pub struct IngestionPromptEditData {
 
 pub async fn show_edit_ingestion_prompt(
     State(state): State<HtmlState>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -342,7 +341,7 @@ pub struct IngestionPromptUpdateInput {
 pub async fn patch_ingestion_prompt(
     State(state): State<HtmlState>,
     Form(input): Form<IngestionPromptUpdateInput>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let new_settings = SystemSettingsPatch {
         ingestion_system_prompt: Some(input.ingestion_system_prompt),
         ..Default::default()
@@ -367,7 +366,7 @@ pub struct ImagePromptEditData {
 
 pub async fn show_edit_image_prompt(
     State(state): State<HtmlState>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -387,7 +386,7 @@ pub struct ImagePromptUpdateInput {
 pub async fn patch_image_prompt(
     State(state): State<HtmlState>,
     Form(input): Form<ImagePromptUpdateInput>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let new_settings = SystemSettingsPatch {
         image_processing_prompt: Some(input.image_processing_prompt),
         ..Default::default()

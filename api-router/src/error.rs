@@ -7,7 +7,7 @@ use common::error::AppError;
 use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Error, Debug, Serialize, Clone)]
+#[derive(Error, Debug)]
 pub enum ApiErr {
     #[error("internal server error")]
     InternalError(String),
@@ -28,14 +28,13 @@ pub enum ApiErr {
 impl From<AppError> for ApiErr {
     fn from(err: AppError) -> Self {
         match err {
-            AppError::Database(_) | AppError::OpenAI(_) => {
-                tracing::error!("Internal error: {:?}", err);
-                Self::InternalError("Internal server error".to_string())
-            }
             AppError::NotFound(msg) => Self::NotFound(msg),
             AppError::Validation(msg) => Self::ValidationError(msg),
             AppError::Auth(msg) => Self::Unauthorized(msg),
-            _ => Self::InternalError("Internal server error".to_string()),
+            other => {
+                tracing::error!("internal API error: {other:?}");
+                Self::InternalError("Internal server error".to_string())
+            }
         }
     }
 }
@@ -120,10 +119,21 @@ mod tests {
         assert!(matches!(api_error, ApiErr::Unauthorized(msg) if msg == "unauthorized"));
 
         // Test for internal errors - create a mock error that doesn't require surrealdb
-        let internal_error =
-            AppError::Io(io::Error::other("io error"));
+        let internal_error = AppError::Io(io::Error::other("io error"));
         let api_error = ApiErr::from(internal_error);
-        assert!(matches!(api_error, ApiErr::InternalError(_)));
+        assert!(matches!(
+            api_error,
+            ApiErr::InternalError(msg) if msg == "Internal server error"
+        ));
+    }
+
+    #[test]
+    fn test_app_error_internal_error_is_sanitized() {
+        let api_error = ApiErr::from(AppError::internal("db password incorrect"));
+        assert!(matches!(
+            api_error,
+            ApiErr::InternalError(msg) if msg == "Internal server error"
+        ));
     }
 
     #[test]

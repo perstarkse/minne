@@ -1,4 +1,4 @@
-use axum::{extract::State, response::IntoResponse, Form};
+use axum::{extract::State, Form};
 use axum_htmx::HxBoosted;
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +6,7 @@ use common::{error::AppError, storage::types::user::{Theme, User}};
 
 use crate::{
     html_state::HtmlState,
-    middlewares::response_middleware::{HtmlError, TemplateResponse},
+    middlewares::response_middleware::{TemplateResponse, TemplateResult},
     AuthSessionType,
 };
 
@@ -27,7 +27,7 @@ fn signup_error_message(err: &AppError) -> &str {
 pub async fn show_signup_form(
     auth: AuthSessionType,
     HxBoosted(boosted): HxBoosted,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     if auth.current_user.is_some() {
         return Ok(TemplateResponse::redirect("/"));
     }
@@ -47,7 +47,7 @@ pub async fn process_signup_and_show_verification(
     State(state): State<HtmlState>,
     auth: AuthSessionType,
     Form(form): Form<Params>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let user = match User::create_new(
         form.email,
         form.password,
@@ -60,11 +60,11 @@ pub async fn process_signup_and_show_verification(
         Ok(user) => user,
         Err(err) => {
             tracing::error!(?err, "signup failed");
-            return Ok(TemplateResponse::bad_request(signup_error_message(&err)).into_response());
+            return Ok(TemplateResponse::bad_request(signup_error_message(&err)));
         }
     };
 
     auth.login_user(user.id);
 
-    Ok(TemplateResponse::redirect("/").into_response())
+    Ok(TemplateResponse::redirect("/"))
 }

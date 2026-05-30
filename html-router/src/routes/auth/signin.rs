@@ -1,10 +1,10 @@
-use axum::{extract::State, response::IntoResponse, Form};
+use axum::{extract::State, Form};
 use axum_htmx::HxBoosted;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     html_state::HtmlState,
-    middlewares::response_middleware::{HtmlError, TemplateResponse},
+    middlewares::response_middleware::{TemplateResponse, TemplateResult},
     AuthSessionType,
 };
 use common::storage::types::user::User;
@@ -19,7 +19,7 @@ pub struct SignInParams {
 pub async fn show_signin_form(
     auth: AuthSessionType,
     HxBoosted(boosted): HxBoosted,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     if auth.current_user.is_some() {
         return Ok(TemplateResponse::redirect("/"));
     }
@@ -38,9 +38,9 @@ pub async fn authenticate_user(
     State(state): State<HtmlState>,
     auth: AuthSessionType,
     Form(form): Form<SignInParams>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let Ok(user) = User::authenticate(&form.email, &form.password, &state.db).await else {
-        return Ok(TemplateResponse::bad_request("Incorrect email or password").into_response());
+        return Ok(TemplateResponse::bad_request("Incorrect email or password"));
     };
 
     auth.login_user(user.id);
@@ -49,5 +49,5 @@ pub async fn authenticate_user(
         auth.remember_user(true);
     }
 
-    Ok(TemplateResponse::redirect("/").into_response())
+    Ok(TemplateResponse::redirect("/"))
 }

@@ -43,6 +43,7 @@ json-stream-parser = { path = "../json-stream-parser" }
 
 [dev-dependencies]
 common = { path = "../common", features = ["test-utils"] }
+tower = "0.5"
 
 [build-dependencies]
 minijinja-embed = { version = "2.8.0" }

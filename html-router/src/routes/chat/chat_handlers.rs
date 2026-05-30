@@ -1,7 +1,6 @@
 use axum::{
     extract::{Path, State},
     http::HeaderValue,
-    response::IntoResponse,
     Form,
 };
 use serde::{Deserialize, Serialize};
@@ -18,7 +17,10 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
+        response_middleware::{
+            template_as_response, template_with_headers, TemplateResponse, TemplateResult,
+            ResponseResult,
+        },
     },
 };
 
@@ -31,7 +33,7 @@ pub struct ChatPageData {
 pub async fn show_chat_base(
     State(_state): State<HtmlState>,
     RequireUser(_user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     Ok(TemplateResponse::new_template(
         "chat/base.html",
         ChatPageData {
@@ -50,7 +52,7 @@ pub async fn show_existing_chat(
     Path(conversation_id): Path<String>,
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let (conversation, messages) =
         Conversation::get_complete_conversation(conversation_id.as_str(), &user.id, &state.db)
             .await?;
@@ -69,7 +71,7 @@ pub async fn new_user_message(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Form(form): Form<NewMessageForm>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     #[derive(Serialize)]
     struct SSEResponseInitData {
         user_message: Message,
@@ -82,31 +84,32 @@ pub async fn new_user_message(
         .ok_or_else(|| AppError::NotFound("conversation was not found".into()))?;
 
     if conversation.user_id != user.id {
-        return Ok(TemplateResponse::unauthorized().into_response());
+        return Ok(template_as_response(TemplateResponse::unauthorized()));
     }
 
     let user_message = Message::new(conversation_id, MessageRole::User, form.content, None);
 
     state.db.store_item(user_message.clone()).await?;
 
-    let mut response = TemplateResponse::new_template(
-        "chat/streaming_response.html",
-        SSEResponseInitData { user_message },
-    )
-    .into_response();
-
-    if let Ok(header_value) = HeaderValue::from_str(&format!("/chat/{}", conversation.id)) {
-        response.headers_mut().insert("HX-Push", header_value);
-    }
-
-    Ok(response)
+    let push_path = format!("/chat/{}", conversation.id);
+    Ok(template_with_headers(
+        TemplateResponse::new_template(
+            "chat/streaming_response.html",
+            SSEResponseInitData { user_message },
+        ),
+        |headers| {
+            if let Ok(header_value) = HeaderValue::from_str(&push_path) {
+                headers.insert("HX-Push", header_value);
+            }
+        },
+    ))
 }
 
 pub async fn new_chat_user_message(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Form(form): Form<NewMessageForm>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     #[derive(Serialize)]
     struct SSEResponseInitData {
         user_message: Message,
@@ -125,20 +128,21 @@ pub async fn new_chat_user_message(
     state.db.store_item(user_message.clone()).await?;
     state.invalidate_conversation_archive_cache(&user.id).await;
 
-    let mut response = TemplateResponse::new_template(
-        "chat/new_chat_first_response.html",
-        SSEResponseInitData {
-            user_message,
-            conversation: conversation.clone(),
+    let push_path = format!("/chat/{}", conversation.id);
+    Ok(template_with_headers(
+        TemplateResponse::new_template(
+            "chat/new_chat_first_response.html",
+            SSEResponseInitData {
+                user_message,
+                conversation: conversation.clone(),
+            },
+        ),
+        |headers| {
+            if let Ok(header_value) = HeaderValue::from_str(&push_path) {
+                headers.insert("HX-Push", header_value);
+            }
         },
-    )
-    .into_response();
-
-    if let Ok(header_value) = HeaderValue::from_str(&format!("/chat/{}", conversation.id)) {
-        response.headers_mut().insert("HX-Push", header_value);
-    }
-
-    Ok(response)
+    ))
 }
 
 #[derive(Deserialize)]
@@ -155,7 +159,7 @@ pub async fn show_conversation_editing_title(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(conversation_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let conversation: Conversation = state
         .db
         .get_item(&conversation_id)
@@ -163,7 +167,7 @@ pub async fn show_conversation_editing_title(
         .ok_or_else(|| AppError::NotFound("conversation not found".to_string()))?;
 
     if conversation.user_id != user.id {
-        return Ok(TemplateResponse::unauthorized().into_response());
+        return Ok(TemplateResponse::unauthorized());
     }
 
     Ok(TemplateResponse::new_template(
@@ -171,8 +175,7 @@ pub async fn show_conversation_editing_title(
         DrawerContext {
             edit_conversation_id: Some(conversation_id),
         },
-    )
-    .into_response())
+    ))
 }
 
 pub async fn patch_conversation_title(
@@ -180,7 +183,7 @@ pub async fn patch_conversation_title(
     RequireUser(user): RequireUser,
     Path(conversation_id): Path<String>,
     Form(form): Form<PatchConversationTitle>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     Conversation::patch_title(&conversation_id, &user.id, &form.title, &state.db).await?;
     state.invalidate_conversation_archive_cache(&user.id).await;
 
@@ -189,15 +192,14 @@ pub async fn patch_conversation_title(
         DrawerContext {
             edit_conversation_id: None,
         },
-    )
-    .into_response())
+    ))
 }
 
 pub async fn delete_conversation(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(conversation_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let conversation: Conversation = state
         .db
         .get_item(&conversation_id)
@@ -205,7 +207,7 @@ pub async fn delete_conversation(
         .ok_or_else(|| AppError::NotFound("conversation not found".to_string()))?;
 
     if conversation.user_id != user.id {
-        return Ok(TemplateResponse::unauthorized().into_response());
+        return Ok(TemplateResponse::unauthorized());
     }
 
     state
@@ -219,18 +221,16 @@ pub async fn delete_conversation(
         DrawerContext {
             edit_conversation_id: None,
         },
-    )
-    .into_response())
+    ))
 }
 pub async fn reload_sidebar(
     State(_state): State<HtmlState>,
     RequireUser(_user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     Ok(TemplateResponse::new_template(
         "sidebar.html",
         DrawerContext {
             edit_conversation_id: None,
         },
-    )
-    .into_response())
+    ))
 }

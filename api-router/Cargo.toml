@@ -20,3 +20,8 @@ futures = { workspace = true }
 axum_typed_multipart = { workspace = true} 
 
 common = { path = "../common" }
+
+[dev-dependencies]
+common = { path = "../common", features = ["test-utils"] }
+tower = "0.5"
+uuid = { workspace = true }

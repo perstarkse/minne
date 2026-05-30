@@ -116,6 +116,29 @@ impl IntoResponse for TemplateResponse {
     }
 }
 
+/// Typical handler return type when no extra response headers or body are needed.
+pub type TemplateResult = Result<TemplateResponse, HtmlError>;
+
+/// Handler return type when the response needs custom headers or a non-template body.
+pub type ResponseResult = Result<Response, HtmlError>;
+
+/// Converts a [`TemplateResponse`] for [`ResponseResult`] handlers that do not set extra headers.
+pub fn template_as_response(template: TemplateResponse) -> Response {
+    template.into_response()
+}
+
+/// Wraps a [`TemplateResponse`] for the template middleware and applies outbound headers.
+///
+/// Headers listed in [`HTMX_HEADERS_TO_FORWARD`] are copied onto the rendered HTML response.
+pub fn template_with_headers(
+    template: TemplateResponse,
+    apply: impl FnOnce(&mut axum::http::HeaderMap),
+) -> Response {
+    let mut response = template.into_response();
+    apply(response.headers_mut());
+    response
+}
+
 #[derive(Serialize)]
 struct TemplateUser {
     id: String,
@@ -143,7 +166,7 @@ struct ContextWrapper<'a> {
     initial_theme: &'a str,
     is_authenticated: bool,
     user: Option<&'a TemplateUser>,
-    conversation_archive: Vec<SidebarConversation>,
+    conversation_archive: &'a [SidebarConversation],
     #[serde(flatten)]
     context: HashMap<String, Value>,
 }
@@ -213,18 +236,14 @@ where
     if let Some(template_response) = response.extensions().get::<TemplateResponse>().cloned() {
         let template_engine = state.template_engine();
 
-        let mut conversation_archive = Vec::new();
-
         let should_load_conversation_archive =
             matches!(&template_response.template_kind, TemplateKind::Full(_));
 
-        if should_load_conversation_archive {
+        let cached_archive = if should_load_conversation_archive {
             if let Some(user_id) = current_user.as_ref().map(|u| &u.id) {
                 let html_state = state.html_state();
-                if let Some(cached_archive) =
-                    html_state.get_cached_conversation_archive(user_id).await
-                {
-                    conversation_archive = cached_archive.to_vec();
+                if let Some(cached) = html_state.get_cached_conversation_archive(user_id).await {
+                    Some(cached)
                 } else if let Ok(archive) =
                     Conversation::get_user_sidebar_conversations(user_id, &html_state.db).await
                 {
@@ -232,10 +251,19 @@ where
                     html_state
                         .set_cached_conversation_archive(user_id, Arc::clone(&cached))
                         .await;
-                    conversation_archive = cached.to_vec();
+                    Some(cached)
+                } else {
+                    None
                 }
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
+        let conversation_archive = cached_archive
+            .as_ref()
+            .map_or(&[][..], |archive| archive.as_ref());
 
         let context_map = match context_to_map(&template_response.context) {
             Ok(map) => map,

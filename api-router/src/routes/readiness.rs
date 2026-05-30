@@ -1,5 +1,6 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
+use tracing::error;
 
 use crate::api_state::ApiState;
 
@@ -13,13 +14,15 @@ pub async fn ready(State(state): State<ApiState>) -> impl IntoResponse {
                 "checks": { "db": "ok" }
             })),
         ),
-        Err(e) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "status": "error",
-                "checks": { "db": "fail" },
-                "reason": e.to_string()
-            })),
-        ),
+        Err(e) => {
+            error!("readiness check failed: {e:?}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "status": "error",
+                    "checks": { "db": "fail" }
+                })),
+            )
+        }
     }
 }

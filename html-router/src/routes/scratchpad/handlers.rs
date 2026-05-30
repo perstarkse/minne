@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::html_state::HtmlState;
 use crate::middlewares::{
     auth_middleware::RequireUser,
-    response_middleware::{HtmlError, TemplateResponse},
+    response_middleware::{
+        template_with_headers, HtmlError, TemplateResponse, TemplateResult, ResponseResult,
+    },
 };
 use common::storage::types::{
     ingestion_payload::IngestionPayload, ingestion_task::IngestionTask, scratchpad::Scratchpad,
@@ -127,7 +129,7 @@ pub async fn show_scratchpad_page(
     HxRequest(is_htmx): HxRequest,
     HxBoosted(is_boosted): HxBoosted,
     State(state): State<HtmlState>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
     let archived_scratchpads = Scratchpad::get_archived_by_user(&user.id, &state.db).await?;
 
@@ -165,7 +167,7 @@ pub async fn show_scratchpad_modal(
     State(state): State<HtmlState>,
     Path(scratchpad_id): Path<String>,
     Query(query): Query<EditTitleQuery>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let scratchpad = Scratchpad::get_by_id(&scratchpad_id, &user.id, &state.db).await?;
 
     let scratchpad_detail = ScratchpadDetail::from(&scratchpad);
@@ -186,7 +188,7 @@ pub async fn create_scratchpad(
     RequireUser(user): RequireUser,
     State(state): State<HtmlState>,
     Form(form): Form<CreateScratchpadForm>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let user_id = user.id.clone();
     let scratchpad = Scratchpad::new(user_id.clone(), form.title);
     let _stored = state.db.store_item(scratchpad.clone()).await?;
@@ -217,7 +219,7 @@ pub async fn auto_save_scratchpad(
     State(state): State<HtmlState>,
     Path(scratchpad_id): Path<String>,
     Form(form): Form<UpdateScratchpadForm>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     let updated =
         Scratchpad::update_content(&scratchpad_id, &user.id, &form.content, &state.db).await?;
 
@@ -229,7 +231,8 @@ pub async fn auto_save_scratchpad(
             .format("%Y-%m-%d %H:%M:%S")
             .to_string(),
         last_saved_at_iso: updated.last_saved_at.to_rfc3339(),
-    }))
+    })
+    .into_response())
 }
 
 pub async fn update_scratchpad_title(
@@ -237,7 +240,7 @@ pub async fn update_scratchpad_title(
     State(state): State<HtmlState>,
     Path(scratchpad_id): Path<String>,
     Form(form): Form<UpdateTitleForm>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     Scratchpad::update_title(&scratchpad_id, &user.id, &form.title, &state.db).await?;
 
     let scratchpad = Scratchpad::get_by_id(&scratchpad_id, &user.id, &state.db).await?;
@@ -255,7 +258,7 @@ pub async fn delete_scratchpad(
     RequireUser(user): RequireUser,
     State(state): State<HtmlState>,
     Path(scratchpad_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     Scratchpad::delete(&scratchpad_id, &user.id, &state.db).await?;
 
     // Return the updated main section content
@@ -284,7 +287,7 @@ pub async fn ingest_scratchpad(
     RequireUser(user): RequireUser,
     State(state): State<HtmlState>,
     Path(scratchpad_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     let scratchpad = Scratchpad::get_by_id(&scratchpad_id, &user.id, &state.db).await?;
 
     if scratchpad.content.trim().is_empty() {
@@ -347,29 +350,29 @@ pub async fn ingest_scratchpad(
         r#"{"toast":{"title":"Ingestion queued","description":"Scratchpad archived and added to the ingestion queue.","type":"success"}}"#.to_string()
     });
 
-    let template_response = TemplateResponse::new_partial(
-        "scratchpad/base.html",
-        "main",
-        ScratchpadPageData {
-            scratchpads: scratchpad_list,
-            archived_scratchpads: archived_list,
-            new_scratchpad: None,
+    Ok(template_with_headers(
+        TemplateResponse::new_partial(
+            "scratchpad/base.html",
+            "main",
+            ScratchpadPageData {
+                scratchpads: scratchpad_list,
+                archived_scratchpads: archived_list,
+                new_scratchpad: None,
+            },
+        ),
+        |headers| {
+            if let Ok(header_value) = HeaderValue::from_str(&trigger_value) {
+                headers.insert(HX_TRIGGER, header_value);
+            }
         },
-    );
-
-    let mut response = template_response.into_response();
-    if let Ok(header_value) = HeaderValue::from_str(&trigger_value) {
-        response.headers_mut().insert(HX_TRIGGER, header_value);
-    }
-
-    Ok(response)
+    ))
 }
 
 pub async fn archive_scratchpad(
     RequireUser(user): RequireUser,
     State(state): State<HtmlState>,
     Path(scratchpad_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     Scratchpad::archive(&scratchpad_id, &user.id, &state.db, false).await?;
 
     let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
@@ -396,7 +399,7 @@ pub async fn restore_scratchpad(
     RequireUser(user): RequireUser,
     State(state): State<HtmlState>,
     Path(scratchpad_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     Scratchpad::restore(&scratchpad_id, &user.id, &state.db).await?;
 
     let scratchpads = Scratchpad::get_by_user(&user.id, &state.db).await?;
@@ -420,22 +423,22 @@ pub async fn restore_scratchpad(
         r#"{"toast":{"title":"Scratchpad restored","description":"The scratchpad is back in your active list.","type":"info"}}"#.to_string()
     });
 
-    let template_response = TemplateResponse::new_partial(
-        "scratchpad/base.html",
-        "main",
-        ScratchpadPageData {
-            scratchpads: scratchpad_list,
-            archived_scratchpads: archived_list,
-            new_scratchpad: None,
+    Ok(template_with_headers(
+        TemplateResponse::new_partial(
+            "scratchpad/base.html",
+            "main",
+            ScratchpadPageData {
+                scratchpads: scratchpad_list,
+                archived_scratchpads: archived_list,
+                new_scratchpad: None,
+            },
+        ),
+        |headers| {
+            if let Ok(header_value) = HeaderValue::from_str(&trigger_value) {
+                headers.insert(HX_TRIGGER, header_value);
+            }
         },
-    );
-
-    let mut response = template_response.into_response();
-    if let Ok(header_value) = HeaderValue::from_str(&trigger_value) {
-        response.headers_mut().insert(HX_TRIGGER, header_value);
-    }
-
-    Ok(response)
+    ))
 }
 
 #[cfg(test)]

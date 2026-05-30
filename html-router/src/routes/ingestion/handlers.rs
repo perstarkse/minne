@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive, KeepAliveStream},
-        IntoResponse, Response, Sse,
+        Sse,
     },
 };
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
@@ -31,7 +31,7 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
+        response_middleware::{TemplateResponse, TemplateResult},
     },
 };
 
@@ -49,7 +49,7 @@ fn sse_with_keep_alive(stream: EventStream) -> TaskSse {
 pub async fn show_ingest_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     #[derive(Serialize)]
     pub struct ShowIngestFormData {
         user_categories: Vec<String>,
@@ -65,7 +65,7 @@ pub async fn show_ingest_form(
 
 pub async fn hide_ingest_form(
     RequireUser(_user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     Ok(TemplateResponse::new_template(
         "ingestion/add_content_button.html",
         (),
@@ -91,12 +91,11 @@ pub async fn process_ingest_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     TypedMultipart(input): TypedMultipart<IngestionParams>,
-) -> Result<Response, HtmlError> {
+) -> TemplateResult {
     if input.content.as_ref().is_none_or(|c| c.len() < 2) && input.files.is_empty() {
-        return Ok(
-            TemplateResponse::bad_request("You need to either add files or content")
-                .into_response(),
-        );
+        return Ok(TemplateResponse::bad_request(
+            "You need to either add files or content",
+        ));
     }
 
     let content_bytes = input.content.as_ref().map_or(0, String::len);
@@ -118,11 +117,10 @@ pub async fn process_ingest_form(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "Payload Too Large",
                 &message,
-            )
-            .into_response());
+            ));
         }
         Err(IngestValidationError::BadRequest(message)) => {
-            return Ok(TemplateResponse::bad_request(&message).into_response());
+            return Ok(TemplateResponse::bad_request(&message));
         }
     }
 
@@ -153,10 +151,10 @@ pub async fn process_ingest_form(
     let tasks =
         IngestionTask::create_all_and_add_to_db(payloads, &user.id, &state.db).await?;
 
-    Ok(
-        TemplateResponse::new_template("dashboard/current_task.html", NewTasksData { tasks })
-            .into_response(),
-    )
+    Ok(TemplateResponse::new_template(
+        "dashboard/current_task.html",
+        NewTasksData { tasks },
+    ))
 }
 
 #[derive(Deserialize)]

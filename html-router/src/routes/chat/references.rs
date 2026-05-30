@@ -2,7 +2,6 @@
 
 use axum::{
     extract::{Path, State},
-    response::IntoResponse,
 };
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
@@ -16,7 +15,7 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
+        response_middleware::{TemplateResponse, TemplateResult},
     },
 };
 
@@ -45,7 +44,7 @@ pub async fn show_reference_tooltip(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(reference_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let Ok((normalized_reference_id, target)) = normalize_reference(&reference_id) else {
         return Ok(TemplateResponse::not_found());
     };

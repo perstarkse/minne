@@ -34,7 +34,7 @@ macro_rules! create_asset_service {
     }};
 }
 
-pub type MiddleWareVecType<S> = Vec<Box<dyn FnOnce(Router<S>) -> Router<S> + Send>>;
+pub type MiddlewareVec<S> = Vec<Box<dyn FnOnce(Router<S>) -> Router<S> + Send>>;
 
 /// Builder for composing public/protected HTML routes and middleware layers.
 pub struct RouterFactory<S> {
@@ -43,7 +43,7 @@ pub struct RouterFactory<S> {
     protected_routers: Vec<Router<S>>,
     nested_routes: Vec<(String, Router<S>)>,
     nested_protected_routes: Vec<(String, Router<S>)>,
-    custom_middleware: MiddleWareVecType<S>,
+    custom_middleware: MiddlewareVec<S>,
     public_assets_config: Option<AssetsConfig>,
     compression_enabled: bool,
 }
