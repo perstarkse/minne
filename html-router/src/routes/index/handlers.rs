@@ -12,7 +12,9 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
+        response_middleware::{
+            template_as_response, HtmlError, TemplateResponse, TemplateResult, ResponseResult,
+        },
     },
     utils::text_content_preview::truncate_text_contents,
     utils::truncate::with_ellipsis,
@@ -37,7 +39,7 @@ pub struct IndexPageData {
 pub async fn index_handler(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let (text_contents, dashboard_stats, active_jobs) = try_join!(
         User::get_latest_text_contents(&user.id, &state.db),
         User::get_dashboard_stats(&user.id, &state.db),
@@ -65,7 +67,7 @@ pub async fn delete_text_content(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     // Get and validate TextContent
     let text_content = get_and_validate_text_content(&state, &id, &user).await?;
 
@@ -154,7 +156,7 @@ pub async fn delete_job(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     User::validate_and_delete_job(&id, &user.id, &state.db).await?;
 
     let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
@@ -169,7 +171,7 @@ pub async fn delete_job(
 pub async fn show_active_jobs(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let active_jobs = User::get_unfinished_ingestion_tasks(&user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -181,7 +183,7 @@ pub async fn show_active_jobs(
 pub async fn show_task_archive(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let tasks = User::get_all_ingestion_tasks(&user.id, &state.db).await?;
 
     let entries: Vec<TaskArchiveEntry> = tasks
@@ -234,17 +236,17 @@ pub async fn serve_file(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(file_id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> ResponseResult {
     let Ok(file_info) = FileInfo::get_by_id(&file_id, &state.db).await else {
-        return Ok(TemplateResponse::not_found().into_response());
+        return Ok(template_as_response(TemplateResponse::not_found()));
     };
 
     if file_info.user_id != user.id {
-        return Ok(TemplateResponse::unauthorized().into_response());
+        return Ok(template_as_response(TemplateResponse::unauthorized()));
     }
 
     let Ok(stream) = state.storage.get_stream(&file_info.path).await else {
-        return Ok(TemplateResponse::server_error().into_response());
+        return Ok(template_as_response(TemplateResponse::server_error()));
     };
     let body = Body::from_stream(stream);
 

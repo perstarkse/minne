@@ -16,7 +16,7 @@ use tracing::info;
 use crate::{api_state::ApiState, error::ApiErr};
 
 #[derive(Debug, TryFromMultipart)]
-pub struct IngestParams {
+pub struct Params {
     pub content: Option<String>,
     pub context: String,
     pub category: String,
@@ -25,24 +25,20 @@ pub struct IngestParams {
     pub files: Vec<FieldData<NamedTempFile>>,
 }
 
-pub async fn ingest_data(
+pub async fn handle(
     State(state): State<ApiState>,
     Extension(user): Extension<User>,
-    TypedMultipart(input): TypedMultipart<IngestParams>,
+    TypedMultipart(input): TypedMultipart<Params>,
 ) -> Result<impl IntoResponse, ApiErr> {
     let user_id = user.id;
-    let content_bytes = input.content.as_ref().map_or(0, |c| c.len());
     let has_content = input.content.as_ref().is_some_and(|c| !c.trim().is_empty());
-    let context_bytes = input.context.len();
-    let category_bytes = input.category.len();
-    let file_count = input.files.len();
 
     match validate_ingest_input(
         &state.config,
         input.content.as_deref(),
         &input.context,
         &input.category,
-        file_count,
+        input.files.len(),
     ) {
         Ok(()) => {}
         Err(IngestValidationError::PayloadTooLarge(message)) => {
@@ -56,10 +52,10 @@ pub async fn ingest_data(
     info!(
         user_id = %user_id,
         has_content,
-        content_bytes,
-        context_bytes,
-        category_bytes,
-        file_count,
+        content_len = input.content.as_ref().map_or(0, String::len),
+        context_len = input.context.len(),
+        category_len = input.category.len(),
+        file_count = input.files.len(),
         "Received ingest request"
     );
 

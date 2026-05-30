@@ -247,7 +247,9 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tower",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2978,6 +2980,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
+ "tower",
  "tower-http",
  "tower-serve-static",
  "tracing",

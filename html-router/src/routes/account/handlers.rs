@@ -1,11 +1,11 @@
-use axum::{extract::State, response::IntoResponse, Form};
+use axum::{extract::State, Form};
 use chrono_tz::TZ_VARIANTS;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     middlewares::{
         auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
+        response_middleware::{TemplateResponse, TemplateResult},
     },
     AuthSessionType,
 };
@@ -28,7 +28,7 @@ pub struct AccountPageData {
 pub async fn show_account_page(
     RequireUser(user): RequireUser,
     State(_state): State<HtmlState>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let timezones = TZ_VARIANTS
         .iter()
         .map(std::string::ToString::to_string)
@@ -57,7 +57,7 @@ pub async fn set_api_key(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     auth: AuthSessionType,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     // Generate and set the API key
     let api_key = User::set_api_key(&user.id, &state.db).await?;
 
@@ -82,7 +82,7 @@ pub async fn delete_account(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     auth: AuthSessionType,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     state.db.delete_item::<User>(&user.id).await?;
 
     auth.logout_user();
@@ -102,7 +102,7 @@ pub async fn update_timezone(
     RequireUser(user): RequireUser,
     auth: AuthSessionType,
     Form(form): Form<UpdateTimezoneForm>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     User::update_timezone(&user.id, &form.timezone, &state.db).await?;
 
     // Clear the cache
@@ -137,7 +137,7 @@ pub async fn update_theme(
     RequireUser(user): RequireUser,
     auth: AuthSessionType,
     Form(form): Form<UpdateThemeForm>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     User::update_theme(&user.id, &form.theme, &state.db).await?;
 
     // Clear the cache
@@ -166,7 +166,7 @@ pub async fn update_theme(
 
 pub async fn show_change_password(
     RequireUser(_user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     Ok(TemplateResponse::new_template(
         "auth/change_password_form.html",
         (),
@@ -184,7 +184,7 @@ pub async fn change_password(
     RequireUser(user): RequireUser,
     auth: AuthSessionType,
     Form(form): Form<NewPasswordForm>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     // Authenticate to make sure the password matches
     let authenticated_user = User::authenticate(&user.email, &form.old_password, &state.db).await?;
 

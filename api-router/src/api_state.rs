@@ -11,31 +11,3 @@ pub struct ApiState {
     pub config: AppConfig,
     pub storage: StorageManager,
 }
-
-impl ApiState {
-    pub async fn new(
-        config: &AppConfig,
-        storage: StorageManager,
-    ) -> anyhow::Result<Self> {
-        let surreal_db_client = Arc::new(
-            SurrealDbClient::new(
-                &config.surrealdb_address,
-                &config.surrealdb_username,
-                &config.surrealdb_password,
-                &config.surrealdb_namespace,
-                &config.surrealdb_database,
-            )
-            .await?,
-        );
-
-        surreal_db_client.apply_migrations().await?;
-
-        let app_state = Self {
-            db: Arc::clone(&surreal_db_client),
-            config: config.clone(),
-            storage,
-        };
-
-        Ok(app_state)
-    }
-}

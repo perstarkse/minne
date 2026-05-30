@@ -1,11 +1,9 @@
-use axum::response::IntoResponse;
-
 use crate::{
-    middlewares::response_middleware::{HtmlError, TemplateResponse},
+    middlewares::response_middleware::{TemplateResponse, TemplateResult},
     AuthSessionType,
 };
 
-pub async fn sign_out_user(auth: AuthSessionType) -> Result<impl IntoResponse, HtmlError> {
+pub async fn sign_out_user(auth: AuthSessionType) -> TemplateResult {
     if !auth.is_authenticated() {
         return Ok(TemplateResponse::redirect("/"));
     }

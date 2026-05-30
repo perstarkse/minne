@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use middleware_api_auth::api_auth;
-use routes::{categories::list, ingest::ingest_data, liveness::live, readiness::ready};
+use routes::{categories::list, ingest::handle, liveness::live, readiness::ready};
 
 pub mod api_state;
 pub mod error;
@@ -28,7 +28,7 @@ where
     let protected = Router::new()
         .route(
             "/ingest",
-            post(ingest_data).layer(DefaultBodyLimit::max(
+            post(handle).layer(DefaultBodyLimit::max(
                 app_state.config.ingest_max_body_bytes,
             )),
         )

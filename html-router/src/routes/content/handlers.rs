@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, Query, State},
-    response::IntoResponse,
     Form,
 };
 use axum_htmx::{HxBoosted, HxRequest, HxTarget};
@@ -15,7 +14,7 @@ use crate::{
     html_state::HtmlState,
     middlewares::{
         auth_middleware::RequireUser,
-        response_middleware::{HtmlError, TemplateResponse},
+        response_middleware::{TemplateResponse, TemplateResult},
     },
     utils::pagination::{paginate_items, Pagination},
     utils::text_content_preview::truncate_text_contents,
@@ -50,7 +49,7 @@ pub async fn show_content_page(
     Query(params): Query<FilterParams>,
     HxRequest(is_htmx): HxRequest,
     HxBoosted(is_boosted): HxBoosted,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     // Normalize empty strings to None
     let category_filter = params
         .category
@@ -101,7 +100,7 @@ pub async fn show_text_content_edit_form(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     #[derive(Serialize)]
     pub struct TextContentEditModal {
         pub text_content: TextContent,
@@ -127,7 +126,7 @@ pub async fn patch_text_content(
     Path(id): Path<String>,
     HxTarget(target): HxTarget,
     Form(form): Form<PatchTextContentParams>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
 
     TextContent::patch(&id, &form.context, &form.category, &form.text, &state.db).await?;
@@ -167,7 +166,7 @@ pub async fn delete_text_content(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     // Get and validate the text content
     let text_content = User::get_and_validate_text_content(&id, &user.id, &state.db).await?;
 
@@ -213,7 +212,7 @@ pub async fn show_content_read_modal(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     #[derive(Serialize)]
     pub struct TextContentReadModalData {
         pub text_content: TextContent,
@@ -231,7 +230,7 @@ pub async fn show_content_read_modal(
 pub async fn show_recent_content(
     State(state): State<HtmlState>,
     RequireUser(user): RequireUser,
-) -> Result<impl IntoResponse, HtmlError> {
+) -> TemplateResult {
     let text_contents =
         truncate_text_contents(User::get_latest_text_contents(&user.id, &state.db).await?);
 
