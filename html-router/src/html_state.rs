@@ -2,10 +2,7 @@ use common::storage::types::conversation::SidebarConversation;
 use common::storage::{db::SurrealDbClient, store::StorageManager};
 use common::utils::embedding::EmbeddingProvider;
 use common::utils::template_engine::{ProvidesTemplateEngine, TemplateEngine};
-use common::{
-    create_template_engine, storage::db::ProvidesDb,
-    utils::config::{AppConfig, RetrievalStrategy},
-};
+use common::{create_template_engine, storage::db::ProvidesDb, utils::config::AppConfig};
 use retrieval_pipeline::reranking::RerankerPool;
 use std::collections::HashMap;
 use std::sync::{
@@ -73,10 +70,6 @@ impl HtmlState {
             conversation_archive_cache: Arc::new(RwLock::new(HashMap::new())),
             conversation_archive_cache_writes: Arc::new(AtomicUsize::new(0)),
         }
-    }
-
-    pub fn retrieval_strategy(&self) -> RetrievalStrategy {
-        self.config.resolved_retrieval_strategy()
     }
 
     pub async fn get_cached_conversation_archive(

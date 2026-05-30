@@ -201,7 +201,10 @@ pub(crate) async fn summarize(
         rerank_keep_top: config.retrieval.rerank_keep_top,
         concurrency: config.concurrency.max(1),
         detailed_report: config.detailed_report,
-        retrieval_strategy: config.retrieval.strategy.to_string(),
+        resolve_entities: ctx
+            .retrieval_config
+            .as_ref()
+            .is_some_and(|config| config.resolve_entities),
         chunk_result_cap: config.retrieval.chunk_result_cap,
         chunk_rrf_k: active_tuning.chunk_rrf_k,
         chunk_rrf_vector_weight: active_tuning.chunk_rrf_vector_weight,
@@ -214,7 +217,6 @@ pub(crate) async fn summarize(
         ingest_chunk_overlap_tokens: config.ingest.ingest_chunk_overlap_tokens,
         chunk_vector_take: active_tuning.chunk_vector_take,
         chunk_fts_take: active_tuning.chunk_fts_take,
-        chunk_avg_chars_per_token: active_tuning.avg_chars_per_token,
         max_chunks_per_entity: active_tuning.max_chunks_per_entity,
         cases: summaries,
     });

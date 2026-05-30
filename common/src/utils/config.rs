@@ -1,8 +1,7 @@
 use config::{Config, ConfigError, Environment, File};
-use serde::{Deserialize, Deserializer, Serialize};
-use std::{env, fmt, str::FromStr, sync::Once};
+use serde::{Deserialize, Serialize};
+use std::{env, str::FromStr, sync::Once};
 use thiserror::Error;
-use tracing::warn;
 
 /// Error returned when parsing an embedding backend name.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -33,83 +32,6 @@ impl EmbeddingBackend {
             Self::FastEmbed => "fastembed",
             Self::Hashed => "hashed",
         }
-    }
-}
-
-/// Error returned when parsing a retrieval strategy name.
-#[derive(Debug, Error, PartialEq, Eq)]
-#[error("unknown retrieval strategy '{input}'")]
-pub struct ParseRetrievalStrategyError {
-    /// The unrecognized input string.
-    pub input: String,
-}
-
-/// Selects which retrieval pipeline strategy to run for chat and search.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum RetrievalStrategy {
-    /// Primary hybrid chunk retrieval for search/chat.
-    #[default]
-    Default,
-    /// Entity retrieval for suggesting relationships when creating manual entities.
-    RelationshipSuggestion,
-    /// Entity retrieval for context during content ingestion.
-    Ingestion,
-    /// Unified search returning both chunks and entities.
-    Search,
-}
-
-impl RetrievalStrategy {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Default => "default",
-            Self::RelationshipSuggestion => "relationship_suggestion",
-            Self::Ingestion => "ingestion",
-            Self::Search => "search",
-        }
-    }
-}
-
-impl FromStr for RetrievalStrategy {
-    type Err = ParseRetrievalStrategyError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value.to_ascii_lowercase().as_str() {
-            "default" => Ok(Self::Default),
-            "initial" | "revised" => {
-                warn!(
-                    "retrieval strategy '{value}' is deprecated; use 'default' instead"
-                );
-                Ok(Self::Default)
-            }
-            "relationship_suggestion" => Ok(Self::RelationshipSuggestion),
-            "ingestion" => Ok(Self::Ingestion),
-            "search" => Ok(Self::Search),
-            other => Err(ParseRetrievalStrategyError {
-                input: other.to_string(),
-            }),
-        }
-    }
-}
-
-impl fmt::Display for RetrievalStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-fn deserialize_optional_retrieval_strategy<'de, D>(
-    deserializer: D,
-) -> Result<Option<RetrievalStrategy>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = Option::<String>::deserialize(deserializer)?;
-    match value {
-        None => Ok(None),
-        Some(raw) if raw.trim().is_empty() => Ok(None),
-        Some(raw) => RetrievalStrategy::from_str(&raw).map(Some).map_err(serde::de::Error::custom),
     }
 }
 
@@ -195,8 +117,6 @@ pub struct AppConfig {
     pub fastembed_show_download_progress: Option<bool>,
     #[serde(default)]
     pub fastembed_max_length: Option<usize>,
-    #[serde(default, deserialize_with = "deserialize_optional_retrieval_strategy")]
-    pub retrieval_strategy: Option<RetrievalStrategy>,
     #[serde(default)]
     pub embedding_backend: EmbeddingBackend,
     #[serde(default = "default_ingest_max_body_bytes")]
@@ -282,14 +202,6 @@ pub fn ensure_ort_path() {
     });
 }
 
-impl AppConfig {
-    /// Returns the configured retrieval strategy, or [`RetrievalStrategy::Default`] when unset.
-    #[must_use]
-    pub fn resolved_retrieval_strategy(&self) -> RetrievalStrategy {
-        self.retrieval_strategy.unwrap_or_default()
-    }
-}
-
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -312,7 +224,6 @@ impl Default for AppConfig {
             fastembed_cache_dir: None,
             fastembed_show_download_progress: None,
             fastembed_max_length: None,
-            retrieval_strategy: None,
             embedding_backend: EmbeddingBackend::default(),
             ingest_max_body_bytes: default_ingest_max_body_bytes(),
             ingest_max_files: default_ingest_max_files(),
@@ -340,41 +251,22 @@ pub fn get_config() -> Result<AppConfig, ConfigError> {
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use super::{ParseRetrievalStrategyError, RetrievalStrategy};
+    use super::EmbeddingBackend;
+
     #[test]
-    fn retrieval_strategy_defaults_to_default() {
-        assert_eq!(
-            RetrievalStrategy::default(),
-            RetrievalStrategy::Default
-        );
+    fn embedding_backend_defaults_to_fastembed() {
+        assert_eq!(EmbeddingBackend::default(), EmbeddingBackend::FastEmbed);
     }
 
     #[test]
-    fn retrieval_strategy_serializes_snake_case() {
+    fn embedding_backend_parses_aliases() {
         assert_eq!(
-            serde_json::to_string(&RetrievalStrategy::Search).expect("serialize"),
-            "\"search\""
+            "openai".parse::<EmbeddingBackend>().expect("openai"),
+            EmbeddingBackend::OpenAI
         );
-    }
-
-    #[test]
-    fn retrieval_strategy_from_str_accepts_deprecated_aliases() {
         assert_eq!(
-            "initial".parse::<RetrievalStrategy>().expect("initial"),
-            RetrievalStrategy::Default
-        );
-        assert!(matches!(
-            "unknown".parse::<RetrievalStrategy>(),
-            Err(ParseRetrievalStrategyError { .. })
-        ));
-    }
-
-    #[test]
-    fn app_config_resolved_retrieval_strategy_uses_default_when_unset() {
-        let config = super::AppConfig::default();
-        assert_eq!(
-            config.resolved_retrieval_strategy(),
-            RetrievalStrategy::Default
+            "fast".parse::<EmbeddingBackend>().expect("fast"),
+            EmbeddingBackend::FastEmbed
         );
     }
 }

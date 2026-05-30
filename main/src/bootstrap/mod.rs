@@ -95,6 +95,7 @@ pub(crate) async fn init_with_config(config: AppConfig) -> anyhow::Result<Shared
 }
 
 #[cfg(test)]
+#[allow(dead_code)] // helpers are shared across binary test targets
 pub(crate) mod tests {
     use std::path::Path;
 

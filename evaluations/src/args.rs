@@ -5,7 +5,6 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Args, Parser, ValueEnum};
-use retrieval_pipeline::RetrievalStrategy;
 
 use crate::datasets::DatasetKind;
 
@@ -55,10 +54,6 @@ pub struct RetrievalSettings {
     #[arg(long)]
     pub chunk_fts_take: Option<usize>,
 
-    /// Override average characters per token used for budgeting
-    #[arg(long)]
-    pub chunk_avg_chars_per_token: Option<usize>,
-
     /// Override maximum chunks attached per entity
     #[arg(long)]
     pub max_chunks_per_entity: Option<usize>,
@@ -71,41 +66,37 @@ pub struct RetrievalSettings {
     #[arg(long, default_value_t = 4)]
     pub rerank_pool_size: usize,
 
-    /// Keep top-N entities after reranking
+    /// Keep top-N chunks after reranking
     #[arg(long, default_value_t = 10)]
     pub rerank_keep_top: usize,
 
-    /// Cap the number of chunks returned by retrieval (revised strategy)
+    /// Cap the number of chunks returned by retrieval
     #[arg(long, default_value_t = 5)]
     pub chunk_result_cap: usize,
 
-    /// Reciprocal rank fusion k value for revised chunk merging
+    /// Reciprocal rank fusion k value for chunk merging
     #[arg(long)]
     pub chunk_rrf_k: Option<f32>,
 
-    /// Weight for vector ranks in revised RRF
+    /// Weight for vector ranks in RRF
     #[arg(long)]
     pub chunk_rrf_vector_weight: Option<f32>,
 
-    /// Weight for chunk FTS ranks in revised RRF
+    /// Weight for chunk FTS ranks in RRF
     #[arg(long)]
     pub chunk_rrf_fts_weight: Option<f32>,
 
-    /// Include vector ranks in revised RRF (default: true)
+    /// Include vector ranks in RRF (default: true)
     #[arg(long)]
     pub chunk_rrf_use_vector: Option<bool>,
 
-    /// Include chunk FTS ranks in revised RRF (default: true)
+    /// Include chunk FTS ranks in RRF (default: true)
     #[arg(long)]
     pub chunk_rrf_use_fts: Option<bool>,
 
     /// Require verified chunks (disable with --llm-mode)
     #[arg(skip = true)]
     pub require_verified_chunks: bool,
-
-    /// Select the retrieval pipeline strategy
-    #[arg(long, default_value_t = RetrievalStrategy::Default)]
-    pub strategy: RetrievalStrategy,
 }
 
 impl Default for RetrievalSettings {
@@ -113,7 +104,6 @@ impl Default for RetrievalSettings {
         Self {
             chunk_vector_take: None,
             chunk_fts_take: None,
-            chunk_avg_chars_per_token: None,
             max_chunks_per_entity: None,
             rerank: false,
             rerank_pool_size: 4,
@@ -125,7 +115,6 @@ impl Default for RetrievalSettings {
             chunk_rrf_use_vector: None,
             chunk_rrf_use_fts: None,
             require_verified_chunks: true,
-            strategy: RetrievalStrategy::Default,
         }
     }
 }

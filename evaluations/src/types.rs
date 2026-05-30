@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use chrono::{DateTime, Utc};
 use common::storage::types::StoredObject;
 use retrieval_pipeline::{
-    PipelineDiagnostics, PipelineStageTimings, RetrievedChunk, RetrievedEntity, StrategyOutput,
+    Diagnostics, RetrievalOutput, RetrievedChunk, RetrievedEntity, StageKind, StageTimings,
 };
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
@@ -69,7 +69,7 @@ pub struct EvaluationSummary {
     pub rerank_keep_top: usize,
     pub concurrency: usize,
     pub detailed_report: bool,
-    pub retrieval_strategy: String,
+    pub resolve_entities: bool,
     pub chunk_result_cap: usize,
     pub chunk_rrf_k: f32,
     pub chunk_rrf_vector_weight: f32,
@@ -82,7 +82,6 @@ pub struct EvaluationSummary {
     pub ingest_chunk_overlap_tokens: usize,
     pub chunk_vector_take: usize,
     pub chunk_fts_take: usize,
-    pub chunk_avg_chars_per_token: usize,
     pub max_chunks_per_entity: usize,
     pub cases: Vec<CaseSummary>,
 }
@@ -129,14 +128,20 @@ impl Default for LatencyStats {
     }
 }
 
+/// Latency statistics for a single retrieval stage, keyed by the stage's stable label.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StageLatency {
+    pub stage: String,
+    pub stats: LatencyStats,
+}
+
+/// Per-stage retrieval latency, in canonical pipeline order.
+///
+/// The set of stages is driven entirely by [`StageKind::ALL`], so adding a retrieval stage
+/// surfaces here automatically without changes to the evaluation harness.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StageLatencyBreakdown {
-    pub embed: LatencyStats,
-    pub collect_candidates: LatencyStats,
-    pub graph_expansion: LatencyStats,
-    pub chunk_attach: LatencyStats,
-    pub rerank: LatencyStats,
-    pub assemble: LatencyStats,
+    pub stages: Vec<StageLatency>,
 }
 
 #[allow(clippy::struct_field_names)]
@@ -232,13 +237,12 @@ fn candidates_from_chunks(chunks: Vec<RetrievedChunk>) -> Vec<EvaluationCandidat
         .collect()
 }
 
-pub fn adapt_strategy_output(output: StrategyOutput) -> Vec<EvaluationCandidate> {
+pub fn adapt_retrieval_output(output: RetrievalOutput) -> Vec<EvaluationCandidate> {
     match output {
-        StrategyOutput::Entities(entities) => candidates_from_entities(entities),
-        StrategyOutput::Chunks(chunks) => candidates_from_chunks(chunks),
-        StrategyOutput::Search(search_result) => {
-            let mut candidates = candidates_from_entities(search_result.entities);
-            candidates.extend(candidates_from_chunks(search_result.chunks));
+        RetrievalOutput::Chunks(chunks) => candidates_from_chunks(chunks),
+        RetrievalOutput::WithEntities { chunks, entities } => {
+            let mut candidates = candidates_from_entities(entities);
+            candidates.extend(candidates_from_chunks(chunks));
             candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
             candidates
         }
@@ -262,7 +266,7 @@ pub struct CaseDiagnostics {
     pub attached_chunk_ids: Vec<String>,
     pub retrieved: Vec<EntityDiagnostics>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pipeline: Option<PipelineDiagnostics>,
+    pub pipeline: Option<Diagnostics>,
 }
 
 #[derive(Debug, Serialize)]
@@ -366,28 +370,19 @@ pub fn compute_latency_stats(latencies: &[u128]) -> LatencyStats {
     LatencyStats { avg, p50, p95 }
 }
 
-pub fn build_stage_latency_breakdown(samples: &[PipelineStageTimings]) -> StageLatencyBreakdown {
-    fn collect_stage<F>(samples: &[PipelineStageTimings], selector: F) -> Vec<u128>
-    where
-        F: Fn(&PipelineStageTimings) -> u128,
-    {
-        samples.iter().map(selector).collect()
-    }
+pub fn build_stage_latency_breakdown(samples: &[StageTimings]) -> StageLatencyBreakdown {
+    let stages = StageKind::ALL
+        .iter()
+        .map(|kind| {
+            let latencies: Vec<u128> = samples.iter().map(|s| s.stage_ms(*kind)).collect();
+            StageLatency {
+                stage: kind.label().to_string(),
+                stats: compute_latency_stats(&latencies),
+            }
+        })
+        .collect();
 
-    StageLatencyBreakdown {
-        embed: compute_latency_stats(&collect_stage(samples, retrieval_pipeline::StageTimings::embed_ms)),
-        collect_candidates: compute_latency_stats(&collect_stage(samples, |entry| {
-            entry.collect_candidates_ms()
-        })),
-        graph_expansion: compute_latency_stats(&collect_stage(samples, |entry| {
-            entry.graph_expansion_ms()
-        })),
-        chunk_attach: compute_latency_stats(&collect_stage(samples, |entry| {
-            entry.chunk_attach_ms()
-        })),
-        rerank: compute_latency_stats(&collect_stage(samples, retrieval_pipeline::StageTimings::rerank_ms)),
-        assemble: compute_latency_stats(&collect_stage(samples, retrieval_pipeline::StageTimings::assemble_ms)),
-    }
+    StageLatencyBreakdown { stages }
 }
 
 #[allow(
@@ -412,7 +407,7 @@ pub fn build_case_diagnostics(
     expected_chunk_ids: &[String],
     answers_lower: &[String],
     candidates: &[EvaluationCandidate],
-    pipeline_stats: Option<PipelineDiagnostics>,
+    pipeline_stats: Option<Diagnostics>,
 ) -> CaseDiagnostics {
     let expected_set: HashSet<&str> = expected_chunk_ids.iter().map(std::string::String::as_str).collect();
     let mut seen_chunks: HashSet<String> = HashSet::new();

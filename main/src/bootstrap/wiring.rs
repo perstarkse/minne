@@ -11,8 +11,9 @@ use html_router::{
 use super::SharedServices;
 
 /// Builds the Minne API and HTML route subtrees without fixing the outer Axum state
-/// type. SaaS consumers can merge additional routers and attach their own `AppState`
+/// type. `SaaS` consumers can merge additional routers and attach their own `AppState`
 /// as long as it implements `FromRef` for `ApiState` and `HtmlState`.
+#[allow(dead_code)] // used by server/main binaries, not worker
 pub fn minne_routes<S>(api_state: &ApiState, html_state: &HtmlState) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
@@ -24,6 +25,7 @@ where
         .merge(html_routes(html_state))
 }
 
+#[allow(dead_code)] // used by server/main binaries, not worker
 pub fn build_api_state(services: &SharedServices) -> ApiState {
     ApiState {
         db: Arc::clone(&services.db),
@@ -32,6 +34,7 @@ pub fn build_api_state(services: &SharedServices) -> ApiState {
     }
 }
 
+#[allow(dead_code)] // used by server/main binaries, not worker
 pub async fn build_html_state(services: &SharedServices) -> anyhow::Result<HtmlState> {
     let session_store = Arc::new(
         services

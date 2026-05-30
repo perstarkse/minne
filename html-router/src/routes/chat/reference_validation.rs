@@ -9,7 +9,7 @@ use common::{
         types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk, StoredObject},
     },
 };
-use retrieval_pipeline::StrategyOutput;
+use retrieval_pipeline::RetrievalOutput;
 use uuid::Uuid;
 
 pub(crate) const MAX_REFERENCE_COUNT: usize = 10;
@@ -86,40 +86,29 @@ pub(crate) enum ReferenceLookupTarget {
 }
 
 pub(crate) fn collect_reference_ids_from_retrieval(
-    retrieval_result: &StrategyOutput,
+    retrieval_result: &RetrievalOutput,
 ) -> Vec<String> {
     let mut ids = Vec::new();
     let mut seen = HashSet::new();
 
+    let mut push_id = |id: String| {
+        if seen.insert(id.clone()) {
+            ids.push(id);
+        }
+    };
+
     match retrieval_result {
-        StrategyOutput::Chunks(chunks) => {
+        RetrievalOutput::Chunks(chunks) => {
             for chunk in chunks {
-                let id = chunk.chunk.id.clone();
-                if seen.insert(id.clone()) {
-                    ids.push(id);
-                }
+                push_id(chunk.chunk.id.clone());
             }
         }
-        StrategyOutput::Entities(entities) => {
+        RetrievalOutput::WithEntities { chunks, entities } => {
+            for chunk in chunks {
+                push_id(chunk.chunk.id.clone());
+            }
             for entity in entities {
-                let id = entity.entity.id.clone();
-                if seen.insert(id.clone()) {
-                    ids.push(id);
-                }
-            }
-        }
-        StrategyOutput::Search(search) => {
-            for chunk in &search.chunks {
-                let id = chunk.chunk.id.clone();
-                if seen.insert(id.clone()) {
-                    ids.push(id);
-                }
-            }
-            for entity in &search.entities {
-                let id = entity.entity.id.clone();
-                if seen.insert(id.clone()) {
-                    ids.push(id);
-                }
+                push_id(entity.entity.id.clone());
             }
         }
     }

@@ -125,10 +125,10 @@ async fn render_pdf_pages(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>
     })
     .await??;
 
-    for (idx, png) in captures.iter().enumerate() {
-        if let Err(err) = maybe_dump_debug_image(page_numbers[idx], png).await {
+    for (page_number, png) in page_numbers.iter().zip(captures.iter()) {
+        if let Err(err) = maybe_dump_debug_image(*page_number, png).await {
             warn!(
-                page = page_numbers[idx],
+                page = page_number,
                 error = %err,
                 "Failed to write debug screenshot to disk"
             );

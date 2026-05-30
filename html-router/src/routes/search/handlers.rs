@@ -4,7 +4,7 @@ use axum::{
     extract::{Query, State},
 };
 use common::storage::types::{text_content::TextContent, user::User};
-use retrieval_pipeline::{RetrievalConfig, SearchResult, SearchTarget, StrategyOutput};
+use retrieval_pipeline::{retrieve, RetrievalConfig, RetrievalOutput, RetrievedChunk, RetrievedEntity};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{fmt, str::FromStr};
 
@@ -108,35 +108,35 @@ async fn perform_search(
         return Ok((Vec::new(), String::new()));
     }
 
-    let config = RetrievalConfig::for_search(SearchTarget::Both);
+    let config = RetrievalConfig::with_entities();
 
     let reranker_lease = match &state.reranker_pool {
         Some(pool) => pool.checkout().await,
         None => None,
     };
 
-    let params = retrieval_pipeline::pipeline::StrategyParams {
-        db_client: &state.db,
-        openai_client: &state.openai_client,
-        embedding_provider: Some(&state.embedding_provider),
-        input_text: trimmed_query,
-        user_id: &user.id,
+    let result = retrieve(
+        &state.db,
+        &state.openai_client,
+        Some(&state.embedding_provider),
+        trimmed_query,
+        &user.id,
         config,
-        reranker: reranker_lease,
-    };
-    let result = retrieval_pipeline::pipeline::execute(params).await?;
+        reranker_lease,
+    )
+    .await?;
 
-    let search_result = match result {
-        StrategyOutput::Search(sr) => sr,
-        _ => SearchResult::new(vec![], vec![]),
+    let (chunks, entities) = match result {
+        RetrievalOutput::WithEntities { chunks, entities } => (chunks, entities),
+        RetrievalOutput::Chunks(chunks) => (chunks, Vec::new()),
     };
 
-    let source_label_map = collect_source_label_map(state, user, &search_result).await?;
+    let source_label_map = collect_source_label_map(state, user, &chunks, &entities).await?;
 
     let mut combined_results: Vec<SearchResultForTemplate> =
-        Vec::with_capacity(search_result.chunks.len().saturating_add(search_result.entities.len()));
+        Vec::with_capacity(chunks.len().saturating_add(entities.len()));
 
-    for chunk_result in search_result.chunks {
+    for chunk_result in chunks {
         let source_label = source_label_map
             .get(&chunk_result.chunk.source_id)
             .cloned()
@@ -155,7 +155,7 @@ async fn perform_search(
         });
     }
 
-    for entity_result in search_result.entities {
+    for entity_result in entities {
         let source_label = source_label_map
             .get(&entity_result.entity.source_id)
             .cloned()
@@ -187,13 +187,14 @@ async fn perform_search(
 async fn collect_source_label_map(
     state: &HtmlState,
     user: &User,
-    search_result: &SearchResult,
+    chunks: &[RetrievedChunk],
+    entities: &[RetrievedEntity],
 ) -> Result<std::collections::HashMap<String, String>, HtmlError> {
     let mut source_ids = HashSet::new();
-    for chunk_result in &search_result.chunks {
+    for chunk_result in chunks {
         source_ids.insert(chunk_result.chunk.source_id.clone());
     }
-    for entity_result in &search_result.entities {
+    for entity_result in entities {
         source_ids.insert(entity_result.entity.source_id.clone());
     }
 

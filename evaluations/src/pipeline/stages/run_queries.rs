@@ -6,7 +6,7 @@ use futures::stream::{self, StreamExt};
 use tracing::{debug, info};
 
 use crate::eval::{
-    adapt_strategy_output, build_case_diagnostics, text_contains_answer, CaseDiagnostics,
+    adapt_retrieval_output, build_case_diagnostics, text_contains_answer, CaseDiagnostics,
     CaseSummary, RetrievedSummary,
 };
 use retrieval_pipeline::{
@@ -51,14 +51,8 @@ pub(crate) async fn run_queries(
         None
     };
 
-    let mut retrieval_config = RetrievalConfig {
-        strategy: config.retrieval.strategy,
-        ..Default::default()
-    };
+    let mut retrieval_config = RetrievalConfig::default();
     retrieval_config.tuning.rerank_keep_top = config.retrieval.rerank_keep_top;
-    if retrieval_config.tuning.fallback_min_results < config.retrieval.rerank_keep_top {
-        retrieval_config.tuning.fallback_min_results = config.retrieval.rerank_keep_top;
-    }
     retrieval_config.tuning.chunk_result_cap = config.retrieval.chunk_result_cap.max(1);
     if let Some(value) = config.retrieval.chunk_vector_take {
         retrieval_config.tuning.chunk_vector_take = value;
@@ -80,9 +74,6 @@ pub(crate) async fn run_queries(
     }
     if let Some(value) = config.retrieval.chunk_rrf_use_fts {
         retrieval_config.tuning.flags.chunk_rrf_use_fts = value.into();
-    }
-    if let Some(value) = config.retrieval.chunk_avg_chars_per_token {
-        retrieval_config.tuning.avg_chars_per_token = value;
     }
     if let Some(value) = config.retrieval.max_chunks_per_entity {
         retrieval_config.tuning.max_chunks_per_entity = value;
@@ -187,7 +178,7 @@ pub(crate) async fn run_queries(
                     None => None,
                 };
 
-                let params = pipeline::StrategyParams {
+                let params = pipeline::RetrievalParams {
                     db_client: &db,
                     openai_client: &openai_client,
                     embedding_provider: Some(&embedding_provider),
@@ -196,26 +187,19 @@ pub(crate) async fn run_queries(
                     config: (*retrieval_config).clone(),
                     reranker,
                 };
-                let (result_output, pipeline_diagnostics, stage_timings) = if diagnostics_enabled {
-                    let outcome = pipeline::run_pipeline_with_embedding_with_diagnostics(
+                let (result_output, pipeline_diagnostics, stage_timings) = {
+                    let outcome = pipeline::run_with_embedding_instrumented(
                         params,
                         query_embedding,
+                        diagnostics_enabled,
                     )
                     .await
                     .with_context(|| format!("running pipeline for question {question_id}"))?;
                     (outcome.results, outcome.diagnostics, outcome.stage_timings)
-                } else {
-                    let outcome = pipeline::run_pipeline_with_embedding_with_metrics(
-                        params,
-                        query_embedding,
-                    )
-                    .await
-                    .with_context(|| format!("running pipeline for question {question_id}"))?;
-                    (outcome.results, None, outcome.stage_timings)
                 };
                 let query_latency = query_start.elapsed().as_millis();
 
-                let candidates = adapt_strategy_output(result_output);
+                let candidates = adapt_retrieval_output(result_output);
                 let mut retrieved = Vec::new();
                 let mut match_rank = None;
                 let answers_lower: Vec<String> =
