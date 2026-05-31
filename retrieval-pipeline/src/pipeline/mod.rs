@@ -3,7 +3,7 @@ mod context;
 mod diagnostics;
 mod stages;
 
-pub use config::RetrievalConfig;
+pub use config::{RetrievalConfig, RetrievalTuning};
 pub use diagnostics::Diagnostics;
 
 use crate::{round_score, RetrievalOutput, RetrievedEntity};

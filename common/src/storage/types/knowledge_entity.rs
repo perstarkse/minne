@@ -44,36 +44,12 @@ impl From<String> for KnowledgeEntityType {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+/// Search result including hydrated entity.
+#[allow(clippy::module_name_repetitions)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KnowledgeEntitySearchResult {
-    #[serde(deserialize_with = "deserialize_flexible_id")]
-    pub id: String,
-    #[serde(
-        serialize_with = "serialize_datetime",
-        deserialize_with = "deserialize_datetime",
-        default
-    )]
-    pub created_at: DateTime<Utc>,
-    #[serde(
-        serialize_with = "serialize_datetime",
-        deserialize_with = "deserialize_datetime",
-        default
-    )]
-    pub updated_at: DateTime<Utc>,
-
-    pub source_id: String,
-    pub name: String,
-    pub description: String,
-    pub entity_type: KnowledgeEntityType,
-    #[serde(default)]
-    pub metadata: Option<serde_json::Value>,
-    pub user_id: String,
-
+    pub entity: KnowledgeEntity,
     pub score: f32,
-    #[serde(default)]
-    pub highlighted_name: Option<String>,
-    #[serde(default)]
-    pub highlighted_description: Option<String>,
 }
 
 stored_object!(KnowledgeEntity, "knowledge_entity", {
@@ -84,13 +60,6 @@ stored_object!(KnowledgeEntity, "knowledge_entity", {
     metadata: Option<serde_json::Value>,
     user_id: String
 });
-
-/// Vector search result including hydrated entity.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct KnowledgeEntityVectorResult {
-    pub entity: KnowledgeEntity,
-    pub score: f32,
-}
 
 impl KnowledgeEntity {
     #[must_use]
@@ -116,12 +85,33 @@ impl KnowledgeEntity {
         }
     }
 
-    pub async fn search(
+    /// Full-text search over knowledge entities using the BM25 FTS index.
+    pub async fn fts_search(
+        take: usize,
+        terms: &str,
         db: &SurrealDbClient,
-        search_terms: &str,
         user_id: &str,
-        limit: usize,
     ) -> Result<Vec<KnowledgeEntitySearchResult>, AppError> {
+        #[derive(Deserialize)]
+        struct Row {
+            #[serde(deserialize_with = "deserialize_flexible_id")]
+            id: String,
+            #[serde(deserialize_with = "deserialize_datetime")]
+            created_at: DateTime<Utc>,
+            #[serde(deserialize_with = "deserialize_datetime")]
+            updated_at: DateTime<Utc>,
+            source_id: String,
+            name: String,
+            description: String,
+            entity_type: KnowledgeEntityType,
+            #[serde(default)]
+            metadata: Option<serde_json::Value>,
+            user_id: String,
+            score: f32,
+        }
+
+        let limit = i64::try_from(take).unwrap_or(i64::MAX);
+
         let sql = r#"
             SELECT
                 id,
@@ -133,8 +123,6 @@ impl KnowledgeEntity {
                 entity_type,
                 metadata,
                 user_id,
-                search::highlight('<b>', '</b>', 0) AS highlighted_name,
-                search::highlight('<b>', '</b>', 1) AS highlighted_description,
                 (
                     IF search::score(0) != NONE THEN search::score(0) ELSE 0 END +
                     IF search::score(1) != NONE THEN search::score(1) ELSE 0 END
@@ -150,14 +138,32 @@ impl KnowledgeEntity {
             LIMIT $limit;
         "#;
 
-        Ok(db
+        let rows: Vec<Row> = db
             .client
             .query(sql)
-            .bind(("terms", search_terms.to_owned()))
+            .bind(("terms", terms.to_owned()))
             .bind(("user_id", user_id.to_owned()))
             .bind(("limit", limit))
             .await?
-            .take(0)?)
+            .take(0)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| KnowledgeEntitySearchResult {
+                entity: KnowledgeEntity {
+                    id: row.id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                    source_id: row.source_id,
+                    name: row.name,
+                    description: row.description,
+                    entity_type: row.entity_type,
+                    metadata: row.metadata,
+                    user_id: row.user_id,
+                },
+                score: row.score,
+            })
+            .collect())
     }
 
     /// Fetch all knowledge entities owned by any of the provided source ids for a user.
@@ -260,7 +266,7 @@ impl KnowledgeEntity {
         query_embedding: Vec<f32>,
         db: &SurrealDbClient,
         user_id: &str,
-    ) -> Result<Vec<KnowledgeEntityVectorResult>, AppError> {
+    ) -> Result<Vec<KnowledgeEntitySearchResult>, AppError> {
         #[derive(Deserialize)]
         struct Row {
             entity_id: Option<KnowledgeEntity>,
@@ -297,7 +303,7 @@ impl KnowledgeEntity {
         Ok(rows
             .into_iter()
             .filter_map(|r| {
-                r.entity_id.map(|entity| KnowledgeEntityVectorResult {
+                r.entity_id.map(|entity| KnowledgeEntitySearchResult {
                     entity,
                     score: r.score,
                 })
@@ -605,11 +611,34 @@ impl KnowledgeEntity {
 mod tests {
     #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
+    use crate::storage::indexes::rebuild;
     use crate::storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding;
     use crate::test_utils::configure_embedding_dimension;
     use anyhow::{self, Context};
-    use serde_json::json;
     use uuid::Uuid;
+
+    async fn ensure_entity_fts_indexes(db: &SurrealDbClient) -> anyhow::Result<()> {
+        let snowball_sql = r#"
+            DEFINE ANALYZER IF NOT EXISTS app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii, snowball(english);
+            DEFINE INDEX IF NOT EXISTS knowledge_entity_fts_name_idx ON TABLE knowledge_entity FIELDS name SEARCH ANALYZER app_en_fts_analyzer BM25;
+            DEFINE INDEX IF NOT EXISTS knowledge_entity_fts_description_idx ON TABLE knowledge_entity FIELDS description SEARCH ANALYZER app_en_fts_analyzer BM25;
+        "#;
+
+        if let Err(err) = db.client.query(snowball_sql).await {
+            let fallback_sql = r#"
+                DEFINE ANALYZER OVERWRITE app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii;
+                DEFINE INDEX IF NOT EXISTS knowledge_entity_fts_name_idx ON TABLE knowledge_entity FIELDS name SEARCH ANALYZER app_en_fts_analyzer BM25;
+                DEFINE INDEX IF NOT EXISTS knowledge_entity_fts_description_idx ON TABLE knowledge_entity FIELDS description SEARCH ANALYZER app_en_fts_analyzer BM25;
+            "#;
+
+            db.client
+                .query(fallback_sql)
+                .await
+                .with_context(|| format!("define entity fts index fallback: {err}"))?;
+        }
+        Ok(())
+    }
+    use serde_json::json;
 
     #[tokio::test]
     async fn test_knowledge_entity_creation() -> anyhow::Result<()> {
@@ -1104,6 +1133,136 @@ mod tests {
             "Should return empty result for orphan, got: {results:?}",
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fts_search_returns_empty_when_no_entities() -> anyhow::Result<()> {
+        let namespace = "fts_entity_ns_empty";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
+        ensure_entity_fts_indexes(&db).await?;
+        rebuild(&db)
+            .await
+            .with_context(|| "rebuild indexes".to_string())?;
+
+        let results = KnowledgeEntity::fts_search(5, "hello", &db, "user")
+            .await
+            .with_context(|| "fts search".to_string())?;
+
+        assert!(results.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fts_search_single_result() -> anyhow::Result<()> {
+        let namespace = "fts_entity_ns_single";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
+        ensure_entity_fts_indexes(&db).await?;
+
+        let user_id = "fts_user";
+        let entity = KnowledgeEntity::new(
+            "fts_src".to_string(),
+            "cucumber".to_string(),
+            "cucumbers are best".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id.to_string(),
+        );
+        db.store_item(entity.clone())
+            .await
+            .with_context(|| "store entity".to_string())?;
+        rebuild(&db)
+            .await
+            .with_context(|| "rebuild indexes".to_string())?;
+
+        let results = KnowledgeEntity::fts_search(3, "cucumber", &db, user_id)
+            .await
+            .with_context(|| "fts search".to_string())?;
+
+        assert_eq!(results.len(), 1);
+        let r0 = results.first().context("expected first result")?;
+        assert_eq!(r0.entity.id, entity.id);
+        assert!(r0.score.is_finite(), "expected a finite FTS score");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fts_search_orders_by_score_and_filters_user() -> anyhow::Result<()> {
+        let namespace = "fts_entity_ns_order";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        db.apply_migrations()
+            .await
+            .with_context(|| "migrations".to_string())?;
+        ensure_entity_fts_indexes(&db).await?;
+
+        let user_id = "fts_user_order";
+        let high_score_entity = KnowledgeEntity::new(
+            "src1".to_string(),
+            "apple apple apple pie".to_string(),
+            "dessert recipe".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id.to_string(),
+        );
+        let low_score_entity = KnowledgeEntity::new(
+            "src2".to_string(),
+            "apple tart".to_string(),
+            "light dessert".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            user_id.to_string(),
+        );
+        let other_user_entity = KnowledgeEntity::new(
+            "src3".to_string(),
+            "apple orchard".to_string(),
+            "farming guide".to_string(),
+            KnowledgeEntityType::Document,
+            None,
+            "other_user".to_string(),
+        );
+
+        db.store_item(high_score_entity.clone())
+            .await
+            .with_context(|| "store high score entity".to_string())?;
+        db.store_item(low_score_entity.clone())
+            .await
+            .with_context(|| "store low score entity".to_string())?;
+        db.store_item(other_user_entity)
+            .await
+            .with_context(|| "store other user entity".to_string())?;
+        rebuild(&db)
+            .await
+            .with_context(|| "rebuild indexes".to_string())?;
+
+        let results = KnowledgeEntity::fts_search(3, "apple", &db, user_id)
+            .await
+            .with_context(|| "fts search".to_string())?;
+
+        assert_eq!(results.len(), 2);
+        let ids: Vec<_> = results.iter().map(|r| r.entity.id.as_str()).collect();
+        assert!(
+            ids.contains(&high_score_entity.id.as_str())
+                && ids.contains(&low_score_entity.id.as_str()),
+            "expected only the two entities for the same user"
+        );
+        let r0 = results.first().context("expected first result")?;
+        let r1 = results.get(1).context("expected second result")?;
+        assert!(r0.score >= r1.score);
         Ok(())
     }
 }

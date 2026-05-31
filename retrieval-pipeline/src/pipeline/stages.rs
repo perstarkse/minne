@@ -9,9 +9,8 @@ use std::collections::HashMap;
 use tracing::{debug, instrument, warn};
 
 use crate::{
-    scoring::{
-        clamp_unit, min_max_normalize, reciprocal_rank_fusion, RrfConfig, Scored,
-    },
+    query::normalize_fts_terms,
+    scoring::{clamp_unit, min_max_normalize, reciprocal_rank_fusion, RrfConfig, Scored},
     RetrievedChunk, RetrievedEntity,
 };
 
@@ -115,7 +114,7 @@ pub async fn search_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError
     let embedding = ctx.ensure_embedding().map_err(|e| *e)?.clone();
     let tuning = &ctx.config.tuning;
     let fts_take = tuning.chunk_fts_take;
-    let (fts_query, fts_token_count) = normalize_fts_query(&ctx.input_text);
+    let (fts_query, fts_token_count) = normalize_fts_terms(&ctx.input_text);
     let fts_enabled = tuning.flags.chunk_rrf_use_fts() && fts_take > 0 && !fts_query.is_empty();
 
     let (vector_rows, fts_rows) = tokio::try_join!(
@@ -331,26 +330,6 @@ where
     F: FnMut(&Scored<T>) -> f32,
 {
     items.iter().take(SCORE_SAMPLE_LIMIT).map(extractor).collect()
-}
-
-fn normalize_fts_query(input: &str) -> (String, usize) {
-    const STOPWORDS: &[&str] = &["the", "a", "an", "of", "in", "on", "and", "or", "to", "for"];
-    let mut cleaned = String::with_capacity(input.len());
-    for ch in input.chars() {
-        if ch.is_alphanumeric() {
-            cleaned.extend(ch.to_lowercase());
-        } else if ch.is_whitespace() {
-            cleaned.push(' ');
-        }
-    }
-    let mut tokens = Vec::with_capacity(cleaned.len().div_ceil(3));
-    for token in cleaned.split_whitespace() {
-        if !STOPWORDS.contains(&token) && !token.is_empty() {
-            tokens.push(token.to_string());
-        }
-    }
-    let normalized = tokens.join(" ");
-    (normalized, tokens.len())
 }
 
 fn build_chunk_rerank_documents(chunks: &[Scored<TextChunk>], max_chunks: usize) -> Vec<String> {

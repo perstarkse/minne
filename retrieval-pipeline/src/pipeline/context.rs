@@ -5,7 +5,9 @@ use common::{
     utils::embedding::EmbeddingProvider,
 };
 
-use crate::{reranking::RerankerLease, scoring::Scored, RetrievedChunk, RetrievedEntity};
+use crate::scoring::Scored;
+
+use crate::{reranking::RerankerLease, RetrievedChunk, RetrievedEntity};
 
 use super::{
     config::RetrievalConfig,
