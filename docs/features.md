@@ -27,14 +27,16 @@ The D3-based graph visualization shows entities as nodes and relationships as ed
 
 ## Hybrid Retrieval
 
-Minne uses chunk-first hybrid retrieval over the knowledge base:
+Minne uses hybrid retrieval over the knowledge base:
 
-- **Vector similarity** — Semantic matching via embeddings over text chunks
-- **Full-text search** — Keyword matching with BM25 over the same chunk index
+- **Vector similarity** — Semantic matching via embeddings
+- **Full-text search** — Keyword matching with BM25
 
-The two ranked candidate lists are merged with Reciprocal Rank Fusion (RRF). When a caller needs knowledge entities (search, ingestion linking, relationship suggestion), entities are derived from the top retrieved chunks grouped by `source_id`.
+For **content search** (chat, global search, ingestion linking), retrieval is chunk-first: vector and FTS run over `text_chunk` rows, merged with Reciprocal Rank Fusion (RRF). When entities are needed, they are derived from the top retrieved chunks grouped by `source_id`.
 
-Optional **reranking** can rescore the fused chunk list with a cross-encoder model; see below.
+For **relationship suggestions** when creating an entity, retrieval is entity-first: vector and FTS run directly over `knowledge_entity` name/description and embedding indexes, then merged with the same RRF approach.
+
+Optional **reranking** can rescore fused chunk lists with a cross-encoder model; see below.
 
 ## Reranking (Optional)
 

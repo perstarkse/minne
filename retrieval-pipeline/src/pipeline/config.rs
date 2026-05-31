@@ -117,8 +117,8 @@ impl Default for RetrievalTuning {
 /// Per-request retrieval configuration.
 ///
 /// The pipeline always performs chunk-first hybrid retrieval. Set `resolve_entities`
-/// when a caller additionally needs the `KnowledgeEntity` rows that own the retrieved
-/// chunks (search, ingestion linking, relationship suggestion).
+/// when a caller additionally needs the `KnowledgeEntity` rows that own retrieved
+/// chunks (search, ingestion linking).
 #[derive(Debug, Clone, Default)]
 pub struct RetrievalConfig {
     pub tuning: RetrievalTuning,

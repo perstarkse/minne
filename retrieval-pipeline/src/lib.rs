@@ -1,9 +1,9 @@
 pub mod answer_retrieval;
 
 pub mod pipeline;
+pub mod query;
 pub mod reranking;
-
-pub(crate) mod scoring;
+pub mod scoring;
 
 use common::{
     error::AppError,
@@ -29,9 +29,11 @@ pub enum RetrievalOutput {
 }
 
 pub use pipeline::{
-    retrieved_entities_to_json, Diagnostics, RetrievalConfig, RetrievalParams, StageKind,
-    StageTimings,
+    retrieved_entities_to_json, Diagnostics, RetrievalConfig, RetrievalParams, RetrievalTuning,
+    StageKind, StageTimings,
 };
+pub use query::normalize_fts_terms;
+pub use scoring::{reciprocal_rank_fusion, RrfConfig, Scored};
 
 /// Round a score to three decimal places for JSON output.
 pub(crate) fn round_score(value: f32) -> f64 {
