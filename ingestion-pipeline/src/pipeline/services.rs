@@ -3,7 +3,6 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-
 use async_openai::types::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
     CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
@@ -30,7 +29,6 @@ use super::{enrichment_result::LLMEnrichmentResult, preparation::to_text_content
 use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
 use crate::utils::llm_instructions::get_ingress_analysis_schema;
 
-const EMBEDDING_QUERY_CHAR_LIMIT: usize = 12_000;
 #[async_trait]
 pub trait PipelineServices: Send + Sync {
     async fn prepare_text_content(
@@ -71,6 +69,7 @@ pub struct DefaultPipelineServices {
     reranker_pool: Option<Arc<RerankerPool>>,
     storage: StorageManager,
     embedding_provider: Arc<EmbeddingProvider>,
+    embedding_query_char_limit: usize,
 }
 
 impl DefaultPipelineServices {
@@ -81,6 +80,7 @@ impl DefaultPipelineServices {
         reranker_pool: Option<Arc<RerankerPool>>,
         storage: StorageManager,
         embedding_provider: Arc<EmbeddingProvider>,
+        embedding_query_char_limit: usize,
     ) -> Self {
         Self {
             db,
@@ -89,6 +89,7 @@ impl DefaultPipelineServices {
             reranker_pool,
             storage,
             embedding_provider,
+            embedding_query_char_limit,
         }
     }
 
@@ -169,7 +170,7 @@ impl PipelineServices for DefaultPipelineServices {
         &self,
         content: &TextContent,
     ) -> Result<Vec<RetrievedEntity>, AppError> {
-        let truncated_body = truncate_for_embedding(&content.text, EMBEDDING_QUERY_CHAR_LIMIT);
+        let truncated_body = truncate_for_embedding(&content.text, self.embedding_query_char_limit);
         let input_text = format!(
             "content: {}\n[truncated={}], category: {}, user_context: {:?}",
             truncated_body,
@@ -250,7 +251,7 @@ impl PipelineServices for DefaultPipelineServices {
         token_range: Range<usize>,
         overlap_tokens: usize,
     ) -> Result<Vec<EmbeddedTextChunk>, AppError> {
-        let chunk_candidates = prepare_chunks(
+        let chunk_candidates = split_text_into_chunks(
             &content.text,
             token_range.start,
             token_range.end,
@@ -263,7 +264,9 @@ impl PipelineServices for DefaultPipelineServices {
                 .embedding_provider
                 .embed(&chunk_text)
                 .await
-                .map_err(|e| AppError::InternalError(format!("FastEmbed embedding for chunk failed: {e}")))?;
+                .map_err(|e| {
+                    AppError::InternalError(format!("FastEmbed embedding for chunk failed: {e}"))
+                })?;
             let chunk_struct = TextChunk::new(
                 content.id().to_string(),
                 chunk_text,
@@ -278,7 +281,7 @@ impl PipelineServices for DefaultPipelineServices {
     }
 }
 
-fn prepare_chunks(
+fn split_text_into_chunks(
     text: &str,
     min_tokens: usize,
     max_tokens: usize,
@@ -352,9 +355,7 @@ mod tests {
     use async_openai::{config::OpenAIConfig, types::ChatCompletionRequestMessage, Client};
     use common::{
         storage::{
-            db::SurrealDbClient,
-            store::StorageManager,
-            types::system_settings::SystemSettingsPatch,
+            db::SurrealDbClient, store::StorageManager, types::system_settings::SystemSettingsPatch,
         },
         utils::{
             config::{AppConfig, StorageKind},
@@ -364,6 +365,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::DefaultPipelineServices;
+    use crate::pipeline::IngestionTuning;
+    use common::error::AppError;
 
     fn system_prompt_from_request(
         request: &async_openai::types::CreateChatCompletionRequest,
@@ -380,8 +383,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepare_llm_request_uses_ingestion_prompt_from_system_settings(
-    ) -> anyhow::Result<()> {
+    async fn prepare_llm_request_uses_ingestion_prompt_from_system_settings() -> anyhow::Result<()>
+    {
         const SENTINEL: &str = "ingestion-prompt-sentinel-from-db";
 
         let db = Arc::new(
@@ -402,7 +405,9 @@ mod tests {
             storage: StorageKind::Memory,
             ..Default::default()
         };
-        let storage = StorageManager::new(&config).await.context("storage manager")?;
+        let storage = StorageManager::new(&config)
+            .await
+            .context("storage manager")?;
         let openai_client = Arc::new(Client::with_config(OpenAIConfig::default()));
         let embedding_provider = Arc::new(EmbeddingProvider::new_hashed(384)?);
 
@@ -413,6 +418,7 @@ mod tests {
             None,
             storage,
             embedding_provider,
+            IngestionTuning::default().embedding_query_char_limit,
         );
 
         let request = services
@@ -422,5 +428,57 @@ mod tests {
 
         assert_eq!(system_prompt_from_request(&request)?, SENTINEL);
         Ok(())
+    }
+
+    #[test]
+    fn split_text_into_chunks_rejects_zero_bounds() {
+        assert!(matches!(
+            super::split_text_into_chunks("text", 0, 10, 0),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            super::split_text_into_chunks("text", 4, 0, 0),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn split_text_into_chunks_rejects_min_greater_than_max() {
+        assert!(matches!(
+            super::split_text_into_chunks("text", 10, 4, 0),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn split_text_into_chunks_rejects_overlap_at_or_above_min() {
+        assert!(matches!(
+            super::split_text_into_chunks("text", 4, 10, 4),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            super::split_text_into_chunks("text", 4, 10, 5),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn truncate_for_embedding_returns_short_text_unchanged() {
+        assert_eq!(super::truncate_for_embedding("hello", 10), "hello");
+        // Exactly at the limit is left untouched (no ellipsis appended).
+        assert_eq!(super::truncate_for_embedding("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_for_embedding_appends_ellipsis_when_over_limit() {
+        assert_eq!(super::truncate_for_embedding("hello world", 5), "hello…");
+    }
+
+    #[test]
+    fn truncate_for_embedding_respects_char_boundaries() {
+        // Multibyte characters must not be split mid-byte.
+        let truncated = super::truncate_for_embedding("héllo wörld", 4);
+        assert_eq!(truncated, "héll…");
+        assert_eq!(truncated.chars().count(), 5);
     }
 }

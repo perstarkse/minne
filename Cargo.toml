@@ -59,6 +59,8 @@ base64 = "0.22.1"
 object_store = { version = "0.11.2", features = ["aws"] }
 bytes = "1.7.1"
 state-machines = "0.2.0"
+pdf-extract = "0.9"
+lopdf = "0.32"
 fastembed = { version = "5.2.0", default-features = false, features = ["hf-hub-native-tls", "ort-load-dynamic"] }
 
 [profile.dist]

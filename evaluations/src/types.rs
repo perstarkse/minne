@@ -409,7 +409,10 @@ pub fn build_case_diagnostics(
     candidates: &[EvaluationCandidate],
     pipeline_stats: Option<Diagnostics>,
 ) -> CaseDiagnostics {
-    let expected_set: HashSet<&str> = expected_chunk_ids.iter().map(std::string::String::as_str).collect();
+    let expected_set: HashSet<&str> = expected_chunk_ids
+        .iter()
+        .map(std::string::String::as_str)
+        .collect();
     let mut seen_chunks: HashSet<String> = HashSet::new();
     let mut attached_chunk_ids = Vec::new();
     let mut entity_diagnostics = Vec::new();

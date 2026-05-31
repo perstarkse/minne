@@ -54,17 +54,9 @@ fn default_chunk_only() -> bool {
     false
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EmbeddedKnowledgeEntity {
-    pub entity: KnowledgeEntity,
-    pub embedding: Vec<f32>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EmbeddedTextChunk {
-    pub chunk: TextChunk,
-    pub embedding: Vec<f32>,
-}
+// Reuse the pipeline's canonical embedded-artifact types so the on-disk corpus
+// format and the ingestion output never drift apart.
+pub use ingestion_pipeline::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct LegacyKnowledgeEntity {

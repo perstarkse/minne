@@ -1,12 +1,15 @@
 mod config;
 mod context;
 mod enrichment_result;
+mod persistence;
 mod preparation;
 mod services;
 mod stages;
 mod state;
 
 pub use config::{IngestionConfig, IngestionTuning};
+#[allow(clippy::module_name_repetitions)]
+pub use context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk, PipelineArtifacts};
 pub use enrichment_result::{LLMEnrichmentResult, LLMKnowledgeEntity, LLMRelationship};
 #[allow(clippy::module_name_repetitions)]
 pub use services::{DefaultPipelineServices, PipelineServices};
@@ -33,10 +36,17 @@ use retrieval_pipeline::reranking::RerankerPool;
 use tracing::{debug, info, warn};
 
 use self::{
-    context::{PipelineArtifacts, PipelineContext},
+    context::PipelineContext,
     stages::{enrich, persist, prepare_content, retrieve_related},
-    state::ready,
+    state::{ready, Enriched, IngestionMachine},
 };
+
+/// Wall-clock duration of each pre-persistence pipeline stage.
+struct StageTimings {
+    prepare: Duration,
+    retrieve: Duration,
+    enrich: Duration,
+}
 
 #[allow(clippy::module_name_repetitions)]
 pub struct IngestionPipeline {
@@ -81,6 +91,7 @@ impl IngestionPipeline {
             reranker_pool,
             storage,
             embedding_provider,
+            pipeline_config.tuning.embedding_query_char_limit,
         );
 
         Self::with_services(db, pipeline_config, Arc::new(services))
@@ -109,15 +120,7 @@ impl IngestionPipeline {
     )]
     pub async fn process_task(&self, task: IngestionTask) -> Result<(), AppError> {
         let mut processing_task = task.mark_processing(&self.db).await?;
-        let payload = std::mem::replace(
-            &mut processing_task.content,
-            IngestionPayload::Text {
-                text: String::new(),
-                context: String::new(),
-                category: String::new(),
-                user_id: processing_task.user_id.clone(),
-            },
-        );
+        let payload = processing_task.take_content();
 
         match self
             .drive_pipeline(&processing_task, payload)
@@ -191,6 +194,44 @@ impl IngestionPipeline {
         u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
     }
 
+    /// Runs the shared `prepare → retrieve → enrich` stages, recording per-stage timings.
+    ///
+    /// Both the full task path ([`Self::drive_pipeline`]) and the artifact-only path
+    /// ([`Self::produce_artifacts`]) share this prefix; only the terminal step differs
+    /// (persist vs. return artifacts).
+    async fn run_through_enrichment(
+        &self,
+        ctx: &mut PipelineContext<'_>,
+        payload: IngestionPayload,
+    ) -> Result<(IngestionMachine<(), Enriched>, StageTimings), AppError> {
+        let machine = ready();
+
+        let stage_start = Instant::now();
+        let machine = prepare_content(machine, ctx, payload)
+            .await
+            .map_err(|err| ctx.abort(err))?;
+        let prepare = stage_start.elapsed();
+
+        let stage_start = Instant::now();
+        let machine = retrieve_related(machine, ctx)
+            .await
+            .map_err(|err| ctx.abort(err))?;
+        let retrieve = stage_start.elapsed();
+
+        let stage_start = Instant::now();
+        let machine = enrich(machine, ctx).await.map_err(|err| ctx.abort(err))?;
+        let enrich = stage_start.elapsed();
+
+        Ok((
+            machine,
+            StageTimings {
+                prepare,
+                retrieve,
+                enrich,
+            },
+        ))
+    }
+
     #[tracing::instrument(
         skip_all,
         fields(task_id = %task.id, attempt = task.attempts, user_id = %task.user_id)
@@ -207,27 +248,8 @@ impl IngestionPipeline {
             self.services.as_ref(),
         );
 
-        let machine = ready();
-
         let pipeline_started = Instant::now();
-
-        let stage_start = Instant::now();
-        let machine = prepare_content(machine, &mut ctx, payload)
-            .await
-            .map_err(|err| ctx.abort(err))?;
-        let prepare_duration = stage_start.elapsed();
-
-        let stage_start = Instant::now();
-        let machine = retrieve_related(machine, &mut ctx)
-            .await
-            .map_err(|err| ctx.abort(err))?;
-        let retrieve_duration = stage_start.elapsed();
-
-        let stage_start = Instant::now();
-        let machine = enrich(machine, &mut ctx)
-            .await
-            .map_err(|err| ctx.abort(err))?;
-        let enrich_duration = stage_start.elapsed();
+        let (machine, timings) = self.run_through_enrichment(&mut ctx, payload).await?;
 
         let stage_start = Instant::now();
         let _machine = persist(machine, &mut ctx)
@@ -236,18 +258,14 @@ impl IngestionPipeline {
         let persist_duration = stage_start.elapsed();
 
         let total_duration = pipeline_started.elapsed();
-        let prepare_ms = Self::duration_millis(prepare_duration);
-        let retrieve_ms = Self::duration_millis(retrieve_duration);
-        let enrich_ms = Self::duration_millis(enrich_duration);
-        let persist_ms = Self::duration_millis(persist_duration);
         info!(
             task_id = %ctx.task_id,
             attempt = ctx.attempt,
             total_ms = Self::duration_millis(total_duration),
-            prepare_ms,
-            retrieve_ms,
-            enrich_ms,
-            persist_ms,
+            prepare_ms = Self::duration_millis(timings.prepare),
+            retrieve_ms = Self::duration_millis(timings.retrieve),
+            enrich_ms = Self::duration_millis(timings.enrich),
+            persist_ms = Self::duration_millis(persist_duration),
             "ingestion pipeline finished"
         );
 
@@ -267,16 +285,7 @@ impl IngestionPipeline {
             self.services.as_ref(),
         );
 
-        let machine = ready();
-        let machine = prepare_content(machine, &mut ctx, payload)
-            .await
-            .map_err(|err| ctx.abort(err))?;
-        let machine = retrieve_related(machine, &mut ctx)
-            .await
-            .map_err(|err| ctx.abort(err))?;
-        let _machine = enrich(machine, &mut ctx)
-            .await
-            .map_err(|err| ctx.abort(err))?;
+        let (_machine, _timings) = self.run_through_enrichment(&mut ctx, payload).await?;
 
         ctx.build_artifacts().await.map_err(|err| ctx.abort(err))
     }

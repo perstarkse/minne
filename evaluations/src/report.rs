@@ -403,11 +403,20 @@ pub fn write_reports(
     })
 }
 
-#[allow(clippy::too_many_lines, clippy::write_with_newline, clippy::unwrap_used)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::write_with_newline,
+    clippy::unwrap_used
+)]
 fn render_markdown(report: &EvaluationReport) -> String {
     let mut md = String::new();
 
-    write!(md, "# Retrieval Evaluation (k={})\\n\\n", report.retrieval.k).unwrap();
+    write!(
+        md,
+        "# Retrieval Evaluation (k={})\\n\\n",
+        report.retrieval.k
+    )
+    .unwrap();
 
     md.push_str("## Overview\\n\\n");
     md.push_str("| Metric | Value |\\n| --- | --- |\\n");
@@ -424,34 +433,94 @@ fn render_markdown(report: &EvaluationReport) -> String {
     )
     .unwrap();
     write!(md, "| Total Cases | {} |\\n", report.overview.total_cases).unwrap();
-    write!(md, "| Filtered Questions | {} |\\n", report.overview.filtered_questions).unwrap();
+    write!(
+        md,
+        "| Filtered Questions | {} |\\n",
+        report.overview.filtered_questions
+    )
+    .unwrap();
 
     md.push_str("\\n## Dataset & Slice\\n\\n");
     md.push_str("| Metric | Value |\\n| --- | --- |\\n");
-    write!(md, "| Dataset | {} (`{}`) |\\n", report.dataset.label, report.dataset.id).unwrap();
+    write!(
+        md,
+        "| Dataset | {} (`{}`) |\\n",
+        report.dataset.label, report.dataset.id
+    )
+    .unwrap();
     write!(md, "| Dataset Source | {} |\\n", report.dataset.source).unwrap();
-    write!(md, "| Includes Unanswerable | {} |\\n", bool_badge(report.dataset.includes_unanswerable)).unwrap();
-    write!(md, "| Require Verified Chunks | {} |\\n", bool_badge(report.dataset.require_verified_chunks)).unwrap();
+    write!(
+        md,
+        "| Includes Unanswerable | {} |\\n",
+        bool_badge(report.dataset.includes_unanswerable)
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Require Verified Chunks | {} |\\n",
+        bool_badge(report.dataset.require_verified_chunks)
+    )
+    .unwrap();
     let embedding_label = if let Some(model) = report.dataset.embedding_model.as_ref() {
         format!("{} ({model})", report.dataset.embedding_backend)
     } else {
         report.dataset.embedding_backend.clone()
     };
     write!(md, "| Embedding | {embedding_label} |\\n").unwrap();
-    write!(md, "| Embedding Dim | {} |\\n", report.dataset.embedding_dimension).unwrap();
+    write!(
+        md,
+        "| Embedding Dim | {} |\\n",
+        report.dataset.embedding_dimension
+    )
+    .unwrap();
     write!(md, "| Slice ID | `{}` |\\n", report.slice.id).unwrap();
     write!(md, "| Slice Seed | {} |\\n", report.slice.seed).unwrap();
-    write!(md, "| Slice Window (offset/length) | {}/{} |\\n", report.slice.window_offset, report.slice.window_length).unwrap();
-    write!(md, "| Slice Questions (window/ledger) | {}/{} |\\n", report.slice.slice_cases, report.slice.ledger_total_cases).unwrap();
-    write!(md, "| Slice Positives / Negatives | {}/{} |\\n", report.slice.positives, report.slice.negatives).unwrap();
-    write!(md, "| Slice Paragraphs | {} |\\n", report.slice.total_paragraphs).unwrap();
-    write!(md, "| Negative Multiplier | {:.2} |\\n", report.slice.negative_multiplier).unwrap();
+    write!(
+        md,
+        "| Slice Window (offset/length) | {}/{} |\\n",
+        report.slice.window_offset, report.slice.window_length
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Slice Questions (window/ledger) | {}/{} |\\n",
+        report.slice.slice_cases, report.slice.ledger_total_cases
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Slice Positives / Negatives | {}/{} |\\n",
+        report.slice.positives, report.slice.negatives
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Slice Paragraphs | {} |\\n",
+        report.slice.total_paragraphs
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Negative Multiplier | {:.2} |\\n",
+        report.slice.negative_multiplier
+    )
+    .unwrap();
 
     md.push_str("\\n## Retrieval Metrics\\n\\n");
     md.push_str("| Metric | Value |\\n| --- | --- |\\n");
     write!(md, "| Cases | {} |\\n", report.retrieval.cases).unwrap();
-    write!(md, "| Correct@{} | {}/{} |\\n", report.retrieval.k, report.retrieval.correct, report.retrieval.cases).unwrap();
-    write!(md, "| Precision@{} | {:.3} |\\n", report.retrieval.k, report.retrieval.precision).unwrap();
+    write!(
+        md,
+        "| Correct@{} | {}/{} |\\n",
+        report.retrieval.k, report.retrieval.correct, report.retrieval.cases
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Precision@{} | {:.3} |\\n",
+        report.retrieval.k, report.retrieval.precision
+    )
+    .unwrap();
     write!(
         md,
         "| Precision@1/2/3 | {:.3} / {:.3} / {:.3} |\\n",
@@ -462,7 +531,12 @@ fn render_markdown(report: &EvaluationReport) -> String {
     .unwrap();
     write!(md, "| MRR | {:.3} |\\n", report.retrieval.mrr).unwrap();
     write!(md, "| NDCG | {:.3} |\\n", report.retrieval.average_ndcg).unwrap();
-    write!(md, "| Latency Avg / P50 / P95 (ms) | {:.1} / {} / {} |\\n", report.retrieval.latency.avg, report.retrieval.latency.p50, report.retrieval.latency.p95).unwrap();
+    write!(
+        md,
+        "| Latency Avg / P50 / P95 (ms) | {:.1} / {} / {} |\\n",
+        report.retrieval.latency.avg, report.retrieval.latency.p50, report.retrieval.latency.p95
+    )
+    .unwrap();
     write!(
         md,
         "| Resolve entities | {} |\\n",
@@ -473,8 +547,14 @@ fn render_markdown(report: &EvaluationReport) -> String {
     if report.retrieval.rerank_enabled {
         let pool = report
             .retrieval
-            .rerank_pool_size.map_or_else(|| "?".into(), |size| size.to_string());
-        write!(md, "| Rerank | enabled (pool {pool}, keep top {}) |\\n", report.retrieval.rerank_keep_top).unwrap();
+            .rerank_pool_size
+            .map_or_else(|| "?".into(), |size| size.to_string());
+        write!(
+            md,
+            "| Rerank | enabled (pool {pool}, keep top {}) |\\n",
+            report.retrieval.rerank_keep_top
+        )
+        .unwrap();
     } else {
         md.push_str("| Rerank | disabled |\\n");
     }
@@ -489,8 +569,18 @@ fn render_markdown(report: &EvaluationReport) -> String {
 
     md.push_str("\\n## Performance\\n\\n");
     md.push_str("| Metric | Value |\\n| --- | --- |\\n");
-    write!(md, "| OpenAI Base URL | {} |\\n", report.performance.openai_base_url).unwrap();
-    write!(md, "| Ingestion Duration | {} ms |\\n", report.performance.ingestion_ms).unwrap();
+    write!(
+        md,
+        "| OpenAI Base URL | {} |\\n",
+        report.performance.openai_base_url
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Ingestion Duration | {} ms |\\n",
+        report.performance.ingestion_ms
+    )
+    .unwrap();
     if let Some(seed) = report.performance.namespace_seed_ms {
         write!(md, "| Namespace Seed | {seed} ms |\\n").unwrap();
     }
@@ -504,14 +594,44 @@ fn render_markdown(report: &EvaluationReport) -> String {
         }
     )
     .unwrap();
-    write!(md, "| Corpus Paragraphs | {} |\\n", report.performance.corpus_paragraphs).unwrap();
+    write!(
+        md,
+        "| Corpus Paragraphs | {} |\\n",
+        report.performance.corpus_paragraphs
+    )
+    .unwrap();
     if report.detailed_report {
-        write!(md, "| Ingestion Cache | `{}` |\\n", report.performance.ingestion_cache_path).unwrap();
-        write!(md, "| Ingestion Reused | {} |\\n", bool_badge(report.performance.ingestion_reused)).unwrap();
-        write!(md, "| Embeddings Reused | {} |\\n", bool_badge(report.performance.embeddings_reused)).unwrap();
+        write!(
+            md,
+            "| Ingestion Cache | `{}` |\\n",
+            report.performance.ingestion_cache_path
+        )
+        .unwrap();
+        write!(
+            md,
+            "| Ingestion Reused | {} |\\n",
+            bool_badge(report.performance.ingestion_reused)
+        )
+        .unwrap();
+        write!(
+            md,
+            "| Embeddings Reused | {} |\\n",
+            bool_badge(report.performance.embeddings_reused)
+        )
+        .unwrap();
     }
-    write!(md, "| Positives Cached | {} |\\n", report.performance.positive_paragraphs_reused).unwrap();
-    write!(md, "| Negatives Cached | {} |\\n", report.performance.negative_paragraphs_reused).unwrap();
+    write!(
+        md,
+        "| Positives Cached | {} |\\n",
+        report.performance.positive_paragraphs_reused
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Negatives Cached | {} |\\n",
+        report.performance.negative_paragraphs_reused
+    )
+    .unwrap();
 
     md.push_str("\\n## Retrieval Stage Timings\\n\\n");
     md.push_str("| Stage | Avg (ms) | P50 (ms) | P95 (ms) |\\n| --- | --- | --- | --- |\\n");
@@ -583,7 +703,8 @@ fn render_markdown(report: &EvaluationReport) -> String {
             for case in &report.llm_cases {
                 let retrieved = render_retrieved(&case.retrieved);
                 let rank = case
-                    .match_rank.map_or_else(|| "-".into(), |rank| rank.to_string());
+                    .match_rank
+                    .map_or_else(|| "-".into(), |rank| rank.to_string());
                 write!(
                     md,
                     "| `{}` | {} | {} | {} |\\n",

@@ -1,41 +1,22 @@
-use std::sync::Arc;
+//! State-machine stages of the ingestion pipeline.
+//!
+//! Each function advances the `IngestionMachine` by one transition
+//! (`prepare → retrieve → enrich → persist`), mutating the shared
+//! [`PipelineContext`]. Low-level database writes live in [`super::persistence`].
 
 use common::{
     error::AppError,
-    storage::{
-        db::SurrealDbClient,
-        indexes::rebuild,
-        types::{
-            ingestion_payload::IngestionPayload, knowledge_entity::KnowledgeEntity,
-            knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
-        },
-    },
+    storage::{indexes::rebuild, types::ingestion_payload::IngestionPayload},
 };
 use state_machines::core::GuardError;
-use tokio::time::{sleep, Duration};
-use tracing::{debug, instrument, warn};
+use tracing::{debug, instrument};
 
 use super::{
-    context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk, PipelineArtifacts, PipelineContext},
+    context::{PipelineArtifacts, PipelineContext},
     enrichment_result::LLMEnrichmentResult,
+    persistence::{store_graph_entities, store_vector_chunks},
     state::{ContentPrepared, Enriched, IngestionMachine, Persisted, Ready, Retrieved},
 };
-
-const STORE_RELATIONSHIPS: &str = r"
-    BEGIN TRANSACTION;
-    LET $relationships = $relationships;
-
-    FOR $relationship IN $relationships {
-        LET $in_node = type::thing('knowledge_entity', $relationship.in);
-        LET $out_node = type::thing('knowledge_entity', $relationship.out);
-        RELATE $in_node->relates_to->$out_node CONTENT {
-            id: type::thing('relates_to', $relationship.id),
-            metadata: $relationship.metadata
-        };
-    };
-
-    COMMIT TRANSACTION;
-";
 
 #[instrument(
     level = "trace",
@@ -174,23 +155,9 @@ pub async fn persist(
     let entity_count = entities.len();
     let relationship_count = relationships.len();
 
-    debug!("Were storing chunks");
-    let chunk_count = store_vector_chunks(
-        ctx.db,
-        ctx.task_id.as_str(),
-        &chunks,
-        &ctx.pipeline_config.tuning,
-    )
-    .await?;
-
-    debug!("We stored chunks");
+    let chunk_count = store_vector_chunks(ctx.db, ctx.task_id.as_str(), &chunks).await?;
     store_graph_entities(ctx.db, &ctx.pipeline_config.tuning, entities, relationships).await?;
-
-    debug!("Stored graph entities");
-
     ctx.db.store_item(text_content).await?;
-
-    debug!("stored item");
     rebuild(ctx.db).await?;
 
     debug!(
@@ -211,108 +178,4 @@ fn map_guard_error(event: &str, guard: &GuardError) -> AppError {
     AppError::InternalError(format!(
         "invalid ingestion pipeline transition during {event}: {guard:?}"
     ))
-}
-
-async fn store_graph_entities(
-    db: &SurrealDbClient,
-    tuning: &super::config::IngestionTuning,
-    entities: Vec<EmbeddedKnowledgeEntity>,
-    relationships: Vec<KnowledgeRelationship>,
-) -> Result<(), AppError> {
-    // Persist entities with embeddings first.
-    for embedded in entities {
-        KnowledgeEntity::store_with_embedding(embedded.entity, embedded.embedding, db).await?;
-    }
-
-    if relationships.is_empty() {
-        return Ok(());
-    }
-
-    let relationships = Arc::new(relationships);
-
-    let mut backoff_ms = tuning.graph_initial_backoff_ms;
-    let last_attempt = tuning.graph_store_attempts.saturating_sub(1);
-
-    for attempt in 0..tuning.graph_store_attempts {
-        let result = db
-            .client
-            .query(STORE_RELATIONSHIPS)
-            .bind(("relationships", Arc::clone(&relationships)))
-            .await;
-
-        match result {
-            Ok(_) => return Ok(()),
-            Err(err) => {
-                if is_retryable_conflict(&err) && attempt < last_attempt {
-                    let next_attempt = attempt.saturating_add(1);
-                    warn!(
-                        attempt = next_attempt,
-                        "Transient SurrealDB conflict while storing graph data; retrying"
-                    );
-                    sleep(Duration::from_millis(backoff_ms)).await;
-                    backoff_ms = backoff_ms
-                        .saturating_mul(2)
-                        .min(tuning.graph_max_backoff_ms);
-                    continue;
-                }
-
-                return Err(AppError::from(err));
-            }
-        }
-    }
-
-    Err(AppError::InternalError(
-        "Failed to store graph entities after retries".to_string(),
-    ))
-}
-
-async fn store_vector_chunks(
-    db: &SurrealDbClient,
-    task_id: &str,
-    chunks: &[EmbeddedTextChunk],
-    tuning: &super::config::IngestionTuning,
-) -> Result<usize, AppError> {
-    let chunk_count = chunks.len();
-
-    let batch_size = tuning.chunk_insert_concurrency.max(1);
-
-    for batch in chunks.chunks(batch_size) {
-        store_chunk_batch(db, batch, tuning, task_id).await?;
-    }
-
-    Ok(chunk_count)
-}
-
-fn is_retryable_conflict(error: &surrealdb::Error) -> bool {
-    error
-        .to_string()
-        .contains("Failed to commit transaction due to a read or write conflict")
-}
-
-async fn store_chunk_batch(
-    db: &SurrealDbClient,
-    batch: &[EmbeddedTextChunk],
-    _tuning: &super::config::IngestionTuning,
-    task_id: &str,
-) -> Result<(), AppError> {
-    if batch.is_empty() {
-        return Ok(());
-    }
-
-    for embedded in batch {
-        TextChunk::store_with_embedding(
-            embedded.chunk.clone(),
-            embedded.embedding.clone(),
-            db,
-        )
-        .await?;
-        debug!(
-            task_id = %task_id,
-            chunk_id = %embedded.chunk.id,
-            chunk_len = embedded.chunk.chunk.chars().count(),
-            "chunk persisted"
-        );
-    }
-
-    Ok(())
 }

@@ -211,6 +211,16 @@ impl IngestionTask {
         self.attempts < self.max_attempts
     }
 
+    /// Moves the payload out of the task, leaving an empty placeholder behind.
+    ///
+    /// The task's `content` is only needed while driving the pipeline; the
+    /// terminal `user_id`, `state`, and bookkeeping fields are stored separately,
+    /// so replacing it with the default placeholder avoids cloning large payloads.
+    #[must_use]
+    pub fn take_content(&mut self) -> IngestionPayload {
+        std::mem::take(&mut self.content)
+    }
+
     #[must_use]
     pub fn lease_duration(&self) -> Duration {
         Duration::from_secs(u64::try_from(self.lease_duration_secs.max(0)).unwrap_or(0))
@@ -654,6 +664,18 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_take_content_moves_payload_and_leaves_default() {
+        let user_id = "user123";
+        let payload = create_payload(user_id);
+        let mut task = IngestionTask::new(payload.clone(), user_id.to_string());
+
+        let taken = task.take_content();
+
+        assert_eq!(taken, payload);
+        assert_eq!(task.content, IngestionPayload::default());
+    }
+
     #[tokio::test]
     async fn test_create_all_and_add_to_db_empty() -> anyhow::Result<()> {
         let db = memory_db().await?;
@@ -676,8 +698,7 @@ mod tests {
             },
         ];
 
-        let created =
-            IngestionTask::create_all_and_add_to_db(payloads, user_id, &db).await?;
+        let created = IngestionTask::create_all_and_add_to_db(payloads, user_id, &db).await?;
 
         assert_eq!(created.len(), 2);
         let first = created.first().expect("expected first task");

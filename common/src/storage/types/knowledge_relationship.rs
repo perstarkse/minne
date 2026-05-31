@@ -1,5 +1,5 @@
-use crate::utils::serde_helpers::deserialize_flexible_id;
 use crate::storage::types::user::User;
+use crate::utils::serde_helpers::deserialize_flexible_id;
 use crate::{error::AppError, storage::db::SurrealDbClient};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -43,18 +43,10 @@ impl KnowledgeRelationship {
     }
 
     pub async fn store_relationship(&self, db_client: &SurrealDbClient) -> Result<(), AppError> {
-        User::get_and_validate_knowledge_entity(
-            &self.in_,
-            &self.metadata.user_id,
-            db_client,
-        )
-        .await?;
-        User::get_and_validate_knowledge_entity(
-            &self.out,
-            &self.metadata.user_id,
-            db_client,
-        )
-        .await?;
+        User::get_and_validate_knowledge_entity(&self.in_, &self.metadata.user_id, db_client)
+            .await?;
+        User::get_and_validate_knowledge_entity(&self.out, &self.metadata.user_id, db_client)
+            .await?;
 
         db_client
             .client

@@ -26,6 +26,19 @@ pub enum IngestionPayload {
     },
 }
 
+impl Default for IngestionPayload {
+    /// An empty text payload, used as a cheap placeholder when the real content
+    /// has been moved out of a task (see [`crate::storage::types::ingestion_task::IngestionTask::take_content`]).
+    fn default() -> Self {
+        Self::Text {
+            text: String::new(),
+            context: String::new(),
+            category: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
 /// Shared ingest metadata moved or cloned into each payload variant.
 struct IngestFields {
     context: String,
@@ -440,7 +453,8 @@ mod tests {
     }
 
     #[test]
-    fn test_create_ingestion_payload_short_content_with_file_only_yields_file() -> anyhow::Result<()> {
+    fn test_create_ingestion_payload_short_content_with_file_only_yields_file() -> anyhow::Result<()>
+    {
         let context = "ctx";
         let category = "cat";
         let user_id = "user123";
@@ -501,7 +515,10 @@ mod tests {
         )?;
 
         assert_eq!(result.len(), 2);
-        assert!(matches!(result.first(), Some(IngestionPayload::File { .. })));
+        assert!(matches!(
+            result.first(),
+            Some(IngestionPayload::File { .. })
+        ));
         assert!(matches!(result.get(1), Some(IngestionPayload::File { .. })));
         Ok(())
     }

@@ -59,9 +59,7 @@ async fn run_fastembed(
     texts: Vec<String>,
 ) -> Result<Vec<Vec<f32>>, EmbeddingError> {
     match tokio::task::spawn_blocking(move || -> Result<Vec<Vec<f32>>, EmbeddingError> {
-        let mut guard = model
-            .lock()
-            .map_err(EmbeddingError::mutex_poisoned)?;
+        let mut guard = model.lock().map_err(EmbeddingError::mutex_poisoned)?;
         guard.embed(texts, None).map_err(EmbeddingError::fastembed)
     })
     .await
@@ -215,21 +213,22 @@ impl EmbeddingProvider {
         let model_name_for_task = model_name.clone();
         let model_name_code = model_name.to_string();
 
-        let (model, dimension) = match tokio::task::spawn_blocking(move || -> Result<_, EmbeddingError> {
-            let model =
-                TextEmbedding::try_new(options).map_err(EmbeddingError::fastembed)?;
-            let info = EmbeddingModel::get_model_info(&model_name_for_task).ok_or_else(|| {
-                EmbeddingError::Config(format!(
-                    "fastembed model metadata missing for {model_name_code}"
-                ))
-            })?;
-            Ok((model, info.dim))
-        })
-        .await
-        {
-            Ok(result) => result?,
-            Err(join_error) => return Err(EmbeddingError::from(join_error)),
-        };
+        let (model, dimension) =
+            match tokio::task::spawn_blocking(move || -> Result<_, EmbeddingError> {
+                let model = TextEmbedding::try_new(options).map_err(EmbeddingError::fastembed)?;
+                let info =
+                    EmbeddingModel::get_model_info(&model_name_for_task).ok_or_else(|| {
+                        EmbeddingError::Config(format!(
+                            "fastembed model metadata missing for {model_name_code}"
+                        ))
+                    })?;
+                Ok((model, info.dim))
+            })
+            .await
+            {
+                Ok(result) => result?,
+                Err(join_error) => return Err(EmbeddingError::from(join_error)),
+            };
 
         Ok(EmbeddingProvider {
             inner: EmbeddingInner::FastEmbed {
@@ -440,10 +439,7 @@ mod tests {
 
     #[test]
     fn embedding_backend_defaults_to_fastembed() {
-        assert_eq!(
-            EmbeddingBackend::default(),
-            EmbeddingBackend::FastEmbed
-        );
+        assert_eq!(EmbeddingBackend::default(), EmbeddingBackend::FastEmbed);
     }
 
     #[test]
@@ -472,7 +468,9 @@ mod tests {
     #[test]
     fn embedding_backend_from_str_accepts_aliases() {
         assert_eq!(
-            "fast-embed".parse::<EmbeddingBackend>().expect("fast-embed"),
+            "fast-embed"
+                .parse::<EmbeddingBackend>()
+                .expect("fast-embed"),
             EmbeddingBackend::FastEmbed
         );
         assert_eq!(

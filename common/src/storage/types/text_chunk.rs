@@ -74,10 +74,7 @@ impl TextChunk {
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
         let settings = SystemSettings::get_current(db).await?;
-        TextChunkEmbedding::validate_dimension(
-            &embedding,
-            settings.embedding_dimensions as usize,
-        )?;
+        TextChunkEmbedding::validate_dimension(&embedding, settings.embedding_dimensions as usize)?;
 
         let chunk_id = chunk.id.clone();
         let emb = TextChunkEmbedding::new(
@@ -308,9 +305,8 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding).map_err(|e| {
-                AppError::internal(format!("embedding serialization failed: {e}"))
-            })?;
+            let embedding = serde_json::to_string(&embedding)
+                .map_err(|e| AppError::internal(format!("embedding serialization failed: {e}")))?;
             let id = surql_json_string(&id)?;
             let user_id = surql_json_string(&user_id)?;
             let source_id = surql_json_string(&source_id)?;
@@ -382,9 +378,7 @@ impl TextChunk {
                 info!(progress = i, total = total_chunks, "Re-embedding progress");
             }
 
-            let embedding = provider
-                .embed(&chunk.chunk)
-                .await?;
+            let embedding = provider.embed(&chunk.chunk).await?;
 
             // Safety check: ensure the generated embedding has the correct dimension.
             if embedding.len() != new_dimensions {
@@ -429,9 +423,8 @@ impl TextChunk {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding).map_err(|e| {
-                AppError::internal(format!("embedding serialization failed: {e}"))
-            })?;
+            let embedding = serde_json::to_string(&embedding)
+                .map_err(|e| AppError::internal(format!("embedding serialization failed: {e}")))?;
             let id = surql_json_string(&id)?;
             let user_id = surql_json_string(&user_id)?;
             let source_id = surql_json_string(&source_id)?;
@@ -662,7 +655,9 @@ mod tests {
             .await
             .expect("Failed to start in-memory surrealdb");
         db.apply_migrations().await.expect("migrations");
-        configure_embedding_dimension(&db, 5).await.expect("configure dim");
+        configure_embedding_dimension(&db, 5)
+            .await
+            .expect("configure dim");
         TextChunkEmbedding::redefine_hnsw_index(&db, 5)
             .await
             .expect("redefine index");
@@ -1040,11 +1035,7 @@ mod tests {
             .with_context(|| "migrations".to_string())?;
         configure_embedding_dimension(&db, 3).await?;
 
-        let chunk = TextChunk::new(
-            "src".to_string(),
-            "body".to_string(),
-            "user".to_string(),
-        );
+        let chunk = TextChunk::new("src".to_string(), "body".to_string(), "user".to_string());
 
         let err = TextChunk::store_with_embedding(chunk, vec![0.1, 0.2], &db)
             .await

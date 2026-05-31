@@ -28,7 +28,11 @@ pub fn hnsw_index_overwrite_sql(index_name: &str, table: &str, dimension: usize)
 
 /// Recreates an HNSW index inside a transaction (for tests and dimension migrations).
 #[must_use]
-pub fn hnsw_index_redefine_transaction_sql(index_name: &str, table: &str, dimension: usize) -> String {
+pub fn hnsw_index_redefine_transaction_sql(
+    index_name: &str,
+    table: &str,
+    dimension: usize,
+) -> String {
     format!(
         "BEGIN TRANSACTION;
          REMOVE INDEX IF EXISTS {index_name} ON TABLE {table};
@@ -204,9 +208,7 @@ pub async fn ensure_runtime(
 ///
 /// Returns `AppError::InternalError` if any index rebuild operation fails.
 pub async fn rebuild(db: &SurrealDbClient) -> Result<(), AppError> {
-    rebuild_inner(db)
-        .await
-        .map_err(AppError::internal)
+    rebuild_inner(db).await.map_err(AppError::internal)
 }
 
 async fn ensure_runtime_inner(db: &SurrealDbClient, embedding_dimension: usize) -> Result<()> {
@@ -297,8 +299,8 @@ async fn get_index_status(db: &SurrealDbClient, index_name: &str, table: &str) -
         return Ok("unknown".to_string());
     };
 
-    let parsed: IndexInfoForIndex = serde_json::from_value(info)
-        .context("deserializing INFO FOR INDEX response")?;
+    let parsed: IndexInfoForIndex =
+        serde_json::from_value(info).context("deserializing INFO FOR INDEX response")?;
 
     Ok(parsed.building_status())
 }

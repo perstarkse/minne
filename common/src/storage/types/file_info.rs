@@ -205,13 +205,9 @@ impl FileInfo {
         let now = Utc::now();
         let storage_prefix = format!("{user_id}/{uuid}");
 
-        let path = Self::persist_bytes_with_storage(
-            &storage_prefix,
-            &sanitized_file_name,
-            bytes,
-            storage,
-        )
-        .await?;
+        let path =
+            Self::persist_bytes_with_storage(&storage_prefix, &sanitized_file_name, bytes, storage)
+                .await?;
 
         let file_info = FileInfo {
             id: uuid.to_string(),
@@ -262,8 +258,8 @@ impl FileInfo {
         };
 
         // Remove the object's parent prefix in the object store
-        let (parent_prefix, _file_name) = store::split_object_path(&file_info.path)
-            .map_err(AppError::internal)?;
+        let (parent_prefix, _file_name) =
+            store::split_object_path(&file_info.path).map_err(AppError::internal)?;
         storage
             .delete_prefix(&parent_prefix)
             .await
@@ -290,10 +286,7 @@ impl FileInfo {
         &self,
         storage: &StorageManager,
     ) -> Result<bytes::Bytes, AppError> {
-        storage
-            .get(&self.path)
-            .await
-            .map_err(AppError::Storage)
+        storage.get(&self.path).await.map_err(AppError::Storage)
     }
 
     /// Persist bytes to storage using StorageManager.
