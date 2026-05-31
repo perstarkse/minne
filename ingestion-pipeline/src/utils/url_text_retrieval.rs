@@ -6,7 +6,6 @@ use common::{
     storage::{db::SurrealDbClient, store::StorageManager, types::file_info::FileInfo},
 };
 use dom_smoothie::{Article, Readability, TextMode};
-use headless_chrome::Browser;
 use std::{
     io::{Seek, SeekFrom, Write},
     net::IpAddr,
@@ -23,22 +22,7 @@ pub async fn extract_text_from_url(
     info!("Fetching URL: {}", url);
     let now = Instant::now();
 
-    let browser = {
-        #[cfg(feature = "docker")]
-        {
-            let options = headless_chrome::LaunchOptionsBuilder::default()
-                .sandbox(false)
-                .build()
-                .map_err(|e| AppError::InternalError(e.to_string()))?;
-            Browser::new(options)
-                .map_err(|e| AppError::InternalError(e.to_string()))?
-        }
-        #[cfg(not(feature = "docker"))]
-        {
-            Browser::default()
-                .map_err(|e| AppError::InternalError(e.to_string()))?
-        }
-    };
+    let browser = crate::utils::browser::launch_browser()?;
 
     let tab = browser
         .new_tab()

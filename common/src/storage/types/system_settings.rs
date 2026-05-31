@@ -520,7 +520,10 @@ mod tests {
         .with_context(|| "Failed to patch query prompt".to_string())?;
 
         assert_eq!(patched.query_system_prompt, sentinel);
-        assert_eq!(patched.ingestion_system_prompt, original.ingestion_system_prompt);
+        assert_eq!(
+            patched.ingestion_system_prompt,
+            original.ingestion_system_prompt
+        );
         assert_eq!(patched.query_model, original.query_model);
         assert_eq!(
             patched.registrations_enabled,

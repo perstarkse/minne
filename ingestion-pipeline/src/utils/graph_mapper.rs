@@ -51,3 +51,54 @@ impl GraphMapper {
             .ok_or_else(|| AppError::GraphMapper(format!("Key '{key}' not found in map.")))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+    use super::*;
+
+    #[test]
+    fn assign_then_get_returns_same_id() {
+        let mut mapper = GraphMapper::new();
+        let assigned = mapper.assign_id("entity-key");
+        assert_eq!(mapper.get_id("entity-key").expect("key present"), assigned);
+    }
+
+    #[test]
+    fn get_id_for_unknown_key_errors() {
+        let mapper = GraphMapper::new();
+        assert!(matches!(
+            mapper.get_id("missing"),
+            Err(AppError::GraphMapper(_))
+        ));
+    }
+
+    #[test]
+    fn get_or_parse_id_parses_raw_uuid_without_lookup() {
+        let mapper = GraphMapper::new();
+        let raw = Uuid::new_v4();
+        let resolved = mapper
+            .get_or_parse_id(&raw.to_string())
+            .expect("raw uuid parses");
+        assert_eq!(resolved, raw);
+    }
+
+    #[test]
+    fn get_or_parse_id_falls_back_to_map_for_keys() {
+        let mut mapper = GraphMapper::new();
+        let assigned = mapper.assign_id("alias");
+        assert_eq!(
+            mapper.get_or_parse_id("alias").expect("alias mapped"),
+            assigned
+        );
+    }
+
+    #[test]
+    fn get_or_parse_id_errors_for_unknown_non_uuid_key() {
+        let mapper = GraphMapper::new();
+        assert!(matches!(
+            mapper.get_or_parse_id("not-a-uuid-and-not-mapped"),
+            Err(AppError::GraphMapper(_))
+        ));
+    }
+}

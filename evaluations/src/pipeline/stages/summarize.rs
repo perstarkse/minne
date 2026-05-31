@@ -13,7 +13,11 @@ use super::super::{
 };
 use super::{map_guard_error, StageResult};
 
-#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects, clippy::cast_precision_loss)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::arithmetic_side_effects,
+    clippy::cast_precision_loss
+)]
 pub(crate) async fn summarize(
     machine: EvaluationMachine<(), QueriesFinished>,
     ctx: &mut EvaluationContext<'_>,

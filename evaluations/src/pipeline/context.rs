@@ -14,7 +14,7 @@ use common::{
     utils::embedding::EmbeddingProvider,
 };
 use retrieval_pipeline::{
-    pipeline::{StageTimings, RetrievalConfig},
+    pipeline::{RetrievalConfig, StageTimings},
     reranking::RerankerPool,
 };
 
@@ -122,11 +122,15 @@ impl<'a> EvaluationContext<'a> {
     }
 
     pub fn slice(&self) -> Result<&slice::ResolvedSlice<'a>> {
-        self.slice.as_ref().ok_or_else(|| anyhow!("slice has not been prepared"))
+        self.slice
+            .as_ref()
+            .ok_or_else(|| anyhow!("slice has not been prepared"))
     }
 
     pub fn db(&self) -> Result<&SurrealDbClient> {
-        self.db.as_ref().ok_or_else(|| anyhow!("database connection missing"))
+        self.db
+            .as_ref()
+            .ok_or_else(|| anyhow!("database connection missing"))
     }
 
     pub fn descriptor(&self) -> Result<&snapshot::Descriptor> {
@@ -142,15 +146,23 @@ impl<'a> EvaluationContext<'a> {
     }
 
     pub fn openai_client(&self) -> Result<Arc<Client<async_openai::config::OpenAIConfig>>> {
-        Ok(Arc::clone(self.openai_client.as_ref().ok_or_else(|| anyhow!("openai client missing"))?))
+        Ok(Arc::clone(
+            self.openai_client
+                .as_ref()
+                .ok_or_else(|| anyhow!("openai client missing"))?,
+        ))
     }
 
     pub fn corpus_handle(&self) -> Result<&corpus::CorpusHandle> {
-        self.corpus_handle.as_ref().ok_or_else(|| anyhow!("corpus handle missing"))
+        self.corpus_handle
+            .as_ref()
+            .ok_or_else(|| anyhow!("corpus handle missing"))
     }
 
     pub fn evaluation_user(&self) -> Result<&User> {
-        self.eval_user.as_ref().ok_or_else(|| anyhow!("evaluation user missing"))
+        self.eval_user
+            .as_ref()
+            .ok_or_else(|| anyhow!("evaluation user missing"))
     }
 
     #[allow(clippy::arithmetic_side_effects)]
@@ -168,7 +180,8 @@ impl<'a> EvaluationContext<'a> {
     }
 
     pub fn into_summary(self) -> Result<EvaluationSummary> {
-        self.summary.ok_or_else(|| anyhow!("evaluation summary missing"))
+        self.summary
+            .ok_or_else(|| anyhow!("evaluation summary missing"))
     }
 }
 

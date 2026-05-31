@@ -8,11 +8,19 @@ use common::storage::{
     db::SurrealDbClient,
     types::ingestion_task::{IngestionTask, DEFAULT_LEASE_SECS},
 };
-pub use pipeline::{IngestionConfig, IngestionPipeline, IngestionTuning};
+pub use pipeline::{
+    EmbeddedKnowledgeEntity, EmbeddedTextChunk, IngestionConfig, IngestionPipeline,
+    IngestionTuning, PipelineArtifacts,
+};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+/// How long the worker sleeps when no task is ready to claim.
+const WORKER_IDLE_BACKOFF_MS: u64 = 500;
+/// How long the worker sleeps after a transient claim error before retrying.
+const WORKER_CLAIM_ERROR_BACKOFF_MS: u64 = 1_000;
 
 pub async fn run_worker_loop(
     db: Arc<SurrealDbClient>,
@@ -20,7 +28,8 @@ pub async fn run_worker_loop(
 ) -> anyhow::Result<()> {
     let worker_id = format!("ingestion-worker-{}", Uuid::new_v4());
     let lease_duration = Duration::from_secs(DEFAULT_LEASE_SECS as u64);
-    let idle_backoff = Duration::from_millis(500);
+    let idle_backoff = Duration::from_millis(WORKER_IDLE_BACKOFF_MS);
+    let claim_error_backoff = Duration::from_millis(WORKER_CLAIM_ERROR_BACKOFF_MS);
 
     loop {
         match IngestionTask::claim_next_ready(&db, &worker_id, Utc::now(), lease_duration).await {
@@ -41,8 +50,11 @@ pub async fn run_worker_loop(
             }
             Err(err) => {
                 error!(%worker_id, error = %err, "failed to claim ingestion task");
-                warn!("Backing off for 1s after claim error");
-                sleep(Duration::from_secs(1)).await;
+                warn!(
+                    backoff_ms = WORKER_CLAIM_ERROR_BACKOFF_MS,
+                    "Backing off after claim error"
+                );
+                sleep(claim_error_backoff).await;
             }
         }
     }

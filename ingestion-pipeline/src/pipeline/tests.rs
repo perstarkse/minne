@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use anyhow::{self, Context};
 use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
+use anyhow::{self, Context};
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use common::{
@@ -279,7 +279,6 @@ fn pipeline_config() -> IngestionConfig {
         tuning: IngestionTuning {
             chunk_min_tokens: 4,
             chunk_max_tokens: 64,
-            chunk_insert_concurrency: 4,
             entity_embedding_concurrency: 2,
             ..IngestionTuning::default()
         },
@@ -302,18 +301,33 @@ async fn reserve_task(
 }
 
 #[tokio::test]
-async fn ingestion_pipeline_happy_path_persists_entities() -> anyhow::Result<()>
-{
+#[allow(clippy::duration_suboptimal_units)] // assertions mirror retry_delay's seconds-based config
+async fn retry_delay_grows_exponentially_and_caps() -> anyhow::Result<()> {
+    use std::time::Duration;
+
+    let db = setup_db().await?;
+    let services: Arc<dyn PipelineServices> = Arc::new(MockServices::new("user-delay"));
+    let pipeline = IngestionPipeline::with_services(Arc::new(db), pipeline_config(), services)?;
+
+    // Defaults: base = 30s, cap exponent = 5, max = 900s.
+    assert_eq!(pipeline.retry_delay(0), Duration::from_secs(30));
+    assert_eq!(pipeline.retry_delay(1), Duration::from_secs(30));
+    assert_eq!(pipeline.retry_delay(2), Duration::from_secs(60));
+    assert_eq!(pipeline.retry_delay(3), Duration::from_secs(120));
+    // Beyond the cap exponent the delay clamps at the configured maximum.
+    assert_eq!(pipeline.retry_delay(7), Duration::from_secs(900));
+    Ok(())
+}
+
+#[tokio::test]
+async fn ingestion_pipeline_happy_path_persists_entities() -> anyhow::Result<()> {
     let db = setup_db().await?;
     let worker_id = "worker-happy";
     let user_id = "user-123";
     let services = Arc::new(MockServices::new(user_id));
     let services_clone: Arc<dyn PipelineServices> = Arc::<MockServices>::clone(&services);
-    let pipeline = IngestionPipeline::with_services(
-        Arc::new(db.clone()),
-        pipeline_config(),
-        services_clone,
-    )?;
+    let pipeline =
+        IngestionPipeline::with_services(Arc::new(db.clone()), pipeline_config(), services_clone)?;
 
     let task = reserve_task(
         &db,
@@ -330,15 +344,11 @@ async fn ingestion_pipeline_happy_path_persists_entities() -> anyhow::Result<()>
 
     pipeline.process_task(task.clone()).await?;
 
-    let stored_task: IngestionTask = db
-        .get_item(&task.id)
-        .await?
-        .context("task present")?;
+    let stored_task: IngestionTask = db.get_item(&task.id).await?.context("task present")?;
     assert_eq!(stored_task.state, TaskState::Succeeded);
 
-    let stored_entities: Vec<KnowledgeEntity> = db
-        .get_all_stored_items::<KnowledgeEntity>()
-        .await?;
+    let stored_entities: Vec<KnowledgeEntity> =
+        db.get_all_stored_items::<KnowledgeEntity>().await?;
     assert!(!stored_entities.is_empty(), "entities should be stored");
 
     let stored_chunks: Vec<TextChunk> = db.get_all_stored_items::<TextChunk>().await?;
@@ -356,9 +366,9 @@ async fn ingestion_pipeline_happy_path_persists_entities() -> anyhow::Result<()>
         call_log.get(0..4),
         Some(&["prepare", "retrieve", "enrich", "convert"][..])
     );
-    assert!(
-        call_log.get(4..).is_some_and(|tail| tail.iter().all(|entry| *entry == "chunk"))
-    );
+    assert!(call_log
+        .get(4..)
+        .is_some_and(|tail| tail.iter().all(|entry| *entry == "chunk")));
     Ok(())
 }
 
@@ -371,11 +381,7 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() -> anyhow::Result<()> {
     let services_clone: Arc<dyn PipelineServices> = Arc::<MockServices>::clone(&services);
     let mut config = pipeline_config();
     config.chunk_only = true;
-    let pipeline = IngestionPipeline::with_services(
-        Arc::new(db.clone()),
-        config,
-        services_clone,
-    )?;
+    let pipeline = IngestionPipeline::with_services(Arc::new(db.clone()), config, services_clone)?;
 
     let task = reserve_task(
         &db,
@@ -392,9 +398,8 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() -> anyhow::Result<()> {
 
     pipeline.process_task(task.clone()).await?;
 
-    let stored_entities: Vec<KnowledgeEntity> = db
-        .get_all_stored_items::<KnowledgeEntity>()
-        .await?;
+    let stored_entities: Vec<KnowledgeEntity> =
+        db.get_all_stored_items::<KnowledgeEntity>().await?;
     assert!(
         stored_entities.is_empty(),
         "chunk-only ingestion should not persist entities"
@@ -451,10 +456,7 @@ async fn ingestion_pipeline_failure_marks_retry() -> anyhow::Result<()> {
         "failure services should bubble error from pipeline"
     );
 
-    let stored_task: IngestionTask = db
-        .get_item(&task.id)
-        .await?
-        .context("task present")?;
+    let stored_task: IngestionTask = db.get_item(&task.id).await?.context("task present")?;
     assert_eq!(stored_task.state, TaskState::Failed);
     assert!(
         stored_task.scheduled_at > Utc::now() - ChronoDuration::seconds(5),
@@ -464,8 +466,7 @@ async fn ingestion_pipeline_failure_marks_retry() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn ingestion_pipeline_validation_failure_dead_letters_task(
-) -> anyhow::Result<()> {
+async fn ingestion_pipeline_validation_failure_dead_letters_task() -> anyhow::Result<()> {
     let db = setup_db().await?;
     let worker_id = "worker-validation";
     let user_id = "user-789";
@@ -492,10 +493,7 @@ async fn ingestion_pipeline_validation_failure_dead_letters_task(
         "validation failure should surface as error"
     );
 
-    let stored_task: IngestionTask = db
-        .get_item(&task.id)
-        .await?
-        .context("task present")?;
+    let stored_task: IngestionTask = db.get_item(&task.id).await?.context("task present")?;
     assert_eq!(stored_task.state, TaskState::DeadLetter);
     Ok(())
 }

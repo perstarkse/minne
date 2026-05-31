@@ -166,8 +166,7 @@ async fn async_main() -> anyhow::Result<()> {
     );
 
     if parsed.config.slice_grow.is_some() {
-        eval::grow_slice(&dataset, &parsed.config)
-            .context("growing slice ledger")?;
+        eval::grow_slice(&dataset, &parsed.config).context("growing slice ledger")?;
         return Ok(());
     }
 

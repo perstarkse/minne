@@ -9,8 +9,10 @@ pub struct IngestionTuning {
     pub chunk_min_tokens: usize,
     pub chunk_max_tokens: usize,
     pub chunk_overlap_tokens: usize,
-    pub chunk_insert_concurrency: usize,
     pub entity_embedding_concurrency: usize,
+    /// Maximum characters of content body used to build the similarity-search query
+    /// during retrieval. Longer bodies are truncated to keep embedding inputs bounded.
+    pub embedding_query_char_limit: usize,
 }
 
 impl Default for IngestionTuning {
@@ -25,8 +27,8 @@ impl Default for IngestionTuning {
             chunk_min_tokens: 256,
             chunk_max_tokens: 512,
             chunk_overlap_tokens: 50,
-            chunk_insert_concurrency: 8,
             entity_embedding_concurrency: 4,
+            embedding_query_char_limit: 12_000,
         }
     }
 }

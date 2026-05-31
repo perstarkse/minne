@@ -99,10 +99,13 @@ fn sanitize_identifier(input: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(input.as_bytes());
         let digest = hasher.finalize();
-        digest.iter().take(6).fold(String::with_capacity(12), |mut s, b| {
-            let _ = write!(s, "{b:02x}");
-            s
-        })
+        digest
+            .iter()
+            .take(6)
+            .fold(String::with_capacity(12), |mut s, b| {
+                let _ = write!(s, "{b:02x}");
+                s
+            })
     } else {
         trimmed
     }
@@ -127,7 +130,9 @@ pub struct SliceWindow<'a> {
 
 impl SliceWindow<'_> {
     pub fn positive_ids(&self) -> impl Iterator<Item = &str> {
-        self.positive_paragraph_ids.iter().map(std::string::String::as_str)
+        self.positive_paragraph_ids
+            .iter()
+            .map(std::string::String::as_str)
     }
 }
 
@@ -169,7 +174,10 @@ impl DatasetIndex {
             .paragraph_by_id
             .get(id)
             .ok_or_else(|| anyhow!("slice references unknown paragraph '{id}'"))?;
-        dataset.paragraphs.get(*idx).ok_or_else(|| anyhow!("paragraph index out of bounds"))
+        dataset
+            .paragraphs
+            .get(*idx)
+            .ok_or_else(|| anyhow!("paragraph index out of bounds"))
     }
 
     fn question<'a>(
@@ -181,7 +189,9 @@ impl DatasetIndex {
             .question_by_id
             .get(question_id)
             .ok_or_else(|| anyhow!("slice references unknown question '{question_id}'"))?;
-        let paragraph = dataset.paragraphs.get(*p_idx)
+        let paragraph = dataset
+            .paragraphs
+            .get(*p_idx)
             .ok_or_else(|| anyhow!("paragraph index out of bounds for question '{question_id}'"))?;
         let question = paragraph
             .questions
@@ -318,9 +328,7 @@ pub fn resolve_slice<'a>(
         .is_some_and(|manifest| manifest.version != SLICE_VERSION)
     {
         warn!(
-            slice = manifest
-                .as_ref()
-                .map_or("unknown", |m| m.slice_id.as_str()),
+            slice = manifest.as_ref().map_or("unknown", |m| m.slice_id.as_str()),
             found = manifest.as_ref().map_or(0, |m| m.version),
             expected = SLICE_VERSION,
             "Slice manifest version mismatch; regenerating"
@@ -919,7 +927,11 @@ fn ensure_shard_paths(manifest: &mut SliceManifest) -> bool {
     changed
 }
 
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn desired_negative_target(
     positive_count: usize,
     requested_corpus: usize,
@@ -1007,10 +1019,13 @@ fn compute_slice_id(key: &SliceKey<'_>) -> Result<String> {
     let mut hasher = Sha256::new();
     hasher.update(payload);
     let digest = hasher.finalize();
-    Ok(digest.iter().take(16).fold(String::with_capacity(32), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    }))
+    Ok(digest
+        .iter()
+        .take(16)
+        .fold(String::with_capacity(32), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        }))
 }
 
 #[allow(clippy::indexing_slicing)]
@@ -1050,10 +1065,7 @@ impl<'a> From<&'a Config> for SliceConfig<'a> {
     }
 }
 
-pub fn slice_config_with_limit(
-    config: &Config,
-    limit_override: Option<usize>,
-) -> SliceConfig<'_> {
+pub fn slice_config_with_limit(config: &Config, limit_override: Option<usize>) -> SliceConfig<'_> {
     SliceConfig {
         cache_dir: config.cache_dir.as_path(),
         force_convert: config.force_convert,

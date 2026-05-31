@@ -9,8 +9,7 @@ pub use orchestrator::{
 };
 pub use store::{
     seed_manifest_into_db, window_manifest, CorpusHandle, CorpusManifest, CorpusMetadata,
-    CorpusQuestion, EmbeddedKnowledgeEntity, EmbeddedTextChunk, ParagraphShard,
-    ParagraphShardStore, MANIFEST_VERSION,
+    CorpusQuestion, ParagraphShard, ParagraphShardStore, MANIFEST_VERSION,
 };
 
 pub fn make_ingestion_config(config: &crate::args::Config) -> ingestion_pipeline::IngestionConfig {

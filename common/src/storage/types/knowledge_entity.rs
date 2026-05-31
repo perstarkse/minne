@@ -1,16 +1,12 @@
-#![allow(
-    clippy::missing_docs_in_private_items,
-    clippy::module_name_repetitions,
-)]
+#![allow(clippy::missing_docs_in_private_items, clippy::module_name_repetitions)]
 use std::collections::HashMap;
 use std::fmt::Write;
 
 use crate::{
-    error::AppError, storage::db::SurrealDbClient,
-    storage::indexes::hnsw_index_overwrite_sql,
+    error::AppError, storage::db::SurrealDbClient, storage::indexes::hnsw_index_overwrite_sql,
     storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding,
     storage::types::system_settings::SystemSettings, stored_object,
-    utils::embedding::generate_embedding,
+    utils::embedding::{generate_embedding_with_params, generate_embedding_with_provider, EmbeddingProvider},
 };
 use async_openai::{config::OpenAIConfig, Client};
 use tokio_retry::{
@@ -315,12 +311,12 @@ impl KnowledgeEntity {
         description: &str,
         entity_type: &KnowledgeEntityType,
         db_client: &SurrealDbClient,
-        ai_client: &Client<OpenAIConfig>,
+        embedding_provider: &EmbeddingProvider,
     ) -> Result<(), AppError> {
-        let embedding_input = format!(
-            "name: {name}, description: {description}, type: {entity_type:?}",
-        );
-        let embedding = generate_embedding(ai_client, &embedding_input, db_client).await?;
+        let embedding_input =
+            format!("name: {name}, description: {description}, type: {entity_type:?}",);
+        let embedding =
+            generate_embedding_with_provider(embedding_provider, &embedding_input).await?;
 
         let entity: KnowledgeEntity = db_client
             .get_item(id)
@@ -334,12 +330,7 @@ impl KnowledgeEntity {
             settings.embedding_dimensions as usize,
         )?;
 
-        let emb = KnowledgeEntityEmbedding::new(
-            id,
-            entity.source_id,
-            embedding,
-            entity.user_id,
-        );
+        let emb = KnowledgeEntityEmbedding::new(id, entity.source_id, embedding, entity.user_id);
 
         let now = Utc::now();
 
@@ -411,7 +402,7 @@ impl KnowledgeEntity {
             let retry_strategy = ExponentialBackoff::from_millis(100).map(jitter).take(3);
 
             let embedding = Retry::spawn(retry_strategy, || {
-                crate::utils::embedding::generate_embedding_with_params(
+                generate_embedding_with_params(
                     openai_client,
                     &embedding_input,
                     new_model,
@@ -431,11 +422,7 @@ impl KnowledgeEntity {
             }
             new_embeddings.insert(
                 entity.id.clone(),
-                (
-                    embedding,
-                    entity.user_id.clone(),
-                    entity.source_id.clone(),
-                ),
+                (embedding, entity.user_id.clone(), entity.source_id.clone()),
             );
         }
         info!("Successfully generated all new embeddings.");
@@ -446,9 +433,8 @@ impl KnowledgeEntity {
 
         // Add all update statements to the embedding table
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding).map_err(|e| {
-                AppError::internal(format!("embedding serialization failed: {e}"))
-            })?;
+            let embedding = serde_json::to_string(&embedding)
+                .map_err(|e| AppError::internal(format!("embedding serialization failed: {e}")))?;
             write!(
                 transaction_query,
                 "UPSERT type::thing('knowledge_entity_embedding', '{id}') SET \
@@ -526,9 +512,7 @@ impl KnowledgeEntity {
                 entity.name, entity.description, entity.entity_type
             );
 
-            let embedding = provider
-                .embed(&embedding_input)
-                .await?;
+            let embedding = provider.embed(&embedding_input).await?;
 
             // Safety check: ensure the generated embedding has the correct dimension.
             if embedding.len() != new_dimensions {
@@ -541,11 +525,7 @@ impl KnowledgeEntity {
             }
             new_embeddings.insert(
                 entity.id.clone(),
-                (
-                    embedding,
-                    entity.user_id.clone(),
-                    entity.source_id.clone(),
-                ),
+                (embedding, entity.user_id.clone(), entity.source_id.clone()),
             );
         }
         info!("Successfully generated all new embeddings.");
@@ -580,9 +560,8 @@ impl KnowledgeEntity {
         let mut transaction_query = String::from("BEGIN TRANSACTION;");
 
         for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding).map_err(|e| {
-                AppError::internal(format!("embedding serialization failed: {e}"))
-            })?;
+            let embedding = serde_json::to_string(&embedding)
+                .map_err(|e| AppError::internal(format!("embedding serialization failed: {e}")))?;
             write!(
                 transaction_query,
                 "CREATE type::thing('knowledge_entity_embedding', '{id}') SET \
@@ -833,7 +812,9 @@ mod tests {
             .await
             .expect("Failed to apply migrations");
 
-        configure_embedding_dimension(&db, 3).await.expect("configure dim");
+        configure_embedding_dimension(&db, 3)
+            .await
+            .expect("configure dim");
         KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
             .await
             .expect("Failed to redefine index length");
@@ -1105,7 +1086,10 @@ mod tests {
             .await
             .with_context(|| "store entity with embedding".to_string())?;
 
-        let query = format!("DELETE type::thing('knowledge_entity', '{id}')", id = entity.id);
+        let query = format!(
+            "DELETE type::thing('knowledge_entity', '{id}')",
+            id = entity.id
+        );
         db.client
             .query(query)
             .await

@@ -8,8 +8,7 @@ use crate::storage::{
     db::SurrealDbClient,
     indexes::{ensure_runtime, rebuild},
     types::{
-        knowledge_entity_embedding::KnowledgeEntityEmbedding,
-        system_settings::SystemSettings,
+        knowledge_entity_embedding::KnowledgeEntityEmbedding, system_settings::SystemSettings,
         text_chunk_embedding::TextChunkEmbedding,
     },
 };
@@ -27,9 +26,7 @@ pub async fn setup_test_db() -> Result<SurrealDbClient> {
         .await
         .context("start in-memory surrealdb")?;
 
-    db.apply_migrations()
-        .await
-        .context("apply migrations")?;
+    db.apply_migrations().await.context("apply migrations")?;
 
     Ok(db)
 }

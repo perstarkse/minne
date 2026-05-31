@@ -299,12 +299,7 @@ mod tests {
             ("chunk-s2", source_id, vec![0.2]),
             ("chunk-other", other_source, vec![0.3]),
         ] {
-            let emb = TextChunkEmbedding::new(
-                key,
-                src.to_string(),
-                vec,
-                user_id.to_string(),
-            );
+            let emb = TextChunkEmbedding::new(key, src.to_string(), vec, user_id.to_string());
             db.upsert_item(emb)
                 .await
                 .with_context(|| format!("store embedding for {key}"))?;

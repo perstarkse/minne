@@ -27,8 +27,8 @@ url = { workspace = true }
 uuid = { workspace = true }
 headless_chrome = { workspace = true }
 base64 = { workspace = true }
-pdf-extract = "0.9"
-lopdf = "0.32"
+pdf-extract = { workspace = true }
+lopdf = { workspace = true }
 bytes = { workspace = true }
 async-trait = { workspace = true }
 state-machines = { workspace = true }

@@ -51,12 +51,7 @@ impl KnowledgeEntityEmbedding {
     ///
     /// The embedding record id equals `entity_id` so each entity has at most one embedding row.
     #[must_use]
-    pub fn new(
-        entity_id: &str,
-        source_id: String,
-        embedding: Vec<f32>,
-        user_id: String,
-    ) -> Self {
+    pub fn new(entity_id: &str, source_id: String, embedding: Vec<f32>, user_id: String) -> Self {
         let now = Utc::now();
         Self {
             id: entity_id.to_owned(),
@@ -300,8 +295,7 @@ mod tests {
         let db = prepare_knowledge_entity_test_db(3).await?;
 
         let entity = build_knowledge_entity_with_id("entity-dim", "source-dim", "user-dim");
-        let result =
-            KnowledgeEntity::store_with_embedding(entity, vec![0.1, 0.2], &db).await;
+        let result = KnowledgeEntity::store_with_embedding(entity, vec![0.1, 0.2], &db).await;
 
         assert!(matches!(result, Err(AppError::Validation(_))));
 

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use super::{
     audio_transcription::transcribe_audio_file, image_parsing::extract_text_from_image,
-    pdf_ingestion::extract_pdf_content,
+    pdf::extract_pdf_content,
 };
 
 struct TempPathGuard {
@@ -187,8 +187,8 @@ mod tests {
 
         let openai_client = Client::with_config(OpenAIConfig::default());
 
-        let text = extract_text_from_file(&file_info, &db, &openai_client, &config, &storage)
-            .await?;
+        let text =
+            extract_text_from_file(&file_info, &db, &openai_client, &config, &storage).await?;
 
         assert_eq!(text, String::from_utf8_lossy(contents));
         Ok(())

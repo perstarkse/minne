@@ -21,7 +21,7 @@ use common::{
         knowledge_relationship::KnowledgeRelationship,
         user::User,
     },
-    utils::embedding::generate_embedding,
+    utils::embedding::generate_embedding_with_provider,
 };
 use retrieval_pipeline;
 use tracing::debug;
@@ -183,7 +183,8 @@ pub async fn create_knowledge_entity(
 
     let embedding_input =
         format!("name: {name}, description: {description}, type: {entity_type:?}");
-    let embedding = generate_embedding(&state.openai_client, &embedding_input, &state.db).await?;
+    let embedding =
+        generate_embedding_with_provider(&state.embedding_provider, &embedding_input).await?;
 
     let source_id = format!("manual::{}", Uuid::new_v4());
     let new_entity = KnowledgeEntity::new(
@@ -914,7 +915,7 @@ pub async fn patch_knowledge_entity(
         &form.description,
         &entity_type,
         &state.db,
-        &state.openai_client,
+        &state.embedding_provider,
     )
     .await?;
 

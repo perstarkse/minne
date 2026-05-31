@@ -518,8 +518,9 @@ mod tests {
 
     #[test]
     fn test_sidebar_conversation_deserializes_plain_string_id() {
-        let item: SidebarConversation = serde_json::from_str(r#"{"id":"conv-plain","title":"My chat"}"#)
-            .expect("valid sidebar conversation json");
+        let item: SidebarConversation =
+            serde_json::from_str(r#"{"id":"conv-plain","title":"My chat"}"#)
+                .expect("valid sidebar conversation json");
         assert_eq!(item.id, "conv-plain");
         assert_eq!(item.title, "My chat");
     }
@@ -568,8 +569,7 @@ mod tests {
         ))
         .await?;
 
-        let owner_messages =
-            fetch_messages_for_owner(&db, &conversation_id, owner).await?;
+        let owner_messages = fetch_messages_for_owner(&db, &conversation_id, owner).await?;
         assert_eq!(owner_messages.len(), 1);
         assert_eq!(
             owner_messages
@@ -579,8 +579,7 @@ mod tests {
             "secret message"
         );
 
-        let intruder_messages =
-            fetch_messages_for_owner(&db, &conversation_id, intruder).await?;
+        let intruder_messages = fetch_messages_for_owner(&db, &conversation_id, intruder).await?;
         assert!(
             intruder_messages.is_empty(),
             "SQL owner filter must not return messages for a non-owner user_id"

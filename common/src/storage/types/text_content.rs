@@ -118,9 +118,7 @@ impl TextContent {
             .map_err(AppError::Database)?;
 
         if updated.is_none() {
-            return Err(AppError::NotFound(format!(
-                "text content {id} not found"
-            )));
+            return Err(AppError::NotFound(format!("text content {id} not found")));
         }
 
         Ok(())
@@ -142,7 +140,8 @@ impl TextContent {
             .await
             .map_err(AppError::Database)?;
 
-        let existing: Option<surrealdb::sql::Thing> = response.take(0).map_err(AppError::Database)?;
+        let existing: Option<surrealdb::sql::Thing> =
+            response.take(0).map_err(AppError::Database)?;
 
         Ok(existing.is_some())
     }
@@ -254,10 +253,7 @@ impl TextContent {
         for content in contents {
             let label = build_source_label(&content);
             labels.insert(content.id.clone(), label.clone());
-            labels.insert(
-                format!("{}:{}", Self::table_name(), content.id),
-                label,
-            );
+            labels.insert(format!("{}:{}", Self::table_name(), content.id), label);
         }
 
         Ok(labels)

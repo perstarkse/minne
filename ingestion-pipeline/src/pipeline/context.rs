@@ -12,19 +12,20 @@ use common::{
     },
 };
 use retrieval_pipeline::RetrievedEntity;
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use super::enrichment_result::LLMEnrichmentResult;
 
 use super::{config::IngestionConfig, services::PipelineServices};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddedKnowledgeEntity {
     pub entity: KnowledgeEntity,
     pub embedding: Vec<f32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddedTextChunk {
     pub chunk: TextChunk,
     pub embedding: Vec<f32>,

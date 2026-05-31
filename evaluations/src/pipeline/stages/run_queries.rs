@@ -10,7 +10,7 @@ use crate::eval::{
     CaseSummary, RetrievedSummary,
 };
 use retrieval_pipeline::{
-    pipeline::{self, StageTimings, RetrievalConfig},
+    pipeline::{self, RetrievalConfig, StageTimings},
     reranking::RerankerPool,
 };
 use tokio::sync::Semaphore;
@@ -169,10 +169,10 @@ pub(crate) async fn run_queries(
                 let query_start = Instant::now();
 
                 debug!(question_id = %question_id, "Evaluating query");
-                let query_embedding =
-                    embedding_provider.embed(&question).await.with_context(|| {
-                        format!("generating embedding for question {question_id}")
-                    })?;
+                let query_embedding = embedding_provider
+                    .embed(&question)
+                    .await
+                    .with_context(|| format!("generating embedding for question {question_id}"))?;
                 let reranker = match rerank_pool.as_ref() {
                     Some(pool) => pool.checkout().await,
                     None => None,
@@ -204,8 +204,10 @@ pub(crate) async fn run_queries(
                 let mut match_rank = None;
                 let answers_lower: Vec<String> =
                     answers.iter().map(|ans| ans.to_ascii_lowercase()).collect();
-                let expected_chunk_ids_set: HashSet<&str> =
-                    expected_chunk_ids.iter().map(std::string::String::as_str).collect();
+                let expected_chunk_ids_set: HashSet<&str> = expected_chunk_ids
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect();
                 let chunk_id_required = has_verified_chunks;
                 let mut entity_hit = false;
                 let mut chunk_text_hit = false;
@@ -304,15 +306,12 @@ pub(crate) async fn run_queries(
                     None
                 };
 
-                Ok::<
-                    (
-                        usize,
-                        CaseSummary,
-                        Option<CaseDiagnostics>,
-                        StageTimings,
-                    ),
-                    anyhow::Error,
-                >((idx, summary, diagnostics, stage_timings))
+                Ok::<(usize, CaseSummary, Option<CaseDiagnostics>, StageTimings), anyhow::Error>((
+                    idx,
+                    summary,
+                    diagnostics,
+                    stage_timings,
+                ))
             }
         })
         .buffer_unordered(concurrency)
