@@ -1,8 +1,28 @@
 {% extends "search/_layout.html" %}
 
 {% block search_header %}
-  <h1 class="text-xl font-extrabold tracking-tight">Search</h1>
-  <div class="text-xs opacity-70">Find documents, entities, and snippets</div>
+  <div>
+    <h1 class="text-xl font-extrabold tracking-tight">Search</h1>
+    <div class="text-xs opacity-70">Find document snippets and knowledge entities</div>
+  </div>
+  <form hx-get="/search" hx-target="#search_pane" hx-swap="outerHTML" hx-push-url="true"
+    class="flex items-center gap-1">
+    {% if query_param %}
+    <input type="hidden" name="query" value="{{ query_param }}" />
+    {% endif %}
+    <button type="submit" name="view" value="all"
+      class="nb-btn btn-sm {% if view_param == 'all' %}nb-cta{% else %}btn-ghost{% endif %}">
+      All
+    </button>
+    <button type="submit" name="view" value="chunks"
+      class="nb-btn btn-sm {% if view_param == 'chunks' %}nb-cta{% else %}btn-ghost{% endif %}">
+      Chunks
+    </button>
+    <button type="submit" name="view" value="entities"
+      class="nb-btn btn-sm {% if view_param == 'entities' %}nb-cta{% else %}btn-ghost{% endif %}">
+      Entities
+    </button>
+  </form>
 {% endblock %}
 
 {% block search_results %}

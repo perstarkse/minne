@@ -160,8 +160,8 @@
 
 {% elif query_param is defined and query_param | trim != "" %}
 <div class="nb-panel p-5 text-center">
-  <p class="text-xl font-extrabold mb-2">No results for “{{ query_param | escape }}”.</p>
-  <p class="text-sm opacity-70">Try different keywords or check for typos.</p>
+  <p class="text-xl font-extrabold mb-2">No {% if view_param == 'entities' %}entities{% elif view_param == 'chunks' %}chunks{% else %}results{% endif %} for “{{ query_param | escape }}”.</p>
+  <p class="text-sm opacity-70">Try different keywords, check for typos, or switch result type.</p>
 </div>
 {% else %}
 <div class="nb-panel p-5 text-center">
