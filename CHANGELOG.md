@@ -1,5 +1,6 @@
 # Changelog
 ## Unreleased
+- Search results are now selectable by which type, knowledge entity or ingested content 
 
 ## 1.0.2 (2026-02-15)
 - Fix: edge case where navigation back to a chat page could trigger a new response generation
