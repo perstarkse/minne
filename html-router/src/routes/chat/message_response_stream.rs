@@ -359,8 +359,7 @@ async fn prepare_chat_request(
 
     let retrieval_result = match retrieval_pipeline::retrieve(
         &state.db,
-        &state.openai_client,
-        Some(&*state.embedding_provider),
+        &state.embedding_provider,
         &user_message.content,
         &user.id,
         config,

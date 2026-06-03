@@ -187,8 +187,7 @@ impl PipelineServices for DefaultPipelineServices {
         let config = retrieval_pipeline::RetrievalConfig::with_entities();
         match retrieval_pipeline::retrieve(
             &self.db,
-            &self.openai_client,
-            Some(&*self.embedding_provider),
+            &self.embedding_provider,
             &input_text,
             &content.user_id,
             config,
@@ -237,10 +236,8 @@ impl PipelineServices for DefaultPipelineServices {
             .to_database_entities(
                 content.id(),
                 &content.user_id,
-                &self.openai_client,
-                &self.db,
                 entity_concurrency,
-                Some(&*self.embedding_provider),
+                &self.embedding_provider,
             )
             .await
     }
@@ -258,15 +255,30 @@ impl PipelineServices for DefaultPipelineServices {
             overlap_tokens,
         )?;
 
+        if chunk_candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Embed all chunks of this document in one batch: a single lock acquisition and one
+        // blocking hop, letting the backend batch the inference internally.
+        let embeddings = self
+            .embedding_provider
+            .embed_batch(chunk_candidates.clone())
+            .await
+            .map_err(|e| {
+                AppError::InternalError(format!("FastEmbed embedding for chunks failed: {e}"))
+            })?;
+
+        if embeddings.len() != chunk_candidates.len() {
+            return Err(AppError::InternalError(format!(
+                "embedding batch returned {} vectors for {} chunks",
+                embeddings.len(),
+                chunk_candidates.len()
+            )));
+        }
+
         let mut chunks = Vec::with_capacity(chunk_candidates.len());
-        for chunk_text in chunk_candidates {
-            let embedding = self
-                .embedding_provider
-                .embed(&chunk_text)
-                .await
-                .map_err(|e| {
-                    AppError::InternalError(format!("FastEmbed embedding for chunk failed: {e}"))
-                })?;
+        for (chunk_text, embedding) in chunk_candidates.into_iter().zip(embeddings) {
             let chunk_struct = TextChunk::new(
                 content.id().to_string(),
                 chunk_text,

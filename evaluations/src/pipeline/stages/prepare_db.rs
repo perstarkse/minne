@@ -11,7 +11,7 @@ use crate::{
     },
     openai,
 };
-use common::utils::embedding::EmbeddingProvider;
+use common::utils::embedding::{default_embedding_pool_size, EmbeddingProvider};
 
 use super::super::{
     context::{EvalStage, EvaluationContext},
@@ -43,9 +43,12 @@ pub(crate) async fn prepare_db(
     // Create embedding provider directly from config (eval only supports FastEmbed and Hashed)
     let embedding_provider = match config.embedding_backend {
         crate::args::EmbeddingBackend::FastEmbed => {
-            EmbeddingProvider::new_fastembed(config.embedding_model.clone())
-                .await
-                .context("creating FastEmbed provider")?
+            EmbeddingProvider::new_fastembed(
+                config.embedding_model.clone(),
+                default_embedding_pool_size(),
+            )
+            .await
+            .context("creating FastEmbed provider")?
         }
         crate::args::EmbeddingBackend::Hashed => {
             EmbeddingProvider::new_hashed(1536).context("creating Hashed provider")?

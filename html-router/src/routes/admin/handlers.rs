@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_openai::types::ListModelResponse;
 use axum::{
     extract::{Query, State},
@@ -11,17 +9,15 @@ use common::{
     error::AppError,
     storage::types::{
         analytics::Analytics,
-        knowledge_entity::KnowledgeEntity,
         system_prompts::{
             DEFAULT_IMAGE_PROCESSING_PROMPT, DEFAULT_INGRESS_ANALYSIS_SYSTEM_PROMPT,
             DEFAULT_QUERY_SYSTEM_PROMPT,
         },
         system_settings::{SystemSettings, SystemSettingsPatch},
-        text_chunk::TextChunk,
     },
     utils::embedding::EmbeddingBackend,
 };
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
     html_state::HtmlState,
@@ -209,41 +205,15 @@ pub async fn update_model_settings(
     .await?;
 
     if reembedding_needed {
-        info!("Embedding dimensions changed. Spawning background re-embedding task...");
-
-        let db_for_task = Arc::clone(&state.db);
-        let openai_for_task = Arc::clone(&state.openai_client);
-        let new_model_for_task = new_settings.embedding_model.clone();
-        let new_dims_for_task = new_settings.embedding_dimensions;
-
-        tokio::spawn(async move {
-            // First, update all text chunks
-            if let Err(e) = TextChunk::update_all_embeddings(
-                &db_for_task,
-                &openai_for_task,
-                &new_model_for_task,
-                new_dims_for_task,
-            )
-            .await
-            {
-                error!("Background re-embedding task failed for TextChunks: {}", e);
-            }
-
-            // Second, update all knowledge entities
-            if let Err(e) = KnowledgeEntity::update_all_embeddings(
-                &db_for_task,
-                &openai_for_task,
-                &new_model_for_task,
-                new_dims_for_task,
-            )
-            .await
-            {
-                error!(
-                    "Background re-embedding task failed for KnowledgeEntities: {}",
-                    e
-                );
-            }
-        });
+        // Re-embedding is owned by startup (the worker/combined binary), not the admin request.
+        // Doing it inline here would leave the live, startup-built embedding provider embedding
+        // queries at the old dimension while stored vectors move to the new one — broken retrieval
+        // until restart. Persisting the new settings is enough: on the next restart the maintainer
+        // detects the index/dimension mismatch and re-embeds before rebuilding indexes.
+        info!(
+            new_dimensions = new_settings.embedding_dimensions,
+            "Embedding dimensions changed; restart the worker/server to re-embed and apply"
+        );
     }
 
     let available_models = state

@@ -1,7 +1,7 @@
 mod startup;
 pub mod wiring;
 
-pub use startup::prepare_embedding_runtime;
+pub use startup::{prepare_embedding_runtime, EmbeddingRuntimeRole};
 
 use std::sync::Arc;
 

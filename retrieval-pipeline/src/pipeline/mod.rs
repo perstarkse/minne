@@ -7,7 +7,6 @@ pub use config::{RetrievalConfig, RetrievalTuning};
 pub use diagnostics::Diagnostics;
 
 use crate::{round_score, RetrievalOutput, RetrievedEntity};
-use async_openai::Client;
 use async_trait::async_trait;
 use common::{error::AppError, storage::db::SurrealDbClient};
 use std::time::{Duration, Instant};
@@ -91,8 +90,7 @@ pub struct RunOutput<T> {
 /// Inputs required to run a retrieval.
 pub struct RetrievalParams<'a> {
     pub db_client: &'a SurrealDbClient,
-    pub openai_client: &'a Client<async_openai::config::OpenAIConfig>,
-    pub embedding_provider: Option<&'a common::utils::embedding::EmbeddingProvider>,
+    pub embedding_provider: &'a common::utils::embedding::EmbeddingProvider,
     pub input_text: &'a str,
     pub user_id: &'a str,
     pub config: RetrievalConfig,

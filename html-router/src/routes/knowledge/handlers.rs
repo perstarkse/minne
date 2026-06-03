@@ -24,7 +24,7 @@ use common::{
             user::User,
         },
     },
-    utils::embedding::{generate_embedding_with_provider, EmbeddingProvider},
+    utils::embedding::EmbeddingProvider,
 };
 use retrieval_pipeline::{
     normalize_fts_terms, reciprocal_rank_fusion, RetrievalTuning, RrfConfig, Scored,
@@ -187,8 +187,11 @@ pub async fn create_knowledge_entity(
 
     let embedding_input =
         format!("name: {name}, description: {description}, type: {entity_type:?}");
-    let embedding =
-        generate_embedding_with_provider(&state.embedding_provider, &embedding_input).await?;
+    let embedding = state
+        .embedding_provider
+        .embed(&embedding_input)
+        .await
+        .map_err(AppError::from)?;
 
     let source_id = format!("manual::{}", Uuid::new_v4());
     let new_entity = KnowledgeEntity::new(
@@ -373,8 +376,7 @@ async fn suggest_related_entities(
         "name: {}, description: {}, type: {:?}",
         draft.name, draft.description, draft.entity_type
     );
-    let embedding =
-        generate_embedding_with_provider(embedding_provider, &embedding_input).await?;
+    let embedding = embedding_provider.embed(&embedding_input).await?;
 
     let take = MAX_RELATIONSHIP_SUGGESTIONS * 2;
     let tuning = RetrievalTuning::default();

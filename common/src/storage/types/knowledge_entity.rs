@@ -6,12 +6,7 @@ use crate::{
     error::AppError, storage::db::SurrealDbClient, storage::indexes::hnsw_index_overwrite_sql,
     storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding,
     storage::types::system_settings::SystemSettings, stored_object,
-    utils::embedding::{generate_embedding_with_params, generate_embedding_with_provider, EmbeddingProvider},
-};
-use async_openai::{config::OpenAIConfig, Client};
-use tokio_retry::{
-    strategy::{jitter, ExponentialBackoff},
-    Retry,
+    utils::embedding::{EmbeddingProvider, RE_EMBED_BATCH_SIZE},
 };
 use tracing::{error, info};
 use uuid::Uuid;
@@ -321,8 +316,7 @@ impl KnowledgeEntity {
     ) -> Result<(), AppError> {
         let embedding_input =
             format!("name: {name}, description: {description}, type: {entity_type:?}",);
-        let embedding =
-            generate_embedding_with_provider(embedding_provider, &embedding_input).await?;
+        let embedding = embedding_provider.embed(&embedding_input).await?;
 
         let entity: KnowledgeEntity = db_client
             .get_item(id)
@@ -368,120 +362,17 @@ impl KnowledgeEntity {
         Ok(())
     }
 
-    /// Re-creates embeddings for all knowledge entities in the database.
+    /// Re-creates embeddings for all knowledge entities using an `EmbeddingProvider`.
     ///
     /// This is a costly operation that should be run in the background. It follows the same
     /// pattern as the text chunk update:
     /// 1. Re-defines the vector index with the new dimensions.
     /// 2. Fetches all existing entities.
     /// 3. Sequentially regenerates the embedding for each and updates the record.
+    #[allow(clippy::too_many_lines)]
     pub async fn update_all_embeddings(
         db: &SurrealDbClient,
-        openai_client: &Client<OpenAIConfig>,
-        new_model: &str,
-        new_dimensions: u32,
-    ) -> Result<(), AppError> {
-        info!(
-            "Starting re-embedding process for all knowledge entities. New dimensions: {}",
-            new_dimensions
-        );
-
-        // Fetch all entities first
-        let all_entities: Vec<KnowledgeEntity> = db.select(Self::table_name()).await?;
-        let total_entities = all_entities.len();
-        if total_entities == 0 {
-            info!("No knowledge entities to update. Just updating the idx");
-
-            KnowledgeEntityEmbedding::redefine_hnsw_index(db, new_dimensions as usize).await?;
-            return Ok(());
-        }
-        info!("Found {total_entities} entities to process.");
-
-        // Generate all new embeddings in memory
-        let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
-        info!("Generating new embeddings for all entities...");
-        for entity in &all_entities {
-            let embedding_input = format!(
-                "name: {}, description: {}, type: {:?}",
-                entity.name, entity.description, entity.entity_type
-            );
-            let retry_strategy = ExponentialBackoff::from_millis(100).map(jitter).take(3);
-
-            let embedding = Retry::spawn(retry_strategy, || {
-                generate_embedding_with_params(
-                    openai_client,
-                    &embedding_input,
-                    new_model,
-                    new_dimensions,
-                )
-            })
-            .await?;
-
-            // Check embedding lengths
-            if embedding.len() != new_dimensions as usize {
-                let err_msg = format!(
-                "CRITICAL: Generated embedding for entity {} has incorrect dimension ({}). Expected {}. Aborting.",
-                entity.id, embedding.len(), new_dimensions
-            );
-                error!("{err_msg}");
-                return Err(AppError::internal(err_msg));
-            }
-            new_embeddings.insert(
-                entity.id.clone(),
-                (embedding, entity.user_id.clone(), entity.source_id.clone()),
-            );
-        }
-        info!("Successfully generated all new embeddings.");
-
-        // Perform DB updates in a single transaction
-        info!("Applying embedding updates in a transaction...");
-        let mut transaction_query = String::from("BEGIN TRANSACTION;");
-
-        // Add all update statements to the embedding table
-        for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding)
-                .map_err(|e| AppError::internal(format!("embedding serialization failed: {e}")))?;
-            write!(
-                transaction_query,
-                "UPSERT type::thing('knowledge_entity_embedding', '{id}') SET \
-                    entity_id = type::thing('knowledge_entity', '{id}'), \
-                    embedding = {embedding}, \
-                    user_id = '{user_id}', \
-                    source_id = '{source_id}', \
-                    created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
-                    updated_at = time::now();",
-            )
-            .map_err(AppError::internal)?;
-        }
-
-        write!(
-            transaction_query,
-            "{}",
-            hnsw_index_overwrite_sql(
-                "idx_embedding_knowledge_entity_embedding",
-                KnowledgeEntityEmbedding::table_name(),
-                new_dimensions as usize,
-            )
-        )
-        .map_err(AppError::internal)?;
-
-        transaction_query.push_str("COMMIT TRANSACTION;");
-
-        // Execute the entire atomic operation
-        db.query(transaction_query).await?;
-
-        info!("Re-embedding process for knowledge entities completed successfully.");
-        Ok(())
-    }
-
-    /// Re-creates embeddings for all knowledge entities using an `EmbeddingProvider`.
-    ///
-    /// This variant uses the application's configured embedding provider (FastEmbed, OpenAI, etc.)
-    /// instead of directly calling OpenAI. Used during startup when embedding configuration changes.
-    #[allow(clippy::too_many_lines)]
-    pub async fn update_all_embeddings_with_provider(
-        db: &SurrealDbClient,
-        provider: &crate::utils::embedding::EmbeddingProvider,
+        provider: &EmbeddingProvider,
     ) -> Result<(), AppError> {
         let new_dimensions = provider.dimension();
         info!(
@@ -500,38 +391,53 @@ impl KnowledgeEntity {
         }
         info!(entities = total_entities, "Found entities to process");
 
-        // Generate all new embeddings in memory
-        let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
+        // Generate all new embeddings in memory, batching to amortise lock/dispatch overhead
+        // while keeping memory bounded and preserving progress logging.
+        let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> =
+            HashMap::with_capacity(total_entities);
         info!("Generating new embeddings for all entities...");
 
-        for (i, entity) in all_entities.iter().enumerate() {
-            if i > 0 && i % 100 == 0 {
-                info!(
-                    progress = i,
-                    total = total_entities,
-                    "Re-embedding progress"
+        let mut processed = 0usize;
+        for batch in all_entities.chunks(RE_EMBED_BATCH_SIZE) {
+            let inputs: Vec<String> = batch
+                .iter()
+                .map(|entity| {
+                    format!(
+                        "name: {}, description: {}, type: {:?}",
+                        entity.name, entity.description, entity.entity_type
+                    )
+                })
+                .collect();
+            let embeddings = provider.embed_batch(inputs).await?;
+            if embeddings.len() != batch.len() {
+                return Err(AppError::internal(format!(
+                    "embedding batch returned {} vectors for {} entities",
+                    embeddings.len(),
+                    batch.len()
+                )));
+            }
+
+            for (entity, embedding) in batch.iter().zip(embeddings) {
+                // Safety check: ensure the generated embedding has the correct dimension.
+                if embedding.len() != new_dimensions {
+                    let err_msg = format!(
+                        "CRITICAL: Generated embedding for entity {} has incorrect dimension ({}). Expected {}. Aborting.",
+                        entity.id, embedding.len(), new_dimensions
+                    );
+                    error!("{err_msg}");
+                    return Err(AppError::internal(err_msg));
+                }
+                new_embeddings.insert(
+                    entity.id.clone(),
+                    (embedding, entity.user_id.clone(), entity.source_id.clone()),
                 );
             }
 
-            let embedding_input = format!(
-                "name: {}, description: {}, type: {:?}",
-                entity.name, entity.description, entity.entity_type
-            );
-
-            let embedding = provider.embed(&embedding_input).await?;
-
-            // Safety check: ensure the generated embedding has the correct dimension.
-            if embedding.len() != new_dimensions {
-                let err_msg = format!(
-                    "CRITICAL: Generated embedding for entity {} has incorrect dimension ({}). Expected {}. Aborting.",
-                    entity.id, embedding.len(), new_dimensions
-                );
-                error!("{err_msg}");
-                return Err(AppError::internal(err_msg));
-            }
-            new_embeddings.insert(
-                entity.id.clone(),
-                (embedding, entity.user_id.clone(), entity.source_id.clone()),
+            processed = processed.saturating_add(batch.len());
+            info!(
+                progress = processed,
+                total = total_entities,
+                "Re-embedding progress"
             );
         }
         info!("Successfully generated all new embeddings.");

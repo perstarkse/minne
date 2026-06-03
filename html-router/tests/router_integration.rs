@@ -132,7 +132,7 @@ fn extract_authenticated_main(html: &str) -> &str {
     let start = html
         .find(AUTHENTICATED_MAIN_OPEN)
         .expect("authenticated page main column")
-        + AUTHENTICATED_MAIN_OPEN.len();
+        .saturating_add(AUTHENTICATED_MAIN_OPEN.len());
     let rest = &html[start..];
     let end = rest
         .find("</main>")
@@ -184,8 +184,12 @@ async fn create_scratchpad_and_get_id(app: &Router, cookie: &str, title: &str) -
 
     let list = get_html(app, "/scratchpad", Some(cookie)).await;
     let marker = "/scratchpad/";
-    let start = list.find(marker).expect("scratchpad link present") + marker.len();
-    list[start..start + list[start..].find('/').expect("id terminator")].to_string()
+    let start = list
+        .find(marker)
+        .expect("scratchpad link present")
+        .saturating_add(marker.len());
+    let end = start.saturating_add(list[start..].find('/').expect("id terminator"));
+    list[start..end].to_string()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -5,12 +5,8 @@ use std::fmt::Write;
 use crate::storage::indexes::hnsw_index_overwrite_sql;
 use crate::storage::types::system_settings::SystemSettings;
 use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
+use crate::utils::embedding::RE_EMBED_BATCH_SIZE;
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
-use async_openai::{config::OpenAIConfig, Client};
-use tokio_retry::{
-    strategy::{jitter, ExponentialBackoff},
-    Retry,
-};
 
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -238,7 +234,7 @@ impl TextChunk {
             .collect())
     }
 
-    /// Re-creates embeddings for all text chunks using a safe, atomic transaction.
+    /// Re-creates embeddings for all text chunks using an `EmbeddingProvider`.
     ///
     /// This is a costly operation that should be run in the background. It performs these steps:
     /// 1. **Fetches All Chunks**: Loads all existing text_chunk records into memory.
@@ -246,109 +242,8 @@ impl TextChunk {
     ///    has the wrong dimension, the entire operation is aborted before any DB changes are made.
     /// 3. **Executes Atomic Transaction**: All data updates and the index recreation are
     ///    performed in a single, all-or-nothing database transaction.
+    #[allow(clippy::too_many_lines)]
     pub async fn update_all_embeddings(
-        db: &SurrealDbClient,
-        openai_client: &Client<OpenAIConfig>,
-        new_model: &str,
-        new_dimensions: u32,
-    ) -> Result<(), AppError> {
-        info!(
-            "Starting re-embedding process for all text chunks. New dimensions: {new_dimensions}"
-        );
-
-        // Fetch all chunks first
-        let all_chunks: Vec<TextChunk> = db.select(Self::table_name()).await?;
-        let total_chunks = all_chunks.len();
-        if total_chunks == 0 {
-            info!("No text chunks to update. Just updating the idx");
-
-            TextChunkEmbedding::redefine_hnsw_index(db, new_dimensions as usize).await?;
-
-            return Ok(());
-        }
-        info!("Found {total_chunks} chunks to process.");
-
-        // Generate all new embeddings in memory
-        let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
-        info!("Generating new embeddings for all chunks...");
-        for chunk in &all_chunks {
-            let retry_strategy = ExponentialBackoff::from_millis(100).map(jitter).take(3);
-
-            let embedding = Retry::spawn(retry_strategy, || {
-                crate::utils::embedding::generate_embedding_with_params(
-                    openai_client,
-                    &chunk.chunk,
-                    new_model,
-                    new_dimensions,
-                )
-            })
-            .await?;
-
-            // Safety check: ensure the generated embedding has the correct dimension.
-            if embedding.len() != new_dimensions as usize {
-                let err_msg = format!(
-                    "CRITICAL: Generated embedding for chunk {} has incorrect dimension ({}). Expected {}. Aborting.",
-                    chunk.id, embedding.len(), new_dimensions
-                );
-                error!("{err_msg}");
-                return Err(AppError::internal(err_msg));
-            }
-            new_embeddings.insert(
-                chunk.id.clone(),
-                (embedding, chunk.user_id.clone(), chunk.source_id.clone()),
-            );
-        }
-        info!("Successfully generated all new embeddings.");
-
-        // Perform DB updates in a single transaction against the embedding table
-        info!("Applying embedding updates in a transaction...");
-        let mut transaction_query = String::from("BEGIN TRANSACTION;");
-
-        for (id, (embedding, user_id, source_id)) in new_embeddings {
-            let embedding = serde_json::to_string(&embedding)
-                .map_err(|e| AppError::internal(format!("embedding serialization failed: {e}")))?;
-            let id = surql_json_string(&id)?;
-            let user_id = surql_json_string(&user_id)?;
-            let source_id = surql_json_string(&source_id)?;
-            write!(
-                &mut transaction_query,
-                "UPSERT type::thing('{emb_table}', {id}) SET \
-                    chunk_id = type::thing('{chunk_table}', {id}), \
-                    source_id = {source_id}, \
-                    embedding = {embedding}, \
-                    user_id = {user_id}, \
-                    created_at = IF created_at != NONE THEN created_at ELSE time::now() END, \
-                    updated_at = time::now();",
-                emb_table = TextChunkEmbedding::table_name(),
-                chunk_table = Self::table_name(),
-            )
-            .map_err(AppError::internal)?;
-        }
-
-        write!(
-            &mut transaction_query,
-            "{}",
-            hnsw_index_overwrite_sql(
-                "idx_embedding_text_chunk_embedding",
-                TextChunkEmbedding::table_name(),
-                new_dimensions as usize,
-            )
-        )
-        .map_err(AppError::internal)?;
-
-        transaction_query.push_str("COMMIT TRANSACTION;");
-
-        db.query(transaction_query).await?;
-
-        info!("Re-embedding process for text chunks completed successfully.");
-        Ok(())
-    }
-
-    /// Re-creates embeddings for all text chunks using an `EmbeddingProvider`.
-    ///
-    /// This variant uses the application's configured embedding provider (FastEmbed, OpenAI, etc.)
-    /// instead of directly calling OpenAI. Used during startup when embedding configuration changes.
-    pub async fn update_all_embeddings_with_provider(
         db: &SurrealDbClient,
         provider: &crate::utils::embedding::EmbeddingProvider,
     ) -> Result<(), AppError> {
@@ -369,30 +264,42 @@ impl TextChunk {
         }
         info!(chunks = total_chunks, "Found chunks to process");
 
-        // Generate all new embeddings in memory
-        let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> = HashMap::new();
+        // Generate all new embeddings in memory, batching to amortise lock/dispatch overhead
+        // while keeping memory bounded and preserving progress logging.
+        let mut new_embeddings: HashMap<String, (Vec<f32>, String, String)> =
+            HashMap::with_capacity(total_chunks);
         info!("Generating new embeddings for all chunks...");
 
-        for (i, chunk) in all_chunks.iter().enumerate() {
-            if i > 0 && i % 100 == 0 {
-                info!(progress = i, total = total_chunks, "Re-embedding progress");
+        let mut processed = 0usize;
+        for batch in all_chunks.chunks(RE_EMBED_BATCH_SIZE) {
+            let inputs: Vec<String> = batch.iter().map(|chunk| chunk.chunk.clone()).collect();
+            let embeddings = provider.embed_batch(inputs).await?;
+            if embeddings.len() != batch.len() {
+                return Err(AppError::internal(format!(
+                    "embedding batch returned {} vectors for {} chunks",
+                    embeddings.len(),
+                    batch.len()
+                )));
             }
 
-            let embedding = provider.embed(&chunk.chunk).await?;
-
-            // Safety check: ensure the generated embedding has the correct dimension.
-            if embedding.len() != new_dimensions {
-                let err_msg = format!(
-                    "CRITICAL: Generated embedding for chunk {} has incorrect dimension ({}). Expected {}. Aborting.",
-                    chunk.id, embedding.len(), new_dimensions
+            for (chunk, embedding) in batch.iter().zip(embeddings) {
+                // Safety check: ensure the generated embedding has the correct dimension.
+                if embedding.len() != new_dimensions {
+                    let err_msg = format!(
+                        "CRITICAL: Generated embedding for chunk {} has incorrect dimension ({}). Expected {}. Aborting.",
+                        chunk.id, embedding.len(), new_dimensions
+                    );
+                    error!("{err_msg}");
+                    return Err(AppError::internal(err_msg));
+                }
+                new_embeddings.insert(
+                    chunk.id.clone(),
+                    (embedding, chunk.user_id.clone(), chunk.source_id.clone()),
                 );
-                error!("{err_msg}");
-                return Err(AppError::internal(err_msg));
             }
-            new_embeddings.insert(
-                chunk.id.clone(),
-                (embedding, chunk.user_id.clone(), chunk.source_id.clone()),
-            );
+
+            processed = processed.saturating_add(batch.len());
+            info!(progress = processed, total = total_chunks, "Re-embedding progress");
         }
         info!("Successfully generated all new embeddings.");
 

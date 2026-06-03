@@ -235,7 +235,6 @@ mod tests {
     use crate::storage::indexes::ensure_runtime;
     use crate::storage::types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk};
     use anyhow::{self, Context};
-    use async_openai::Client;
 
     use super::*;
     use uuid::Uuid;
@@ -713,6 +712,8 @@ mod tests {
     #[tokio::test]
     async fn test_should_change_embedding_length_on_indexes_when_switching_length(
     ) -> anyhow::Result<()> {
+        use crate::utils::embedding::EmbeddingProvider;
+
         let db = SurrealDbClient::memory("test", &Uuid::new_v4().to_string())
             .await
             .with_context(|| "Failed to start DB".to_string())?;
@@ -758,12 +759,13 @@ mod tests {
             "Settings should reflect the new embedding dimension"
         );
 
-        let openai_client = Client::new();
+        let provider = EmbeddingProvider::new_hashed(new_dimension as usize)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-        TextChunk::update_all_embeddings(&db, &openai_client, &new_model, new_dimension)
+        TextChunk::update_all_embeddings(&db, &provider)
             .await
             .with_context(|| "TextChunk re-embedding should succeed on fresh DB".to_string())?;
-        KnowledgeEntity::update_all_embeddings(&db, &openai_client, &new_model, new_dimension)
+        KnowledgeEntity::update_all_embeddings(&db, &provider)
             .await
             .with_context(|| {
                 "KnowledgeEntity re-embedding should succeed on fresh DB".to_string()

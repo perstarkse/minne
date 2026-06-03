@@ -59,8 +59,7 @@ pub struct RetrievedEntity {
 #[instrument(skip_all, fields(user_id))]
 pub async fn retrieve(
     db_client: &SurrealDbClient,
-    openai_client: &async_openai::Client<async_openai::config::OpenAIConfig>,
-    embedding_provider: Option<&common::utils::embedding::EmbeddingProvider>,
+    embedding_provider: &common::utils::embedding::EmbeddingProvider,
     input_text: &str,
     user_id: &str,
     config: RetrievalConfig,
@@ -68,7 +67,6 @@ pub async fn retrieve(
 ) -> Result<RetrievalOutput, AppError> {
     let params = pipeline::RetrievalParams {
         db_client,
-        openai_client,
         embedding_provider,
         input_text,
         user_id,
@@ -82,11 +80,15 @@ pub async fn retrieve(
 mod tests {
     use super::*;
     use anyhow::{self};
-    use async_openai::Client;
     use common::storage::indexes::ensure_runtime;
     use common::storage::types::knowledge_entity::{KnowledgeEntity, KnowledgeEntityType};
     use common::storage::types::system_settings::SystemSettings;
+    use common::utils::embedding::EmbeddingProvider;
     use uuid::Uuid;
+
+    fn test_embedding_provider() -> EmbeddingProvider {
+        EmbeddingProvider::new_hashed(3).unwrap_or_else(|_| unreachable!())
+    }
 
     fn test_embedding() -> Vec<f32> {
         vec![0.9, 0.1, 0.0]
@@ -135,11 +137,10 @@ mod tests {
 
         TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db).await?;
 
-        let openai_client = Client::new();
+        let embedding_provider = test_embedding_provider();
         let params = pipeline::RetrievalParams {
             db_client: &db,
-            openai_client: &openai_client,
-            embedding_provider: None,
+            embedding_provider: &embedding_provider,
             input_text: "Rust concurrency async tasks",
             user_id,
             config: RetrievalConfig::default(),
@@ -181,11 +182,10 @@ mod tests {
         TextChunk::store_with_embedding(primary_chunk, chunk_embedding_primary(), &db).await?;
         TextChunk::store_with_embedding(secondary_chunk, chunk_embedding_secondary(), &db).await?;
 
-        let openai_client = Client::new();
+        let embedding_provider = test_embedding_provider();
         let params = pipeline::RetrievalParams {
             db_client: &db,
-            openai_client: &openai_client,
-            embedding_provider: None,
+            embedding_provider: &embedding_provider,
             input_text: "Rust concurrency async tasks",
             user_id,
             config: RetrievalConfig::default(),
@@ -236,11 +236,10 @@ mod tests {
         );
         db.store_item(entity).await?;
 
-        let openai_client = Client::new();
+        let embedding_provider = test_embedding_provider();
         let params = pipeline::RetrievalParams {
             db_client: &db,
-            openai_client: &openai_client,
-            embedding_provider: None,
+            embedding_provider: &embedding_provider,
             input_text: "async rust programming",
             user_id,
             config: RetrievalConfig::with_entities(),
