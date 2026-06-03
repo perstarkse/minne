@@ -4,11 +4,11 @@
   </div>
 </div>
 <div class="chat chat-start">
-  <div id="ai-stream-{{user_message.id}}" hx-ext="sse"
+  <div id="ai-stream-{{user_message.id}}" data-message-id="{{user_message.id}}" hx-ext="sse"
     sse-connect="/chat/response-stream?message_id={{user_message.id}}" sse-close="close_stream"
     hx-swap="beforeend">
     <div class="chat-bubble">
-      <span class="loading loading-dots loading-sm loading-id-{{user_message.id}}"></span>
+      <span class="loading loading-dots loading-sm" data-stream-spinner></span>
       <div class="markdown-content" id="ai-message-content-{{user_message.id}}" sse-swap="chat_message"></div>
     </div>
     <div sse-swap="references"></div>
@@ -16,34 +16,39 @@
 </div>
 
 <script>
-  window.markdownBuffer = window.markdownBuffer || {};
-  document.body.addEventListener('htmx:sseBeforeMessage', function (e) {
-    const msgId = '{{ user_message.id }}';
-    const spinner = document.querySelector('.loading-id-' + msgId);
-    if (spinner) spinner.style.display = 'none';
-    const el = document.getElementById('ai-message-content-' + msgId);
-    if (e.detail.elt !== el) return;
-    e.preventDefault();
-    window.markdownBuffer[msgId] = (window.markdownBuffer[msgId] || '') + (e.detail.data || '');
-    el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
-    if (typeof window.scrollChatToBottom === "function") window.scrollChatToBottom();
-  });
-  document.body.addEventListener('htmx:sseClose', function (e) {
-    const msgId = '{{ user_message.id }}';
-    const streamEl = document.getElementById('ai-stream-' + msgId);
-    if (streamEl && e.target !== streamEl) return;
+  // Single delegated listener set; message identity comes from data-message-id.
+  (function () {
+    if (window.__streamHandlersInit) return;
+    window.__streamHandlersInit = true;
+    window.markdownBuffer = window.markdownBuffer || {};
 
-    const el = document.getElementById('ai-message-content-' + msgId);
-    if (el && window.markdownBuffer[msgId]) {
+    document.body.addEventListener('htmx:sseBeforeMessage', function (e) {
+      const root = e.detail.elt.closest('[data-message-id]');
+      if (!root) return;
+      const msgId = root.dataset.messageId;
+      const spinner = root.querySelector('[data-stream-spinner]');
+      if (spinner) spinner.style.display = 'none';
+      const el = document.getElementById('ai-message-content-' + msgId);
+      if (e.detail.elt !== el) return;
+      e.preventDefault();
+      window.markdownBuffer[msgId] = (window.markdownBuffer[msgId] || '') + (e.detail.data || '');
       el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
-      delete window.markdownBuffer[msgId];
       if (typeof window.scrollChatToBottom === "function") window.scrollChatToBottom();
-    }
+    });
 
-    if (streamEl) {
+    document.body.addEventListener('htmx:sseClose', function (e) {
+      const streamEl = e.target.closest('[data-message-id]');
+      if (!streamEl) return;
+      const msgId = streamEl.dataset.messageId;
+      const el = document.getElementById('ai-message-content-' + msgId);
+      if (el && window.markdownBuffer[msgId]) {
+        el.innerHTML = marked.parse(window.markdownBuffer[msgId].replace(/\\n/g, '\n'));
+        delete window.markdownBuffer[msgId];
+        if (typeof window.scrollChatToBottom === "function") window.scrollChatToBottom();
+      }
       streamEl.removeAttribute('sse-connect');
       streamEl.removeAttribute('sse-close');
       streamEl.removeAttribute('hx-ext');
-    }
-  });
+    });
+  })();
 </script>

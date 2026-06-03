@@ -1,7 +1,6 @@
 <div class="relative my-2">
-  <button id="references-toggle-{{message.id}}"
-    class="nb-btn btn-xs bg-base-100 hover:bg-base-200 flex items-center"
-    onclick="toggleReferences('{{message.id}}')">
+  <button id="references-toggle-{{message.id}}" data-message-id="{{message.id}}"
+    class="references-toggle nb-btn btn-xs bg-base-100 hover:bg-base-200 flex items-center">
     REFERENCES
     {% include "icons/chevron_icon.html" %}
   </button>
@@ -20,6 +19,19 @@
 </div>
 
 <script>
+  // Register global handlers once; this fragment is re-injected per SSE response.
+  if (!window.__referencesInit) {
+    window.__referencesInit = true;
+
+    document.body.addEventListener('click', function (e) {
+      const btn = e.target.closest('.references-toggle');
+      if (btn) toggleReferences(btn.dataset.messageId);
+    });
+
+    document.addEventListener('DOMContentLoaded', initializeReferenceTooltips);
+    document.body.addEventListener('htmx:afterSwap', initializeReferenceTooltips);
+  }
+
   function toggleReferences(messageId) {
     const refsContent = document.getElementById('references-content-' + messageId);
     const refsList = document.getElementById('references-list-' + messageId);
@@ -55,15 +67,6 @@
         'rotate(0deg)' : 'rotate(180deg)';
     }
   }
-
-  // Initialize portal tooltips
-  document.addEventListener('DOMContentLoaded', function () {
-    initializeReferenceTooltips();
-  });
-
-  document.body.addEventListener('htmx:afterSwap', function () {
-    initializeReferenceTooltips();
-  });
 
   function initializeReferenceTooltips() {
     document.querySelectorAll('.reference-badge-container').forEach(container => {
@@ -145,4 +148,7 @@
       container.dataset.initialized = 'true';
     });
   }
+
+  // Initialize any badges present in this freshly injected fragment (idempotent).
+  initializeReferenceTooltips();
 </script>

@@ -62,7 +62,8 @@
         </td>
         <td>
           <input id="relationship_type_input" name="relationship_type" type="text" placeholder="RelatedTo"
-            class="nb-input w-full new_relationship_input" value="{{ default_relationship_type }}" />
+            class="nb-input w-full new_relationship_input" value="{{ default_relationship_type }}"
+            hx-on:keydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('save_relationship_button').click()}" />
         </td>
         <td>
           <button id="save_relationship_button" type="button" class="nb-btn btn-sm" hx-post="/knowledge-relationship"
@@ -74,11 +75,3 @@
     </tbody>
   </table>
 </div>
-<script>
-  document.getElementById('relationship_type_input').addEventListener('keydown', function (event) {
-    if (event.key === 'Enter') {
-      event.preventDefault(); // Prevent form submission if within a form
-      document.getElementById('save_relationship_button').click();
-    }
-  });
-</script>

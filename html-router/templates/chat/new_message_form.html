@@ -2,26 +2,13 @@
   <div class="mx-auto max-w-3xl px-4 pb-3">
     <div class="nb-panel p-2 no-animation">
       <form hx-post="{% if conversation %} /chat/{{conversation.id}} {% else %} /chat {% endif %}"
-        hx-target="#chat_container" hx-swap="beforeend" class="relative flex gap-2 items-end" id="chat-form">
+        hx-target="#chat_container" hx-swap="beforeend" class="relative flex gap-2 items-end" id="chat-form"
+        hx-on::after-request="if(event.detail.successful) document.getElementById('chat-input').value=''">
         <textarea autofocus required name="content" placeholder="Type your message…" rows="3"
-          class="nb-input flex-grow min-h-24 pr-10 pl-2 pt-2 pb-2 resize-none" id="chat-input"></textarea>
+          class="nb-input flex-grow min-h-24 pr-10 pl-2 pt-2 pb-2 resize-none" id="chat-input"
+          hx-on:keydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();htmx.trigger('#chat-form','submit')}"></textarea>
         <button type="submit" class="nb-btn nb-cta h-10 px-3">{% include "icons/send_icon.html" %}</button>
       </form>
     </div>
   </div>
 </div>
-
-<script>
-  document.getElementById('chat-input').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      htmx.trigger('#chat-form', 'submit');
-    }
-  });
-  // Clear textarea after successful submission
-  document.getElementById('chat-form').addEventListener('htmx:afterRequest', function (e) {
-    if (e.detail.successful) { // Check if the request was successful
-      document.getElementById('chat-input').value = ''; // Clear the textarea
-    }
-  });
-</script>

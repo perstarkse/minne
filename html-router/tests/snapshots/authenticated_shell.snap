@@ -1,0 +1,391 @@
+---
+source: html-router/tests/router_integration.rs
+expression: body
+---
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-theme-preference="system">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Minne - Dashboard</title>
+
+
+  <!-- Preload critical assets -->
+  <link rel="preload" href="/assets/htmx.min.js" as="script">
+  <link rel="preload" href="/assets/style.css" as="style">
+
+  <!-- Core styles -->
+  <link rel="stylesheet" href="/assets/style.css">
+
+  <!-- Scripts -->
+  <script src="/assets/htmx.min.js" defer></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      htmx.config.globalViewTransitions = true;
+      htmx.config.selfRequestsOnly = false;
+    });
+  </script>
+  <script src="/assets/htmx-ext-sse.js" defer></script>
+  <script src="/assets/theme-toggle.js" defer></script>
+  <script src="/assets/toast.js" defer></script>
+  <script src="/assets/marked.min.js" defer></script>
+  <script src="/assets/knowledge-graph.js" defer></script>
+  <script src="/assets/design-polish.js" defer></script>
+  <script src="/assets/modal.js" defer></script>
+  <script src="/assets/admin-prompt-reset.js" defer></script>
+
+  <!-- Global View Transition -->
+  <meta name="view-transition" content="same-origin" />
+
+  <!-- Icons -->
+  <link rel="icon" href="/assets/icon/favicon.ico">
+  <link rel="apple-touch-icon" href="/assets/icon/apple-touch-icon.png" media="(device-width: 320px)">
+
+  <!-- PWA -->
+  <link rel="manifest" href="/assets/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  
+
+</head>
+
+
+
+<body class="relative">
+  <div id="main-content-wrapper" class="drawer lg:drawer-open">
+    <input id="my-drawer" type="checkbox" class="drawer-toggle" />
+    <!-- Page Content -->
+    <div class="drawer-content flex flex-col h-screen">
+      <!-- Navbar -->
+      <nav class="sticky top-0 z-10 nb-panel nb-panel-canvas border-t-0" style="border-left: 0">
+  <div class="container mx-auto navbar">
+    <div class="mr-2 flex-1">
+      
+  <div class="flex items-center gap-2 min-w-[90px] w-full">
+  <form class="w-full relative" hx-boost="true" method="get" action="/search"
+    hx-trigger="keyup changed delay:500ms from:#search-input, search from:#search-input" hx-push-url="true">
+    
+    <input id="search-input" type="search" aria-label="Search" class=" nb-input w-full pl-9 ml-2" name="query"
+      autocomplete="off" value="" />
+    <button type="submit"
+      class="absolute right-1 top-1/2 -translate-y-1/2 nb-btn btn-xs px-3 h-7 bg-base-100 hover:bg-base-200">
+      Search
+    </button>
+    <span class="hidden md:inline absolute right-24 top-1/2 -translate-y-1/2 text-xs opacity-60">
+      press <kbd class="kbd kbd-xs">Enter</kbd>
+    </span>
+  </form>
+</div>
+
+    </div>
+    <div class="flex-none">
+      <ul class="menu menu-horizontal px-2 gap-2 items-center">
+        
+  <label for="my-drawer" aria-label="open sidebar" class="hover:cursor-pointer lg:hidden">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.5"
+  width="20" height="20" stroke="currentColor" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+</svg>
+  </label>
+  
+
+      </ul>
+    </div>
+  </div>
+</nav>
+      <!-- Main Content Area -->
+      <main class="flex flex-col flex-1 overflow-y-auto">
+        
+<div class="flex justify-center grow mt-2 sm:mt-4 pb-4 w-full">
+  <div class="container">
+    <section class="mb-4">
+      
+      
+      <div class="nb-panel p-3 flex items-center justify-between">
+        
+  <h1 class="text-xl font-extrabold tracking-tight">Dashboard</h1>
+  <button class="nb-btn nb-cta" hx-get="/ingest-form" hx-target="#modal" hx-swap="innerHTML">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+</svg>
+    <span class="ml-2">Add Content</span>
+  </button>
+
+      </div>
+    </section>
+
+    
+  <section class="mb-4 sm:mt-4">
+  <h2 class="text-2xl font-extrabold tracking-tight mb-3">Overview</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div class="nb-stat">
+      <div class="text-xs opacity-70">Total Documents</div>
+      <div class="text-3xl font-extrabold">0</div>
+      <div class="text-xs opacity-60">+0 this week</div>
+    </div>
+    <div class="nb-stat">
+      <div class="text-xs opacity-70">Text Chunks</div>
+      <div class="text-3xl font-extrabold">0</div>
+      <div class="text-xs opacity-60">+0 this week</div>
+    </div>
+    <div class="nb-stat">
+      <div class="text-xs opacity-70">Knowledge Entities</div>
+      <div class="text-3xl font-extrabold">0</div>
+      <div class="text-xs opacity-60">+0 this week</div>
+    </div>
+    <div class="nb-stat">
+      <div class="text-xs opacity-70">Conversations</div>
+      <div class="text-3xl font-extrabold">0</div>
+      <div class="text-xs opacity-60">+0 this week</div>
+    </div>
+  </div>
+</section>
+  
+<div id="latest_content_section" class="list">
+  <h2 class="text-2xl mb-2 font-extrabold">Recent content</h2>
+  <div id="latest_text_content_cards" class="space-y-6">
+  
+  <div class="nb-card p-8 text-center text-sm opacity-70">
+    No content found.
+  </div>
+  
+</div>
+</div>
+
+  
+<section id="active_jobs_section" class="nb-panel p-4 space-y-4 mt-6 sm:mt-8">
+  <header class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-xl font-extrabold tracking-tight">Active Tasks</h2>
+    <div class="flex gap-2">
+      <button class="nb-btn btn-square btn-sm" hx-get="/active-jobs" hx-target="#active_jobs_section" hx-swap="outerHTML"
+        aria-label="Refresh active tasks">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+</svg>
+      </button>
+      <button class="nb-btn btn-sm" hx-get="/jobs/archive" hx-target="#modal" hx-swap="innerHTML"
+        aria-label="View task archive">
+        View Archive
+      </button>
+    </div>
+  </header>
+  
+</section>
+
+
+  </div>
+</div>
+
+        <div class="p32 min-h-[10px]"></div>
+      </main>
+      
+    </div>
+    <!-- Sidebar -->
+    
+    <div class="drawer-side z-20">
+  <label for="my-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+
+  <nav class="flex flex-col h-full w-72 p-0 nb-canvas text-base-content border-r-2 border-neutral">
+    <!-- === TOP FIXED SECTION === -->
+    <ul class="menu w-full px-2 mt-4 space-y-3">
+      
+  
+  <li>
+    <a hx-boost="true" href="&#x2f;" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
+      
+
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+</svg>
+
+
+      <span class="uppercase tracking-wide">Dashboard</span>
+    </a>
+  </li>
+  
+  <li>
+    <a hx-boost="true" href="&#x2f;knowledge" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
+      
+
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+</svg>
+
+
+      <span class="uppercase tracking-wide">Knowledge</span>
+    </a>
+  </li>
+  
+  <li>
+    <a hx-boost="true" href="&#x2f;content" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
+      
+
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+</svg>
+
+
+      <span class="uppercase tracking-wide">Content</span>
+    </a>
+  </li>
+  
+  <li>
+    <a hx-boost="true" href="&#x2f;chat" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
+      
+
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+</svg>
+
+
+      <span class="uppercase tracking-wide">Chat</span>
+    </a>
+  </li>
+  
+  <li>
+    <a hx-boost="true" href="&#x2f;search" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
+      
+
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+</svg>
+
+
+      <span class="uppercase tracking-wide">Search</span>
+    </a>
+  </li>
+  
+  <li>
+    <a hx-boost="true" href="&#x2f;scratchpad" class="nb-btn w-full justify-start gap-3 bg-base-100 hover:bg-base-200">
+      
+
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+</svg>
+
+
+      <span class="uppercase tracking-wide">Scratchpad</span>
+    </a>
+  </li>
+  
+  <li>
+    <button class="nb-btn nb-cta w-full flex items-center gap-3 justify-start mt-2" hx-get="/ingest-form"
+      hx-target="#modal" hx-swap="innerHTML"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+</svg> Add
+      Content</button>
+  </li>
+  <li role="separator" class="u-hairline mt-4 list-none"></li>
+
+    </ul>
+
+    <!-- === MIDDLE SCROLLABLE SECTION === -->
+    <span class="px-4 py-2 nb-label">Recent Chats</span>
+    <div class="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
+      <ul class="menu w-full space-y-1">
+        
+        
+      </ul>
+    </div>
+
+    <!-- === BOTTOM FIXED SECTION === -->
+    <ul class="menu w-full px-2 pb-4 space-y-3">
+      
+  <li>
+    <a hx-boost="true" href="/account"
+      class="nb-btn w-full justify-start items-center gap-3 bg-base-100 hover:bg-base-200">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+</svg>
+      <span class="uppercase tracking-wide">Account</span>
+    </a>
+  </li>
+  
+  <li>
+    <a hx-boost="true" href="/admin"
+      class="nb-btn w-full justify-start items-center gap-3 bg-base-100 hover:bg-base-200">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437 1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008Z" />
+</svg>
+      <span class="uppercase tracking-wide">Admin</span>
+    </a>
+  </li>
+  
+  <li>
+    <a hx-boost="true" href="/signout"
+      class="nb-btn w-full justify-start items-center gap-3  bg-base-100 hover:bg-base-200 border-error text-error">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round"
+    d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
+</svg>
+      <span class="uppercase tracking-wide">Logout</span>
+    </a>
+  </li>
+
+    </ul>
+  </nav>
+</div>
+    
+  </div> <!-- End Drawer -->
+  <div id="modal"></div>
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+  <script defer>
+    document.addEventListener('DOMContentLoaded', function () {
+      if (window.marked && !window.markedGlobalOptionsSet) {
+        marked.setOptions({
+          breaks: true,
+          gfm: true,
+          headerIds: false,
+          mangle: false,
+          smartLists: true,
+          smartypants: true,
+          xhtml: false
+        });
+        window.markedGlobalOptionsSet = true;
+      }
+      renderAllMarkdown();
+    });
+    document.body.addEventListener('htmx:afterSettle', renderAllMarkdown);
+
+    function renderAllMarkdown() {
+      if (!window.marked) return;
+      document.querySelectorAll('.markdown-content[data-content]').forEach(el => {
+        const raw = el.getAttribute('data-content') || '';
+        if (el.dataset.renderedContent !== raw) {
+          el.innerHTML = marked.parse(raw);
+          el.dataset.renderedContent = raw;
+        }
+      });
+    }
+    window.renderAllMarkdown = renderAllMarkdown;
+  </script>
+</body>
+
+
+</html>

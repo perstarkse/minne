@@ -385,8 +385,10 @@ pub async fn archive_scratchpad(
         .map(ScratchpadArchiveItem::from)
         .collect();
 
-    Ok(TemplateResponse::new_template(
+    // HTMX archive targets #main_section; return only the list partial, not full layout.
+    Ok(TemplateResponse::new_partial(
         "scratchpad/base.html",
+        "main",
         ScratchpadPageData {
             scratchpads: scratchpad_list,
             archived_scratchpads: archived_list,

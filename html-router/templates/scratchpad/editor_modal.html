@@ -2,7 +2,10 @@
 
 {% block modal_class %}w-11/12 max-w-[90ch] max-h-[95%] overflow-y-auto{% endblock %}
 
-{% block form_attributes %}{% endblock %}
+{# title-form, auto-save-form, ingest-form, archive-form — override modal_base
+   wrapper blocks so these are not nested inside #modal_form. #}
+{% block modal_form_open %}<div class="contents">{% endblock %}
+{% block modal_form_close %}</div>{% endblock %}
 
 {% block modal_content %}
 <h3 class="text-xl font-extrabold tracking-tight">
@@ -34,7 +37,7 @@
 
   <form id="auto-save-form"
       hx-patch="/scratchpad/{{ scratchpad.id }}/auto-save"
-      hx-trigger="keyup changed delay:2s, focusout"
+      hx-trigger="keyup changed delay:2s, focusout delay:150ms"
       hx-indicator="#save-indicator"
       hx-swap="none"
     class="flex flex-col gap-2">
@@ -64,8 +67,8 @@
       hx-on::after-request="if(event.detail.successful) document.getElementById('body_modal').close()"
       class="inline flex flex-col gap-3"
       id="ingest-form">
-      <button type="button" class="nb-btn nb-cta" onclick="toggleIngestConfirmation(true)"
-        data-role="ingest-trigger">
+      <button type="button" class="nb-btn nb-cta" data-role="ingest-trigger"
+        hx-on:mousedown="event.preventDefault(); toggleIngestConfirmation(true)">
         {% include "icons/send_icon.html" %} Ingest as Content
       </button>
       <div id="ingest-warning"
@@ -81,7 +84,8 @@
           <button type="submit" class="nb-btn nb-btn-sm nb-cta">
             Confirm ingest
           </button>
-          <button type="button" class="nb-btn nb-btn-sm btn-ghost" onclick="toggleIngestConfirmation(false)">
+          <button type="button" class="nb-btn nb-btn-sm btn-ghost"
+            hx-on:click="toggleIngestConfirmation(false)">
             Cancel
           </button>
         </div>

@@ -25,3 +25,7 @@ devenv.local.nix
 # html-router/assets/style.css
 html-router/node_modules
 .fastembed_cache/
+
+# insta: pending (unreviewed) snapshots; accepted *.snap files are committed
+*.snap.new
+.insta.bak

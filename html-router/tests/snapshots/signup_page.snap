@@ -1,0 +1,108 @@
+---
+source: html-router/tests/router_integration.rs
+expression: body
+---
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-theme-preference="system">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Minne - Sign up</title>
+
+
+  <!-- Preload critical assets -->
+  <link rel="preload" href="/assets/htmx.min.js" as="script">
+  <link rel="preload" href="/assets/style.css" as="style">
+
+  <!-- Core styles -->
+  <link rel="stylesheet" href="/assets/style.css">
+
+  <!-- Scripts -->
+  <script src="/assets/htmx.min.js" defer></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      htmx.config.globalViewTransitions = true;
+      htmx.config.selfRequestsOnly = false;
+    });
+  </script>
+  <script src="/assets/htmx-ext-sse.js" defer></script>
+  <script src="/assets/theme-toggle.js" defer></script>
+  <script src="/assets/toast.js" defer></script>
+  <script src="/assets/marked.min.js" defer></script>
+  <script src="/assets/knowledge-graph.js" defer></script>
+  <script src="/assets/design-polish.js" defer></script>
+  <script src="/assets/modal.js" defer></script>
+  <script src="/assets/admin-prompt-reset.js" defer></script>
+
+  <!-- Global View Transition -->
+  <meta name="view-transition" content="same-origin" />
+
+  <!-- Icons -->
+  <link rel="icon" href="/assets/icon/favicon.ico">
+  <link rel="apple-touch-icon" href="/assets/icon/apple-touch-icon.png" media="(device-width: 320px)">
+
+  <!-- PWA -->
+  <link rel="manifest" href="/assets/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  
+
+</head>
+
+
+<div class="min-h-[100dvh] flex flex-col items-center justify-center">
+  
+  <div class="container mx-auto px-4 sm:max-w-md">
+    <div class="nb-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-3xl font-extrabold tracking-tight">MINNE</div>
+        <span class="nb-badge">Sign Up</span>
+      </div>
+      <div class="u-hairline mb-3"></div>
+
+      <form hx-post="/signup" hx-swap="none" class="flex flex-col gap-4">
+        <label class="w-full">
+          <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Email</div>
+          <input type="email" placeholder="Email" name="email" required class="nb-input w-full validator" />
+          <div class="validator-hint hidden text-xs opacity-70 mt-1">Enter valid email address</div>
+        </label>
+
+        <label class="w-full">
+          <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Password</div>
+          <input type="password" name="password" class="nb-input w-full validator" required placeholder="Password"
+            minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+            title="Must be more than 8 characters, including number, lowercase letter, uppercase letter" />
+          <p class="validator-hint hidden text-xs opacity-70 mt-1">
+            Must be more than 8 characters, including
+            <br />At least one number
+            <br />At least one lowercase letter
+            <br />At least one uppercase letter
+          </p>
+        </label>
+
+        <div class="form-control mt-1">
+          <button id="submit-btn" class="nb-btn nb-cta w-full">Create Account</button>
+        </div>
+        <input type="hidden" name="timezone" id="timezone" />
+      </form>
+
+      <div class="u-hairline my-3"></div>
+      <div class="text-center text-sm">
+        Already have an account?
+        <a href="/signin" hx-boost="true" class="nb-link">Sign in</a>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Detect timezone and set hidden input
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    document.getElementById("timezone").value = timezone;
+  </script>
+
+</div>
+<div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+
+</html>

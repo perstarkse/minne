@@ -19,17 +19,12 @@ hx-swap="outerHTML"
 {% endblock %}
 
 {% block primary_actions %}
-<button type="button" class="nb-btn w-full sm:w-auto sm:mr-2" id="reset_prompt_button">
+<button type="button" class="nb-btn w-full sm:w-auto sm:mr-2"
+  data-reset-target="textarea[name=query_system_prompt]">
   Reset to Default
 </button>
 
 <textarea id="default_prompt_content" style="display:none;">{{ default_query_prompt }}</textarea>
-<script>
-  document.getElementById('reset_prompt_button').addEventListener('click', function () {
-    const defaultContent = document.getElementById('default_prompt_content').value;
-    document.querySelector('textarea[name=query_system_prompt]').value = defaultContent;
-  });
-</script>
 
 <button type="submit" class="nb-btn nb-cta w-full sm:w-auto">
   <span class="htmx-indicator hidden">
