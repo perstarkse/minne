@@ -171,8 +171,7 @@ async fn perform_search(
 
     let result = retrieve(
         &state.db,
-        &state.openai_client,
-        Some(&state.embedding_provider),
+        &state.embedding_provider,
         trimmed_query,
         &user.id,
         config,

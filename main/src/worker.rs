@@ -2,14 +2,15 @@ mod bootstrap;
 
 use std::sync::Arc;
 
-use bootstrap::{init, prepare_embedding_runtime};
+use bootstrap::{init, prepare_embedding_runtime, EmbeddingRuntimeRole};
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use tracing::info;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let services = init().await?;
-    prepare_embedding_runtime(&services).await?;
+    // The worker owns re-embedding: it reconciles stored vectors to the active provider.
+    prepare_embedding_runtime(&services, EmbeddingRuntimeRole::Maintainer).await?;
 
     info!(
         embedding_backend = ?services.config.embedding_backend,

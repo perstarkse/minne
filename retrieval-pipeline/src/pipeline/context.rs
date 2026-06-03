@@ -1,4 +1,3 @@
-use async_openai::Client;
 use common::{
     error::AppError,
     storage::{db::SurrealDbClient, types::text_chunk::TextChunk},
@@ -18,8 +17,7 @@ use super::{
 /// Mutable working state threaded through every retrieval stage.
 pub(crate) struct PipelineContext<'a> {
     pub db_client: &'a SurrealDbClient,
-    pub openai_client: &'a Client<async_openai::config::OpenAIConfig>,
-    pub embedding_provider: Option<&'a EmbeddingProvider>,
+    pub embedding_provider: &'a EmbeddingProvider,
     pub input_text: String,
     pub user_id: String,
     pub config: RetrievalConfig,
@@ -36,7 +34,6 @@ impl<'a> PipelineContext<'a> {
     pub fn new(params: RetrievalParams<'a>) -> Self {
         Self {
             db_client: params.db_client,
-            openai_client: params.openai_client,
             embedding_provider: params.embedding_provider,
             input_text: params.input_text.to_owned(),
             user_id: params.user_id.to_owned(),

@@ -6,6 +6,7 @@ use axum::extract::FromRef;
 use bootstrap::{
     init, prepare_embedding_runtime,
     wiring::{build_api_state, build_html_state, minne_routes},
+    EmbeddingRuntimeRole,
 };
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use tracing::info;
@@ -20,7 +21,8 @@ async fn main() -> anyhow::Result<()> {
         "Embedding provider initialized"
     );
 
-    prepare_embedding_runtime(&services).await?;
+    // The combined binary runs the worker in-process, so it owns re-embedding.
+    prepare_embedding_runtime(&services, EmbeddingRuntimeRole::Maintainer).await?;
 
     let html_state = build_html_state(&services).await?;
     let api_state = build_api_state(&services);
@@ -88,6 +90,7 @@ mod tests {
         prepare_embedding_runtime,
         tests::init_smoke_services,
         wiring::{build_api_state, build_html_state, minne_routes},
+        EmbeddingRuntimeRole,
     };
     use common::storage::types::{system_settings::SystemSettings, user::User};
     use tower::ServiceExt;
@@ -97,7 +100,7 @@ mod tests {
             .await
             .expect("failed to init services");
 
-        prepare_embedding_runtime(&services)
+        prepare_embedding_runtime(&services, EmbeddingRuntimeRole::Maintainer)
             .await
             .expect("failed to prepare embedding runtime");
 

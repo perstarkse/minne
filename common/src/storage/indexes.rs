@@ -211,6 +211,27 @@ pub async fn rebuild(db: &SurrealDbClient) -> Result<(), AppError> {
     rebuild_inner(db).await.map_err(AppError::internal)
 }
 
+/// Returns the dimension of the currently defined chunk-embedding HNSW index, if any.
+///
+/// Stored embeddings always share this index's dimension because re-embedding rewrites the
+/// vectors and the index together, so it acts as a persisted marker of the embedding space
+/// actually present in the database. Returns `Ok(None)` when the index has not been created yet
+/// (for example on a fresh database with no ingested data).
+///
+/// # Errors
+///
+/// Returns `AppError::InternalError` if the index metadata cannot be read.
+pub async fn embedding_index_dimension(db: &SurrealDbClient) -> Result<Option<usize>, AppError> {
+    let spec = HnswIndexSpec {
+        index_name: "idx_embedding_text_chunk_embedding",
+        table: "text_chunk_embedding",
+        options: HNSW_INDEX_OPTIONS,
+    };
+    existing_hnsw_dimension(db, &spec)
+        .await
+        .map_err(AppError::internal)
+}
+
 async fn ensure_runtime_inner(db: &SurrealDbClient, embedding_dimension: usize) -> Result<()> {
     create_fts_analyzer(db).await?;
 
@@ -903,6 +924,34 @@ mod tests {
         ensure_runtime(&db, 1536)
             .await
             .context("second index creation")?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn embedding_index_dimension_reflects_runtime_state() -> anyhow::Result<()> {
+        let namespace = "indexes_marker";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .context("in-memory db")?;
+
+        db.apply_migrations()
+            .await
+            .context("migrations should succeed")?;
+
+        // Before any index exists, there is no stored embedding dimension to detect.
+        assert_eq!(embedding_index_dimension(&db).await?, None);
+
+        ensure_runtime(&db, 1536)
+            .await
+            .context("initial index creation")?;
+        assert_eq!(embedding_index_dimension(&db).await?, Some(1536));
+
+        // After a dimension change the marker tracks the new index dimension.
+        ensure_runtime(&db, 256)
+            .await
+            .context("overwritten index creation")?;
+        assert_eq!(embedding_index_dimension(&db).await?, Some(256));
         Ok(())
     }
 

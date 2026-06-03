@@ -119,6 +119,8 @@ pub struct AppConfig {
     pub fastembed_max_length: Option<usize>,
     #[serde(default)]
     pub embedding_backend: EmbeddingBackend,
+    #[serde(default)]
+    pub embedding_pool_size: Option<usize>,
     #[serde(default = "default_ingest_max_body_bytes")]
     pub ingest_max_body_bytes: usize,
     #[serde(default = "default_ingest_max_files")]
@@ -225,6 +227,7 @@ impl Default for AppConfig {
             fastembed_show_download_progress: None,
             fastembed_max_length: None,
             embedding_backend: EmbeddingBackend::default(),
+            embedding_pool_size: None,
             ingest_max_body_bytes: default_ingest_max_body_bytes(),
             ingest_max_files: default_ingest_max_files(),
             ingest_max_content_bytes: default_ingest_max_content_bytes(),

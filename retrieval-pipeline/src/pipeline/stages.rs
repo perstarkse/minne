@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use common::{
     error::AppError,
     storage::types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk},
-    utils::embedding::generate_embedding,
 };
 use fastembed::RerankResult;
 use std::collections::HashMap;
@@ -97,11 +96,7 @@ pub async fn embed(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
         debug!("Reusing cached query embedding for hybrid retrieval");
     } else {
         debug!("Generating query embedding for hybrid retrieval");
-        let embedding = if let Some(provider) = ctx.embedding_provider {
-            provider.embed(&ctx.input_text).await?
-        } else {
-            generate_embedding(ctx.openai_client, &ctx.input_text, ctx.db_client).await?
-        };
+        let embedding = ctx.embedding_provider.embed(&ctx.input_text).await?;
         ctx.query_embedding = Some(embedding);
     }
 

@@ -136,12 +136,10 @@ pub(crate) async fn run_queries(
     let embedding_provider_for_queries = ctx.embedding_provider()?.clone();
     let rerank_pool_for_queries = rerank_pool.clone();
     let db = ctx.db()?.clone();
-    let openai_client = ctx.openai_client()?;
 
     let raw_results = stream::iter(cases_iter)
         .map(move |(idx, case)| {
             let db = db.clone();
-            let openai_client = Arc::clone(&openai_client);
             let user_id = user_id.clone();
             let retrieval_config = Arc::clone(&retrieval_config);
             let embedding_provider = embedding_provider_for_queries.clone();
@@ -180,8 +178,7 @@ pub(crate) async fn run_queries(
 
                 let params = pipeline::RetrievalParams {
                     db_client: &db,
-                    openai_client: &openai_client,
-                    embedding_provider: Some(&embedding_provider),
+                    embedding_provider: &embedding_provider,
                     input_text: &question,
                     user_id: &user_id,
                     config: (*retrieval_config).clone(),

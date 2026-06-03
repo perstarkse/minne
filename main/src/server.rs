@@ -4,13 +4,15 @@ use axum::extract::FromRef;
 use bootstrap::{
     init, prepare_embedding_runtime,
     wiring::{build_api_state, build_html_state, minne_routes},
+    EmbeddingRuntimeRole,
 };
 use tracing::info;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
     let services = init().await?;
-    prepare_embedding_runtime(&services).await?;
+    // The server never re-embeds; the worker owns that. It only ensures indexes are ready.
+    prepare_embedding_runtime(&services, EmbeddingRuntimeRole::ReadOnly).await?;
 
     let html_state = build_html_state(&services).await?;
     let api_state = build_api_state(&services);
