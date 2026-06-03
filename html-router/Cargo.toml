@@ -43,6 +43,7 @@ json-stream-parser = { path = "../json-stream-parser" }
 
 [dev-dependencies]
 common = { path = "../common", features = ["test-utils"] }
+insta = { version = "1.47.2", features = ["filters"] }
 tower = "0.5"
 
 [build-dependencies]

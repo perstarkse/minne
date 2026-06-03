@@ -1,0 +1,119 @@
+---
+source: html-router/tests/router_integration.rs
+expression: body
+---
+<dialog id="body_modal" class="modal">
+  <div
+    class="modal-box relative rounded-none border-2 border-neutral bg-base-100 shadow-[8px_8px_0_0_#000] p-6 max-w-4xl w-full">
+    
+    <!-- Close control (always visible; does not depend on form submit/cancel) -->
+    <button type="button" 
+            class="btn btn-sm btn-square btn-ghost absolute right-2 top-2 z-10" 
+            hx-on:click="document.getElementById('body_modal').close()"
+            aria-label="Close modal">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+  width="20" height="20" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+</svg>
+    </button>
+
+    
+    <form id="modal_form" hx-on::after-request="if(event.detail.successful) document.getElementById('body_modal').close()" 
+hx-post="/knowledge-entity"
+hx-target="#knowledge_pane"
+hx-swap="outerHTML"
+>
+      <div class="flex flex-col flex-1 gap-5">
+        
+<h3 class="text-xl font-extrabold tracking-tight">Create Knowledge Entity</h3>
+
+<div class="flex flex-col gap-3">
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Name</div>
+    <input type="text" name="name" class="nb-input w-full" placeholder="Entity title" required>
+  </label>
+
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Type</div>
+    <select name="entity_type" class="nb-select w-full">
+      
+      <option value="Idea">Idea</option>
+      
+      <option value="Project">Project</option>
+      
+      <option value="Document">Document</option>
+      
+      <option value="Page">Page</option>
+      
+      <option value="TextSnippet">TextSnippet</option>
+      
+    </select>
+  </label>
+
+  <label class="w-full">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Description</div>
+    <textarea name="description" class="nb-input w-full h-32"
+      placeholder="Describe this entity so it can be found later"></textarea>
+  </label>
+</div>
+
+<div class="u-hairline pt-3 mt-4 space-y-3">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <div class="text-xs uppercase tracking-wide opacity-70">Relationships</div>
+      <p class="text-xs opacity-70 max-w-md">
+        Select existing entities to link. Suggestions will pre-select likely matches.
+      </p>
+    </div>
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <label class="flex items-center gap-2">
+        <span class="text-xs uppercase tracking-wide opacity-70">Type</span>
+        <input type="text" name="relationship_type" value="RelatedTo"
+          class="nb-input w-32" placeholder="RelatedTo" list="relationship-type-options">
+      </label>
+      <datalist id="relationship-type-options">
+        
+        <option value="References"></option>
+        
+        <option value="RelatedTo"></option>
+        
+        <option value="RelevantTo"></option>
+        
+        <option value="SimilarTo"></option>
+        
+      </datalist>
+      <button type="button" class="nb-btn btn-sm nb-cta sm:ml-2" hx-post="/knowledge-entity/suggestions"
+        hx-target="#relationship-list" hx-swap="outerHTML" hx-include="#modal_form">
+        Suggest Relationships
+      </button>
+    </div>
+  </div>
+
+  
+  <div id="relationship-list" class="nb-card p-4 text-sm opacity-70">
+    You need at least one existing entity before creating relationships.
+  </div>
+  
+</div>
+
+      </div>
+
+      <div class="mt-8 pt-2 flex flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
+        <!-- Dismiss without submitting -->
+        <button type="button" class="btn btn-ghost rounded-none w-full sm:w-auto hover:bg-neutral/10" hx-on:click="document.getElementById('body_modal').close()">
+          Cancel
+        </button>
+
+        <!-- Primary actions block -->
+        
+<button type="submit" class="nb-btn nb-cta">
+  Create Entity
+</button>
+
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>

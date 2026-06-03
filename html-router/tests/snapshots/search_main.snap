@@ -1,0 +1,46 @@
+---
+source: html-router/tests/router_integration.rs
+expression: main
+---
+
+        
+<div id="search_pane" class="flex justify-center grow mt-2 sm:mt-4">
+  <div class="container">
+    <section class="mb-4">
+      <div class="nb-panel p-3 flex items-center justify-between">
+        
+  <div>
+    <h1 class="text-xl font-extrabold tracking-tight">Search</h1>
+    <div class="text-xs opacity-70">Find document snippets and knowledge entities</div>
+  </div>
+  <form hx-get="/search" hx-target="#search_pane" hx-swap="outerHTML" hx-push-url="true"
+    class="flex items-center gap-1">
+    
+    <button type="submit" name="view" value="all"
+      class="nb-btn btn-sm nb-cta">
+      All
+    </button>
+    <button type="submit" name="view" value="chunks"
+      class="nb-btn btn-sm btn-ghost">
+      Chunks
+    </button>
+    <button type="submit" name="view" value="entities"
+      class="nb-btn btn-sm btn-ghost">
+      Entities
+    </button>
+  </form>
+
+      </div>
+    </section>
+    
+  
+<div class="nb-panel p-5 text-center">
+  <p class="text-lg font-semibold">Enter a term above to search your knowledge base.</p>
+  <p class="text-sm opacity-70">Results will appear here.</p>
+</div>
+
+
+  </div>
+</div>
+
+        <div class="p32 min-h-[10px]"></div>

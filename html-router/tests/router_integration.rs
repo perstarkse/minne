@@ -107,6 +107,239 @@ async fn response_body(response: Response) -> String {
     String::from_utf8(body.to_vec()).expect("html body")
 }
 
+/// Shared insta settings for HTML snapshots in this module.
+///
+/// The in-memory DB is recreated per test, so ids in markup would otherwise churn.
+/// Filters normalize those values; see `snapshot_*` tests below.
+fn snapshot_settings() -> insta::Settings {
+    let mut settings = insta::Settings::clone_current();
+    settings.set_prepend_module_to_snapshot(false);
+    settings.add_filter(
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+        "[uuid]",
+    );
+    settings.add_filter(r"[a-z_]+:[0-9a-z]{12,}", "[record-id]");
+    settings
+}
+
+const AUTHENTICATED_MAIN_OPEN: &str = r#"<main class="flex flex-col flex-1 overflow-y-auto">"#;
+
+/// Inner HTML of the scrollable page column from `body_base.html` (`{% block main %}`).
+///
+/// Omits head, navbar shell, sidebar, and modal mount points so per-route snapshots
+/// do not duplicate layout chrome (see `snapshot_authenticated_shell`).
+fn extract_authenticated_main(html: &str) -> &str {
+    let start = html
+        .find(AUTHENTICATED_MAIN_OPEN)
+        .expect("authenticated page main column")
+        + AUTHENTICATED_MAIN_OPEN.len();
+    let rest = &html[start..];
+    let end = rest
+        .find("</main>")
+        .expect("authenticated page main column close");
+    &rest[..end]
+}
+
+async fn get_html(app: &Router, uri: &str, cookie: Option<&str>) -> String {
+    let mut builder = Request::builder().uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .clone()
+        .oneshot(builder.body(Body::empty()).expect("request"))
+        .await
+        .expect("response");
+    response_body(response).await
+}
+
+/// Fixed credentials for authenticated snapshot routes (dashboard, search, etc.).
+async fn seeded_cookie(app: &Router, db: &SurrealDbClient) -> String {
+    User::create_new(
+        "snapshot_user@example.com".to_string(),
+        "snapshot_password".to_string(),
+        db,
+        "UTC".to_string(),
+        "system".to_string(),
+    )
+    .await
+    .expect("snapshot user");
+    sign_in(app, "snapshot_user@example.com", "snapshot_password").await
+}
+
+/// Parses a scratchpad id from the list page HTML after `POST /scratchpad`.
+async fn create_scratchpad_and_get_id(app: &Router, cookie: &str, title: &str) -> String {
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/scratchpad")
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(format!("title={title}")))
+                .expect("create request"),
+        )
+        .await
+        .expect("create response");
+
+    let list = get_html(app, "/scratchpad", Some(cookie)).await;
+    let marker = "/scratchpad/";
+    let start = list.find(marker).expect("scratchpad link present") + marker.len();
+    list[start..start + list[start..].find('/').expect("id terminator")].to_string()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scratchpad_editor_modal_does_not_nest_forms() {
+    let (app, db) = build_test_app().await;
+    let cookie = seeded_cookie(&app, &db).await;
+    let id = create_scratchpad_and_get_id(&app, &cookie, "IngestPad").await;
+
+    let modal = get_html(&app, &format!("/scratchpad/{id}/modal"), Some(&cookie)).await;
+
+    // Scratchpad editor opts out of #modal_form (see editor_modal.html); nested
+    // <form> elements are invalid HTML and browsers drop the inner forms.
+    assert!(
+        !modal.contains(r#"id="modal_form""#),
+        "editor modal should not wrap content in #modal_form"
+    );
+    assert!(
+        modal.contains(&format!("/scratchpad/{id}/ingest")),
+        "ingest form action should be present"
+    );
+    assert!(
+        modal.contains(r#"id="ingest-form""#),
+        "ingest form should be a real, addressable form"
+    );
+
+    // Ingest targets #main_section, so the response must be a partial, not a full page.
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/scratchpad/{id}/auto-save"))
+                .header(header::COOKIE, &cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("content=Some+content+to+ingest"))
+                .expect("save request"),
+        )
+        .await
+        .expect("save response");
+
+    let ingest = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/scratchpad/{id}/ingest"))
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .expect("ingest request"),
+        )
+        .await
+        .expect("ingest response");
+    assert_eq!(ingest.status(), StatusCode::OK);
+    let body = response_body(ingest).await;
+    assert!(
+        !body.trim_start().starts_with("<!DOCTYPE") && body.contains(r#"id="main_section""#),
+        "ingest should return only the main section partial"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scratchpad_archive_returns_main_partial_only() {
+    let (app, db) = build_test_app().await;
+    let cookie = seeded_cookie(&app, &db).await;
+    let id = create_scratchpad_and_get_id(&app, &cookie, "RegressionPad").await;
+
+    let archive = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/scratchpad/{id}/archive"))
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .expect("archive request"),
+        )
+        .await
+        .expect("archive response");
+    assert_eq!(archive.status(), StatusCode::OK);
+
+    let body = response_body(archive).await;
+    // Archive uses hx-target="#main_section" — same partial contract as ingest.
+    assert!(
+        !body.trim_start().starts_with("<!DOCTYPE"),
+        "archive should return a partial, not a full document"
+    );
+    assert!(
+        !body.contains("drawer-side"),
+        "archive partial should not include the sidebar"
+    );
+    assert!(
+        body.contains(r#"id="main_section""#),
+        "archive partial should be the main section"
+    );
+}
+
+// HTML regression snapshots (insta). Authenticated layout: one full-document shell
+// plus per-route main-column slices via `extract_authenticated_main`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn snapshot_signin_page() {
+    let (app, _db) = build_test_app().await;
+    let body = get_html(&app, "/signin", None).await;
+    snapshot_settings().bind(|| insta::assert_snapshot!("signin_page", body));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn snapshot_signup_page() {
+    let (app, _db) = build_test_app().await;
+    let body = get_html(&app, "/signup", None).await;
+    snapshot_settings().bind(|| insta::assert_snapshot!("signup_page", body));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn snapshot_authenticated_shell() {
+    let (app, db) = build_test_app().await;
+    let cookie = seeded_cookie(&app, &db).await;
+    let body = get_html(&app, "/", Some(&cookie)).await;
+    snapshot_settings().bind(|| insta::assert_snapshot!("authenticated_shell", body));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn snapshot_dashboard_main() {
+    let (app, db) = build_test_app().await;
+    let cookie = seeded_cookie(&app, &db).await;
+    let body = get_html(&app, "/", Some(&cookie)).await;
+    let main = extract_authenticated_main(&body);
+    snapshot_settings().bind(|| insta::assert_snapshot!("dashboard_main", main));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn snapshot_search_main() {
+    let (app, db) = build_test_app().await;
+    let cookie = seeded_cookie(&app, &db).await;
+    let body = get_html(&app, "/search", Some(&cookie)).await;
+    let main = extract_authenticated_main(&body);
+    snapshot_settings().bind(|| insta::assert_snapshot!("search_main", main));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn snapshot_not_found_main() {
+    let (app, db) = build_test_app().await;
+    let cookie = seeded_cookie(&app, &db).await;
+    let body = get_html(&app, "/file/does-not-exist", Some(&cookie)).await;
+    let main = extract_authenticated_main(&body);
+    snapshot_settings().bind(|| insta::assert_snapshot!("not_found_main", main));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn snapshot_new_entity_modal() {
+    let (app, db) = build_test_app().await;
+    let cookie = seeded_cookie(&app, &db).await;
+    let body = get_html(&app, "/knowledge-entity/new", Some(&cookie)).await;
+    snapshot_settings().bind(|| insta::assert_snapshot!("new_entity_modal", body));
+}
+
 async fn sign_in(app: &Router, email: &str, password: &str) -> String {
     let response = app
         .clone()

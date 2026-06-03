@@ -2,46 +2,32 @@
   <div
     class="modal-box relative rounded-none border-2 border-neutral bg-base-100 shadow-[8px_8px_0_0_#000] p-6 {% block modal_class %}max-w-lg{% endblock %}">
     
-    <!-- God Level UX: Explicit Escape Hatch -->
+    <!-- Close control (always visible; does not depend on form submit/cancel) -->
     <button type="button" 
             class="btn btn-sm btn-square btn-ghost absolute right-2 top-2 z-10" 
-            onclick="document.getElementById('body_modal').close()"
+            hx-on:click="document.getElementById('body_modal').close()"
             aria-label="Close modal">
       {% include "icons/x_icon.html" %}
     </button>
 
-    <form id="modal_form" {% block form_attributes %}{% endblock %}>
+    {# Default: one outer #modal_form. Modals with multiple forms (scratchpad editor)
+       override modal_form_open / modal_form_close — nested <form> is invalid HTML. #}
+    {% block modal_form_open %}<form id="modal_form" hx-on::after-request="if(event.detail.successful) document.getElementById('body_modal').close()" {% block form_attributes %}{% endblock %}>{% endblock %}
       <div class="flex flex-col flex-1 gap-5">
         {% block modal_content %}{% endblock %}
       </div>
 
       <div class="mt-8 pt-2 flex flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
-        <!-- Secondary Action: Ghost style to reduce noise -->
-        <button type="button" class="btn btn-ghost rounded-none w-full sm:w-auto hover:bg-neutral/10" onclick="document.getElementById('body_modal').close()">
+        <!-- Dismiss without submitting -->
+        <button type="button" class="btn btn-ghost rounded-none w-full sm:w-auto hover:bg-neutral/10" hx-on:click="document.getElementById('body_modal').close()">
           Cancel
         </button>
 
         <!-- Primary actions block -->
         {% block primary_actions %}{% endblock %}
       </div>
-    </form>
+    {% block modal_form_close %}</form>{% endblock %}
   </div>
-  <script>
-    // Auto-open modal when injected
-    document.getElementById('body_modal').showModal();
-
-    // Close modal on successful form submission
-    document.getElementById('modal_form')
-      .addEventListener('htmx:afterRequest', (evt) => {
-        if (evt.detail.elt !== evt.currentTarget) return; // ignore inner htmx requests
-        if (evt.detail.successful) document.getElementById('body_modal').close();
-      });
-
-    // Clear modal content on close to prevent browser back from reopening it
-    document.getElementById('body_modal').addEventListener('close', (evt) => {
-      evt.target.innerHTML = '';
-    });
-  </script>
   <form method="dialog" class="modal-backdrop">
     <button>close</button>
   </form>
