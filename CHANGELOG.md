@@ -1,6 +1,8 @@
 # Changelog
 ## Unreleased
-- Search results are now selectable by which type, knowledge entity or ingested content 
+- Search results are now selectable by which type, knowledge entity or ingested content
+- Now possible to choose the local embedding model via the admin ui
+- Admin embedding changes are saved immediately. Needs restart to re-embed. This simplifies the flow, may be subject to improvement in the future
 
 ## 1.0.2 (2026-02-15)
 - Fix: edge case where navigation back to a chat page could trigger a new response generation

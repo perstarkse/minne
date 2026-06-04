@@ -4,7 +4,8 @@
       <div class="text-sm uppercase tracking-wide opacity-60 mb-1">AI Models</div>
       <h2 class="text-lg font-semibold">Model configuration</h2>
       <p class="text-xs opacity-70 max-w-2xl">
-        Choose which models power conversational search, ingestion analysis, and embeddings. Adjusting embeddings may trigger a full reprocess.
+        Choose which models power conversational search, ingestion analysis, and embeddings.
+        Embedding dimension changes apply after you restart the worker or server.
       </p>
     </div>
     <a
@@ -70,7 +71,30 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <div class="text-sm opacity-80 mb-1">Embedding Model</div>
-          {% if settings.embedding_backend == "fastembed" or settings.embedding_backend == "hashed" %}
+          {% if effective_embedding_backend == "fastembed" %}
+          {% if fastembed_model_locked_by_config %}
+          <input
+            type="text"
+            class="nb-input w-full opacity-60 cursor-not-allowed"
+            value="{{ settings.embedding_model }}"
+            disabled
+          />
+          <p class="text-xs text-info mt-1">
+            Overridden by <span class="font-mono">fastembed_model</span> in config.yaml at startup. Remove that setting to manage the model here.
+          </p>
+          {% else %}
+          <select name="embedding_model" id="fastembed_model_select" class="nb-select w-full">
+            {% for fe in fastembed_models %}
+            <option value="{{ fe.model_code }}" {% if settings.embedding_model == fe.model_code %}selected{% endif %}>
+              {{ fe.model_code }} ({{ fe.dimension }} dims)
+            </option>
+            {% endfor %}
+          </select>
+          <p class="text-xs opacity-70 mt-1">
+            Save, then restart the worker or server to load the new model. First run may download weights.
+          </p>
+          {% endif %}
+          {% elif effective_embedding_backend == "hashed" %}
           <input
             type="text"
             name="embedding_model"
@@ -78,11 +102,8 @@
             value="{{ settings.embedding_model }}"
             disabled
           />
-          <p class="text-xs opacity-70 mt-1">
-            Model: <span class="font-mono">{{ settings.embedding_model }} ({{ settings.embedding_dimensions }} dims)</span>
-          </p>
           <p class="text-xs text-info mt-1">
-            Info: Embedding model is controlled by config when using <span class="font-mono">{{ settings.embedding_backend }}</span> backend.
+            Hashed embeddings use <span class="font-mono">embedding_dimensions</span> from config, not the admin UI.
           </p>
           {% else %}
           <select name="embedding_model" class="nb-select w-full">
@@ -96,7 +117,18 @@
 
         <div>
           <div class="text-sm opacity-80 mb-1" for="embedding_dimensions">Embedding Dimensions</div>
-          {% if settings.embedding_backend == "fastembed" or settings.embedding_backend == "hashed" %}
+          {% if effective_embedding_backend == "fastembed" %}
+          <input
+            type="number"
+            id="embedding_dimensions"
+            class="nb-input w-full opacity-60 cursor-not-allowed"
+            value="{{ settings.embedding_dimensions }}"
+            disabled
+          />
+          <p class="text-xs opacity-70 mt-1">
+            Fixed by the selected FastEmbed model. A dimension change triggers a full re-embed after restart.
+          </p>
+          {% elif effective_embedding_backend == "hashed" %}
           <input
             type="number"
             id="embedding_dimensions"
@@ -106,8 +138,7 @@
             disabled
           />
           <p class="text-xs text-info mt-1">
-            Info: Dimensions are fixed for <span class="font-mono">{{ settings.embedding_backend }}</span> backend. Set
-            <span class="font-mono">EMBEDDING_BACKEND=openai</span> to use OpenAI embeddings.
+            Set <span class="font-mono">EMBEDDING_BACKEND=openai</span> for OpenAI embeddings, or configure hashed dims in config.
           </p>
           {% else %}
           <input
@@ -119,15 +150,50 @@
             required
             min="1"
           />
-          <p class="text-xs opacity-70 mt-1">Changing dimensions will trigger a background re-embedding.</p>
+          <p class="text-xs opacity-70 mt-1">
+            Saving a new dimension updates settings only. Restart the worker (or combined app) to re-embed stored data and rebuild indexes.
+          </p>
           {% endif %}
         </div>
       </div>
 
-      {% if settings.embedding_backend != "fastembed" and settings.embedding_backend != "hashed" %}
+      {% if effective_embedding_backend == "fastembed" and not fastembed_model_locked_by_config %}
+      <div class="nb-panel p-3 bg-base-200/40 border border-base-content/10 text-xs opacity-90 max-w-3xl">
+        <p class="mb-2">
+          <strong>FastEmbed:</strong> The running process keeps the model loaded until restart. Changing to a model with a
+          different dimension re-embeds all stored vectors on the next worker/server startup.
+        </p>
+        <p>
+          Same-dimension model swaps update settings only; existing vectors are not automatically regenerated until you
+          change dimension (or re-embed via the OpenAI workaround described in ops docs).
+        </p>
+      </div>
+
+      <div id="fastembed-change-alert" class="nb-panel p-3 bg-warning/20 hidden">
+        <div class="text-sm">
+          <strong>Warning:</strong> You changed the FastEmbed model. Save, then restart the worker or server to apply.
+          If the dimension changed, stored embeddings and HNSW indexes will be rebuilt on startup.
+        </div>
+      </div>
+      {% endif %}
+
+      {% if effective_embedding_backend != "fastembed" and effective_embedding_backend != "hashed" %}
+      <div class="nb-panel p-3 bg-base-200/40 border border-base-content/10 text-xs opacity-90 max-w-3xl">
+        <p class="mb-2">
+          <strong>Re-embedding stored data:</strong> Only a change to <span class="font-mono">embedding_dimensions</span>
+          followed by a restart triggers a full re-embed of text chunks and knowledge entities. Changing the embedding model alone
+          does <em>not</em> update vectors already in the database.
+        </p>
+        <p>
+          To force a full re-embed (for example after switching models), save a <em>different</em> dimension integer, restart the
+          worker, then set the final dimension and model and restart again if needed.
+        </p>
+      </div>
+
       <div id="embedding-change-alert" class="nb-panel p-3 bg-warning/20 hidden">
         <div class="text-sm">
-          <strong>Warning:</strong> Changing dimensions recreates embeddings for text chunks and knowledge entities. Confirm the target model requires the new value.
+          <strong>Warning:</strong> You changed embedding dimensions. Save, then restart the worker or server so stored embeddings
+          and HNSW indexes are rebuilt. Until then, search may use the old dimension.
         </div>
       </div>
       {% endif %}
@@ -137,7 +203,26 @@
       </div>
     </form>
 
-    {% if settings.embedding_backend != "fastembed" and settings.embedding_backend != "hashed" %}
+    {% if effective_embedding_backend == "fastembed" and not fastembed_model_locked_by_config %}
+    <script>
+      (() => {
+        const modelSelect = document.getElementById('fastembed_model_select');
+        const alertElement = document.getElementById('fastembed-change-alert');
+        const initialModel = '{{ settings.embedding_model }}';
+        if (modelSelect && alertElement) {
+          modelSelect.addEventListener('change', (event) => {
+            if (String(event.target.value) !== String(initialModel)) {
+              alertElement.classList.remove('hidden');
+            } else {
+              alertElement.classList.add('hidden');
+            }
+          });
+        }
+      })();
+    </script>
+    {% endif %}
+
+    {% if effective_embedding_backend != "fastembed" and effective_embedding_backend != "hashed" %}
     <script>
       (() => {
         const dimensionInput = document.getElementById('embedding_dimensions');

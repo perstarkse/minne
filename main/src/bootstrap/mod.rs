@@ -11,11 +11,10 @@ use common::{
     storage::{
         db::SurrealDbClient,
         store::StorageManager,
-        types::system_settings::SystemSettings,
     },
     utils::{
         config::{get_config, AppConfig},
-        embedding::EmbeddingProvider,
+        embedding::{align_fastembed_system_settings, EmbeddingProvider},
     },
 };
 use retrieval_pipeline::reranking::RerankerPool;
@@ -58,9 +57,9 @@ pub(crate) async fn init_with_config(config: AppConfig) -> anyhow::Result<Shared
         .await
         .context("apply database migrations")?;
 
-    let settings = SystemSettings::get_current(&db)
+    let settings = align_fastembed_system_settings(&db, &config)
         .await
-        .context("load system settings")?;
+        .context("align fastembed system settings")?;
 
     let openai_client = Arc::new(Client::with_config(
         async_openai::config::OpenAIConfig::new()

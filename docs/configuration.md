@@ -24,7 +24,8 @@ Minne can be configured via environment variables or a `config.yaml` file. Envir
 | `RUST_LOG` | Logging level | `info` |
 | `STORAGE` | Storage backend (`local`, `memory`, `s3`) | `local` |
 | `PDF_INGEST_MODE` | PDF ingestion strategy (`classic`, `llm-first`) | `llm-first` |
-| `EMBEDDING_BACKEND` | Embedding provider (`openai`, `fastembed`) | `fastembed` |
+| `EMBEDDING_BACKEND` | Embedding provider (`openai`, `fastembed`, `hashed`) | `fastembed` |
+| `FASTEMBED_MODEL` | FastEmbed HuggingFace `model_code` (overrides DB when set) | `Xenova/bge-small-en-v1.5` |
 | `FASTEMBED_CACHE_DIR` | Model cache directory | `<data_dir>/fastembed` |
 | `FASTEMBED_SHOW_DOWNLOAD_PROGRESS` | Show progress bar for model downloads | `false` |
 | `FASTEMBED_MAX_LENGTH` | Max sequence length for FastEmbed models | - |
@@ -76,6 +77,8 @@ storage: "local"
 # s3_region: "us-east-1"
 pdf_ingest_mode: "llm-first"
 embedding_backend: "fastembed"
+# HuggingFace model_code (see fastembed docs); dimensions are fixed per model
+fastembed_model: "Xenova/bge-small-en-v1.5"
 
 # Optional reranking
 reranking_enabled: true
