@@ -117,6 +117,10 @@ pub struct AppConfig {
     pub fastembed_show_download_progress: Option<bool>,
     #[serde(default)]
     pub fastembed_max_length: Option<usize>,
+    /// HuggingFace-style FastEmbed `model_code` (e.g. `Xenova/bge-small-en-v1.5`). Overrides
+    /// `system_settings.embedding_model` when `embedding_backend` is `fastembed`.
+    #[serde(default)]
+    pub fastembed_model: Option<String>,
     #[serde(default)]
     pub embedding_backend: EmbeddingBackend,
     #[serde(default)]
@@ -226,6 +230,7 @@ impl Default for AppConfig {
             fastembed_cache_dir: None,
             fastembed_show_download_progress: None,
             fastembed_max_length: None,
+            fastembed_model: None,
             embedding_backend: EmbeddingBackend::default(),
             embedding_pool_size: None,
             ingest_max_body_bytes: default_ingest_max_body_bytes(),

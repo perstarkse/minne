@@ -213,13 +213,158 @@ async fn release_reembed_lock(db: &SurrealDbClient, owner: &str) {
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
-    use common::storage::db::SurrealDbClient;
+    use common::{
+        storage::{
+            db::SurrealDbClient,
+            indexes::{embedding_index_dimension, ensure_runtime},
+            types::{system_settings::SystemSettings, text_chunk::TextChunk},
+        },
+        utils::embedding::EmbeddingProvider,
+    };
+
+    use crate::bootstrap::tests::init_smoke_services;
 
     async fn test_db() -> SurrealDbClient {
         SurrealDbClient::memory("reembed_lock_ns", &reembed_lock_owner())
             .await
             .expect("in-memory db")
+    }
+
+    /// Index at `stored_dim`, active provider at `target_dim` (no chunks — re-embed only rebuilds indexes).
+    async fn services_with_index_provider_mismatch(
+        stored_dim: usize,
+        target_dim: usize,
+    ) -> (super::SharedServices, std::path::PathBuf) {
+        let (mut services, data_dir) = init_smoke_services()
+            .await
+            .expect("smoke services");
+
+        ensure_runtime(&services.db, stored_dim)
+            .await
+            .expect("seed index at stored dimension");
+
+        let mut settings = SystemSettings::get_current(&services.db)
+            .await
+            .expect("settings");
+        settings.embedding_dimensions = u32::try_from(target_dim).expect("target dim fits u32");
+        SystemSettings::update(&services.db, settings)
+            .await
+            .expect("update settings");
+
+        services.embedding_provider = Arc::new(
+            EmbeddingProvider::new_hashed(target_dim).expect("hashed provider for test"),
+        );
+
+        (services, data_dir)
+    }
+
+    #[tokio::test]
+    async fn maintainer_reconciles_index_when_provider_dimension_differs() {
+        let (services, data_dir) = services_with_index_provider_mismatch(3, 5).await;
+
+        prepare_embedding_runtime(&services, EmbeddingRuntimeRole::Maintainer)
+            .await
+            .expect("maintainer startup");
+
+        assert_eq!(
+            embedding_index_dimension(&services.db).await.expect("index dim"),
+            Some(5),
+            "maintainer should rebuild the index to the provider dimension"
+        );
+
+        tokio::fs::remove_dir_all(&data_dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn read_only_startup_preserves_index_when_provider_dimension_differs() {
+        let (services, data_dir) = services_with_index_provider_mismatch(3, 5).await;
+
+        prepare_embedding_runtime(&services, EmbeddingRuntimeRole::ReadOnly)
+            .await
+            .expect("read-only startup");
+
+        assert_eq!(
+            embedding_index_dimension(&services.db).await.expect("index dim"),
+            Some(3),
+            "read-only server must not overwrite the index before a maintainer re-embeds"
+        );
+
+        tokio::fs::remove_dir_all(&data_dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn maintainer_reembeds_chunks_when_index_dimension_differs() {
+        let (mut services, data_dir) = init_smoke_services()
+            .await
+            .expect("smoke services");
+
+        let mut settings = SystemSettings::get_current(&services.db)
+            .await
+            .expect("settings");
+        settings.embedding_dimensions = 3;
+        SystemSettings::update(&services.db, settings)
+            .await
+            .expect("settings at stored dimension");
+        services.embedding_provider =
+            Arc::new(EmbeddingProvider::new_hashed(3).expect("stored-dimension provider"));
+
+        ensure_runtime(&services.db, 3)
+            .await
+            .expect("seed index at stored dimension");
+
+        let chunk = TextChunk::new(
+            "reembed-src".into(),
+            "dimension migration test chunk".into(),
+            "user1".into(),
+        );
+        TextChunk::store_with_embedding(chunk, vec![0.1, 0.2, 0.3], &services.db)
+            .await
+            .expect("store chunk at old dimension");
+
+        let mut settings = SystemSettings::get_current(&services.db)
+            .await
+            .expect("settings");
+        settings.embedding_dimensions = 5;
+        SystemSettings::update(&services.db, settings)
+            .await
+            .expect("update settings to target dimension");
+        services.embedding_provider =
+            Arc::new(EmbeddingProvider::new_hashed(5).expect("target provider"));
+
+        prepare_embedding_runtime(&services, EmbeddingRuntimeRole::Maintainer)
+            .await
+            .expect("maintainer startup with data");
+
+        assert_eq!(
+            embedding_index_dimension(&services.db).await.expect("index dim"),
+            Some(5)
+        );
+
+        let rows: Vec<serde_json::Value> = services
+            .db
+            .client
+            .query("SELECT embedding FROM text_chunk_embedding;")
+            .await
+            .expect("query embeddings")
+            .take(0)
+            .expect("take rows");
+        let row = rows
+            .first()
+            .expect("exactly one embedding row after re-embed");
+        let embedding = row
+            .get("embedding")
+            .and_then(|v| v.as_array())
+            .expect("embedding array");
+        assert_eq!(
+            embedding.len(),
+            5,
+            "stored vectors should match the new provider dimension"
+        );
+
+        tokio::fs::remove_dir_all(&data_dir).await.ok();
     }
 
     #[tokio::test]
