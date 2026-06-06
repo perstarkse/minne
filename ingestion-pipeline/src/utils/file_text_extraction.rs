@@ -74,10 +74,7 @@ pub async fn extract_text_from_file(
     config: &AppConfig,
     storage: &StorageManager,
 ) -> Result<String, AppError> {
-    let file_bytes = storage
-        .get(&file_info.path)
-        .await
-        .map_err(AppError::from)?;
+    let file_bytes = storage.get(&file_info.path).await.map_err(AppError::from)?;
     let local_path = resolve_existing_local_path(storage, &file_info.path).await;
 
     match file_info.mime_type.as_str() {

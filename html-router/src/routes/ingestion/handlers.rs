@@ -63,9 +63,7 @@ pub async fn show_ingest_form(
     ))
 }
 
-pub async fn hide_ingest_form(
-    RequireUser(_user): RequireUser,
-) -> TemplateResult {
+pub async fn hide_ingest_form(RequireUser(_user): RequireUser) -> TemplateResult {
     Ok(TemplateResponse::new_template(
         "ingestion/add_content_button.html",
         (),
@@ -148,8 +146,7 @@ pub async fn process_ingest_form(
         user.id.clone(),
     )?;
 
-    let tasks =
-        IngestionTask::create_all_and_add_to_db(payloads, &user.id, &state.db).await?;
+    let tasks = IngestionTask::create_all_and_add_to_db(payloads, &user.id, &state.db).await?;
 
     Ok(TemplateResponse::new_template(
         "dashboard/current_task.html",

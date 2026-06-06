@@ -29,8 +29,7 @@ impl RerankerPool {
     /// Build the pool at startup.
     /// `pool_size` controls max parallel reranks.
     pub fn new(pool_size: usize) -> Result<Arc<Self>, Box<AppError>> {
-        let init_options =
-            RerankInitOptions::new(fastembed::RerankerModel::JINARerankerV1TurboEn);
+        let init_options = RerankInitOptions::new(fastembed::RerankerModel::JINARerankerV1TurboEn);
         Self::new_with_options(pool_size, &init_options)
     }
 
@@ -44,8 +43,7 @@ impl RerankerPool {
             )));
         }
 
-        fs::create_dir_all(&init_options.cache_dir)
-            .map_err(|e| Box::new(AppError::from(e)))?;
+        fs::create_dir_all(&init_options.cache_dir).map_err(|e| Box::new(AppError::from(e)))?;
 
         let mut engines = Vec::with_capacity(pool_size);
         for x in 0..pool_size {
@@ -77,10 +75,7 @@ impl RerankerPool {
     /// This returns a lease that can perform `rerank()`.
     pub async fn checkout(self: &Arc<Self>) -> Option<RerankerLease> {
         // Acquire a permit. This enforces backpressure.
-        let permit = Arc::clone(&self.semaphore)
-            .acquire_owned()
-            .await
-            .ok()?;
+        let permit = Arc::clone(&self.semaphore).acquire_owned().await.ok()?;
 
         // Pick an engine.
         // This is naive: just pick based on a simple modulo counter.
@@ -165,9 +160,9 @@ impl RerankerLease {
         let engine = Arc::clone(&self.engine);
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = engine.lock().map_err(|_| {
-                AppError::InternalError("reranker engine mutex poisoned".into())
-            })?;
+            let mut guard = engine
+                .lock()
+                .map_err(|_| AppError::InternalError("reranker engine mutex poisoned".into()))?;
             guard
                 .rerank(query, documents, false, None)
                 .map_err(|e| AppError::InternalError(e.to_string()))

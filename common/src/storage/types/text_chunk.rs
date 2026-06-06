@@ -299,7 +299,11 @@ impl TextChunk {
             }
 
             processed = processed.saturating_add(batch.len());
-            info!(progress = processed, total = total_chunks, "Re-embedding progress");
+            info!(
+                progress = processed,
+                total = total_chunks,
+                "Re-embedding progress"
+            );
         }
         info!("Successfully generated all new embeddings.");
 

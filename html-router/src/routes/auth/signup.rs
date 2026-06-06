@@ -2,7 +2,10 @@ use axum::{extract::State, Form};
 use axum_htmx::HxBoosted;
 use serde::{Deserialize, Serialize};
 
-use common::{error::AppError, storage::types::user::{Theme, User}};
+use common::{
+    error::AppError,
+    storage::types::user::{Theme, User},
+};
 
 use crate::{
     html_state::HtmlState,

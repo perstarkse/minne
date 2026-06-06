@@ -131,14 +131,14 @@ pub async fn search_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError
     let vector_candidates = vector_rows.len();
     let fts_candidates = fts_rows.len();
 
-    let vector_scored: Vec<Scored<TextChunk>> = vector_rows
+    let vector_scored: Vec<Scored<Arc<TextChunk>>> = vector_rows
         .into_iter()
-        .map(|row| Scored::new(row.chunk).with_vector_score(row.score))
+        .map(|row| Scored::new(Arc::new(row.chunk)).with_vector_score(row.score))
         .collect();
 
-    let fts_scored: Vec<Scored<TextChunk>> = fts_rows
+    let fts_scored: Vec<Scored<Arc<TextChunk>>> = fts_rows
         .into_iter()
-        .map(|row| Scored::new(row.chunk).with_fts_score(row.score))
+        .map(|row| Scored::new(Arc::new(row.chunk)).with_fts_score(row.score))
         .collect();
 
     let mut fts_weight = tuning.chunk_rrf_fts_weight;
@@ -222,39 +222,62 @@ pub async fn rerank_chunks(ctx: &mut PipelineContext<'_>) -> Result<(), AppError
 /// and the contributing chunks are attached.
 #[instrument(level = "trace", skip_all)]
 pub async fn resolve_entities(ctx: &mut PipelineContext<'_>) -> Result<(), AppError> {
-    if ctx.chunk_values.is_empty() {
+    let chunk_values = std::mem::take(&mut ctx.chunk_values);
+    if chunk_values.is_empty() {
         return Ok(());
     }
 
     let max_chunks = ctx.config.tuning.max_chunks_per_entity.max(1);
 
+    struct IndexedChunk {
+        idx: usize,
+        score: f32,
+    }
+
     let mut source_order: Vec<String> = Vec::new();
-    let mut chunks_by_source: HashMap<String, Vec<RetrievedChunk>> = HashMap::new();
+    let mut chunks_by_source: HashMap<String, Vec<IndexedChunk>> = HashMap::new();
     let mut best_score: HashMap<String, f32> = HashMap::new();
 
-    for scored in &ctx.chunk_values {
-        let source_id = &scored.item.source_id;
-        let is_new_source = !chunks_by_source.contains_key(source_id);
-        if is_new_source {
-            source_order.push(source_id.clone());
+    for (idx, scored) in chunk_values.iter().enumerate() {
+        if let Some(attached) = chunks_by_source.get_mut(&scored.item.source_id) {
+            if attached.len() < max_chunks {
+                attached.push(IndexedChunk {
+                    idx,
+                    score: scored.fused,
+                });
+            }
+        } else {
+            let source_id = scored.item.source_id.clone();
             best_score.insert(source_id.clone(), scored.fused);
-        }
-
-        let attached = chunks_by_source
-            .entry(source_id.clone())
-            .or_default();
-        if attached.len() < max_chunks {
-            attached.push(RetrievedChunk {
-                chunk: scored.item.clone(),
-                score: scored.fused,
-            });
+            source_order.push(source_id.clone());
+            chunks_by_source.insert(
+                source_id,
+                vec![IndexedChunk {
+                    idx,
+                    score: scored.fused,
+                }],
+            );
         }
     }
 
     let chunks_by_source: HashMap<String, Arc<Vec<RetrievedChunk>>> = chunks_by_source
         .into_iter()
-        .map(|(source, chunks)| (source, Arc::new(chunks)))
+        .map(|(source, indices)| {
+            let chunks = indices
+                .into_iter()
+                .filter_map(|indexed| {
+                    let scored = chunk_values.get(indexed.idx)?;
+                    Some(RetrievedChunk {
+                        chunk: Arc::clone(&scored.item),
+                        score: indexed.score,
+                    })
+                })
+                .collect();
+            (source, Arc::new(chunks))
+        })
         .collect();
+
+    ctx.chunk_values = chunk_values;
 
     let entities =
         KnowledgeEntity::find_by_source_ids(ctx.db_client, &source_order, &ctx.user_id).await?;
@@ -336,10 +359,17 @@ fn sample_scores<T, F>(items: &[Scored<T>], extractor: F) -> Vec<f32>
 where
     F: FnMut(&Scored<T>) -> f32,
 {
-    items.iter().take(SCORE_SAMPLE_LIMIT).map(extractor).collect()
+    items
+        .iter()
+        .take(SCORE_SAMPLE_LIMIT)
+        .map(extractor)
+        .collect()
 }
 
-fn build_chunk_rerank_documents(chunks: &[Scored<TextChunk>], max_chunks: usize) -> Vec<String> {
+fn build_chunk_rerank_documents(
+    chunks: &[Scored<Arc<TextChunk>>],
+    max_chunks: usize,
+) -> Vec<String> {
     let take = chunks.len().min(max_chunks);
     let mut documents = Vec::with_capacity(take);
     let mut buffer = String::with_capacity(512);
@@ -363,7 +393,7 @@ fn build_chunk_rerank_documents(chunks: &[Scored<TextChunk>], max_chunks: usize)
 }
 
 fn apply_chunk_rerank_results(
-    chunks: &mut Vec<Scored<TextChunk>>,
+    chunks: &mut Vec<Scored<Arc<TextChunk>>>,
     tuning: &RetrievalTuning,
     results: Vec<RerankResult>,
 ) {
@@ -371,7 +401,7 @@ fn apply_chunk_rerank_results(
         return;
     }
 
-    let mut remaining: Vec<Option<Scored<TextChunk>>> =
+    let mut remaining: Vec<Option<Scored<Arc<TextChunk>>>> =
         std::mem::take(chunks).into_iter().map(Some).collect();
 
     let raw_scores: Vec<f32> = results.iter().map(|r| r.score).collect();
@@ -384,7 +414,7 @@ fn apply_chunk_rerank_results(
         clamp_unit(tuning.rerank_blend_weight)
     };
 
-    let mut reranked: Vec<Scored<TextChunk>> = Vec::with_capacity(remaining.len());
+    let mut reranked: Vec<Scored<Arc<TextChunk>>> = Vec::with_capacity(remaining.len());
     for (result, normalized) in results.into_iter().zip(normalized_scores.into_iter()) {
         if let Some(slot) = remaining.get_mut(result.index) {
             if let Some(mut candidate) = slot.take() {

@@ -37,7 +37,7 @@ use crate::{
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{
-            template_with_headers, TemplateResponse, TemplateResult, ResponseResult,
+            template_with_headers, ResponseResult, TemplateResponse, TemplateResult,
         },
     },
     utils::pagination::{paginate_items, paginate_slice, Pagination},
@@ -185,8 +185,7 @@ pub async fn create_knowledge_entity(
     let description = form.description.trim().to_string();
     let entity_type = KnowledgeEntityType::from(form.entity_type.trim().to_string());
 
-    let embedding_input =
-        format!("name: {name}, description: {description}, type: {entity_type:?}");
+    let embedding_input = KnowledgeEntity::embedding_input_text(&name, &description, entity_type);
     let embedding = state
         .embedding_provider
         .embed(&embedding_input)
@@ -290,10 +289,12 @@ pub async fn suggest_knowledge_relationships(
     if !query_parts.is_empty() {
         let name = form.name.as_deref().unwrap_or("").trim();
         let description = form.description.as_deref().unwrap_or("").trim();
-        let entity_type = form.entity_type.as_deref().map_or(
-            KnowledgeEntityType::Document,
-            |value| KnowledgeEntityType::from(value.to_string()),
-        );
+        let entity_type = form
+            .entity_type
+            .as_deref()
+            .map_or(KnowledgeEntityType::Document, |value| {
+                KnowledgeEntityType::from(value.to_string())
+            });
 
         let suggested = suggest_related_entities(
             &state.db,
@@ -374,10 +375,8 @@ async fn suggest_related_entities(
     draft: DraftEntityQuery<'_>,
     entity_lookup: &HashMap<String, KnowledgeEntity>,
 ) -> Result<HashMap<String, f32>, AppError> {
-    let embedding_input = format!(
-        "name: {}, description: {}, type: {:?}",
-        draft.name, draft.description, draft.entity_type
-    );
+    let embedding_input =
+        KnowledgeEntity::embedding_input_text(draft.name, draft.description, draft.entity_type);
     let embedding = embedding_provider.embed(&embedding_input).await?;
 
     let take = MAX_RELATIONSHIP_SUGGESTIONS * 2;
@@ -484,11 +483,7 @@ fn build_relationship_options(
 
 fn build_relationship_rows(
     relationships: Vec<KnowledgeRelationship>,
-) -> (
-    Vec<RelationshipTableRow>,
-    Vec<String>,
-    String,
-) {
+) -> (Vec<RelationshipTableRow>, Vec<String>, String) {
     let relationship_type_options = collect_relationship_type_options(&relationships);
     let mut frequency: HashMap<String, usize> = HashMap::new();
     let relationships = relationships
@@ -509,10 +504,7 @@ fn build_relationship_rows(
     let default_relationship_type = frequency
         .into_iter()
         .max_by_key(|(_, count)| *count)
-        .map_or_else(
-            || DEFAULT_RELATIONSHIP_TYPE.to_string(),
-            |(label, _)| label,
-        );
+        .map_or_else(|| DEFAULT_RELATIONSHIP_TYPE.to_string(), |(label, _)| label);
 
     (
         relationships,

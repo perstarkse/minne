@@ -18,8 +18,8 @@ use crate::{
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{
-            template_as_response, template_with_headers, TemplateResponse, TemplateResult,
-            ResponseResult,
+            template_as_response, template_with_headers, ResponseResult, TemplateResponse,
+            TemplateResult,
         },
     },
 };

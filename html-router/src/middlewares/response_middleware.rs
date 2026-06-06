@@ -183,9 +183,7 @@ fn forward_headers(from: &axum::http::HeaderMap, to: &mut axum::http::HeaderMap)
     }
 }
 
-fn context_to_map(
-    value: &Value,
-) -> Result<HashMap<String, Value>, minijinja::value::ValueKind> {
+fn context_to_map(value: &Value) -> Result<HashMap<String, Value>, minijinja::value::ValueKind> {
     match value.kind() {
         minijinja::value::ValueKind::Map => {
             let mut map = HashMap::new();

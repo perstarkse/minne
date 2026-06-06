@@ -1,8 +1,6 @@
 #![allow(clippy::missing_docs_in_private_items)]
 
-use axum::{
-    extract::{Path, State},
-};
+use axum::extract::{Path, State};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use serde::Serialize;

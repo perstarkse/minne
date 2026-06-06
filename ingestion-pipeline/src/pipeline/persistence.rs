@@ -48,20 +48,20 @@ const STORE_RELATIONSHIPS: &str = r"
 pub(super) async fn store_vector_chunks(
     db: &SurrealDbClient,
     task_id: &str,
-    chunks: &[EmbeddedTextChunk],
+    chunks: Vec<EmbeddedTextChunk>,
 ) -> Result<usize, AppError> {
+    let chunk_count = chunks.len();
     for embedded in chunks {
-        TextChunk::store_with_embedding(embedded.chunk.clone(), embedded.embedding.clone(), db)
-            .await?;
         debug!(
             task_id = %task_id,
             chunk_id = %embedded.chunk.id,
             chunk_len = embedded.chunk.chunk.chars().count(),
             "chunk persisted"
         );
+        TextChunk::store_with_embedding(embedded.chunk, embedded.embedding, db).await?;
     }
 
-    Ok(chunks.len())
+    Ok(chunk_count)
 }
 
 /// Persists knowledge entities and their relationships.

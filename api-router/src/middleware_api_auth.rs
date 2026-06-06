@@ -92,9 +92,10 @@ mod tests {
     #[test]
     fn extract_api_key_rejects_invalid_header_values() {
         let mut request = request_with_headers(&[]);
-        request
-            .headers_mut()
-            .insert("X-API-Key", HeaderValue::from_bytes(&[0xFF]).expect("invalid header"));
+        request.headers_mut().insert(
+            "X-API-Key",
+            HeaderValue::from_bytes(&[0xFF]).expect("invalid header"),
+        );
         assert_eq!(extract_api_key(&request), None);
     }
 }

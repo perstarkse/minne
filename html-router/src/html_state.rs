@@ -142,7 +142,9 @@ impl HtmlState {
             return;
         }
 
-        let overflow = cache.len().saturating_sub(CONVERSATION_ARCHIVE_CACHE_MAX_USERS);
+        let overflow = cache
+            .len()
+            .saturating_sub(CONVERSATION_ARCHIVE_CACHE_MAX_USERS);
         let mut by_expiry: Vec<(String, Instant)> = cache
             .iter()
             .map(|(user_id, entry)| (user_id.clone(), entry.expires_at))

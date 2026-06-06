@@ -1,9 +1,35 @@
 use std::{
     cmp::Ordering,
     collections::{hash_map::Entry, HashMap},
+    sync::Arc,
 };
 
-use common::storage::types::StoredObject;
+use common::storage::types::{
+    knowledge_entity::KnowledgeEntity, text_chunk::TextChunk, StoredObject,
+};
+
+/// Identifier access for retrieval fusion and sorting.
+pub trait RetrievalCandidate {
+    fn candidate_id(&self) -> &str;
+}
+
+impl RetrievalCandidate for TextChunk {
+    fn candidate_id(&self) -> &str {
+        self.id()
+    }
+}
+
+impl RetrievalCandidate for Arc<TextChunk> {
+    fn candidate_id(&self) -> &str {
+        self.as_ref().id()
+    }
+}
+
+impl RetrievalCandidate for KnowledgeEntity {
+    fn candidate_id(&self) -> &str {
+        self.id()
+    }
+}
 
 /// Holds optional subscores gathered from the vector and full-text retrieval signals.
 #[derive(Debug, Clone, Copy, Default)]
@@ -102,13 +128,13 @@ pub fn min_max_normalize(scores: &[f32]) -> Vec<f32> {
 
 pub fn sort_by_fused_desc<T>(items: &mut [Scored<T>])
 where
-    T: StoredObject,
+    T: RetrievalCandidate,
 {
     items.sort_by(|a, b| {
         b.fused
             .partial_cmp(&a.fused)
             .unwrap_or(Ordering::Equal)
-            .then_with(|| a.item.id().cmp(b.item.id()))
+            .then_with(|| a.item.candidate_id().cmp(b.item.candidate_id()))
     });
 }
 
@@ -122,7 +148,7 @@ pub fn reciprocal_rank_fusion<T>(
     config: RrfConfig,
 ) -> Vec<Scored<T>>
 where
-    T: StoredObject,
+    T: RetrievalCandidate,
 {
     let mut merged: HashMap<String, Scored<T>> = HashMap::new();
     let k = if config.k <= 0.0 { 60.0 } else { config.k };
@@ -144,11 +170,11 @@ where
             b_score
                 .partial_cmp(&a_score)
                 .unwrap_or(Ordering::Equal)
-                .then_with(|| a.item.id().cmp(b.item.id()))
+                .then_with(|| a.item.candidate_id().cmp(b.item.candidate_id()))
         });
 
         for (rank, candidate) in vector_ranked.into_iter().enumerate() {
-            let id = candidate.item.id().to_owned();
+            let id = candidate.item.candidate_id().to_owned();
             let rank_f32: f32 = u16::try_from(rank).map_or(f32::MAX, f32::from);
             let contribution = vector_weight / (k + rank_f32 + 1.0);
 
@@ -183,11 +209,11 @@ where
             b_score
                 .partial_cmp(&a_score)
                 .unwrap_or(Ordering::Equal)
-                .then_with(|| a.item.id().cmp(b.item.id()))
+                .then_with(|| a.item.candidate_id().cmp(b.item.candidate_id()))
         });
 
         for (rank, candidate) in fts_ranked.into_iter().enumerate() {
-            let id = candidate.item.id().to_owned();
+            let id = candidate.item.candidate_id().to_owned();
             let rank_f32: f32 = u16::try_from(rank).map_or(f32::MAX, f32::from);
             let contribution = fts_weight / (k + rank_f32 + 1.0);
 

@@ -38,7 +38,7 @@ enum EmbeddingInner {
         /// Client used to issue embedding requests.
         client: Arc<Client<async_openai::config::OpenAIConfig>>,
         /// Model identifier for the API.
-        model: String,
+        model: Arc<str>,
         /// Expected output dimensions.
         dimensions: u32,
     },
@@ -272,8 +272,9 @@ struct FastEmbedLease {
 }
 
 impl FastEmbedLease {
-    async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         let engine = Arc::clone(&self.engine);
+        let texts = texts.to_vec();
         tokio::task::spawn_blocking(move || -> Result<Vec<Vec<f32>>, EmbeddingError> {
             let mut guard = engine.lock().map_err(EmbeddingError::mutex_poisoned)?;
             guard.embed(texts, None).map_err(EmbeddingError::fastembed)
@@ -293,7 +294,7 @@ impl Drop for FastEmbedLease {
 
 async fn run_fastembed(
     pool: &Arc<FastEmbedPool>,
-    texts: Vec<String>,
+    texts: &[String],
 ) -> Result<Vec<Vec<f32>>, EmbeddingError> {
     let lease = pool.checkout().await?;
     lease.embed(texts).await
@@ -323,7 +324,7 @@ impl EmbeddingProvider {
     pub fn model_code(&self) -> Option<String> {
         match &self.inner {
             EmbeddingInner::FastEmbed { model_name, .. } => Some(model_name.to_string()),
-            EmbeddingInner::OpenAI { model, .. } => Some(model.clone()),
+            EmbeddingInner::OpenAI { model, .. } => Some(model.as_ref().to_owned()),
             EmbeddingInner::Hashed { .. } => None,
         }
     }
@@ -338,7 +339,8 @@ impl EmbeddingProvider {
         match &self.inner {
             EmbeddingInner::Hashed { dimension } => Ok(hashed_embedding(text, *dimension)),
             EmbeddingInner::FastEmbed { pool, .. } => {
-                let embeddings = run_fastembed(pool, vec![text.to_owned()]).await?;
+                let text = text.to_owned();
+                let embeddings = run_fastembed(pool, std::slice::from_ref(&text)).await?;
                 embeddings.into_iter().next().ok_or(EmbeddingError::NoData)
             }
             EmbeddingInner::OpenAI {
@@ -347,7 +349,7 @@ impl EmbeddingProvider {
                 dimensions,
             } => {
                 let request = CreateEmbeddingRequestArgs::default()
-                    .model(model.clone())
+                    .model(model.as_ref())
                     .input([text])
                     .dimensions(*dimensions)
                     .build()?;
@@ -382,7 +384,7 @@ impl EmbeddingProvider {
                 if texts.is_empty() {
                     return Ok(Vec::new());
                 }
-                run_fastembed(pool, texts.to_vec()).await
+                run_fastembed(pool, texts).await
             }
             EmbeddingInner::OpenAI {
                 client,
@@ -394,7 +396,7 @@ impl EmbeddingProvider {
                 }
 
                 let request = CreateEmbeddingRequestArgs::default()
-                    .model(model.clone())
+                    .model(model.as_ref())
                     .input(texts.to_vec())
                     .dimensions(*dimensions)
                     .build()?;
@@ -417,13 +419,13 @@ impl EmbeddingProvider {
     /// Currently infallible; reserved for future validation.
     pub fn new_openai(
         client: Arc<Client<async_openai::config::OpenAIConfig>>,
-        model: String,
+        model: impl AsRef<str>,
         dimensions: u32,
     ) -> Result<Self, EmbeddingError> {
         Ok(Self {
             inner: EmbeddingInner::OpenAI {
                 client,
-                model,
+                model: Arc::from(model.as_ref()),
                 dimensions,
             },
         })
@@ -520,7 +522,7 @@ impl EmbeddingProvider {
                         "openai embedding backend requires an openai client".into(),
                     )
                 })?;
-                Self::new_openai(client, settings.embedding_model.clone(), dimensions)
+                Self::new_openai(client, settings.embedding_model.as_str(), dimensions)
             }
             EmbeddingBackend::FastEmbed => {
                 let pool_size = config
@@ -586,11 +588,12 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
-        align_fastembed_system_settings, fastembed_model_dimension, list_fastembed_embedding_models,
-        resolve_fastembed_model_code, DEFAULT_FASTEMBED_MODEL_CODE, EmbeddingError,
+        align_fastembed_system_settings, fastembed_model_dimension,
+        list_fastembed_embedding_models, resolve_fastembed_model_code, EmbeddingError,
+        DEFAULT_FASTEMBED_MODEL_CODE,
     };
-    use crate::utils::config::{AppConfig, EmbeddingBackend, ParseEmbeddingBackendError};
     use crate::storage::types::system_settings::SystemSettings;
+    use crate::utils::config::{AppConfig, EmbeddingBackend, ParseEmbeddingBackendError};
     use serde_json::json;
 
     #[test]
@@ -656,16 +659,16 @@ mod tests {
             fastembed_model: Some("Xenova/bge-base-en-v1.5".into()),
             ..AppConfig::default()
         };
-        let resolved = resolve_fastembed_model_code(&config, "text-embedding-3-small")
-            .expect("config model");
+        let resolved =
+            resolve_fastembed_model_code(&config, "text-embedding-3-small").expect("config model");
         assert_eq!(resolved, "Xenova/bge-base-en-v1.5");
     }
 
     #[test]
     fn resolve_fastembed_model_falls_back_from_openai_default() {
         let config = AppConfig::default();
-        let resolved = resolve_fastembed_model_code(&config, "text-embedding-3-small")
-            .expect("default model");
+        let resolved =
+            resolve_fastembed_model_code(&config, "text-embedding-3-small").expect("default model");
         assert_eq!(resolved, DEFAULT_FASTEMBED_MODEL_CODE);
     }
 

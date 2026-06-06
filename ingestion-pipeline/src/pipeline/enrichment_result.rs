@@ -6,11 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use common::{
     error::AppError,
-    storage::{
-        types::{
-            knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
-            knowledge_relationship::KnowledgeRelationship,
-        },
+    storage::types::{
+        knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
+        knowledge_relationship::KnowledgeRelationship,
     },
     utils::embedding::EmbeddingProvider,
 };
@@ -83,25 +81,32 @@ impl LLMEnrichmentResult {
         entity_concurrency: usize,
         embedding_provider: &EmbeddingProvider,
     ) -> Result<Vec<EmbeddedKnowledgeEntity>, AppError> {
-        stream::iter(self.knowledge_entities.clone().into_iter().map(|entity| {
-            let mapper = Arc::clone(&mapper);
-            let source_id = source_id.to_string();
-            let user_id = user_id.to_string();
+        let tasks: Vec<_> = self
+            .knowledge_entities
+            .iter()
+            .map(|entity| {
+                let llm_entity = entity.clone();
+                let mapper = Arc::clone(&mapper);
+                let source_id = source_id.to_string();
+                let user_id = user_id.to_string();
 
-            async move {
-                create_single_entity(
-                    &entity,
-                    &source_id,
-                    &user_id,
-                    mapper,
-                    embedding_provider,
-                )
-                .await
-            }
-        }))
-        .buffer_unordered(entity_concurrency.max(1))
-        .try_collect()
-        .await
+                async move {
+                    create_single_entity(
+                        llm_entity,
+                        &source_id,
+                        &user_id,
+                        mapper,
+                        embedding_provider,
+                    )
+                    .await
+                }
+            })
+            .collect();
+
+        stream::iter(tasks)
+            .buffer_unordered(entity_concurrency.max(1))
+            .try_collect()
+            .await
     }
 
     fn process_relationships(
@@ -129,7 +134,7 @@ impl LLMEnrichmentResult {
 }
 
 async fn create_single_entity(
-    llm_entity: &LLMKnowledgeEntity,
+    llm_entity: LLMKnowledgeEntity,
     source_id: &str,
     user_id: &str,
     mapper: Arc<GraphMapper>,
@@ -137,9 +142,11 @@ async fn create_single_entity(
 ) -> Result<EmbeddedKnowledgeEntity, AppError> {
     let assigned_id = mapper.get_id(&llm_entity.key)?.to_string();
 
-    let embedding_input = format!(
-        "name: {}, description: {}, type: {}",
-        llm_entity.name, llm_entity.description, llm_entity.entity_type
+    let entity_type = KnowledgeEntityType::from(llm_entity.entity_type);
+    let embedding_input = KnowledgeEntity::embedding_input_text(
+        &llm_entity.name,
+        &llm_entity.description,
+        entity_type,
     );
 
     let embedding = embedding_provider.embed(&embedding_input).await?;
@@ -149,9 +156,9 @@ async fn create_single_entity(
         id: assigned_id,
         created_at: now,
         updated_at: now,
-        name: llm_entity.name.clone(),
-        description: llm_entity.description.clone(),
-        entity_type: KnowledgeEntityType::from(llm_entity.entity_type.clone()),
+        name: llm_entity.name,
+        description: llm_entity.description,
+        entity_type,
         source_id: source_id.to_string(),
         metadata: None,
         user_id: user_id.into(),

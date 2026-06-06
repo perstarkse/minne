@@ -140,8 +140,7 @@ impl TextContent {
             .await
             .map_err(AppError::from)?;
 
-        let existing: Option<surrealdb::sql::Thing> =
-            response.take(0).map_err(AppError::from)?;
+        let existing: Option<surrealdb::sql::Thing> = response.take(0).map_err(AppError::from)?;
 
         Ok(existing.is_some())
     }

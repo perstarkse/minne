@@ -67,7 +67,8 @@ pub async fn prepare_embedding_runtime(
     let index_dim = if mismatch {
         match role {
             EmbeddingRuntimeRole::Maintainer => {
-                reconcile_embeddings(&services.db, &services.embedding_provider, target_dim).await?;
+                reconcile_embeddings(&services.db, &services.embedding_provider, target_dim)
+                    .await?;
                 target_dim
             }
             EmbeddingRuntimeRole::ReadOnly => {
@@ -238,9 +239,7 @@ mod tests {
         stored_dim: usize,
         target_dim: usize,
     ) -> (super::SharedServices, std::path::PathBuf) {
-        let (mut services, data_dir) = init_smoke_services()
-            .await
-            .expect("smoke services");
+        let (mut services, data_dir) = init_smoke_services().await.expect("smoke services");
 
         ensure_runtime(&services.db, stored_dim)
             .await
@@ -254,9 +253,8 @@ mod tests {
             .await
             .expect("update settings");
 
-        services.embedding_provider = Arc::new(
-            EmbeddingProvider::new_hashed(target_dim).expect("hashed provider for test"),
-        );
+        services.embedding_provider =
+            Arc::new(EmbeddingProvider::new_hashed(target_dim).expect("hashed provider for test"));
 
         (services, data_dir)
     }
@@ -270,7 +268,9 @@ mod tests {
             .expect("maintainer startup");
 
         assert_eq!(
-            embedding_index_dimension(&services.db).await.expect("index dim"),
+            embedding_index_dimension(&services.db)
+                .await
+                .expect("index dim"),
             Some(5),
             "maintainer should rebuild the index to the provider dimension"
         );
@@ -287,7 +287,9 @@ mod tests {
             .expect("read-only startup");
 
         assert_eq!(
-            embedding_index_dimension(&services.db).await.expect("index dim"),
+            embedding_index_dimension(&services.db)
+                .await
+                .expect("index dim"),
             Some(3),
             "read-only server must not overwrite the index before a maintainer re-embeds"
         );
@@ -297,9 +299,7 @@ mod tests {
 
     #[tokio::test]
     async fn maintainer_reembeds_chunks_when_index_dimension_differs() {
-        let (mut services, data_dir) = init_smoke_services()
-            .await
-            .expect("smoke services");
+        let (mut services, data_dir) = init_smoke_services().await.expect("smoke services");
 
         let mut settings = SystemSettings::get_current(&services.db)
             .await
@@ -339,7 +339,9 @@ mod tests {
             .expect("maintainer startup with data");
 
         assert_eq!(
-            embedding_index_dimension(&services.db).await.expect("index dim"),
+            embedding_index_dimension(&services.db)
+                .await
+                .expect("index dim"),
             Some(5)
         );
 

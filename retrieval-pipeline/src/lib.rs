@@ -7,6 +7,8 @@ pub mod scoring;
 
 use std::sync::Arc;
 
+pub use scoring::RetrievalCandidate;
+
 use common::{
     error::AppError,
     storage::{
@@ -45,7 +47,7 @@ pub(crate) fn round_score(value: f32) -> f64 {
 // Captures a supporting chunk plus its fused retrieval score for downstream prompts.
 #[derive(Debug, Clone)]
 pub struct RetrievedChunk {
-    pub chunk: TextChunk,
+    pub chunk: Arc<TextChunk>,
     pub score: f32,
 }
 
@@ -159,7 +161,9 @@ mod tests {
 
         assert!(!chunks.is_empty(), "Expected at least one retrieval result");
         assert!(
-            chunks.first().is_some_and(|c| c.chunk.chunk.contains("Tokio")),
+            chunks
+                .first()
+                .is_some_and(|c| c.chunk.chunk.contains("Tokio")),
             "Expected chunk about Tokio"
         );
         Ok(())
