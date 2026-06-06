@@ -372,17 +372,17 @@ impl EmbeddingProvider {
     ///
     /// Returns [`EmbeddingError`] if the backend API call fails or returns no embedding data.
     /// Returns an empty `Vec` when `texts` is empty.
-    pub async fn embed_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+    pub async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         match &self.inner {
             EmbeddingInner::Hashed { dimension } => Ok(texts
-                .into_iter()
-                .map(|text| hashed_embedding(&text, *dimension))
+                .iter()
+                .map(|text| hashed_embedding(text, *dimension))
                 .collect()),
             EmbeddingInner::FastEmbed { pool, .. } => {
                 if texts.is_empty() {
                     return Ok(Vec::new());
                 }
-                run_fastembed(pool, texts).await
+                run_fastembed(pool, texts.to_vec()).await
             }
             EmbeddingInner::OpenAI {
                 client,
@@ -395,7 +395,7 @@ impl EmbeddingProvider {
 
                 let request = CreateEmbeddingRequestArgs::default()
                     .model(model.clone())
-                    .input(texts)
+                    .input(texts.to_vec())
                     .dimensions(*dimensions)
                     .build()?;
 

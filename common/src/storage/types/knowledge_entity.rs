@@ -258,7 +258,7 @@ impl KnowledgeEntity {
     /// Vector search over knowledge entities using the embedding table, fetching full entity rows and scores.
     pub async fn vector_search(
         take: usize,
-        query_embedding: Vec<f32>,
+        query_embedding: &[f32],
         db: &SurrealDbClient,
         user_id: &str,
     ) -> Result<Vec<KnowledgeEntitySearchResult>, AppError> {
@@ -286,7 +286,7 @@ impl KnowledgeEntity {
 
         let mut response = db
             .query(&sql)
-            .bind(("embedding", query_embedding))
+            .bind(("embedding", query_embedding.to_vec()))
             .bind(("user_id", user_id.to_string()))
             .await
             .map_err(AppError::from)?;
@@ -408,7 +408,7 @@ impl KnowledgeEntity {
                     )
                 })
                 .collect();
-            let embeddings = provider.embed_batch(inputs).await?;
+            let embeddings = provider.embed_batch(&inputs).await?;
             if embeddings.len() != batch.len() {
                 return Err(AppError::internal(format!(
                     "embedding batch returned {} vectors for {} entities",
@@ -817,7 +817,7 @@ mod tests {
             .await
             .expect("Failed to redefine index length");
 
-        let results = KnowledgeEntity::vector_search(5, vec![0.1, 0.2, 0.3], &db, "user")
+        let results = KnowledgeEntity::vector_search(5, &[0.1, 0.2, 0.3], &db, "user")
             .await
             .expect("vector search");
         assert!(results.is_empty());
@@ -878,7 +878,7 @@ mod tests {
             .with_context(|| "fetch embedding".to_string())?;
         assert!(fetched_emb.is_some());
 
-        let results = KnowledgeEntity::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
+        let results = KnowledgeEntity::vector_search(3, &[0.1, 0.2, 0.3], &db, &user_id)
             .await
             .with_context(|| "vector search".to_string())?;
 
@@ -965,7 +965,7 @@ mod tests {
             .with_context(|| "get embedding e2".to_string())?
             .is_some());
 
-        let results = KnowledgeEntity::vector_search(2, vec![0.0, 1.0, 0.0], &db, &user_id)
+        let results = KnowledgeEntity::vector_search(2, &[0.0, 1.0, 0.0], &db, &user_id)
             .await
             .with_context(|| "vector search".to_string())?;
 
@@ -1030,7 +1030,7 @@ mod tests {
             .await
             .with_context(|| "delete entity".to_string())?;
 
-        let results = KnowledgeEntity::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
+        let results = KnowledgeEntity::vector_search(3, &[0.1, 0.2, 0.3], &db, &user_id)
             .await
             .with_context(|| "search should succeed even with orphans".to_string())?;
 

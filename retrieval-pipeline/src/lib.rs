@@ -5,6 +5,8 @@ pub mod query;
 pub mod reranking;
 pub mod scoring;
 
+use std::sync::Arc;
+
 use common::{
     error::AppError,
     storage::{
@@ -52,7 +54,7 @@ pub struct RetrievedChunk {
 pub struct RetrievedEntity {
     pub entity: KnowledgeEntity,
     pub score: f32,
-    pub chunks: Vec<RetrievedChunk>,
+    pub chunks: Arc<Vec<RetrievedChunk>>,
 }
 
 /// Run chunk-first hybrid retrieval for `input_text`, optionally resolving owning entities.
