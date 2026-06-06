@@ -107,7 +107,7 @@ impl TextChunk {
     /// Vector search over text chunks using the embedding table, fetching full chunk rows and embeddings.
     pub async fn vector_search(
         take: usize,
-        query_embedding: Vec<f32>,
+        query_embedding: &[f32],
         db: &SurrealDbClient,
         user_id: &str,
     ) -> Result<Vec<TextChunkSearchResult>, AppError> {
@@ -137,7 +137,7 @@ impl TextChunk {
 
         let mut response = db
             .query(&sql)
-            .bind(("embedding", query_embedding))
+            .bind(("embedding", query_embedding.to_vec()))
             .bind(("user_id", user_id.to_string()))
             .await
             .map_err(AppError::from)?;
@@ -273,7 +273,7 @@ impl TextChunk {
         let mut processed = 0usize;
         for batch in all_chunks.chunks(RE_EMBED_BATCH_SIZE) {
             let inputs: Vec<String> = batch.iter().map(|chunk| chunk.chunk.clone()).collect();
-            let embeddings = provider.embed_batch(inputs).await?;
+            let embeddings = provider.embed_batch(&inputs).await?;
             if embeddings.len() != batch.len() {
                 return Err(AppError::internal(format!(
                     "embedding batch returned {} vectors for {} chunks",
@@ -720,7 +720,7 @@ mod tests {
             .with_context(|| "redefine index".to_string())?;
 
         let results: Vec<TextChunkSearchResult> =
-            TextChunk::vector_search(5, vec![0.1, 0.2, 0.3], &db, "user")
+            TextChunk::vector_search(5, &[0.1, 0.2, 0.3], &db, "user")
                 .await
                 .with_context(|| "vector_search".to_string())?;
         assert!(results.is_empty());
@@ -756,7 +756,7 @@ mod tests {
             .with_context(|| "store".to_string())?;
 
         let results: Vec<TextChunkSearchResult> =
-            TextChunk::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
+            TextChunk::vector_search(3, &[0.1, 0.2, 0.3], &db, &user_id)
                 .await
                 .with_context(|| "vector_search".to_string())?;
 
@@ -796,7 +796,7 @@ mod tests {
             .with_context(|| "store chunk2".to_string())?;
 
         let results: Vec<TextChunkSearchResult> =
-            TextChunk::vector_search(2, vec![0.0, 1.0, 0.0], &db, &user_id)
+            TextChunk::vector_search(2, &[0.0, 1.0, 0.0], &db, &user_id)
                 .await
                 .with_context(|| "vector_search".to_string())?;
 
@@ -987,7 +987,7 @@ mod tests {
             .await
             .with_context(|| "delete chunk".to_string())?;
 
-        let results = TextChunk::vector_search(3, vec![0.1, 0.2, 0.3], &db, &user_id)
+        let results = TextChunk::vector_search(3, &[0.1, 0.2, 0.3], &db, &user_id)
             .await
             .with_context(|| "search should succeed even with orphans".to_string())?;
 

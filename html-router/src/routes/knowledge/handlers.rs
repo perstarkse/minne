@@ -40,7 +40,7 @@ use crate::{
             template_with_headers, TemplateResponse, TemplateResult, ResponseResult,
         },
     },
-    utils::pagination::{paginate_items, Pagination},
+    utils::pagination::{paginate_items, paginate_slice, Pagination},
 };
 use url::form_urlencoded;
 
@@ -196,16 +196,18 @@ pub async fn create_knowledge_entity(
     let source_id = format!("manual::{}", Uuid::new_v4());
     let new_entity = KnowledgeEntity::new(
         source_id,
-        name.clone(),
-        description.clone(),
+        name,
+        description,
         entity_type,
         None,
         user.id.clone(),
     );
+    let new_entity_id = new_entity.id.clone();
 
-    KnowledgeEntity::store_with_embedding(new_entity.clone(), embedding, &state.db).await?;
+    KnowledgeEntity::store_with_embedding(new_entity, embedding, &state.db).await?;
 
     let relationship_type = relationship_type_or_default(form.relationship_type.as_deref());
+    let user_id = user.id.clone();
 
     debug!("form: {:?}", form);
     if !form.relationship_ids.is_empty() {
@@ -217,7 +219,7 @@ pub async fn create_knowledge_entity(
         let mut unique_ids: HashSet<String> = HashSet::new();
 
         for target_id in form.relationship_ids {
-            if target_id == new_entity.id {
+            if target_id == new_entity_id {
                 continue;
             }
             if !valid_ids.contains(&target_id) {
@@ -228,10 +230,10 @@ pub async fn create_knowledge_entity(
             }
 
             let relationship = KnowledgeRelationship::new(
-                new_entity.id.clone(),
+                new_entity_id.clone(),
                 target_id,
-                user.id.clone(),
-                format!("manual::{}", new_entity.id),
+                user_id.clone(),
+                format!("manual::{new_entity_id}"),
                 relationship_type.clone(),
             );
             relationship.store_relationship(&state.db).await?;
@@ -385,7 +387,7 @@ async fn suggest_related_entities(
     let suggestion_min_rrf_score = 1.0 / (tuning.chunk_rrf_k + 1.0);
 
     let (vector_rows, fts_rows) = tokio::try_join!(
-        KnowledgeEntity::vector_search(take, embedding, db, user_id),
+        KnowledgeEntity::vector_search(take, &embedding, db, user_id),
         async {
             if fts_enabled {
                 KnowledgeEntity::fts_search(take, &fts_query, db, user_id).await
@@ -480,10 +482,13 @@ fn build_relationship_options(
     options
 }
 
-fn build_relationship_table_data(
-    entities: Vec<KnowledgeEntity>,
+fn build_relationship_rows(
     relationships: Vec<KnowledgeRelationship>,
-) -> RelationshipTableData {
+) -> (
+    Vec<RelationshipTableRow>,
+    Vec<String>,
+    String,
+) {
     let relationship_type_options = collect_relationship_type_options(&relationships);
     let mut frequency: HashMap<String, usize> = HashMap::new();
     let relationships = relationships
@@ -503,7 +508,25 @@ fn build_relationship_table_data(
         .collect();
     let default_relationship_type = frequency
         .into_iter()
-        .max_by_key(|(_, count)| *count).map_or_else(|| DEFAULT_RELATIONSHIP_TYPE.to_string(), |(label, _)| label);
+        .max_by_key(|(_, count)| *count)
+        .map_or_else(
+            || DEFAULT_RELATIONSHIP_TYPE.to_string(),
+            |(label, _)| label,
+        );
+
+    (
+        relationships,
+        relationship_type_options,
+        default_relationship_type,
+    )
+}
+
+fn build_relationship_table_data(
+    entities: Vec<KnowledgeEntity>,
+    relationships: Vec<KnowledgeRelationship>,
+) -> RelationshipTableData {
+    let (relationships, relationship_type_options, default_relationship_type) =
+        build_relationship_rows(relationships);
 
     RelationshipTableData {
         entities,
@@ -532,7 +555,7 @@ async fn build_knowledge_base_data(
     };
 
     let (visible_entities, pagination) =
-        paginate_items(entities.clone(), params.page, KNOWLEDGE_ENTITIES_PER_PAGE);
+        paginate_slice(&entities, params.page, KNOWLEDGE_ENTITIES_PER_PAGE);
 
     let page_query = {
         let mut serializer = form_urlencoded::Serializer::new(String::new());
@@ -551,17 +574,15 @@ async fn build_knowledge_base_data(
     };
 
     let relationships = User::get_knowledge_relationships(&user.id, &state.db).await?;
-    let entity_id_set: HashSet<String> = entities.iter().map(|e| e.id.clone()).collect();
+    let entity_id_set: HashSet<&str> = entities.iter().map(|e| e.id.as_str()).collect();
     let filtered_relationships: Vec<KnowledgeRelationship> = relationships
         .into_iter()
-        .filter(|rel| entity_id_set.contains(&rel.in_) && entity_id_set.contains(&rel.out))
+        .filter(|rel| {
+            entity_id_set.contains(rel.in_.as_str()) && entity_id_set.contains(rel.out.as_str())
+        })
         .collect();
-    let RelationshipTableData {
-        entities: _,
-        relationships,
-        relationship_type_options,
-        default_relationship_type,
-    } = build_relationship_table_data(entities.clone(), filtered_relationships);
+    let (relationships, relationship_type_options, default_relationship_type) =
+        build_relationship_rows(filtered_relationships);
 
     Ok(KnowledgeBaseData {
         entities,

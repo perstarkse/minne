@@ -91,10 +91,10 @@ impl MockServices {
             similar_entities: vec![RetrievedEntity {
                 entity: retrieved_entity,
                 score: 0.8,
-                chunks: vec![RetrievedChunk {
+                chunks: std::sync::Arc::new(vec![RetrievedChunk {
                     chunk: retrieved_chunk,
                     score: 0.7,
-                }],
+                }]),
             }],
             analysis,
             chunk_embedding: vec![0.3; TEST_EMBEDDING_DIM],

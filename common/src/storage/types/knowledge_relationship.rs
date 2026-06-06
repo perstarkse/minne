@@ -42,11 +42,23 @@ impl KnowledgeRelationship {
         }
     }
 
-    pub async fn store_relationship(&self, db_client: &SurrealDbClient) -> Result<(), AppError> {
+    pub async fn store_relationship(self, db_client: &SurrealDbClient) -> Result<(), AppError> {
         User::get_and_validate_knowledge_entity(&self.in_, &self.metadata.user_id, db_client)
             .await?;
         User::get_and_validate_knowledge_entity(&self.out, &self.metadata.user_id, db_client)
             .await?;
+
+        let Self {
+            id,
+            in_,
+            out,
+            metadata:
+                RelationshipMetadata {
+                    user_id,
+                    source_id,
+                    relationship_type,
+                },
+        } = self;
 
         db_client
             .client
@@ -62,12 +74,12 @@ impl KnowledgeRelationship {
                     metadata.relationship_type = $relationship_type;
                 COMMIT TRANSACTION;"#,
             )
-            .bind(("rel_id", self.id.clone()))
-            .bind(("in_id", self.in_.clone()))
-            .bind(("out_id", self.out.clone()))
-            .bind(("user_id", self.metadata.user_id.clone()))
-            .bind(("source_id", self.metadata.source_id.clone()))
-            .bind(("relationship_type", self.metadata.relationship_type.clone()))
+            .bind(("rel_id", id))
+            .bind(("in_id", in_))
+            .bind(("out_id", out))
+            .bind(("user_id", user_id))
+            .bind(("source_id", source_id))
+            .bind(("relationship_type", relationship_type))
             .await
             .map_err(AppError::from)?
             .check()
@@ -230,13 +242,14 @@ mod tests {
             source_id.clone(),
             relationship_type,
         );
+        let relationship_id = relationship.id.clone();
 
         relationship
             .store_relationship(&db)
             .await
             .with_context(|| "Failed to store relationship".to_string())?;
 
-        let persisted = get_relationship_by_id(&relationship.id, &db)
+        let persisted = get_relationship_by_id(&relationship_id, &db)
             .await
             .expect("Relationship should be retrievable by id");
         assert_eq!(persisted.in_, entity1_id);
@@ -296,6 +309,7 @@ mod tests {
             "source123'; DELETE FROM relates_to; --".to_string(),
             "references'; UPDATE user SET admin = true; --".to_string(),
         );
+        let relationship_id = relationship.id.clone();
 
         relationship
             .store_relationship(&db)
@@ -305,7 +319,7 @@ mod tests {
         let mut res = db
             .client
             .query("SELECT * FROM relates_to WHERE id = type::thing('relates_to', $id)")
-            .bind(("id", relationship.id.clone()))
+            .bind(("id", relationship_id))
             .await
             .expect("query relationship by id failed");
         let rows: Vec<KnowledgeRelationship> = res.take(0).expect("take rows");
@@ -338,6 +352,7 @@ mod tests {
             source_id.clone(),
             relationship_type,
         );
+        let relationship_id = relationship.id.clone();
 
         relationship
             .store_relationship(&db)
@@ -357,7 +372,7 @@ mod tests {
             "Relationship should exist before deletion"
         );
 
-        KnowledgeRelationship::delete_relationship_by_id(&relationship.id, user_id, &db)
+        KnowledgeRelationship::delete_relationship_by_id(&relationship_id, user_id, &db)
             .await
             .with_context(|| "Failed to delete relationship by ID".to_string())?;
 
@@ -391,6 +406,7 @@ mod tests {
             source_id,
             "references".to_string(),
         );
+        let relationship_id = relationship.id.clone();
 
         relationship
             .store_relationship(&db)
@@ -409,7 +425,7 @@ mod tests {
         );
 
         let result = KnowledgeRelationship::delete_relationship_by_id(
-            &relationship.id,
+            &relationship_id,
             "different-user",
             &db,
         )
@@ -472,6 +488,9 @@ mod tests {
             different_source_id.clone(),
             "mentions".to_string(),
         );
+        let relationship1_id = relationship1.id.clone();
+        let relationship2_id = relationship2.id.clone();
+        let different_relationship_id = different_relationship.id.clone();
 
         relationship1
             .store_relationship(&db)
@@ -508,9 +527,9 @@ mod tests {
             .await
             .with_context(|| "Failed to delete relationships by source_id".to_string())?;
 
-        let result1 = get_relationship_by_id(&relationship1.id, &db).await;
-        let result2 = get_relationship_by_id(&relationship2.id, &db).await;
-        let different_result = get_relationship_by_id(&different_relationship.id, &db).await;
+        let result1 = get_relationship_by_id(&relationship1_id, &db).await;
+        let result2 = get_relationship_by_id(&relationship2_id, &db).await;
+        let different_result = get_relationship_by_id(&different_relationship_id, &db).await;
 
         assert!(result1.is_none(), "Relationship 1 should be deleted");
         assert!(result2.is_none(), "Relationship 2 should be deleted");
@@ -548,6 +567,8 @@ mod tests {
             shared_source.to_string(),
             "references".to_string(),
         );
+        let rel_a_id = rel_a.id.clone();
+        let rel_b_id = rel_b.id.clone();
 
         rel_a.store_relationship(&db).await?;
         rel_b.store_relationship(&db).await?;
@@ -555,8 +576,8 @@ mod tests {
         KnowledgeRelationship::delete_relationships_by_source_id(shared_source, user_a, &db)
             .await?;
 
-        assert!(get_relationship_by_id(&rel_a.id, &db).await.is_none());
-        assert!(get_relationship_by_id(&rel_b.id, &db).await.is_some());
+        assert!(get_relationship_by_id(&rel_a_id, &db).await.is_none());
+        assert!(get_relationship_by_id(&rel_b_id, &db).await.is_some());
 
         Ok(())
     }
@@ -586,6 +607,8 @@ mod tests {
             "other_source".to_string(),
             "contains".to_string(),
         );
+        let safe_relationship_id = safe_relationship.id.clone();
+        let other_relationship_id = other_relationship.id.clone();
 
         safe_relationship
             .store_relationship(&db)
@@ -604,8 +627,8 @@ mod tests {
         .await
         .expect("delete call should succeed");
 
-        let remaining_safe = get_relationship_by_id(&safe_relationship.id, &db).await;
-        let remaining_other = get_relationship_by_id(&other_relationship.id, &db).await;
+        let remaining_safe = get_relationship_by_id(&safe_relationship_id, &db).await;
+        let remaining_other = get_relationship_by_id(&other_relationship_id, &db).await;
 
         assert!(remaining_safe.is_some(), "Safe relationship should remain");
         assert!(

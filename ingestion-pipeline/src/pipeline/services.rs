@@ -261,23 +261,24 @@ impl PipelineServices for DefaultPipelineServices {
 
         // Embed all chunks of this document in one batch: a single lock acquisition and one
         // blocking hop, letting the backend batch the inference internally.
+        let batch_len = chunk_candidates.len();
         let embeddings = self
             .embedding_provider
-            .embed_batch(chunk_candidates.clone())
+            .embed_batch(&chunk_candidates)
             .await
             .map_err(|e| {
                 AppError::InternalError(format!("FastEmbed embedding for chunks failed: {e}"))
             })?;
 
-        if embeddings.len() != chunk_candidates.len() {
+        if embeddings.len() != batch_len {
             return Err(AppError::InternalError(format!(
                 "embedding batch returned {} vectors for {} chunks",
                 embeddings.len(),
-                chunk_candidates.len()
+                batch_len
             )));
         }
 
-        let mut chunks = Vec::with_capacity(chunk_candidates.len());
+        let mut chunks = Vec::with_capacity(batch_len);
         for (chunk_text, embedding) in chunk_candidates.into_iter().zip(embeddings) {
             let chunk_struct = TextChunk::new(
                 content.id().to_string(),

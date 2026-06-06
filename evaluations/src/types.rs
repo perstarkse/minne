@@ -205,7 +205,7 @@ impl EvaluationCandidate {
             entity_description: Some(entity.entity.description.clone()),
             entity_category,
             score: entity.score,
-            chunks: entity.chunks,
+            chunks: entity.chunks.as_ref().clone(),
         }
     }
 

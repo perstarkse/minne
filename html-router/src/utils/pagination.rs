@@ -57,6 +57,47 @@ impl Pagination {
     }
 }
 
+/// Returns a cloned page slice and pagination metadata without consuming the source list.
+pub fn paginate_slice<T: Clone>(
+    items: &[T],
+    requested_page: Option<usize>,
+    per_page: usize,
+) -> (Vec<T>, Pagination) {
+    let per_page = per_page.max(1);
+    let total_items = items.len();
+    let total_pages = if total_items == 0 {
+        0
+    } else {
+        total_items
+            .saturating_sub(1)
+            .checked_div(per_page)
+            .unwrap_or(0)
+            .saturating_add(1)
+    };
+
+    let mut current_page = requested_page.unwrap_or(1);
+    if current_page == 0 {
+        current_page = 1;
+    }
+    if total_pages > 0 {
+        current_page = current_page.min(total_pages);
+    } else {
+        current_page = 1;
+    }
+
+    let offset = if total_pages == 0 {
+        0
+    } else {
+        per_page.saturating_mul(current_page.saturating_sub(1))
+    };
+
+    let page_items: Vec<T> = items.iter().skip(offset).take(per_page).cloned().collect();
+    let page_len = page_items.len();
+    let pagination = Pagination::new(current_page, per_page, total_items, total_pages, page_len);
+
+    (page_items, pagination)
+}
+
 /// Returns the items for the requested page along with pagination metadata.
 pub fn paginate_items<T>(
     items: Vec<T>,
@@ -96,7 +137,7 @@ pub fn paginate_items<T>(
 
 #[cfg(test)]
 mod tests {
-    use super::paginate_items;
+    use super::{paginate_items, paginate_slice};
 
     #[test]
     fn paginates_basic_case() {
@@ -126,6 +167,16 @@ mod tests {
         assert!(!meta.has_next);
         assert_eq!(meta.start_index, 0);
         assert_eq!(meta.end_index, 0);
+    }
+
+    #[test]
+    fn paginate_slice_clones_only_page_items() {
+        let items: Vec<_> = (1..=25).collect();
+        let (page, meta) = paginate_slice(&items, Some(2), 10);
+
+        assert_eq!(page, vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+        assert_eq!(items.len(), 25);
+        assert_eq!(meta.current_page, 2);
     }
 
     #[test]

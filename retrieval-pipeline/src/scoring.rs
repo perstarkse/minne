@@ -1,4 +1,7 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::{
+    cmp::Ordering,
+    collections::{hash_map::Entry, HashMap},
+};
 
 use common::storage::types::StoredObject;
 
@@ -119,7 +122,7 @@ pub fn reciprocal_rank_fusion<T>(
     config: RrfConfig,
 ) -> Vec<Scored<T>>
 where
-    T: StoredObject + Clone,
+    T: StoredObject,
 {
     let mut merged: HashMap<String, Scored<T>> = HashMap::new();
     let k = if config.k <= 0.0 { 60.0 } else { config.k };
@@ -146,19 +149,30 @@ where
 
         for (rank, candidate) in vector_ranked.into_iter().enumerate() {
             let id = candidate.item.id().to_owned();
-            let entry = merged
-                .entry(id.clone())
-                .or_insert_with(|| Scored::new(candidate.item.clone()));
+            let rank_f32: f32 = u16::try_from(rank).map_or(f32::MAX, f32::from);
+            let contribution = vector_weight / (k + rank_f32 + 1.0);
 
-            if let Some(score) = candidate.scores.vector {
-                let existing = entry.scores.vector.unwrap_or(f32::MIN);
-                if score > existing {
-                    entry.scores.vector = Some(score);
+            match merged.entry(id) {
+                Entry::Occupied(mut occupied) => {
+                    let entry = occupied.get_mut();
+                    if let Some(score) = candidate.scores.vector {
+                        let existing = entry.scores.vector.unwrap_or(f32::MIN);
+                        if score > existing {
+                            entry.scores.vector = Some(score);
+                        }
+                    }
+                    entry.item = candidate.item;
+                    entry.fused += contribution;
+                }
+                Entry::Vacant(vacant) => {
+                    let mut scored = Scored::new(candidate.item);
+                    if let Some(score) = candidate.scores.vector {
+                        scored.scores.vector = Some(score);
+                    }
+                    scored.fused = contribution;
+                    vacant.insert(scored);
                 }
             }
-            entry.item = candidate.item;
-            let rank_f32: f32 = u16::try_from(rank).map_or(f32::MAX, f32::from);
-            entry.fused += vector_weight / (k + rank_f32 + 1.0);
         }
     }
 
@@ -174,19 +188,30 @@ where
 
         for (rank, candidate) in fts_ranked.into_iter().enumerate() {
             let id = candidate.item.id().to_owned();
-            let entry = merged
-                .entry(id.clone())
-                .or_insert_with(|| Scored::new(candidate.item.clone()));
+            let rank_f32: f32 = u16::try_from(rank).map_or(f32::MAX, f32::from);
+            let contribution = fts_weight / (k + rank_f32 + 1.0);
 
-            if let Some(score) = candidate.scores.fts {
-                let existing = entry.scores.fts.unwrap_or(f32::MIN);
-                if score > existing {
-                    entry.scores.fts = Some(score);
+            match merged.entry(id) {
+                Entry::Occupied(mut occupied) => {
+                    let entry = occupied.get_mut();
+                    if let Some(score) = candidate.scores.fts {
+                        let existing = entry.scores.fts.unwrap_or(f32::MIN);
+                        if score > existing {
+                            entry.scores.fts = Some(score);
+                        }
+                    }
+                    entry.item = candidate.item;
+                    entry.fused += contribution;
+                }
+                Entry::Vacant(vacant) => {
+                    let mut scored = Scored::new(candidate.item);
+                    if let Some(score) = candidate.scores.fts {
+                        scored.scores.fts = Some(score);
+                    }
+                    scored.fused = contribution;
+                    vacant.insert(scored);
                 }
             }
-            entry.item = candidate.item;
-            let rank_f32: f32 = u16::try_from(rank).map_or(f32::MAX, f32::from);
-            entry.fused += fts_weight / (k + rank_f32 + 1.0);
         }
     }
 
