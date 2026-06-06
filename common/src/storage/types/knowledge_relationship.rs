@@ -69,9 +69,9 @@ impl KnowledgeRelationship {
             .bind(("source_id", self.metadata.source_id.clone()))
             .bind(("relationship_type", self.metadata.relationship_type.clone()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -89,9 +89,9 @@ impl KnowledgeRelationship {
             .bind(("source_id", source_id.to_owned()))
             .bind(("user_id", user_id.to_owned()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -109,9 +109,9 @@ impl KnowledgeRelationship {
             .bind(("id", id.to_owned()))
             .bind(("user_id", user_id.to_owned()))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
         let deleted: Vec<KnowledgeRelationship> =
-            delete_result.take(0).map_err(AppError::Database)?;
+            delete_result.take(0).map_err(AppError::from)?;
 
         if !deleted.is_empty() {
             return Ok(());
@@ -122,9 +122,9 @@ impl KnowledgeRelationship {
             .query("SELECT * FROM type::thing('relates_to', $id)")
             .bind(("id", id.to_owned()))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
         let existing: Option<KnowledgeRelationship> =
-            exists_result.take(0).map_err(AppError::Database)?;
+            exists_result.take(0).map_err(AppError::from)?;
 
         if existing.is_some() {
             Err(AppError::Auth(

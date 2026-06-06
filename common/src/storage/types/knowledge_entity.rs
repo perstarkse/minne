@@ -183,9 +183,9 @@ impl KnowledgeEntity {
             .bind(("sources", source_ids.to_vec()))
             .bind(("user_id", user_id.to_owned()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .take(0)
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(entities)
     }
@@ -203,9 +203,9 @@ impl KnowledgeEntity {
             .bind(("table", Self::table_name()))
             .bind(("source_id", source_id.to_owned()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -248,9 +248,9 @@ impl KnowledgeEntity {
             .bind(("entity", entity))
             .bind(("emb", emb))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -289,11 +289,11 @@ impl KnowledgeEntity {
             .bind(("embedding", query_embedding))
             .bind(("user_id", user_id.to_string()))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
-        response = response.check().map_err(AppError::Database)?;
+        response = response.check().map_err(AppError::from)?;
 
-        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::Database)?;
+        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::from)?;
 
         Ok(rows
             .into_iter()
@@ -321,7 +321,7 @@ impl KnowledgeEntity {
         let entity: KnowledgeEntity = db_client
             .get_item(id)
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .ok_or_else(|| AppError::NotFound(format!("entity {id} not found")))?;
 
         let settings = SystemSettings::get_current(db_client).await?;
@@ -355,9 +355,9 @@ impl KnowledgeEntity {
             .bind(("emb", emb))
             .bind(("description", description.to_string()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -453,9 +453,9 @@ impl KnowledgeEntity {
                 KnowledgeEntityEmbedding::table_name()
             ))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         db.client
             .query(format!(
@@ -463,9 +463,9 @@ impl KnowledgeEntity {
                 KnowledgeEntityEmbedding::table_name()
             ))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         // Perform DB updates in a single transaction
         info!("Applying embedding updates in a transaction...");
@@ -504,9 +504,9 @@ impl KnowledgeEntity {
         db.client
             .query(transaction_query)
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         info!("Re-embedding process for knowledge entities completed successfully.");
         Ok(())

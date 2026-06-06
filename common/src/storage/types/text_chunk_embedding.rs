@@ -33,8 +33,8 @@ impl TextChunkEmbedding {
             dimension,
         );
 
-        let res = db.client.query(query).await.map_err(AppError::Database)?;
-        res.check().map_err(AppError::Database)?;
+        let res = db.client.query(query).await.map_err(AppError::from)?;
+        res.check().map_err(AppError::from)?;
 
         Ok(())
     }
@@ -85,9 +85,9 @@ impl TextChunkEmbedding {
             .query(query)
             .bind(("chunk_id", chunk_id.clone()))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
-        let embeddings: Vec<Self> = result.take(0).map_err(AppError::Database)?;
+        let embeddings: Vec<Self> = result.take(0).map_err(AppError::from)?;
 
         Ok(embeddings.into_iter().next())
     }
@@ -106,9 +106,9 @@ impl TextChunkEmbedding {
             .query(query)
             .bind(("chunk_id", chunk_id.clone()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -129,9 +129,9 @@ impl TextChunkEmbedding {
             .query(query)
             .bind(("source_id", source_id.to_owned()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }

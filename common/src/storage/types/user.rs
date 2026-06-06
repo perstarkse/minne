@@ -688,7 +688,7 @@ impl User {
 
         db.delete_item::<IngestionTask>(id)
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }

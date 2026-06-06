@@ -115,7 +115,7 @@ impl TextContent {
                 surrealdb::Datetime::from(now),
             ))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         if updated.is_none() {
             return Err(AppError::NotFound(format!("text content {id} not found")));
@@ -138,10 +138,10 @@ impl TextContent {
             .bind(("file_id", file_id.to_owned()))
             .bind(("exclude_id", exclude_id.to_owned()))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         let existing: Option<surrealdb::sql::Thing> =
-            response.take(0).map_err(AppError::Database)?;
+            response.take(0).map_err(AppError::from)?;
 
         Ok(existing.is_some())
     }
@@ -193,9 +193,9 @@ impl TextContent {
             .bind(("user_id", user_id.to_owned()))
             .bind(("limit", limit))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .take(0)
-            .map_err(AppError::Database)
+            .map_err(AppError::from)
     }
 
     /// Builds a fallback display label for a source id when no matching content row exists.
@@ -239,9 +239,9 @@ impl TextContent {
             .bind(("user_id", user_id.to_owned()))
             .bind(("record_ids", record_ids))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
-        let contents: Vec<SourceLabelRow> = response.take(0).map_err(AppError::Database)?;
+        let contents: Vec<SourceLabelRow> = response.take(0).map_err(AppError::from)?;
 
         tracing::debug!(
             source_id_count = source_ids.len(),

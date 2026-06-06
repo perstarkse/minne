@@ -55,9 +55,9 @@ impl TextChunk {
             .bind(("source_id", source_id.to_owned()))
             .bind(("table", Self::table_name()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -97,9 +97,9 @@ impl TextChunk {
             .bind(("chunk", chunk))
             .bind(("emb", emb))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -140,11 +140,11 @@ impl TextChunk {
             .bind(("embedding", query_embedding))
             .bind(("user_id", user_id.to_string()))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
-        response = response.check().map_err(AppError::Database)?;
+        response = response.check().map_err(AppError::from)?;
 
-        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::Database)?;
+        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::from)?;
 
         Ok(rows
             .into_iter()
@@ -208,11 +208,11 @@ impl TextChunk {
             .bind(("user_id", user_id.to_owned()))
             .bind(("limit", limit))
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
-        response = response.check().map_err(AppError::Database)?;
+        response = response.check().map_err(AppError::from)?;
 
-        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::Database)?;
+        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::from)?;
 
         Ok(rows
             .into_iter()
@@ -314,16 +314,16 @@ impl TextChunk {
                 TextChunkEmbedding::table_name()
             ))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         db.client
             .query(format!("DELETE FROM {};", TextChunkEmbedding::table_name()))
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         // Perform DB updates in a single transaction against the embedding table
         info!("Applying embedding updates in a transaction...");
@@ -366,9 +366,9 @@ impl TextChunk {
         db.client
             .query(transaction_query)
             .await
-            .map_err(AppError::Database)?
+            .map_err(AppError::from)?
             .check()
-            .map_err(AppError::Database)?;
+            .map_err(AppError::from)?;
 
         info!("Re-embedding process for text chunks completed successfully.");
         Ok(())
