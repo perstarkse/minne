@@ -36,7 +36,7 @@ pub enum FileError {
 
     /// Database operation on the file record failed.
     #[error("surrealdb error: {0}")]
-    SurrealError(#[from] surrealdb::Error),
+    SurrealError(Box<surrealdb::Error>),
 
     /// Failed to persist the temporary file to its final location.
     #[error("failed to persist file: {0}")]
@@ -48,7 +48,19 @@ pub enum FileError {
 
     /// The underlying object store operation failed.
     #[error("object store error: {0}")]
-    ObjectStore(#[from] ObjectStoreError),
+    ObjectStore(Box<ObjectStoreError>),
+}
+
+impl From<surrealdb::Error> for FileError {
+    fn from(err: surrealdb::Error) -> Self {
+        Self::SurrealError(Box::new(err))
+    }
+}
+
+impl From<ObjectStoreError> for FileError {
+    fn from(err: ObjectStoreError) -> Self {
+        Self::ObjectStore(Box::new(err))
+    }
 }
 
 stored_object!(FileInfo, "file", {
@@ -163,7 +175,7 @@ impl FileInfo {
         match db_client.get_item::<FileInfo>(id).await {
             Ok(Some(file_info)) => Ok(file_info),
             Ok(None) => Err(FileError::FileNotFound(id.to_string())),
-            Err(e) => Err(FileError::SurrealError(e)),
+            Err(e) => Err(FileError::from(e)),
         }
     }
 
@@ -233,7 +245,7 @@ impl FileInfo {
                 if let Ok(existing) = Self::get_by_sha(&sha256, user_id, db_client).await {
                     return Ok(existing);
                 }
-                Err(FileError::SurrealError(e))
+                Err(FileError::from(e))
             }
         }
     }
@@ -263,7 +275,7 @@ impl FileInfo {
         storage
             .delete_prefix(&parent_prefix)
             .await
-            .map_err(AppError::Storage)?;
+            .map_err(AppError::from)?;
         info!(
             "Removed object prefix {} and its contents via StorageManager",
             parent_prefix
@@ -286,7 +298,7 @@ impl FileInfo {
         &self,
         storage: &StorageManager,
     ) -> Result<bytes::Bytes, AppError> {
-        storage.get(&self.path).await.map_err(AppError::Storage)
+        storage.get(&self.path).await.map_err(AppError::from)
     }
 
     /// Persist bytes to storage using StorageManager.

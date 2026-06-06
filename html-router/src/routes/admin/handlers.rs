@@ -233,8 +233,7 @@ fn plan_embedding_settings_update(
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| current.embedding_model.clone());
+                .map_or_else(|| current.embedding_model.clone(), ToOwned::to_owned);
 
             if !is_valid_fastembed_model_code(&embedding_model) {
                 return Err(AppError::Validation(format!(
