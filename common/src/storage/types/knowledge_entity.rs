@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use crate::{
-    error::AppError, storage::db::SurrealDbClient, storage::indexes::hnsw_index_overwrite_sql,
+    error::AppError,
+    storage::db::SurrealDbClient,
+    storage::indexes::hnsw_index_overwrite_sql,
     storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding,
-    storage::types::system_settings::SystemSettings, stored_object,
+    storage::types::system_settings::SystemSettings,
+    stored_object,
     utils::embedding::{EmbeddingProvider, RE_EMBED_BATCH_SIZE},
 };
 use tracing::{error, info};
@@ -24,6 +27,17 @@ impl KnowledgeEntityType {
     #[must_use]
     pub fn variants() -> &'static [&'static str] {
         &["Idea", "Project", "Document", "Page", "TextSnippet"]
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Idea => "Idea",
+            Self::Project => "Project",
+            Self::Document => "Document",
+            Self::Page => "Page",
+            Self::TextSnippet => "TextSnippet",
+        }
     }
 }
 
@@ -78,6 +92,27 @@ impl KnowledgeEntity {
             metadata,
             user_id,
         }
+    }
+
+    /// Canonical text fed to the embedding provider for a knowledge entity.
+    #[must_use]
+    pub fn embedding_input_text(
+        name: &str,
+        description: &str,
+        entity_type: KnowledgeEntityType,
+    ) -> String {
+        let mut out = String::with_capacity(
+            name.len()
+                .saturating_add(description.len())
+                .saturating_add(entity_type.as_str().len())
+                .saturating_add(32),
+        );
+        let _ = write!(
+            out,
+            "name: {name}, description: {description}, type: {}",
+            entity_type.as_str()
+        );
+        out
     }
 
     /// Full-text search over knowledge entities using the BM25 FTS index.
@@ -314,8 +349,7 @@ impl KnowledgeEntity {
         db_client: &SurrealDbClient,
         embedding_provider: &EmbeddingProvider,
     ) -> Result<(), AppError> {
-        let embedding_input =
-            format!("name: {name}, description: {description}, type: {entity_type:?}",);
+        let embedding_input = Self::embedding_input_text(name, description, *entity_type);
         let embedding = embedding_provider.embed(&embedding_input).await?;
 
         let entity: KnowledgeEntity = db_client
@@ -402,9 +436,10 @@ impl KnowledgeEntity {
             let inputs: Vec<String> = batch
                 .iter()
                 .map(|entity| {
-                    format!(
-                        "name: {}, description: {}, type: {:?}",
-                        entity.name, entity.description, entity.entity_type
+                    Self::embedding_input_text(
+                        &entity.name,
+                        &entity.description,
+                        entity.entity_type,
                     )
                 })
                 .collect();
@@ -522,6 +557,16 @@ mod tests {
     use crate::test_utils::configure_embedding_dimension;
     use anyhow::{self, Context};
     use uuid::Uuid;
+
+    #[test]
+    fn embedding_input_text_uses_canonical_type_label() {
+        let text = KnowledgeEntity::embedding_input_text(
+            "Alpha",
+            "Beta",
+            KnowledgeEntityType::TextSnippet,
+        );
+        assert_eq!(text, "name: Alpha, description: Beta, type: TextSnippet");
+    }
 
     async fn ensure_entity_fts_indexes(db: &SurrealDbClient) -> anyhow::Result<()> {
         let snowball_sql = r#"

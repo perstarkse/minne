@@ -9,11 +9,7 @@ use axum::{
     Router,
 };
 use common::{
-    storage::{
-        db::SurrealDbClient,
-        store::StorageManager,
-        types::user::User,
-    },
+    storage::{db::SurrealDbClient, store::StorageManager, types::user::User},
     utils::{
         config::{AppConfig, StorageKind},
         embedding::EmbeddingProvider,
@@ -37,24 +33,17 @@ async fn build_test_app() -> (Router, Arc<SurrealDbClient>) {
         .await
         .expect("migrations should apply");
 
-    let session_store = Arc::new(
-        db.create_session_store()
-            .await
-            .expect("session store"),
-    );
+    let session_store = Arc::new(db.create_session_store().await.expect("session store"));
 
     let config = AppConfig {
         storage: StorageKind::Memory,
         ..Default::default()
     };
 
-    let storage = StorageManager::new(&config)
-        .await
-        .expect("storage manager");
+    let storage = StorageManager::new(&config).await.expect("storage manager");
 
-    let embedding_provider = Arc::new(
-        EmbeddingProvider::new_hashed(8).expect("embedding provider"),
-    );
+    let embedding_provider =
+        Arc::new(EmbeddingProvider::new_hashed(8).expect("embedding provider"));
 
     let state = HtmlState::new_with_resources(StateResources {
         db: Arc::clone(&db),

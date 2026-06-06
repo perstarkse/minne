@@ -9,11 +9,7 @@ use axum::{
     Router,
 };
 use common::{
-    storage::{
-        db::SurrealDbClient,
-        store::StorageManager,
-        types::user::User,
-    },
+    storage::{db::SurrealDbClient, store::StorageManager, types::user::User},
     utils::config::{AppConfig, StorageKind},
 };
 use tower::ServiceExt;
@@ -34,9 +30,7 @@ async fn build_test_app() -> (Router, Arc<SurrealDbClient>) {
         storage: StorageKind::Memory,
         ..Default::default()
     };
-    let storage = StorageManager::new(&config)
-        .await
-        .expect("storage manager");
+    let storage = StorageManager::new(&config).await.expect("storage manager");
 
     let state = ApiState {
         db: Arc::clone(&db),
@@ -147,9 +141,7 @@ async fn authenticated_user_can_list_categories() {
     .await
     .expect("test user");
 
-    let api_key = User::set_api_key(&user.id, &db)
-        .await
-        .expect("api key");
+    let api_key = User::set_api_key(&user.id, &db).await.expect("api key");
 
     let response = app
         .clone()

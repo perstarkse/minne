@@ -22,8 +22,8 @@ use retrieval_pipeline::answer_retrieval::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
-use tokio::sync::Mutex;
 use tokio::sync::mpsc::channel;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 
 use common::storage::{
@@ -36,10 +36,7 @@ use common::storage::{
     },
 };
 
-use crate::{
-    html_state::HtmlState,
-    middlewares::auth_middleware::RequireUser,
-};
+use crate::{html_state::HtmlState, middlewares::auth_middleware::RequireUser};
 
 use super::reference_validation::{collect_reference_ids_from_retrieval, validate_references};
 

@@ -8,10 +8,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use async_openai::Client;
 use common::{
-    storage::{
-        db::SurrealDbClient,
-        store::StorageManager,
-    },
+    storage::{db::SurrealDbClient, store::StorageManager},
     utils::{
         config::{get_config, AppConfig},
         embedding::{align_fastembed_system_settings, EmbeddingProvider},

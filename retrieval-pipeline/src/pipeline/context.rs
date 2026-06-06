@@ -11,7 +11,7 @@ use crate::{reranking::RerankerLease, RetrievedChunk, RetrievedEntity};
 use super::{
     config::RetrievalConfig,
     diagnostics::{AssembleStats, Diagnostics, SearchStats},
-    StageKind, StageTimings, RetrievalParams,
+    RetrievalParams, StageKind, StageTimings,
 };
 
 /// Mutable working state threaded through every retrieval stage.
@@ -22,7 +22,7 @@ pub(crate) struct PipelineContext<'a> {
     pub user_id: String,
     pub config: RetrievalConfig,
     pub query_embedding: Option<Vec<f32>>,
-    pub chunk_values: Vec<Scored<TextChunk>>,
+    pub chunk_values: Vec<Scored<std::sync::Arc<TextChunk>>>,
     pub reranker: Option<RerankerLease>,
     pub diagnostics: Option<Diagnostics>,
     pub entity_results: Vec<RetrievedEntity>,

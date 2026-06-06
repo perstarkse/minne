@@ -122,8 +122,7 @@ impl KnowledgeRelationship {
             .bind(("user_id", user_id.to_owned()))
             .await
             .map_err(AppError::from)?;
-        let deleted: Vec<KnowledgeRelationship> =
-            delete_result.take(0).map_err(AppError::from)?;
+        let deleted: Vec<KnowledgeRelationship> = delete_result.take(0).map_err(AppError::from)?;
 
         if !deleted.is_empty() {
             return Ok(());
@@ -567,8 +566,8 @@ mod tests {
             shared_source.to_string(),
             "references".to_string(),
         );
-        let rel_a_id = rel_a.id.clone();
-        let rel_b_id = rel_b.id.clone();
+        let owner_relationship_id = rel_a.id.clone();
+        let other_relationship_id = rel_b.id.clone();
 
         rel_a.store_relationship(&db).await?;
         rel_b.store_relationship(&db).await?;
@@ -576,8 +575,12 @@ mod tests {
         KnowledgeRelationship::delete_relationships_by_source_id(shared_source, user_a, &db)
             .await?;
 
-        assert!(get_relationship_by_id(&rel_a_id, &db).await.is_none());
-        assert!(get_relationship_by_id(&rel_b_id, &db).await.is_some());
+        assert!(get_relationship_by_id(&owner_relationship_id, &db)
+            .await
+            .is_none());
+        assert!(get_relationship_by_id(&other_relationship_id, &db)
+            .await
+            .is_some());
 
         Ok(())
     }

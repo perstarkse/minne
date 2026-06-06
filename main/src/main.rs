@@ -95,7 +95,11 @@ mod tests {
     use common::storage::types::{system_settings::SystemSettings, user::User};
     use tower::ServiceExt;
 
-    async fn build_test_app() -> (Router, Arc<common::storage::db::SurrealDbClient>, std::path::PathBuf) {
+    async fn build_test_app() -> (
+        Router,
+        Arc<common::storage::db::SurrealDbClient>,
+        std::path::PathBuf,
+    ) {
         let (services, data_dir) = init_smoke_services()
             .await
             .expect("failed to init services");

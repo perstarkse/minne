@@ -164,9 +164,7 @@ pub async fn update_theme(
     ))
 }
 
-pub async fn show_change_password(
-    RequireUser(_user): RequireUser,
-) -> TemplateResult {
+pub async fn show_change_password(RequireUser(_user): RequireUser) -> TemplateResult {
     Ok(TemplateResponse::new_template(
         "auth/change_password_form.html",
         (),

@@ -196,7 +196,7 @@ pub struct EvaluationCandidate {
 }
 
 impl EvaluationCandidate {
-    fn from_entity(entity: RetrievedEntity) -> Self {
+    fn from_entity(entity: &RetrievedEntity) -> Self {
         let entity_category = Some(format!("{:?}", entity.entity.entity_type));
         Self {
             entity_id: entity.entity.id().to_string(),
@@ -223,9 +223,9 @@ impl EvaluationCandidate {
     }
 }
 
-fn candidates_from_entities(entities: Vec<RetrievedEntity>) -> Vec<EvaluationCandidate> {
+fn candidates_from_entities(entities: &[RetrievedEntity]) -> Vec<EvaluationCandidate> {
     entities
-        .into_iter()
+        .iter()
         .map(EvaluationCandidate::from_entity)
         .collect()
 }
@@ -241,7 +241,7 @@ pub fn adapt_retrieval_output(output: RetrievalOutput) -> Vec<EvaluationCandidat
     match output {
         RetrievalOutput::Chunks(chunks) => candidates_from_chunks(chunks),
         RetrievalOutput::WithEntities { chunks, entities } => {
-            let mut candidates = candidates_from_entities(entities);
+            let mut candidates = candidates_from_entities(&entities);
             candidates.extend(candidates_from_chunks(chunks));
             candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
             candidates

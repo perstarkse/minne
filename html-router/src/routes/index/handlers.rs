@@ -13,7 +13,7 @@ use crate::{
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{
-            template_as_response, TemplateResponse, TemplateResult, ResponseResult,
+            template_as_response, ResponseResult, TemplateResponse, TemplateResult,
         },
     },
     utils::text_content_preview::truncate_text_contents,
@@ -84,7 +84,8 @@ pub async fn delete_text_content(
     // Delete the text content and any related data
     TextChunk::delete_by_source_id(&text_content.id, &state.db).await?;
     KnowledgeEntity::delete_by_source_id(&text_content.id, &state.db).await?;
-    KnowledgeRelationship::delete_relationships_by_source_id(&text_content.id, &user.id, &state.db).await?;
+    KnowledgeRelationship::delete_relationships_by_source_id(&text_content.id, &user.id, &state.db)
+        .await?;
     state
         .db
         .delete_item::<TextContent>(&text_content.id)

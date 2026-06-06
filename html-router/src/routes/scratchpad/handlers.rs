@@ -12,7 +12,7 @@ use crate::html_state::HtmlState;
 use crate::middlewares::{
     auth_middleware::RequireUser,
     response_middleware::{
-        template_with_headers, TemplateResponse, TemplateResult, ResponseResult,
+        template_with_headers, ResponseResult, TemplateResponse, TemplateResult,
     },
 };
 use common::storage::types::{

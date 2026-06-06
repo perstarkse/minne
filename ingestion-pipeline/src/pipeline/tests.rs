@@ -92,7 +92,7 @@ impl MockServices {
                 entity: retrieved_entity,
                 score: 0.8,
                 chunks: std::sync::Arc::new(vec![RetrievedChunk {
-                    chunk: retrieved_chunk,
+                    chunk: std::sync::Arc::new(retrieved_chunk),
                     score: 0.7,
                 }]),
             }],

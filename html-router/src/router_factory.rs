@@ -8,8 +8,8 @@ use surrealdb::{engine::any::Any, Surreal};
 use crate::{
     html_state::HtmlState,
     middlewares::{
-        analytics_middleware::analytics_middleware, auth_middleware::require_auth,
-        compression, response_middleware::with_template_response,
+        analytics_middleware::analytics_middleware, auth_middleware::require_auth, compression,
+        response_middleware::with_template_response,
     },
 };
 

@@ -18,8 +18,8 @@ use common::{
     utils::{
         config::AppConfig,
         embedding::{
-            fastembed_model_dimension, is_valid_fastembed_model_code, list_fastembed_embedding_models,
-            EmbeddingBackend, FastEmbedModelOption,
+            fastembed_model_dimension, is_valid_fastembed_model_code,
+            list_fastembed_embedding_models, EmbeddingBackend, FastEmbedModelOption,
         },
     },
 };
@@ -51,7 +51,6 @@ pub enum AdminSection {
     Overview,
     Models,
 }
-
 
 #[derive(Deserialize)]
 pub struct AdminPanelQuery {
@@ -101,8 +100,9 @@ pub async fn show_admin_panel(
             (None, None, false)
         };
 
-    let effective_backend =
-        effective_embedding_backend(&settings, &state.config).as_str().to_string();
+    let effective_backend = effective_embedding_backend(&settings, &state.config)
+        .as_str()
+        .to_string();
 
     Ok(TemplateResponse::new_template(
         "admin/base.html",
@@ -187,7 +187,9 @@ struct EmbeddingSettingsPlan {
 }
 
 fn effective_embedding_backend(settings: &SystemSettings, config: &AppConfig) -> EmbeddingBackend {
-    settings.embedding_backend.unwrap_or(config.embedding_backend)
+    settings
+        .embedding_backend
+        .unwrap_or(config.embedding_backend)
 }
 
 fn is_fastembed_admin_context(settings: &SystemSettings, config: &AppConfig) -> bool {
@@ -241,11 +243,10 @@ fn plan_embedding_settings_update(
                 )));
             }
 
-            let embedding_dimensions = fastembed_model_dimension(&embedding_model)
-                .map_err(AppError::from)?;
+            let embedding_dimensions =
+                fastembed_model_dimension(&embedding_model).map_err(AppError::from)?;
             let reembedding_needed = embedding_dimensions != current.embedding_dimensions;
-            let restart_needed =
-                embedding_model != current.embedding_model || reembedding_needed;
+            let restart_needed = embedding_model != current.embedding_model || reembedding_needed;
 
             Ok(EmbeddingSettingsPlan {
                 embedding_model,
@@ -274,8 +275,7 @@ pub async fn update_model_settings(
     Form(input): Form<ModelSettingsInput>,
 ) -> TemplateResult {
     let current_settings = SystemSettings::get_current(&state.db).await?;
-    let embedding_plan =
-        plan_embedding_settings_update(&current_settings, &input, &state.config)?;
+    let embedding_plan = plan_embedding_settings_update(&current_settings, &input, &state.config)?;
 
     let new_settings = SystemSettingsPatch {
         query_model: Some(input.query_model),
@@ -309,10 +309,11 @@ pub async fn update_model_settings(
         .await
         .map_err(|_e| AppError::InternalError("Failed to get models".to_string()))?;
 
-    let effective_backend =
-        effective_embedding_backend(&new_settings, &state.config).as_str().to_string();
-    let show_fastembed_models =
-        is_fastembed_admin_context(&new_settings, &state.config).then(list_fastembed_embedding_models);
+    let effective_backend = effective_embedding_backend(&new_settings, &state.config)
+        .as_str()
+        .to_string();
+    let show_fastembed_models = is_fastembed_admin_context(&new_settings, &state.config)
+        .then(list_fastembed_embedding_models);
 
     Ok(TemplateResponse::new_partial(
         "admin/sections/models.html",
@@ -368,8 +369,8 @@ mod tests {
             embedding_model: Some("Xenova/bge-base-en-v1.5".into()),
             embedding_dimensions: None,
         };
-        let plan = plan_embedding_settings_update(&current, &input, &AppConfig::default())
-            .expect("plan");
+        let plan =
+            plan_embedding_settings_update(&current, &input, &AppConfig::default()).expect("plan");
         assert_eq!(plan.embedding_model, "Xenova/bge-base-en-v1.5");
         assert_eq!(plan.embedding_dimensions, 768);
         assert!(plan.reembedding_needed);
@@ -407,9 +408,7 @@ pub struct SystemPromptEditData {
     default_query_prompt: String,
 }
 
-pub async fn show_edit_system_prompt(
-    State(state): State<HtmlState>,
-) -> TemplateResult {
+pub async fn show_edit_system_prompt(State(state): State<HtmlState>) -> TemplateResult {
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -457,9 +456,7 @@ pub struct IngestionPromptEditData {
     default_ingestion_prompt: String,
 }
 
-pub async fn show_edit_ingestion_prompt(
-    State(state): State<HtmlState>,
-) -> TemplateResult {
+pub async fn show_edit_ingestion_prompt(State(state): State<HtmlState>) -> TemplateResult {
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(
@@ -502,9 +499,7 @@ pub struct ImagePromptEditData {
     default_image_prompt: String,
 }
 
-pub async fn show_edit_image_prompt(
-    State(state): State<HtmlState>,
-) -> TemplateResult {
+pub async fn show_edit_image_prompt(State(state): State<HtmlState>) -> TemplateResult {
     let settings = SystemSettings::get_current(&state.db).await?;
 
     Ok(TemplateResponse::new_template(

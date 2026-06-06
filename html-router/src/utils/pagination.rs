@@ -31,8 +31,16 @@ impl Pagination {
         } else {
             0
         };
-        let start_index = if page_len == 0 { 0 } else { offset.saturating_add(1) };
-        let end_index = if page_len == 0 { 0 } else { offset.saturating_add(page_len) };
+        let start_index = if page_len == 0 {
+            0
+        } else {
+            offset.saturating_add(1)
+        };
+        let end_index = if page_len == 0 {
+            0
+        } else {
+            offset.saturating_add(page_len)
+        };
 
         Self {
             current_page,
@@ -109,7 +117,11 @@ pub fn paginate_items<T>(
     let total_pages = if total_items == 0 {
         0
     } else {
-        total_items.saturating_sub(1).checked_div(per_page).unwrap_or(0).saturating_add(1)
+        total_items
+            .saturating_sub(1)
+            .checked_div(per_page)
+            .unwrap_or(0)
+            .saturating_add(1)
     };
 
     let mut current_page = requested_page.unwrap_or(1);

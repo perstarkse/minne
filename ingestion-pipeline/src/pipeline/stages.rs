@@ -155,7 +155,7 @@ pub async fn persist(
     let entity_count = entities.len();
     let relationship_count = relationships.len();
 
-    let chunk_count = store_vector_chunks(ctx.db, ctx.task_id.as_str(), &chunks).await?;
+    let chunk_count = store_vector_chunks(ctx.db, ctx.task_id.as_str(), chunks).await?;
     store_graph_entities(ctx.db, &ctx.pipeline_config.tuning, entities, relationships).await?;
     ctx.db.store_item(text_content).await?;
     rebuild(ctx.db).await?;

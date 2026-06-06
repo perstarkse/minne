@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
-use axum::{
-    extract::{Query, State},
-};
+use axum::extract::{Query, State};
 use axum_htmx::{HxBoosted, HxRequest};
 use common::storage::types::{text_content::TextContent, user::User};
-use retrieval_pipeline::{retrieve, RetrievalConfig, RetrievalOutput, RetrievedChunk, RetrievedEntity};
+use retrieval_pipeline::{
+    retrieve, RetrievalConfig, RetrievalOutput, RetrievedChunk, RetrievedEntity,
+};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{fmt, str::FromStr};
 
@@ -48,9 +48,7 @@ impl<'de> Deserialize<'de> for SearchView {
             Some("chunks") => SearchView::Chunks,
             Some("entities") => SearchView::Entities,
             Some(other) => {
-                return Err(de::Error::custom(format!(
-                    "invalid search view: {other}"
-                )));
+                return Err(de::Error::custom(format!("invalid search view: {other}")));
             }
         })
     }
@@ -121,13 +119,12 @@ pub async fn search_result_handler(
     HxBoosted(is_boosted): HxBoosted,
 ) -> TemplateResult {
     let view = params.view;
-    let (search_results_for_template, final_query_param_for_template) = if let Some(actual_query) =
-        params.query
-    {
-        perform_search(&state, &user, actual_query, view).await?
-    } else {
-        (Vec::<SearchResultForTemplate>::new(), String::new())
-    };
+    let (search_results_for_template, final_query_param_for_template) =
+        if let Some(actual_query) = params.query {
+            perform_search(&state, &user, actual_query, view).await?
+        } else {
+            (Vec::<SearchResultForTemplate>::new(), String::new())
+        };
 
     let data = AnswerData {
         search_result: search_results_for_template,
