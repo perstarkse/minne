@@ -333,6 +333,22 @@ async fn snapshot_new_entity_modal() {
     snapshot_settings().bind(|| insta::assert_snapshot!("new_entity_modal", body));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn modal_form_after_request_ignores_inner_htmx_requests() {
+    let (app, db) = build_test_app().await;
+    let cookie = seeded_cookie(&app, &db).await;
+    let modal = get_html(&app, "/knowledge-entity/new", Some(&cookie)).await;
+
+    // Inner buttons (e.g. Suggest Relationships) bubble htmx:afterRequest to
+    // #modal_form; closing must only run when the form itself submitted.
+    assert!(
+        modal.contains(
+            r#"hx-on::after-request="if(event.detail.successful && event.detail.elt === event.currentTarget) document.getElementById('body_modal').close()"#
+        ),
+        "#modal_form should ignore bubbled after-request events from child elements"
+    );
+}
+
 async fn sign_in(app: &Router, email: &str, password: &str) -> String {
     let response = app
         .clone()

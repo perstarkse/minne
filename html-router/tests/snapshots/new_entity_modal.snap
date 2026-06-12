@@ -1,5 +1,6 @@
 ---
 source: html-router/tests/router_integration.rs
+assertion_line: 333
 expression: body
 ---
 <dialog id="body_modal" class="modal">
@@ -18,7 +19,7 @@ expression: body
     </button>
 
     
-    <form id="modal_form" hx-on::after-request="if(event.detail.successful) document.getElementById('body_modal').close()" 
+    <form id="modal_form" hx-on::after-request="if(event.detail.successful && event.detail.elt === event.currentTarget) document.getElementById('body_modal').close()" 
 hx-post="/knowledge-entity"
 hx-target="#knowledge_pane"
 hx-swap="outerHTML"
