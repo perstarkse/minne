@@ -347,3 +347,85 @@ mod test_support;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod finalize_tests {
+    use std::{sync::Arc, time::Duration};
+
+    use common::storage::types::{
+        ingestion_payload::IngestionPayload,
+        ingestion_task::{IngestionTask, TaskState},
+    };
+    use tokio::time::sleep;
+
+    use super::{
+        config::IngestionTuning,
+        test_support::setup_db,
+        tests::{pipeline_config, reserve_task, MockServices},
+        IngestionPipeline, PipelineServices,
+    };
+
+    #[tokio::test]
+    async fn finalize_succeeded_retries_mark_succeeded() -> anyhow::Result<()> {
+        use anyhow::Context;
+        let db = setup_db().await?;
+        let worker_id = "worker-finalize-retry";
+        let user_id = "user-finalize-retry";
+        let services: Arc<dyn PipelineServices> = Arc::new(MockServices::new(user_id));
+        let mut config = pipeline_config();
+        config.tuning = IngestionTuning {
+            persist_attempts: 3,
+            persist_initial_backoff_ms: 10,
+            persist_max_backoff_ms: 10,
+            ..IngestionTuning::default()
+        };
+        let pipeline =
+            IngestionPipeline::with_services(Arc::new(db.clone()), config, services)?;
+
+        let task = reserve_task(
+            &db,
+            worker_id,
+            IngestionPayload::Text {
+                text: "Finalize retry payload".into(),
+                context: "Context".into(),
+                category: "notes".into(),
+                user_id: user_id.into(),
+            },
+            user_id,
+        )
+        .await?;
+        let processing = task.mark_processing(&db).await?;
+
+        db.client
+            .query(
+                "UPDATE type::thing('ingestion_task', $id) SET worker_id = $wrong_worker;",
+            )
+            .bind(("id", processing.id.clone()))
+            .bind(("wrong_worker", "wrong-worker"))
+            .await?;
+
+        let task_id = processing.id.clone();
+        let db_fix = db.clone();
+        tokio::spawn(async move {
+            sleep(Duration::from_millis(5)).await;
+            let _ = db_fix
+                .client
+                .query(
+                    "UPDATE type::thing('ingestion_task', $id) SET worker_id = $worker_id;",
+                )
+                .bind(("id", task_id))
+                .bind(("worker_id", worker_id))
+                .await;
+        });
+
+        pipeline.finalize_succeeded(&processing).await?;
+
+        let stored: IngestionTask = db
+            .get_item(&processing.id)
+            .await?
+            .context("task stored")?;
+        assert_eq!(stored.state, TaskState::Succeeded);
+
+        Ok(())
+    }
+}

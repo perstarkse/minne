@@ -2,10 +2,12 @@
 ## Unreleased
 - Performance: ingestion skips per-task index rebuild; worker runs scheduled `REBUILD INDEX` (default every 24h via `index_rebuild_interval_secs`, `0` disables)
 - Performance: ingestion persists all artifacts in a single SurrealDB transaction per task (atomic replace by task id)
+- Performance: entity embeddings during ingestion use batched `embed_batch`, matching chunk embedding
 - Fix: ingestion reclaims tasks after a successful persist without re-running the pipeline when `mark_succeeded` failed
 - Fix: content deletion clears graph relationships via shared `TextContent::clear_ingested_children`
 - Fix: regression re suggestion of relationships
 - Internal: eval corpus DB seed uses `persist_artifacts` instead of a separate batched insert path
+- Internal: removed unused `entity_embedding_concurrency` ingest tuning knob
 
 ## 1.0.3 (2026-06-12)
 - Search: filter results by type — knowledge entities, ingested content, or both

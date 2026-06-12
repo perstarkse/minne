@@ -111,11 +111,7 @@ impl<'a> PipelineContext<'a> {
 
         let (entities, relationships) = self
             .services
-            .convert_analysis(
-                &content,
-                &analysis,
-                self.pipeline_config.tuning.entity_embedding_concurrency,
-            )
+            .convert_analysis(&content, &analysis)
             .await?;
 
         let chunk_range = self.chunk_token_range();

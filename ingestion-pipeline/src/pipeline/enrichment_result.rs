@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use chrono::Utc;
-use futures::stream::{self, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
 use common::{
@@ -43,22 +40,15 @@ impl LLMEnrichmentResult {
         &self,
         source_id: &str,
         user_id: &str,
-        entity_concurrency: usize,
         embedding_provider: &EmbeddingProvider,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
-        let mapper = Arc::new(self.create_mapper());
+        let mapper = self.create_mapper();
 
         let entities = self
-            .process_entities(
-                source_id,
-                user_id,
-                Arc::clone(&mapper),
-                entity_concurrency,
-                embedding_provider,
-            )
+            .process_entities(source_id, user_id, &mapper, embedding_provider)
             .await?;
 
-        let relationships = self.process_relationships(source_id, user_id, mapper.as_ref())?;
+        let relationships = self.process_relationships(source_id, user_id, &mapper)?;
 
         Ok((entities, relationships))
     }
@@ -77,36 +67,64 @@ impl LLMEnrichmentResult {
         &self,
         source_id: &str,
         user_id: &str,
-        mapper: Arc<GraphMapper>,
-        entity_concurrency: usize,
+        mapper: &GraphMapper,
         embedding_provider: &EmbeddingProvider,
     ) -> Result<Vec<EmbeddedKnowledgeEntity>, AppError> {
-        let tasks: Vec<_> = self
-            .knowledge_entities
-            .iter()
-            .map(|entity| {
-                let llm_entity = entity.clone();
-                let mapper = Arc::clone(&mapper);
-                let source_id = source_id.to_string();
-                let user_id = user_id.to_string();
+        if self.knowledge_entities.is_empty() {
+            return Ok(Vec::new());
+        }
 
-                async move {
-                    create_single_entity(
-                        llm_entity,
-                        &source_id,
-                        &user_id,
-                        mapper,
-                        embedding_provider,
-                    )
-                    .await
-                }
-            })
-            .collect();
+        let now = Utc::now();
+        let mut prepared = Vec::with_capacity(self.knowledge_entities.len());
+        let mut embedding_inputs = Vec::with_capacity(self.knowledge_entities.len());
 
-        stream::iter(tasks)
-            .buffer_unordered(entity_concurrency.max(1))
-            .try_collect()
+        for llm_entity in &self.knowledge_entities {
+            let assigned_id = mapper.get_id(&llm_entity.key)?.to_string();
+            let entity_type = KnowledgeEntityType::from(llm_entity.entity_type.clone());
+            embedding_inputs.push(KnowledgeEntity::embedding_input_text(
+                &llm_entity.name,
+                &llm_entity.description,
+                entity_type,
+            ));
+            prepared.push((llm_entity, assigned_id, entity_type));
+        }
+
+        // Embed all entities from this document in one batch: a single lock acquisition and one
+        // blocking hop, letting the backend batch the inference internally.
+        let embeddings = embedding_provider
+            .embed_batch(&embedding_inputs)
             .await
+            .map_err(|e| AppError::InternalError(format!("entity embedding batch failed: {e}")))?;
+
+        if embeddings.len() != prepared.len() {
+            return Err(AppError::InternalError(format!(
+                "embedding batch returned {} vectors for {} entities",
+                embeddings.len(),
+                prepared.len()
+            )));
+        }
+
+        let mut entities = Vec::with_capacity(prepared.len());
+        for ((llm_entity, assigned_id, entity_type), embedding) in
+            prepared.into_iter().zip(embeddings)
+        {
+            entities.push(EmbeddedKnowledgeEntity {
+                entity: KnowledgeEntity {
+                    id: assigned_id,
+                    created_at: now,
+                    updated_at: now,
+                    name: llm_entity.name.clone(),
+                    description: llm_entity.description.clone(),
+                    entity_type,
+                    source_id: source_id.to_string(),
+                    metadata: None,
+                    user_id: user_id.to_string(),
+                },
+                embedding,
+            });
+        }
+
+        Ok(entities)
     }
 
     fn process_relationships(
@@ -133,44 +151,11 @@ impl LLMEnrichmentResult {
     }
 }
 
-async fn create_single_entity(
-    llm_entity: LLMKnowledgeEntity,
-    source_id: &str,
-    user_id: &str,
-    mapper: Arc<GraphMapper>,
-    embedding_provider: &EmbeddingProvider,
-) -> Result<EmbeddedKnowledgeEntity, AppError> {
-    let assigned_id = mapper.get_id(&llm_entity.key)?.to_string();
-
-    let entity_type = KnowledgeEntityType::from(llm_entity.entity_type);
-    let embedding_input = KnowledgeEntity::embedding_input_text(
-        &llm_entity.name,
-        &llm_entity.description,
-        entity_type,
-    );
-
-    let embedding = embedding_provider.embed(&embedding_input).await?;
-
-    let now = Utc::now();
-    let entity = KnowledgeEntity {
-        id: assigned_id,
-        created_at: now,
-        updated_at: now,
-        name: llm_entity.name,
-        description: llm_entity.description,
-        entity_type,
-        source_id: source_id.to_string(),
-        metadata: None,
-        user_id: user_id.into(),
-    };
-
-    Ok(EmbeddedKnowledgeEntity { entity, embedding })
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
     use super::*;
+    use common::utils::embedding::EmbeddingProvider;
     use uuid::Uuid;
 
     fn entity(key: &str) -> LLMKnowledgeEntity {
@@ -245,6 +230,32 @@ mod tests {
             relationships.first().expect("one relationship").out,
             raw.to_string()
         );
+    }
+
+    #[tokio::test]
+    async fn process_entities_batches_embeddings_and_preserves_order() -> anyhow::Result<()> {
+        let result = LLMEnrichmentResult {
+            knowledge_entities: vec![entity("k1"), entity("k2"), entity("k3")],
+            relationships: Vec::new(),
+        };
+        let mapper = result.create_mapper();
+        let provider = EmbeddingProvider::new_hashed(8)?;
+
+        let entities = result
+            .process_entities("source-1", "user-1", &mapper, &provider)
+            .await?;
+
+        assert_eq!(entities.len(), 3);
+        let first = entities.first().expect("first entity");
+        let second = entities.get(1).expect("second entity");
+        let third = entities.get(2).expect("third entity");
+        assert_eq!(first.entity.name, "name-k1");
+        assert_eq!(second.entity.name, "name-k2");
+        assert_eq!(third.entity.name, "name-k3");
+        assert!(entities.iter().all(|item| item.embedding.len() == 8));
+        assert_ne!(first.embedding, second.embedding);
+
+        Ok(())
     }
 
     #[test]
