@@ -51,7 +51,6 @@ pub trait PipelineServices: Send + Sync {
         &self,
         content: &TextContent,
         analysis: &LLMEnrichmentResult,
-        entity_concurrency: usize,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError>;
 
     async fn prepare_chunks(
@@ -230,15 +229,9 @@ impl PipelineServices for DefaultPipelineServices {
         &self,
         content: &TextContent,
         analysis: &LLMEnrichmentResult,
-        entity_concurrency: usize,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         analysis
-            .to_database_entities(
-                content.id(),
-                &content.user_id,
-                entity_concurrency,
-                &self.embedding_provider,
-            )
+            .to_database_entities(content.id(), &content.user_id, &self.embedding_provider)
             .await
     }
 

@@ -31,7 +31,7 @@ use super::{
     IngestionPipeline,
 };
 
-struct MockServices {
+pub(crate) struct MockServices {
     text_content: TextContent,
     similar_entities: Vec<RetrievedEntity>,
     analysis: LLMEnrichmentResult,
@@ -42,7 +42,7 @@ struct MockServices {
 }
 
 impl MockServices {
-    fn new(user_id: &str) -> Self {
+    pub(crate) fn new(user_id: &str) -> Self {
         const TEST_EMBEDDING_DIM: usize = 1536;
         let text_content = TextContent::new(
             "Example document for ingestion pipeline.".into(),
@@ -145,7 +145,6 @@ impl PipelineServices for MockServices {
         &self,
         content: &TextContent,
         _analysis: &LLMEnrichmentResult,
-        _entity_concurrency: usize,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         self.record("convert").await;
         let entities = self
@@ -221,10 +220,9 @@ impl PipelineServices for FailingServices {
         &self,
         content: &TextContent,
         analysis: &LLMEnrichmentResult,
-        entity_concurrency: usize,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         self.inner
-            .convert_analysis(content, analysis, entity_concurrency)
+            .convert_analysis(content, analysis)
             .await
     }
 
@@ -268,7 +266,6 @@ impl PipelineServices for ValidationServices {
         &self,
         _content: &TextContent,
         _analysis: &LLMEnrichmentResult,
-        _entity_concurrency: usize,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         unreachable!("convert_analysis should not be called after validation failure")
     }
@@ -283,19 +280,18 @@ impl PipelineServices for ValidationServices {
     }
 }
 
-fn pipeline_config() -> IngestionConfig {
+pub(crate) fn pipeline_config() -> IngestionConfig {
     IngestionConfig {
         tuning: IngestionTuning {
             chunk_min_tokens: 4,
             chunk_max_tokens: 64,
-            entity_embedding_concurrency: 2,
             ..IngestionTuning::default()
         },
         chunk_only: false,
     }
 }
 
-async fn reserve_task(
+pub(crate) async fn reserve_task(
     db: &SurrealDbClient,
     worker_id: &str,
     payload: IngestionPayload,
@@ -456,6 +452,34 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() -> anyhow::Result<()> {
 
     let call_log = services.calls.lock().await.clone();
     assert_eq!(call_log, vec!["prepare", "chunk"]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn produce_artifacts_returns_enriched_snapshot_without_persisting() -> anyhow::Result<()> {
+    let db = setup_db().await?;
+    let user_id = "user-produce";
+    let services = Arc::new(MockServices::new(user_id));
+    let pipeline =
+        IngestionPipeline::with_services(Arc::new(db.clone()), pipeline_config(), services)?;
+
+    let payload = IngestionPayload::Text {
+        text: "Produce artifacts payload".into(),
+        context: "Context".into(),
+        category: "notes".into(),
+        user_id: user_id.into(),
+    };
+    let task = IngestionTask::new(payload, user_id.to_string());
+
+    let artifacts = pipeline.produce_artifacts(&task).await?;
+
+    assert_eq!(artifacts.text_content.user_id, user_id);
+    assert_eq!(artifacts.chunks.len(), 1);
+    assert_eq!(artifacts.entities.len(), 1);
+    assert_eq!(artifacts.relationships.len(), 1);
+    assert_eq!(count_chunks_for_source(&db, &task.id).await?, 0);
+    assert_eq!(count_entities_for_source(&db, &task.id).await?, 0);
+
     Ok(())
 }
 

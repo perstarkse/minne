@@ -124,6 +124,13 @@ async fn execute_persist_transaction(
     db: &SurrealDbClient,
     payload: &PersistPayload,
 ) -> Result<(), AppError> {
+    #[cfg(test)]
+    if test_persist_should_fail() {
+        return Err(AppError::InternalError(
+            "Failed to commit transaction due to a read or write conflict".into(),
+        ));
+    }
+
     let mut query = String::from("BEGIN TRANSACTION;\n");
     query.push_str(TextContent::CLEAR_INGESTED_CHILD_ROWS_SURQL);
     query.push_str(
@@ -237,6 +244,24 @@ fn is_retryable_conflict(error: &AppError) -> bool {
 }
 
 #[cfg(test)]
+static TEST_PERSIST_FAILURES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+fn set_test_persist_failures(count: usize) {
+    TEST_PERSIST_FAILURES.store(count, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+fn test_persist_should_fail() -> bool {
+    let remaining = TEST_PERSIST_FAILURES.load(std::sync::atomic::Ordering::SeqCst);
+    if remaining == 0 {
+        return false;
+    }
+    TEST_PERSIST_FAILURES.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    true
+}
+
+#[cfg(test)]
 mod tests {
     use common::storage::types::text_content::TextContent;
 
@@ -337,6 +362,46 @@ mod tests {
         assert_eq!(count_chunks_for_source(&db, &source_b).await?, 2);
         assert_eq!(count_entities_for_source(&db, &source_b).await?, 1);
         assert_eq!(count_relationships_for_source(&db, &source_b).await?, 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn is_retryable_conflict_matches_surreal_transaction_conflict() {
+        let err = AppError::InternalError(
+            "Failed to commit transaction due to a read or write conflict".into(),
+        );
+        assert!(is_retryable_conflict(&err));
+    }
+
+    #[test]
+    fn is_retryable_conflict_rejects_unrelated_errors() {
+        let err = AppError::Validation("invalid payload".into());
+        assert!(!is_retryable_conflict(&err));
+    }
+
+    #[tokio::test]
+    async fn persist_artifacts_retries_transient_conflicts() -> anyhow::Result<()> {
+        set_test_persist_failures(2);
+
+        let db = setup_db().await?;
+        let source_id = uuid::Uuid::new_v4().to_string();
+        let user_id = "persist-retry";
+        let mut tuning = test_support::tuning();
+        tuning.persist_attempts = 3;
+        tuning.persist_initial_backoff_ms = 1;
+        tuning.persist_max_backoff_ms = 1;
+
+        let counts = persist_artifacts(
+            &db,
+            &tuning,
+            TEST_EMBEDDING_DIM,
+            sample_artifacts(&source_id, user_id),
+        )
+        .await?;
+
+        assert_eq!(counts.chunk_count, 1);
+        assert_eq!(count_chunks_for_source(&db, &source_id).await?, 1);
 
         Ok(())
     }
