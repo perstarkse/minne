@@ -26,7 +26,12 @@ async fn main() -> anyhow::Result<()> {
         Arc::clone(&services.embedding_provider),
     )?);
 
-    run_worker_loop(services.db, ingestion_pipeline).await
+    run_worker_loop(
+        services.db,
+        ingestion_pipeline,
+        services.config.index_rebuild_interval_secs,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -69,7 +74,9 @@ mod tests {
         let db = Arc::clone(&services.db);
         let pipeline = Arc::new(pipeline);
         let worker =
-            tokio::spawn(async move { ingestion_pipeline::run_worker_loop(db, pipeline).await });
+            tokio::spawn(async move {
+                ingestion_pipeline::run_worker_loop(db, pipeline, 0).await
+            });
 
         tokio::time::sleep(Duration::from_millis(250)).await;
         assert!(

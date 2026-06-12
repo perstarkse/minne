@@ -1,12 +1,19 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use futures::future::try_join_all;
 use serde::Deserialize;
 use serde_json::{Map, Value};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
-use crate::{error::AppError, storage::db::SurrealDbClient};
+use crate::{
+    error::AppError,
+    storage::{
+        db::SurrealDbClient,
+        types::system_settings::SystemSettings,
+    },
+};
 
 const INDEX_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const INDEX_BUILD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -204,11 +211,125 @@ pub async fn ensure_runtime(
 
 /// Rebuild known FTS and HNSW indexes, skipping any that are not yet defined.
 ///
+/// Uses `DEFINE INDEX OVERWRITE` and is reserved for dimension migrations, re-embed
+/// flows, and tests. Routine optimization should use [`rebuild_runtime`].
+///
 /// # Errors
 ///
 /// Returns `AppError::InternalError` if any index rebuild operation fails.
 pub async fn rebuild(db: &SurrealDbClient) -> Result<(), AppError> {
     rebuild_inner(db).await.map_err(AppError::internal)
+}
+
+/// Rebuilds existing runtime FTS and HNSW indexes in place via SurrealQL `REBUILD INDEX`.
+///
+/// SurrealDB maintains ready indexes incrementally on writes; this is for periodic
+/// optimization (for example a nightly maintainer job), not ingest correctness.
+/// On SurrealDB 2.6 this runs synchronously (`CONCURRENTLY` is not supported on `REBUILD`).
+///
+/// # Errors
+///
+/// Returns `AppError::InternalError` if any rebuild operation fails.
+pub async fn rebuild_runtime(db: &SurrealDbClient) -> Result<(), AppError> {
+    rebuild_runtime_inner(db)
+        .await
+        .map_err(AppError::internal)
+}
+
+/// Returns whether a scheduled index rebuild is due based on the persisted last-run time.
+#[must_use]
+pub fn scheduled_index_rebuild_due(
+    last_run: Option<DateTime<Utc>>,
+    interval_secs: u64,
+    now: DateTime<Utc>,
+) -> bool {
+    if interval_secs == 0 {
+        return false;
+    }
+
+    let Some(last_run) = last_run else {
+        return false;
+    };
+
+    let elapsed = now.signed_duration_since(last_run);
+    elapsed.num_seconds() >= i64::try_from(interval_secs).unwrap_or(i64::MAX)
+}
+
+/// Runs a scheduled native `REBUILD INDEX` pass when due, using a DB lock so only one
+/// maintainer rebuilds at a time. Seeds a checkpoint on first run so the initial rebuild
+/// waits one full interval after worker startup.
+pub async fn maybe_run_scheduled_index_rebuild(
+    db: &SurrealDbClient,
+    worker_id: &str,
+    interval_secs: u64,
+) {
+    if interval_secs == 0 {
+        return;
+    }
+
+    let now = Utc::now();
+    let settings = match SystemSettings::get_current(db).await {
+        Ok(settings) => settings,
+        Err(err) => {
+            warn!(error = %err, "failed to load system settings for index rebuild schedule");
+            return;
+        }
+    };
+
+    let last_run = settings.last_index_rebuild_at;
+
+    if last_run.is_none() {
+        match SystemSettings::seed_index_rebuild_checkpoint(db).await {
+            Ok(true) => debug!("seeded index rebuild checkpoint; first rebuild deferred"),
+            Ok(false) => {}
+            Err(err) => warn!(error = %err, "failed to seed index rebuild checkpoint"),
+        }
+        return;
+    }
+
+    if !scheduled_index_rebuild_due(last_run, interval_secs, now) {
+        return;
+    }
+
+    let lock_owner = format!("{worker_id}-index-rebuild");
+    let acquired = match SystemSettings::try_acquire_index_rebuild_lease(db, &lock_owner).await {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(error = %err, "failed to acquire index rebuild lease");
+            return;
+        }
+    };
+
+    if !acquired {
+        debug!("another maintainer is rebuilding indexes");
+        return;
+    }
+
+    let started = Instant::now();
+    info!(interval_secs, "starting scheduled runtime index rebuild");
+    let rebuild_result = rebuild_runtime(db).await;
+
+    match rebuild_result {
+        Ok(()) => {
+            if let Err(err) = SystemSettings::record_index_rebuild_completed(db, &lock_owner).await
+            {
+                warn!(error = %err, "failed to persist index rebuild checkpoint");
+                SystemSettings::release_index_rebuild_lease(db, &lock_owner).await;
+            }
+            info!(
+                elapsed_ms = started.elapsed().as_millis(),
+                "scheduled runtime index rebuild completed"
+            );
+        }
+        Err(err) => {
+            SystemSettings::release_index_rebuild_lease(db, &lock_owner).await;
+            error!(
+                error = %err,
+                elapsed_ms = started.elapsed().as_millis(),
+                "scheduled runtime index rebuild failed"
+            );
+        }
+    }
 }
 
 /// Returns the dimension of the currently defined chunk-embedding HNSW index, if any.
@@ -380,6 +501,46 @@ async fn rebuild_inner(db: &SurrealDbClient) -> Result<()> {
     });
 
     try_join_all(hnsw_tasks).await.map(|_| ())
+}
+
+async fn rebuild_runtime_inner(db: &SurrealDbClient) -> Result<()> {
+    debug!("Rebuilding runtime indexes with REBUILD INDEX");
+
+    for spec in fts_index_specs() {
+        rebuild_existing_index_in_place(db, spec.index_name, spec.table).await?;
+    }
+
+    let hnsw_tasks = hnsw_index_specs().into_iter().map(|spec| async move {
+        rebuild_existing_index_in_place(db, spec.index_name, spec.table).await
+    });
+
+    try_join_all(hnsw_tasks).await.map(|_| ())
+}
+
+async fn rebuild_existing_index_in_place(
+    db: &SurrealDbClient,
+    index_name: &str,
+    table: &str,
+) -> Result<()> {
+    if !index_exists(db, table, index_name).await? {
+        debug!(
+            index = index_name,
+            table,
+            "Skipping in-place rebuild because index is missing"
+        );
+        return Ok(());
+    }
+
+    let query = format!("REBUILD INDEX IF EXISTS {index_name} ON {table};");
+    let res = db
+        .client
+        .query(query)
+        .await
+        .with_context(|| format!("rebuilding index {index_name} on table {table}"))?;
+    res.check()
+        .with_context(|| format!("rebuild index {index_name} on table {table} failed"))?;
+
+    Ok(())
 }
 
 async fn existing_hnsw_dimension(
@@ -904,6 +1065,37 @@ mod tests {
     fn extract_dimension_parses_value() {
         let definition = "DEFINE INDEX idx_embedding_text_chunk_embedding ON TABLE text_chunk_embedding FIELDS embedding HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 100 M 8;";
         assert_eq!(extract_dimension(definition), Some(1536));
+    }
+
+    #[test]
+    fn scheduled_index_rebuild_due_respects_interval_and_disabled() {
+        let now = Utc::now();
+        let last = now - chrono::Duration::hours(25);
+
+        assert!(!scheduled_index_rebuild_due(None, 86_400, now));
+        assert!(!scheduled_index_rebuild_due(Some(last), 0, now));
+        assert!(!scheduled_index_rebuild_due(Some(now - chrono::Duration::hours(1)), 86_400, now));
+        assert!(scheduled_index_rebuild_due(Some(last), 86_400, now));
+    }
+
+    #[tokio::test]
+    async fn rebuild_runtime_is_idempotent() -> anyhow::Result<()> {
+        let namespace = "indexes_in_place_rebuild";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .context("in-memory db")?;
+
+        db.apply_migrations().await.context("migrations")?;
+        ensure_runtime(&db, 8).await.context("ensure runtime indexes")?;
+
+        rebuild_runtime(&db)
+            .await
+            .context("first in-place rebuild")?;
+        rebuild_runtime(&db)
+            .await
+            .context("second in-place rebuild")?;
+        Ok(())
     }
 
     #[tokio::test]

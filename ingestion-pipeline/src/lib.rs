@@ -6,6 +6,7 @@ pub mod utils;
 use chrono::Utc;
 use common::storage::{
     db::SurrealDbClient,
+    indexes::maybe_run_scheduled_index_rebuild,
     types::ingestion_task::{IngestionTask, DEFAULT_LEASE_SECS},
 };
 pub use pipeline::{
@@ -25,6 +26,7 @@ const WORKER_CLAIM_ERROR_BACKOFF_MS: u64 = 1_000;
 pub async fn run_worker_loop(
     db: Arc<SurrealDbClient>,
     ingestion_pipeline: Arc<IngestionPipeline>,
+    index_rebuild_interval_secs: u64,
 ) -> anyhow::Result<()> {
     let worker_id = format!("ingestion-worker-{}", Uuid::new_v4());
     let lease_duration = Duration::from_secs(DEFAULT_LEASE_SECS as u64);
@@ -46,6 +48,12 @@ pub async fn run_worker_loop(
                 }
             }
             Ok(None) => {
+                maybe_run_scheduled_index_rebuild(
+                    db.as_ref(),
+                    &worker_id,
+                    index_rebuild_interval_secs,
+                )
+                .await;
                 sleep(idle_backoff).await;
             }
             Err(err) => {

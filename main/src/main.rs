@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let worker_openai = Arc::clone(&services.openai_client);
     let worker_embedding = Arc::clone(&services.embedding_provider);
     let worker_config = services.config.clone();
+    let index_rebuild_interval_secs = worker_config.index_rebuild_interval_secs;
     let worker_reranker = services.reranker_pool.clone();
     let worker_storage = services.storage.clone();
 
@@ -59,7 +60,12 @@ async fn main() -> anyhow::Result<()> {
             worker_embedding,
         )?);
 
-        run_worker_loop(worker_db, ingestion_pipeline).await
+        run_worker_loop(
+            worker_db,
+            ingestion_pipeline,
+            index_rebuild_interval_secs,
+        )
+        .await
     });
 
     tokio::select! {

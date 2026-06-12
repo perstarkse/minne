@@ -1,3 +1,6 @@
+use chrono::{DateTime, Utc};
+use tracing::warn;
+
 use crate::utils::config::EmbeddingBackend;
 use crate::utils::serde_helpers::deserialize_flexible_id;
 use serde::{Deserialize, Serialize};
@@ -22,6 +25,15 @@ pub struct SystemSettings {
     pub image_processing_model: String,
     pub image_processing_prompt: String,
     pub voice_processing_model: String,
+    /// When the maintainer last completed a scheduled `REBUILD INDEX` pass.
+    #[serde(default)]
+    pub last_index_rebuild_at: Option<DateTime<Utc>>,
+    /// Worker id holding the index-rebuild lease, if any.
+    #[serde(default)]
+    pub index_rebuild_lease_owner: Option<String>,
+    /// Lease expiry for in-flight scheduled index rebuilds.
+    #[serde(default)]
+    pub index_rebuild_lease_expires_at: Option<DateTime<Utc>>,
 }
 
 /// Partial update for singleton system settings without cloning unchanged fields.
@@ -99,6 +111,8 @@ impl SystemSettingsPatch {
         SystemSettings::update(db, current).await
     }
 }
+
+const INDEX_REBUILD_LEASE_TTL: &str = "6h";
 
 impl SystemSettings {
     pub const RECORD_ID: &'static str = "current";
@@ -226,6 +240,89 @@ impl SystemSettings {
         }
 
         Ok((settings, needs_update))
+    }
+
+    /// Seeds the first rebuild checkpoint so the initial scheduled rebuild waits one interval.
+    pub async fn seed_index_rebuild_checkpoint(db: &SurrealDbClient) -> Result<bool, AppError> {
+        let mut response = db
+            .client
+            .query(
+                "UPDATE type::thing('system_settings', $id) SET last_index_rebuild_at = time::now()
+                 WHERE last_index_rebuild_at IS NONE
+                 RETURN AFTER;",
+            )
+            .bind(("id", Self::RECORD_ID))
+            .await
+            .map_err(AppError::from)?;
+
+        let updated: Option<Self> = response.take(0).map_err(AppError::from)?;
+        Ok(updated.is_some())
+    }
+
+    /// Claims the singleton index-rebuild lease when it is free or expired.
+    pub async fn try_acquire_index_rebuild_lease(
+        db: &SurrealDbClient,
+        owner: &str,
+    ) -> Result<bool, AppError> {
+        let mut response = db
+            .client
+            .query(format!(
+                "UPDATE type::thing('system_settings', $id) SET
+                    index_rebuild_lease_owner = $owner,
+                    index_rebuild_lease_expires_at = time::now() + {INDEX_REBUILD_LEASE_TTL}
+                 WHERE index_rebuild_lease_expires_at IS NONE
+                    OR index_rebuild_lease_expires_at < time::now()
+                 RETURN AFTER;"
+            ))
+            .bind(("id", Self::RECORD_ID))
+            .bind(("owner", owner.to_string()))
+            .await
+            .map_err(AppError::from)?;
+
+        let updated: Option<Self> = response.take(0).map_err(AppError::from)?;
+        Ok(updated.is_some())
+    }
+
+    /// Releases the index-rebuild lease when held by `owner`.
+    pub async fn release_index_rebuild_lease(db: &SurrealDbClient, owner: &str) {
+        let released = db
+            .client
+            .query(
+                "UPDATE type::thing('system_settings', $id) SET
+                    index_rebuild_lease_owner = NONE,
+                    index_rebuild_lease_expires_at = NONE
+                 WHERE index_rebuild_lease_owner = $owner;",
+            )
+            .bind(("id", Self::RECORD_ID))
+            .bind(("owner", owner.to_string()))
+            .await
+            .and_then(surrealdb::Response::check);
+
+        if let Err(err) = released {
+            warn!(error = %err, "failed to release index rebuild lease");
+        }
+    }
+
+    /// Records a completed scheduled index rebuild and clears the lease.
+    pub async fn record_index_rebuild_completed(
+        db: &SurrealDbClient,
+        owner: &str,
+    ) -> Result<(), AppError> {
+        let response = db
+            .client
+            .query(
+                "UPDATE type::thing('system_settings', $id) SET
+                    last_index_rebuild_at = time::now(),
+                    index_rebuild_lease_owner = NONE,
+                    index_rebuild_lease_expires_at = NONE
+                 WHERE index_rebuild_lease_owner = $owner;",
+            )
+            .bind(("id", Self::RECORD_ID))
+            .bind(("owner", owner.to_string()))
+            .await
+            .map_err(AppError::from)?;
+        response.check().map_err(AppError::from)?;
+        Ok(())
     }
 }
 
@@ -800,6 +897,37 @@ mod tests {
             persisted_settings.embedding_dimensions, new_dimension,
             "Settings should persist new embedding dimension"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn index_rebuild_lease_is_exclusive_on_system_settings() -> anyhow::Result<()> {
+        let namespace = "system_settings_index_rebuild";
+        let database = &Uuid::new_v4().to_string();
+        let db = SurrealDbClient::memory(namespace, database)
+            .await
+            .context("in-memory db")?;
+        db.apply_migrations().await.context("migrations")?;
+
+        assert!(
+            SystemSettings::try_acquire_index_rebuild_lease(&db, "worker-a")
+                .await?,
+            "first lease claim should succeed"
+        );
+        assert!(
+            !SystemSettings::try_acquire_index_rebuild_lease(&db, "worker-b")
+                .await?,
+            "second lease claim should fail while lease is held"
+        );
+
+        SystemSettings::release_index_rebuild_lease(&db, "worker-a").await;
+
+        SystemSettings::try_acquire_index_rebuild_lease(&db, "worker-b").await?;
+        SystemSettings::record_index_rebuild_completed(&db, "worker-b").await?;
+
+        let settings = SystemSettings::get_current(&db).await?;
+        assert!(settings.last_index_rebuild_at.is_some());
+        assert!(settings.index_rebuild_lease_owner.is_none());
         Ok(())
     }
 }
