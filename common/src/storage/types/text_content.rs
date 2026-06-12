@@ -96,6 +96,41 @@ impl TextContent {
         }
     }
 
+    /// SurrealQL deletes for ingested child rows keyed by `source_id` (no transaction wrapper).
+    ///
+    /// Used inside larger transactions (e.g. ingestion `persist_artifacts`) and mirrored by
+    /// [`Self::clear_ingested_children`].
+    pub const CLEAR_INGESTED_CHILD_ROWS_SURQL: &'static str = r"
+DELETE relates_to WHERE metadata.source_id = $source_id AND metadata.user_id = $user_id;
+DELETE text_chunk_embedding WHERE source_id = $source_id;
+DELETE text_chunk WHERE source_id = $source_id;
+DELETE knowledge_entity_embedding WHERE source_id = $source_id;
+DELETE knowledge_entity WHERE source_id = $source_id;
+";
+
+    /// Removes chunks, embeddings, entities, and relationships for one ingested document snapshot.
+    pub async fn clear_ingested_children(
+        source_id: &str,
+        user_id: &str,
+        db: &SurrealDbClient,
+    ) -> Result<(), AppError> {
+        let query = format!(
+            "BEGIN TRANSACTION;\n{} COMMIT TRANSACTION;",
+            Self::CLEAR_INGESTED_CHILD_ROWS_SURQL
+        );
+
+        db.client
+            .query(query)
+            .bind(("source_id", source_id.to_string()))
+            .bind(("user_id", user_id.to_string()))
+            .await
+            .map_err(AppError::from)?
+            .check()
+            .map_err(AppError::from)?;
+
+        Ok(())
+    }
+
     pub async fn patch(
         id: &str,
         context: &str,
@@ -364,7 +399,14 @@ mod tests {
     use anyhow::{self, Context};
 
     use super::*;
-    use crate::test_utils::setup_test_db_with_runtime_indexes;
+    use crate::{
+        storage::types::{
+            knowledge_entity::{KnowledgeEntity, KnowledgeEntityType},
+            knowledge_relationship::KnowledgeRelationship,
+            text_chunk::TextChunk,
+        },
+        test_utils::{setup_test_db, setup_test_db_with_runtime_indexes},
+    };
 
     #[tokio::test]
     async fn test_text_content_creation() -> anyhow::Result<()> {
@@ -636,6 +678,83 @@ mod tests {
             labels.get(&format!("text_content:{}", content.id)),
             Some(&"Example Document".to_string())
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn clear_ingested_children_removes_chunks_entities_and_relationships(
+    ) -> anyhow::Result<()> {
+        let db = setup_test_db().await?;
+        let user_id = "clear-user";
+        let source_id = Uuid::new_v4().to_string();
+
+        let entity_a = KnowledgeEntity::new(
+            source_id.clone(),
+            "entity-a".to_string(),
+            "desc-a".to_string(),
+            KnowledgeEntityType::Idea,
+            None,
+            user_id.to_string(),
+        );
+        let entity_b = KnowledgeEntity::new(
+            source_id.clone(),
+            "entity-b".to_string(),
+            "desc-b".to_string(),
+            KnowledgeEntityType::Idea,
+            None,
+            user_id.to_string(),
+        );
+        KnowledgeEntity::store_with_embedding(entity_a.clone(), vec![0.1; 3], 3, &db)
+            .await
+            .context("store entity a")?;
+        KnowledgeEntity::store_with_embedding(entity_b.clone(), vec![0.2; 3], 3, &db)
+            .await
+            .context("store entity b")?;
+
+        let chunk = TextChunk::new(source_id.clone(), "chunk".to_string(), user_id.to_string());
+        TextChunk::store_with_embedding(chunk, vec![0.3; 3], 3, &db)
+            .await
+            .context("store chunk")?;
+
+        KnowledgeRelationship::new(
+            entity_a.id.clone(),
+            entity_b.id,
+            user_id.to_string(),
+            source_id.clone(),
+            "relates_to".to_string(),
+        )
+        .store_relationship(&db)
+        .await
+        .context("store relationship")?;
+
+        TextContent::clear_ingested_children(&source_id, user_id, &db)
+            .await
+            .context("clear ingested children")?;
+
+        let chunks: Vec<TextChunk> = db
+            .client
+            .query("SELECT * FROM text_chunk WHERE source_id = $source_id;")
+            .bind(("source_id", source_id.clone()))
+            .await?
+            .take(0)?;
+        assert!(chunks.is_empty());
+
+        let entities: Vec<KnowledgeEntity> = db
+            .client
+            .query("SELECT * FROM knowledge_entity WHERE source_id = $source_id;")
+            .bind(("source_id", source_id.clone()))
+            .await?
+            .take(0)?;
+        assert!(entities.is_empty());
+
+        let relationships: Vec<KnowledgeRelationship> = db
+            .client
+            .query("SELECT * FROM relates_to WHERE metadata.source_id = $source_id;")
+            .bind(("source_id", source_id))
+            .await?
+            .take(0)?;
+        assert!(relationships.is_empty());
+
         Ok(())
     }
 }

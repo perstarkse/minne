@@ -5,10 +5,7 @@ use axum::{
 use axum_htmx::{HxBoosted, HxRequest, HxTarget};
 use serde::{Deserialize, Serialize};
 
-use common::storage::types::{
-    file_info::FileInfo, knowledge_entity::KnowledgeEntity, text_chunk::TextChunk,
-    text_content::TextContent, user::User,
-};
+use common::storage::types::{file_info::FileInfo, text_content::TextContent, user::User};
 
 use crate::{
     html_state::HtmlState,
@@ -180,9 +177,7 @@ pub async fn delete_text_content(
         }
     }
 
-    // Delete related knowledge entities and text chunks
-    KnowledgeEntity::delete_by_source_id(&id, &state.db).await?;
-    TextChunk::delete_by_source_id(&id, &state.db).await?;
+    TextContent::clear_ingested_children(&id, &user.id, &state.db).await?;
 
     // Delete the text content
     state.db.delete_item::<TextContent>(&id).await?;

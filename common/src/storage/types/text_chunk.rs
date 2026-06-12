@@ -61,8 +61,9 @@ impl TextChunk {
         Ok(())
     }
 
-    /// Atomically store a text chunk and its embedding.
-    /// Writes the chunk to `text_chunk` and the embedding to `text_chunk_embedding`.
+    /// Atomically store one text chunk and its embedding (single-record path).
+    ///
+    /// Bulk ingestion uses `ingestion_pipeline::persist_artifacts` instead.
     pub async fn store_with_embedding(
         chunk: TextChunk,
         embedding: Vec<f32>,

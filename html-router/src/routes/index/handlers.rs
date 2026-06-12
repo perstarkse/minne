@@ -23,9 +23,7 @@ use common::storage::types::user::DashboardStats;
 use common::{
     error::AppError,
     storage::types::{
-        file_info::FileInfo, ingestion_task::IngestionTask, knowledge_entity::KnowledgeEntity,
-        knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
-        text_content::TextContent, user::User,
+        file_info::FileInfo, ingestion_task::IngestionTask, text_content::TextContent, user::User,
     },
 };
 
@@ -81,11 +79,7 @@ pub async fn delete_text_content(
         }
     }
 
-    // Delete the text content and any related data
-    TextChunk::delete_by_source_id(&text_content.id, &state.db).await?;
-    KnowledgeEntity::delete_by_source_id(&text_content.id, &state.db).await?;
-    KnowledgeRelationship::delete_relationships_by_source_id(&text_content.id, &user.id, &state.db)
-        .await?;
+    TextContent::clear_ingested_children(&text_content.id, &user.id, &state.db).await?;
     state
         .db
         .delete_item::<TextContent>(&text_content.id)
