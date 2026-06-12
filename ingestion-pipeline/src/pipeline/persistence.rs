@@ -48,6 +48,7 @@ const STORE_RELATIONSHIPS: &str = r"
 pub(super) async fn store_vector_chunks(
     db: &SurrealDbClient,
     task_id: &str,
+    embedding_dimensions: usize,
     chunks: Vec<EmbeddedTextChunk>,
 ) -> Result<usize, AppError> {
     let chunk_count = chunks.len();
@@ -58,7 +59,13 @@ pub(super) async fn store_vector_chunks(
             chunk_len = embedded.chunk.chunk.chars().count(),
             "chunk persisted"
         );
-        TextChunk::store_with_embedding(embedded.chunk, embedded.embedding, db).await?;
+        TextChunk::store_with_embedding(
+            embedded.chunk,
+            embedded.embedding,
+            embedding_dimensions,
+            db,
+        )
+        .await?;
     }
 
     Ok(chunk_count)
@@ -71,11 +78,18 @@ pub(super) async fn store_vector_chunks(
 pub(super) async fn store_graph_entities(
     db: &SurrealDbClient,
     tuning: &IngestionTuning,
+    embedding_dimensions: usize,
     entities: Vec<EmbeddedKnowledgeEntity>,
     relationships: Vec<KnowledgeRelationship>,
 ) -> Result<(), AppError> {
     for embedded in entities {
-        KnowledgeEntity::store_with_embedding(embedded.entity, embedded.embedding, db).await?;
+        KnowledgeEntity::store_with_embedding(
+            embedded.entity,
+            embedded.embedding,
+            embedding_dimensions,
+            db,
+        )
+        .await?;
     }
 
     if relationships.is_empty() {

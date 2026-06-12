@@ -205,7 +205,7 @@ mod tests {
         let embedding_vec = vec![0.11_f32, 0.22, 0.33];
         let entity = build_knowledge_entity_with_id(entity_key, source_id, user_id);
 
-        KnowledgeEntity::store_with_embedding(entity.clone(), embedding_vec.clone(), &db)
+        KnowledgeEntity::store_with_embedding(entity.clone(), embedding_vec.clone(), 3, &db)
             .await
             .with_context(|| "Failed to store entity with embedding".to_string())?;
 
@@ -234,7 +234,7 @@ mod tests {
 
         let entity = build_knowledge_entity_with_id(entity_key, source_id, user_id);
 
-        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.5_f32, 0.6, 0.7], &db)
+        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.5_f32, 0.6, 0.7], 3, &db)
             .await
             .with_context(|| "Failed to store entity with embedding".to_string())?;
 
@@ -266,7 +266,7 @@ mod tests {
 
         let entity = build_knowledge_entity_with_id("entity-store", source_id, user_id);
 
-        KnowledgeEntity::store_with_embedding(entity.clone(), embedding.clone(), &db)
+        KnowledgeEntity::store_with_embedding(entity.clone(), embedding.clone(), 3, &db)
             .await
             .with_context(|| "Failed to store entity with embedding".to_string())?;
 
@@ -295,7 +295,7 @@ mod tests {
         let db = prepare_knowledge_entity_test_db(3).await?;
 
         let entity = build_knowledge_entity_with_id("entity-dim", "source-dim", "user-dim");
-        let result = KnowledgeEntity::store_with_embedding(entity, vec![0.1, 0.2], &db).await;
+        let result = KnowledgeEntity::store_with_embedding(entity, vec![0.1, 0.2], 3, &db).await;
 
         assert!(matches!(result, Err(AppError::Validation(_))));
 
@@ -313,13 +313,13 @@ mod tests {
         let entity2 = build_knowledge_entity_with_id("entity-s2", source_id, user_id);
         let entity_other = build_knowledge_entity_with_id("entity-other", other_source, user_id);
 
-        KnowledgeEntity::store_with_embedding(entity1.clone(), vec![1.0_f32, 1.1, 1.2], &db)
+        KnowledgeEntity::store_with_embedding(entity1.clone(), vec![1.0_f32, 1.1, 1.2], 3, &db)
             .await
             .with_context(|| "Failed to store entity with embedding".to_string())?;
-        KnowledgeEntity::store_with_embedding(entity2.clone(), vec![2.0_f32, 2.1, 2.2], &db)
+        KnowledgeEntity::store_with_embedding(entity2.clone(), vec![2.0_f32, 2.1, 2.2], 3, &db)
             .await
             .with_context(|| "Failed to store entity with embedding".to_string())?;
-        KnowledgeEntity::store_with_embedding(entity_other.clone(), vec![3.0_f32, 3.1, 3.2], &db)
+        KnowledgeEntity::store_with_embedding(entity_other.clone(), vec![3.0_f32, 3.1, 3.2], 3, &db)
             .await
             .with_context(|| "Failed to store entity with embedding".to_string())?;
 
@@ -403,7 +403,7 @@ mod tests {
         let source_id = "source-fetch";
 
         let entity = build_knowledge_entity_with_id(entity_key, source_id, user_id);
-        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.7_f32, 0.8, 0.9], &db)
+        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.7_f32, 0.8, 0.9], 3, &db)
             .await
             .with_context(|| "Failed to store entity with embedding".to_string())?;
 
@@ -441,7 +441,7 @@ mod tests {
         let source_id = "source-upsert";
         let entity = build_knowledge_entity_with_id("entity-upsert", source_id, user_id);
 
-        KnowledgeEntity::store_with_embedding(entity.clone(), vec![1.0_f32, 0.0, 0.0], &db)
+        KnowledgeEntity::store_with_embedding(entity.clone(), vec![1.0_f32, 0.0, 0.0], 3, &db)
             .await
             .with_context(|| "initial store".to_string())?;
 

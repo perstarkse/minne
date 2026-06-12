@@ -320,7 +320,7 @@ mod tests {
             "dimension migration test chunk".into(),
             "user1".into(),
         );
-        TextChunk::store_with_embedding(chunk, vec![0.1, 0.2, 0.3], &services.db)
+        TextChunk::store_with_embedding(chunk, vec![0.1, 0.2, 0.3], 3, &services.db)
             .await
             .expect("store chunk at old dimension");
 

@@ -139,7 +139,7 @@ mod tests {
             user_id.into(),
         );
 
-        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db).await?;
+        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), 3, &db).await?;
 
         let embedding_provider = test_embedding_provider();
         let params = pipeline::RetrievalParams {
@@ -185,8 +185,9 @@ mod tests {
             user_id.into(),
         );
 
-        TextChunk::store_with_embedding(primary_chunk, chunk_embedding_primary(), &db).await?;
-        TextChunk::store_with_embedding(secondary_chunk, chunk_embedding_secondary(), &db).await?;
+        TextChunk::store_with_embedding(primary_chunk, chunk_embedding_primary(), 3, &db).await?;
+        TextChunk::store_with_embedding(secondary_chunk, chunk_embedding_secondary(), 3, &db)
+            .await?;
 
         let embedding_provider = test_embedding_provider();
         let params = pipeline::RetrievalParams {
@@ -230,7 +231,7 @@ mod tests {
             "Async Rust programming uses the Tokio runtime for concurrent tasks.".into(),
             user_id.into(),
         );
-        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), &db).await?;
+        TextChunk::store_with_embedding(chunk.clone(), chunk_embedding_primary(), 3, &db).await?;
 
         let entity = KnowledgeEntity::new(
             "entity_source".into(),

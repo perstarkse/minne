@@ -203,7 +203,13 @@ pub async fn create_knowledge_entity(
     );
     let new_entity_id = new_entity.id.clone();
 
-    KnowledgeEntity::store_with_embedding(new_entity, embedding, &state.db).await?;
+    KnowledgeEntity::store_with_embedding(
+        new_entity,
+        embedding,
+        state.embedding_provider.dimension(),
+        &state.db,
+    )
+    .await?;
 
     let relationship_type = relationship_type_or_default(form.relationship_type.as_deref());
     let user_id = user.id.clone();

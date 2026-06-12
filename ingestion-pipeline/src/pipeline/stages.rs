@@ -6,7 +6,10 @@
 
 use common::{
     error::AppError,
-    storage::{indexes::rebuild, types::ingestion_payload::IngestionPayload},
+    storage::{
+        indexes::rebuild,
+        types::{ingestion_payload::IngestionPayload, system_settings::SystemSettings},
+    },
 };
 use state_machines::core::GuardError;
 use tracing::{debug, instrument};
@@ -155,8 +158,26 @@ pub async fn persist(
     let entity_count = entities.len();
     let relationship_count = relationships.len();
 
-    let chunk_count = store_vector_chunks(ctx.db, ctx.task_id.as_str(), chunks).await?;
-    store_graph_entities(ctx.db, &ctx.pipeline_config.tuning, entities, relationships).await?;
+    let settings = SystemSettings::get_current(ctx.db).await?;
+    let embedding_dimensions = usize::try_from(settings.embedding_dimensions).map_err(|_| {
+        AppError::InternalError("system_settings.embedding_dimensions exceeds usize::MAX".into())
+    })?;
+
+    let chunk_count = store_vector_chunks(
+        ctx.db,
+        ctx.task_id.as_str(),
+        embedding_dimensions,
+        chunks,
+    )
+    .await?;
+    store_graph_entities(
+        ctx.db,
+        &ctx.pipeline_config.tuning,
+        embedding_dimensions,
+        entities,
+        relationships,
+    )
+    .await?;
     ctx.db.store_item(text_content).await?;
     rebuild(ctx.db).await?;
 

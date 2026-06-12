@@ -250,13 +250,10 @@ impl KnowledgeEntity {
     pub async fn store_with_embedding(
         entity: KnowledgeEntity,
         embedding: Vec<f32>,
+        embedding_dimensions: usize,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        let settings = SystemSettings::get_current(db).await?;
-        KnowledgeEntityEmbedding::validate_dimension(
-            &embedding,
-            settings.embedding_dimensions as usize,
-        )?;
+        KnowledgeEntityEmbedding::validate_dimension(&embedding, embedding_dimensions)?;
 
         let entity_id = entity.id.clone();
         let emb = KnowledgeEntityEmbedding::new(
@@ -722,13 +719,13 @@ mod tests {
         );
 
         let emb = vec![0.1, 0.2, 0.3, 0.4, 0.5];
-        KnowledgeEntity::store_with_embedding(entity1.clone(), emb.clone(), &db)
+        KnowledgeEntity::store_with_embedding(entity1.clone(), emb.clone(), 5, &db)
             .await
             .with_context(|| "Failed to store entity 1".to_string())?;
-        KnowledgeEntity::store_with_embedding(entity2.clone(), emb.clone(), &db)
+        KnowledgeEntity::store_with_embedding(entity2.clone(), emb.clone(), 5, &db)
             .await
             .with_context(|| "Failed to store entity 2".to_string())?;
-        KnowledgeEntity::store_with_embedding(different_entity.clone(), emb.clone(), &db)
+        KnowledgeEntity::store_with_embedding(different_entity.clone(), emb.clone(), 5, &db)
             .await
             .with_context(|| "Failed to store different entity".to_string())?;
 
@@ -819,10 +816,10 @@ mod tests {
             user_id,
         );
 
-        KnowledgeEntity::store_with_embedding(entity1, vec![0.1, 0.2, 0.3], &db)
+        KnowledgeEntity::store_with_embedding(entity1, vec![0.1, 0.2, 0.3], 3, &db)
             .await
             .expect("store entity1");
-        KnowledgeEntity::store_with_embedding(entity2, vec![0.3, 0.2, 0.1], &db)
+        KnowledgeEntity::store_with_embedding(entity2, vec![0.3, 0.2, 0.1], 3, &db)
             .await
             .expect("store entity2");
 
@@ -895,7 +892,7 @@ mod tests {
             user_id.clone(),
         );
 
-        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.1, 0.2, 0.3], &db)
+        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.1, 0.2, 0.3], 3, &db)
             .await
             .with_context(|| "store entity with embedding".to_string())?;
 
@@ -970,10 +967,10 @@ mod tests {
             user_id.clone(),
         );
 
-        KnowledgeEntity::store_with_embedding(e1.clone(), vec![1.0, 0.0, 0.0], &db)
+        KnowledgeEntity::store_with_embedding(e1.clone(), vec![1.0, 0.0, 0.0], 3, &db)
             .await
             .with_context(|| "store e1".to_string())?;
-        KnowledgeEntity::store_with_embedding(e2.clone(), vec![0.0, 1.0, 0.0], &db)
+        KnowledgeEntity::store_with_embedding(e2.clone(), vec![0.0, 1.0, 0.0], 3, &db)
             .await
             .with_context(|| "store e2".to_string())?;
 
@@ -1062,7 +1059,7 @@ mod tests {
             user_id.clone(),
         );
 
-        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.1, 0.2, 0.3], &db)
+        KnowledgeEntity::store_with_embedding(entity.clone(), vec![0.1, 0.2, 0.3], 3, &db)
             .await
             .with_context(|| "store entity with embedding".to_string())?;
 
