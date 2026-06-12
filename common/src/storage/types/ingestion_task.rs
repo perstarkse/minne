@@ -750,7 +750,7 @@ mod tests {
 
         let worker_id = "worker-1";
         let now = chrono::Utc::now();
-        let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_mins(1))
+        let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_secs(60))
             .await
             .with_context(|| "claim".to_string())?
             .with_context(|| "task claimed".to_string())?;
@@ -786,7 +786,7 @@ mod tests {
 
         let worker_id = "worker-dead";
         let now = chrono::Utc::now();
-        let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_mins(1))
+        let claimed = IngestionTask::claim_next_ready(&db, worker_id, now, Duration::from_secs(60))
             .await
             .with_context(|| "claim".to_string())?
             .with_context(|| "claimed".to_string())?;

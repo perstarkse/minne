@@ -160,23 +160,23 @@ fn load_corpus(path: &Path) -> Result<BTreeMap<String, BeirParagraph>> {
         if raw.trim().is_empty() {
             continue;
         }
-        let row: BeirCorpusRow = serde_json::from_str(&raw).with_context(|| {
+        let corpus_row: BeirCorpusRow = serde_json::from_str(&raw).with_context(|| {
             format!(
                 "parsing corpus JSON on line {} from {}",
                 idx + 1,
                 path.display()
             )
         })?;
-        let title = row.title.unwrap_or_else(|| row.id.clone());
-        let text = row.text.unwrap_or_default();
+        let title = corpus_row.title.unwrap_or_else(|| corpus_row.id.clone());
+        let text = corpus_row.text.unwrap_or_default();
         let context = build_context(&title, &text);
 
         if context.is_empty() {
-            warn!(doc_id = %row.id, "Skipping empty corpus document");
+            warn!(doc_id = %corpus_row.id, "Skipping empty corpus document");
             continue;
         }
 
-        corpus.insert(row.id, BeirParagraph { title, context });
+        corpus.insert(corpus_row.id, BeirParagraph { title, context });
     }
 
     Ok(corpus)
@@ -195,7 +195,7 @@ fn load_queries(path: &Path) -> Result<BTreeMap<String, BeirQuery>> {
         if raw.trim().is_empty() {
             continue;
         }
-        let row: BeirQueryRow = serde_json::from_str(&raw).with_context(|| {
+        let query_row: BeirQueryRow = serde_json::from_str(&raw).with_context(|| {
             format!(
                 "parsing query JSON on line {} from {}",
                 idx + 1,
@@ -203,9 +203,9 @@ fn load_queries(path: &Path) -> Result<BTreeMap<String, BeirQuery>> {
             )
         })?;
         queries.insert(
-            row.id,
+            query_row.id,
             BeirQuery {
-                text: row.text.trim().to_string(),
+                text: query_row.text.trim().to_string(),
             },
         );
     }

@@ -2,6 +2,7 @@
 name = "main"
 version = "1.0.3"
 edition = "2021"
+rust-version = "1.91"
 repository = "https://github.com/perstarkse/minne"
 license = "AGPL-3.0-or-later"
 

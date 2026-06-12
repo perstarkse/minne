@@ -7,10 +7,12 @@
 }:
 let
   ortVersion = lib.removeSuffix "\n" (builtins.readFile "${toString ./.}/ort-version");
-in
-lib.assertMsg (pkgs.onnxruntime.version == ortVersion)
-  "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ort-version (${ortVersion})"
-{
+  _ortVersionCheck =
+    if pkgs.onnxruntime.version == ortVersion
+    then null
+    else
+      throw "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ort-version (${ortVersion})";
+in {
   cachix.enable = false;
 
   packages = [
@@ -28,8 +30,9 @@ lib.assertMsg (pkgs.onnxruntime.version == ortVersion)
 
   languages.rust = {
     enable = true;
+    channel = "stable";
+    version = "1.91.1";
     components = ["rustc" "clippy" "rustfmt" "cargo" "rust-analyzer"];
-    channel = "nightly";
     targets = ["x86_64-unknown-linux-gnu" "x86_64-pc-windows-msvc"];
     mold.enable = true;
   };

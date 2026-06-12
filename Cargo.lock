@@ -5100,9 +5100,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.13"
+version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1906b49b0c3bc04b5fe5d86a77925ae6524a19b816ae38ce1e426255f1d8a31"
+checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
 dependencies = [
  "bytes",
  "getrandom 0.3.4",
@@ -5787,9 +5787,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.9"
+version = "0.103.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7df23109aa6c1567d1c575b9952556388da57401e4ace1d15f79eedad0d8f53"
+checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -6336,9 +6336,9 @@ dependencies = [
 
 [[package]]
 name = "state-machines"
-version = "0.2.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "806ba0bf43ae158b229036d8a84601649a58d9761e718b5e0e07c2953803f4c1"
+checksum = "e6a3c439e93b084079d81f1ccec41c64edf5a7348484db5228344372e634b92f"
 dependencies = [
  "state-machines-core",
  "state-machines-macro",
@@ -6346,19 +6346,18 @@ dependencies = [
 
 [[package]]
 name = "state-machines-core"
-version = "0.2.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "949cc50e84bed6234117f28a0ba2980dc35e9c17984ffe4e0a3364fba3e77540"
+checksum = "b53079921cf97a990334cd0296c1efa4f16631ed3f30a3010bb2f2d5c76cb37b"
 
 [[package]]
 name = "state-machines-macro"
-version = "0.2.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8322f5aa92d31b3c05faa1ec3231b82da479a20706836867d67ae89ce74927bd"
+checksum = "c7158fc1607004ff2bfba01ef8ca59d0446c374cd52a25a8726bba0cbb0d5c74"
 dependencies = [
  "proc-macro2",
  "quote",
- "state-machines-core",
  "syn 2.0.115",
 ]
 

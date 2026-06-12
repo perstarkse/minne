@@ -19,6 +19,7 @@ pub enum TemplateEngine {
     Embedded(Arc<Environment<'static>>),
 }
 
+#[allow(clippy::module_name_repetitions)]
 #[macro_export]
 macro_rules! create_template_engine {
     // Single path argument
