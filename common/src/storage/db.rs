@@ -150,7 +150,7 @@ impl SurrealDbClient {
 
     /// Upsert an object in SurrealDB, replacing any existing record with the same ID.
     ///
-    /// Useful for idempotent ingestion flows.
+    /// Useful when a single record should be replaced by id (admin updates, embedding rows, etc.).
     ///
     /// # Errors
     ///

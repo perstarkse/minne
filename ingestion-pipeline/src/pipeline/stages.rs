@@ -12,9 +12,9 @@ use state_machines::core::GuardError;
 use tracing::{debug, instrument};
 
 use super::{
-    context::{PipelineArtifacts, PipelineContext},
+    context::PipelineContext,
     enrichment_result::LLMEnrichmentResult,
-    persistence::{store_graph_entities, store_vector_chunks},
+    persistence::persist_artifacts,
     state::{ContentPrepared, Enriched, IngestionMachine, Persisted, Ready, Retrieved},
 };
 
@@ -28,7 +28,8 @@ pub async fn prepare_content(
     ctx: &mut PipelineContext<'_>,
     payload: IngestionPayload,
 ) -> Result<IngestionMachine<(), ContentPrepared>, AppError> {
-    let text_content = ctx.services.prepare_text_content(payload).await?;
+    let mut text_content = ctx.services.prepare_text_content(payload).await?;
+    text_content.id.clone_from(&ctx.task_id);
 
     let text_len = text_content.text.chars().count();
     let preview: String = text_content.text.chars().take(120).collect();
@@ -146,43 +147,26 @@ pub async fn persist(
     machine: IngestionMachine<(), Enriched>,
     ctx: &mut PipelineContext<'_>,
 ) -> Result<IngestionMachine<(), Persisted>, AppError> {
-    let PipelineArtifacts {
-        text_content,
-        entities,
-        relationships,
-        chunks,
-    } = ctx.build_artifacts().await?;
-    let entity_count = entities.len();
-    let relationship_count = relationships.len();
-
+    let artifacts = ctx.build_artifacts().await?;
     let settings = SystemSettings::get_current(ctx.db).await?;
     let embedding_dimensions = usize::try_from(settings.embedding_dimensions).map_err(|_| {
         AppError::InternalError("system_settings.embedding_dimensions exceeds usize::MAX".into())
     })?;
 
-    let chunk_count = store_vector_chunks(
-        ctx.db,
-        ctx.task_id.as_str(),
-        embedding_dimensions,
-        chunks,
-    )
-    .await?;
-    store_graph_entities(
+    let counts = persist_artifacts(
         ctx.db,
         &ctx.pipeline_config.tuning,
         embedding_dimensions,
-        entities,
-        relationships,
+        artifacts,
     )
     .await?;
-    ctx.db.store_item(text_content).await?;
 
     debug!(
         task_id = %ctx.task_id,
         attempt = ctx.attempt,
-        entity_count,
-        relationship_count,
-        chunk_count,
+        entity_count = counts.entity_count,
+        relationship_count = counts.relationship_count,
+        chunk_count = counts.chunk_count,
         "ingestion persistence flushed to database"
     );
 

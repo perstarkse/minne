@@ -20,12 +20,14 @@ use common::{
 };
 use retrieval_pipeline::{RetrievedChunk, RetrievedEntity};
 use tokio::sync::Mutex;
-use uuid::Uuid;
-
 use super::{
     config::{IngestionConfig, IngestionTuning},
     enrichment_result::LLMEnrichmentResult,
     services::PipelineServices,
+    test_support::{
+        count_chunks_for_source, count_entities_for_source, count_relationships_for_source,
+        persist, sample_artifacts, setup_db,
+    },
     IngestionPipeline,
 };
 
@@ -141,15 +143,30 @@ impl PipelineServices for MockServices {
 
     async fn convert_analysis(
         &self,
-        _content: &TextContent,
+        content: &TextContent,
         _analysis: &LLMEnrichmentResult,
         _entity_concurrency: usize,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
         self.record("convert").await;
-        Ok((
-            self.graph_entities.clone(),
-            self.graph_relationships.clone(),
-        ))
+        let entities = self
+            .graph_entities
+            .iter()
+            .map(|embedded| {
+                let mut embedded = embedded.clone();
+                embedded.entity.source_id = content.id.clone();
+                embedded
+            })
+            .collect();
+        let relationships = self
+            .graph_relationships
+            .iter()
+            .map(|relationship| {
+                let mut relationship = relationship.clone();
+                relationship.metadata.source_id = content.id.clone();
+                relationship
+            })
+            .collect();
+        Ok((entities, relationships))
     }
 
     async fn prepare_chunks(
@@ -266,14 +283,6 @@ impl PipelineServices for ValidationServices {
     }
 }
 
-async fn setup_db() -> anyhow::Result<SurrealDbClient> {
-    let namespace = "pipeline_test";
-    let database = Uuid::new_v4().to_string();
-    let db = SurrealDbClient::memory(namespace, &database).await?;
-    db.apply_migrations().await?;
-    Ok(db)
-}
-
 fn pipeline_config() -> IngestionConfig {
     IngestionConfig {
         tuning: IngestionTuning {
@@ -319,7 +328,41 @@ async fn retry_delay_grows_exponentially_and_caps() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn ingestion_pipeline_happy_path_persists_entities() -> anyhow::Result<()> {
+async fn process_task_skips_pipeline_when_artifacts_already_persisted() -> anyhow::Result<()> {
+    let db = setup_db().await?;
+    let worker_id = "worker-persisted-skip";
+    let user_id = "user-skip";
+    let services = Arc::new(FailingServices {
+        inner: MockServices::new(user_id),
+    });
+    let pipeline =
+        IngestionPipeline::with_services(Arc::new(db.clone()), pipeline_config(), services)?;
+
+    let task = reserve_task(
+        &db,
+        worker_id,
+        IngestionPayload::Text {
+            text: "Already persisted payload".into(),
+            context: "Context".into(),
+            category: "notes".into(),
+            user_id: user_id.into(),
+        },
+        user_id,
+    )
+    .await?;
+
+    persist(&db, sample_artifacts(&task.id, user_id)).await?;
+
+    pipeline.process_task(task.clone()).await?;
+
+    let stored_task: IngestionTask = db.get_item(&task.id).await?.context("task present")?;
+    assert_eq!(stored_task.state, TaskState::Succeeded);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn ingestion_pipeline_happy_path_persists_artifacts() -> anyhow::Result<()> {
     let db = setup_db().await?;
     let worker_id = "worker-happy";
     let user_id = "user-123";
@@ -346,14 +389,17 @@ async fn ingestion_pipeline_happy_path_persists_entities() -> anyhow::Result<()>
     let stored_task: IngestionTask = db.get_item(&task.id).await?.context("task present")?;
     assert_eq!(stored_task.state, TaskState::Succeeded);
 
-    let stored_entities: Vec<KnowledgeEntity> =
-        db.get_all_stored_items::<KnowledgeEntity>().await?;
-    assert!(!stored_entities.is_empty(), "entities should be stored");
-
-    let stored_chunks: Vec<TextChunk> = db.get_all_stored_items::<TextChunk>().await?;
-    assert!(
-        !stored_chunks.is_empty(),
-        "chunks should be stored for ingestion text"
+    let text_content: TextContent = db.get_item(&task.id).await?.context("text content")?;
+    assert_eq!(
+        text_content.id, task.id,
+        "ingested text_content id should equal the ingestion task id"
+    );
+    assert_eq!(count_chunks_for_source(&db, &task.id).await?, 1);
+    assert_eq!(count_entities_for_source(&db, &task.id).await?, 1);
+    assert_eq!(
+        count_relationships_for_source(&db, &task.id).await?,
+        1,
+        "graph relationships should be persisted"
     );
 
     let call_log = services.calls.lock().await.clone();
@@ -397,26 +443,14 @@ async fn ingestion_pipeline_chunk_only_skips_analysis() -> anyhow::Result<()> {
 
     pipeline.process_task(task.clone()).await?;
 
-    let stored_entities: Vec<KnowledgeEntity> =
-        db.get_all_stored_items::<KnowledgeEntity>().await?;
-    assert!(
-        stored_entities.is_empty(),
-        "chunk-only ingestion should not persist entities"
-    );
-    let relationship_count: Option<i64> = db
-        .client
-        .query("SELECT count() as count FROM relates_to;")
-        .await?
-        .take::<Option<i64>>(0)
-        .unwrap_or_default();
     assert_eq!(
-        relationship_count.unwrap_or(0),
+        count_relationships_for_source(&db, &task.id).await?,
         0,
         "chunk-only ingestion should not persist relationships"
     );
-    let stored_chunks: Vec<TextChunk> = db.get_all_stored_items::<TextChunk>().await?;
-    assert!(
-        !stored_chunks.is_empty(),
+    assert_eq!(
+        count_chunks_for_source(&db, &task.id).await?,
+        1,
         "chunk-only ingestion should still persist chunks"
     );
 

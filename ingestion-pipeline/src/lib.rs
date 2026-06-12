@@ -10,8 +10,8 @@ use common::storage::{
     types::ingestion_task::{IngestionTask, DEFAULT_LEASE_SECS},
 };
 pub use pipeline::{
-    EmbeddedKnowledgeEntity, EmbeddedTextChunk, IngestionConfig, IngestionPipeline,
-    IngestionTuning, PipelineArtifacts,
+    persist_artifacts, EmbeddedKnowledgeEntity, EmbeddedTextChunk, IngestionConfig,
+    IngestionPipeline, IngestionTuning, PipelineArtifacts,
 };
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};

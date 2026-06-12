@@ -245,8 +245,9 @@ impl KnowledgeEntity {
         Ok(())
     }
 
-    /// Atomically store a knowledge entity and its embedding.
-    /// Writes the entity to `knowledge_entity` and the embedding to `knowledge_entity_embedding`.
+    /// Atomically store one knowledge entity and its embedding (single-record path).
+    ///
+    /// Bulk ingestion uses `ingestion_pipeline::persist_artifacts` instead.
     pub async fn store_with_embedding(
         entity: KnowledgeEntity,
         embedding: Vec<f32>,

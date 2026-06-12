@@ -12,6 +12,8 @@ pub use config::{IngestionConfig, IngestionTuning};
 pub use context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk, PipelineArtifacts};
 pub use enrichment_result::{LLMEnrichmentResult, LLMKnowledgeEntity, LLMRelationship};
 #[allow(clippy::module_name_repetitions)]
+pub use persistence::persist_artifacts;
+#[allow(clippy::module_name_repetitions)]
 pub use services::{DefaultPipelineServices, PipelineServices};
 
 use std::{
@@ -28,11 +30,13 @@ use common::{
         types::{
             ingestion_payload::IngestionPayload,
             ingestion_task::{IngestionTask, TaskErrorInfo},
+            text_content::TextContent,
         },
     },
     utils::config::AppConfig,
 };
 use retrieval_pipeline::reranking::RerankerPool;
+use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
 use self::{
@@ -120,29 +124,31 @@ impl IngestionPipeline {
     )]
     pub async fn process_task(&self, task: IngestionTask) -> Result<(), AppError> {
         let mut processing_task = task.mark_processing(&self.db).await?;
-        let payload = processing_task.take_content();
 
-        match self
-            .drive_pipeline(&processing_task, payload)
-            .await
-            .map_err(|err| {
-                debug!(
-                    task_id = %processing_task.id,
-                    attempt = processing_task.attempts,
-                    error = %err,
-                    "ingestion pipeline failed"
-                );
-                err
-            }) {
-            Ok(()) => {
-                processing_task.mark_succeeded(&self.db).await?;
-                tracing::info!(
-                    task_id = %processing_task.id,
-                    attempt = processing_task.attempts,
-                    "ingestion task succeeded"
-                );
-                Ok(())
-            }
+        let pipeline_result = if self.artifacts_persisted(&processing_task.id).await? {
+            info!(
+                task_id = %processing_task.id,
+                attempt = processing_task.attempts,
+                "ingestion artifacts already persisted; skipping pipeline"
+            );
+            Ok(())
+        } else {
+            let payload = processing_task.take_content();
+            self.drive_pipeline(&processing_task, payload)
+                .await
+                .map_err(|err| {
+                    debug!(
+                        task_id = %processing_task.id,
+                        attempt = processing_task.attempts,
+                        error = %err,
+                        "ingestion pipeline failed"
+                    );
+                    err
+                })
+        };
+
+        match pipeline_result {
+            Ok(()) => self.finalize_succeeded(&processing_task).await,
             Err(err) => {
                 let reason = err.to_string();
                 let retryable = !matches!(err, AppError::Validation(_));
@@ -177,6 +183,51 @@ impl IngestionPipeline {
                 Err(AppError::Processing(reason))
             }
         }
+    }
+
+    async fn artifacts_persisted(&self, task_id: &str) -> Result<bool, AppError> {
+        Ok(self
+            .db
+            .get_item::<TextContent>(task_id)
+            .await?
+            .is_some())
+    }
+
+    async fn finalize_succeeded(&self, task: &IngestionTask) -> Result<(), AppError> {
+        let tuning = &self.pipeline_config.tuning;
+        let mut backoff_ms = tuning.persist_initial_backoff_ms;
+        let last_attempt = tuning.persist_attempts.saturating_sub(1);
+
+        for attempt in 0..tuning.persist_attempts {
+            match task.mark_succeeded(&self.db).await {
+                Ok(_) => {
+                    info!(
+                        task_id = %task.id,
+                        attempt = task.attempts,
+                        "ingestion task succeeded"
+                    );
+                    return Ok(());
+                }
+                Err(err) if attempt < last_attempt => {
+                    let next_attempt = attempt.saturating_add(1);
+                    warn!(
+                        task_id = %task.id,
+                        attempt = next_attempt,
+                        error = %err,
+                        "failed to mark ingestion task succeeded; retrying"
+                    );
+                    sleep(Duration::from_millis(backoff_ms)).await;
+                    backoff_ms = backoff_ms
+                        .saturating_mul(2)
+                        .min(tuning.persist_max_backoff_ms);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Err(AppError::InternalError(
+            "failed to mark ingestion task succeeded after retries".into(),
+        ))
     }
 
     fn retry_delay(&self, attempt: u32) -> Duration {
@@ -290,6 +341,9 @@ impl IngestionPipeline {
         ctx.build_artifacts().await.map_err(|err| ctx.abort(err))
     }
 }
+
+#[cfg(test)]
+mod test_support;
 
 #[cfg(test)]
 mod tests;
