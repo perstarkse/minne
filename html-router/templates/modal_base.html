@@ -12,7 +12,7 @@
 
     {# Default: one outer #modal_form. Modals with multiple forms (scratchpad editor)
        override modal_form_open / modal_form_close — nested <form> is invalid HTML. #}
-    {% block modal_form_open %}<form id="modal_form" hx-on::after-request="if(event.detail.successful) document.getElementById('body_modal').close()" {% block form_attributes %}{% endblock %}>{% endblock %}
+    {% block modal_form_open %}<form id="modal_form" hx-on::after-request="if(event.detail.successful && event.detail.elt === event.currentTarget) document.getElementById('body_modal').close()" {% block form_attributes %}{% endblock %}>{% endblock %}
       <div class="flex flex-col flex-1 gap-5">
         {% block modal_content %}{% endblock %}
       </div>

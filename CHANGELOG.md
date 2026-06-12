@@ -1,6 +1,7 @@
 # Changelog
 ## Unreleased
 - Performance: ingestion skips per-task index rebuild; worker runs scheduled `REBUILD INDEX` (default every 24h via `index_rebuild_interval_secs`, `0` disables)
+- Fix: regression re suggestion of relationships
 
 ## 1.0.3 (2026-06-12)
 - Search: filter results by type — knowledge entities, ingested content, or both
