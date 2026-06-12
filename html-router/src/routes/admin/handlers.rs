@@ -350,6 +350,9 @@ mod tests {
             image_processing_model: "gpt-4o-mini".into(),
             image_processing_prompt: "p".into(),
             voice_processing_model: "whisper-1".into(),
+            last_index_rebuild_at: None,
+            index_rebuild_lease_owner: None,
+            index_rebuild_lease_expires_at: None,
         }
     }
 

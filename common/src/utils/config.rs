@@ -135,6 +135,9 @@ pub struct AppConfig {
     pub ingest_max_context_bytes: usize,
     #[serde(default = "default_ingest_max_category_bytes")]
     pub ingest_max_category_bytes: usize,
+    /// Seconds between scheduled `REBUILD INDEX` maintainer runs (`0` disables).
+    #[serde(default = "default_index_rebuild_interval_secs")]
+    pub index_rebuild_interval_secs: u64,
 }
 
 /// Default data directory for persisted assets.
@@ -170,6 +173,10 @@ fn default_ingest_max_context_bytes() -> usize {
 
 fn default_ingest_max_category_bytes() -> usize {
     128
+}
+
+fn default_index_rebuild_interval_secs() -> u64 {
+    86_400
 }
 
 static ORT_PATH_INIT: Once = Once::new();
@@ -238,6 +245,7 @@ impl Default for AppConfig {
             ingest_max_content_bytes: default_ingest_max_content_bytes(),
             ingest_max_context_bytes: default_ingest_max_context_bytes(),
             ingest_max_category_bytes: default_ingest_max_category_bytes(),
+            index_rebuild_interval_secs: default_index_rebuild_interval_secs(),
         }
     }
 }

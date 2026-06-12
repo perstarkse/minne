@@ -6,10 +6,7 @@
 
 use common::{
     error::AppError,
-    storage::{
-        indexes::rebuild,
-        types::{ingestion_payload::IngestionPayload, system_settings::SystemSettings},
-    },
+    storage::types::{ingestion_payload::IngestionPayload, system_settings::SystemSettings},
 };
 use state_machines::core::GuardError;
 use tracing::{debug, instrument};
@@ -179,7 +176,6 @@ pub async fn persist(
     )
     .await?;
     ctx.db.store_item(text_content).await?;
-    rebuild(ctx.db).await?;
 
     debug!(
         task_id = %ctx.task_id,
