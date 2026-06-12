@@ -691,7 +691,7 @@ mod tests {
             "user1".into(),
         );
 
-        TextChunk::store_with_embedding(initial_chunk.clone(), vec![0.1; 1536], &db)
+        TextChunk::store_with_embedding(initial_chunk.clone(), vec![0.1; 1536], 1536, &db)
             .await
             .with_context(|| "Failed to store initial chunk with embedding".to_string())?;
 

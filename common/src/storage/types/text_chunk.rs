@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use crate::storage::indexes::hnsw_index_overwrite_sql;
-use crate::storage::types::system_settings::SystemSettings;
 use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
 use crate::utils::embedding::RE_EMBED_BATCH_SIZE;
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
@@ -67,10 +66,10 @@ impl TextChunk {
     pub async fn store_with_embedding(
         chunk: TextChunk,
         embedding: Vec<f32>,
+        embedding_dimensions: usize,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        let settings = SystemSettings::get_current(db).await?;
-        TextChunkEmbedding::validate_dimension(&embedding, settings.embedding_dimensions as usize)?;
+        TextChunkEmbedding::validate_dimension(&embedding, embedding_dimensions)?;
 
         let chunk_id = chunk.id.clone();
         let emb = TextChunkEmbedding::new(
@@ -104,7 +103,7 @@ impl TextChunk {
         Ok(())
     }
 
-    /// Vector search over text chunks using the embedding table, fetching full chunk rows and embeddings.
+    /// Vector search over text chunks using the embedding table, fetching full chunk rows and scores.
     pub async fn vector_search(
         take: usize,
         query_embedding: &[f32],
@@ -122,7 +121,6 @@ impl TextChunk {
             r#"
             SELECT
                 chunk_id,
-                embedding,
                 vector::similarity::cosine(embedding, $embedding) AS score
             FROM {emb_table}
             WHERE user_id = $user_id
@@ -466,15 +464,16 @@ mod tests {
             user_id.clone(),
         );
 
-        TextChunk::store_with_embedding(chunk1.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
+        TextChunk::store_with_embedding(chunk1.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], 5, &db)
             .await
             .with_context(|| "store chunk1".to_string())?;
-        TextChunk::store_with_embedding(chunk2.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
+        TextChunk::store_with_embedding(chunk2.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], 5, &db)
             .await
             .with_context(|| "store chunk2".to_string())?;
         TextChunk::store_with_embedding(
             different_chunk.clone(),
             vec![0.1, 0.2, 0.3, 0.4, 0.5],
+            5,
             &db,
         )
         .await
@@ -536,7 +535,7 @@ mod tests {
             "user123".to_string(),
         );
 
-        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], 5, &db)
             .await
             .with_context(|| "store chunk".to_string())?;
 
@@ -584,10 +583,10 @@ mod tests {
             "user123".to_string(),
         );
 
-        TextChunk::store_with_embedding(chunk1.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], &db)
+        TextChunk::store_with_embedding(chunk1.clone(), vec![0.1, 0.2, 0.3, 0.4, 0.5], 5, &db)
             .await
             .expect("store chunk1");
-        TextChunk::store_with_embedding(chunk2.clone(), vec![0.5, 0.4, 0.3, 0.2, 0.1], &db)
+        TextChunk::store_with_embedding(chunk2.clone(), vec![0.5, 0.4, 0.3, 0.2, 0.1], 5, &db)
             .await
             .expect("store chunk2");
 
@@ -632,7 +631,7 @@ mod tests {
             .await
             .with_context(|| "redefine index".to_string())?;
 
-        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], 3, &db)
             .await
             .with_context(|| "store with embedding".to_string())?;
 
@@ -683,7 +682,7 @@ mod tests {
             "runtime_user".to_string(),
         );
 
-        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], 3, &db)
             .await
             .with_context(|| "store with embedding".to_string())?;
 
@@ -755,7 +754,7 @@ mod tests {
             user_id.clone(),
         );
 
-        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], 3, &db)
             .await
             .with_context(|| "store".to_string())?;
 
@@ -792,10 +791,10 @@ mod tests {
         let chunk1 = TextChunk::new("s1".to_string(), "chunk one".to_string(), user_id.clone());
         let chunk2 = TextChunk::new("s2".to_string(), "chunk two".to_string(), user_id.clone());
 
-        TextChunk::store_with_embedding(chunk1.clone(), vec![1.0, 0.0, 0.0], &db)
+        TextChunk::store_with_embedding(chunk1.clone(), vec![1.0, 0.0, 0.0], 3, &db)
             .await
             .with_context(|| "store chunk1".to_string())?;
-        TextChunk::store_with_embedding(chunk2.clone(), vec![0.0, 1.0, 0.0], &db)
+        TextChunk::store_with_embedding(chunk2.clone(), vec![0.0, 1.0, 0.0], 3, &db)
             .await
             .with_context(|| "store chunk2".to_string())?;
 
@@ -948,7 +947,7 @@ mod tests {
 
         let chunk = TextChunk::new("src".to_string(), "body".to_string(), "user".to_string());
 
-        let err = TextChunk::store_with_embedding(chunk, vec![0.1, 0.2], &db)
+        let err = TextChunk::store_with_embedding(chunk, vec![0.1, 0.2], 3, &db)
             .await
             .expect_err("expected dimension validation failure");
         assert!(matches!(err, AppError::Validation(_)));
@@ -978,7 +977,7 @@ mod tests {
             user_id.clone(),
         );
 
-        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], &db)
+        TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], 3, &db)
             .await
             .with_context(|| "store chunk with embedding".to_string())?;
 
