@@ -12,7 +12,10 @@
     nixpkgs,
     flake-utils,
     crane,
-  }:
+  }: let
+    inherit (nixpkgs.legacyPackages.x86_64-linux) lib;
+    ortVersion = lib.removeSuffix "\n" (builtins.readFile "${self}/ort-version");
+  in
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
       lib = pkgs.lib;
@@ -21,7 +24,9 @@
         if pkgs.stdenv.isDarwin
         then "dylib"
         else "so";
-      minne-pkg = craneLib.buildPackage {
+      minne-pkg =
+        if pkgs.onnxruntime.version == ortVersion then
+          craneLib.buildPackage {
         src = lib.cleanSourceWith {
           src = ./.;
           filter = let
@@ -40,7 +45,7 @@
         };
 
         pname = "minne";
-        version = "0.2.6";
+        version = "1.0.3";
         doCheck = false;
 
         nativeBuildInputs = [pkgs.pkg-config pkgs.rustfmt pkgs.makeWrapper];
@@ -58,7 +63,9 @@
             fi
           done
         '';
-      };
+      }
+        else
+          throw "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ort-version (${ortVersion})";
     in {
       packages = {
         minne-pkg = minne-pkg;
@@ -82,5 +89,17 @@
           name = "main";
         };
       };
-    });
+      checks = {
+        ortVersion = pkgs.runCommand "ort-version-check" {} ''
+          if [ "${pkgs.onnxruntime.version}" != "${ortVersion}" ]; then
+            echo "pkgs.onnxruntime.version is ${pkgs.onnxruntime.version}, but ort-version pins ${ortVersion}" >&2
+            echo "Update ort-version or wait for nixpkgs to catch up." >&2
+            exit 1
+          fi
+          touch $out
+        '';
+      };
+    }) // {
+      ortVersion = ortVersion;
+    };
 }

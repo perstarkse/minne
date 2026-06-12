@@ -30,9 +30,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 libstdc++6 curl \
   && rm -rf /var/lib/apt/lists/*
 
-# ONNX Runtime (CPU). Keep in sync with ort crate requirements.
-ARG ORT_VERSION=1.23.2
-RUN mkdir -p /opt/onnxruntime && \
+# ONNX Runtime (CPU). Version is read from ort-version (override with --build-arg ORT_VERSION=...).
+COPY ort-version /tmp/ort-version
+ARG ORT_VERSION
+RUN ORT_VERSION="${ORT_VERSION:-$(tr -d '[:space:]' < /tmp/ort-version)}" && \
+    mkdir -p /opt/onnxruntime && \
     curl -fsSL -o /tmp/ort.tgz \
       "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" && \
     tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 && rm /tmp/ort.tgz
