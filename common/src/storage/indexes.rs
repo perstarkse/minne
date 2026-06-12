@@ -9,7 +9,7 @@ use tracing::{debug, info, warn};
 use crate::{error::AppError, storage::db::SurrealDbClient};
 
 const INDEX_POLL_INTERVAL: Duration = Duration::from_millis(50);
-const INDEX_BUILD_TIMEOUT: Duration = Duration::from_mins(30);
+const INDEX_BUILD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const FTS_ANALYZER_NAME: &str = "app_en_fts_analyzer";
 
 /// HNSW index options used by runtime index creation (includes CONCURRENTLY).

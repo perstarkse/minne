@@ -77,6 +77,7 @@ jobs:
           submodules: recursive
 
       - name: Load ONNX Runtime version
+        shell: bash
         run: echo "ORT_VER=$(tr -d '[:space:]' < ort-version)" >> "$GITHUB_ENV"
 
       - name: Install Rust non-interactively if not already installed

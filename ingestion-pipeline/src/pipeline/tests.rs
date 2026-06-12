@@ -301,7 +301,6 @@ async fn reserve_task(
 }
 
 #[tokio::test]
-#[allow(clippy::duration_suboptimal_units)] // assertions mirror retry_delay's seconds-based config
 async fn retry_delay_grows_exponentially_and_caps() -> anyhow::Result<()> {
     use std::time::Duration;
 

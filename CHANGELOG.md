@@ -1,8 +1,14 @@
 # Changelog
 ## Unreleased
-- Search results are now selectable by which type, knowledge entity or ingested content
-- Now possible to choose the local embedding model via the admin ui
-- Admin embedding changes are saved immediately. Needs restart to re-embed. This simplifies the flow, may be subject to improvement in the future
+
+## 1.0.3 (2026-06-12)
+- Search: filter results by type — knowledge entities, ingested content, or both
+- Admin: choose the local FastEmbed model from the admin UI; changes save immediately and apply after restart (re-embeds when the vector dimension changes)
+- Performance: pooled FastEmbed workers and batched embedding generation for faster ingestion and search
+- Performance: lower search and chat latency from backend allocation and retrieval optimizations
+- Fix: modal dialogs (scratchpad editor, admin prompts, entity creation) open and close more reliably
+- Fix: improved knowledge-entity relationship suggestions when creating entities manually
+- Fix: API key revocation now correctly clears the stored key
 
 ## 1.0.2 (2026-02-15)
 - Fix: edge case where navigation back to a chat page could trigger a new response generation

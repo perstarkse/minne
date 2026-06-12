@@ -46,6 +46,7 @@
 
         pname = "minne";
         version = "1.0.3";
+        # Uses nixpkgs rustc (stable). Release/Docker pin: rust-toolchain.toml (1.91.1).
         doCheck = false;
 
         nativeBuildInputs = [pkgs.pkg-config pkgs.rustfmt pkgs.makeWrapper];

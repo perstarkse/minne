@@ -51,6 +51,7 @@ pub async fn show_ingest_form(
     RequireUser(user): RequireUser,
 ) -> TemplateResult {
     #[derive(Serialize)]
+    #[allow(clippy::module_name_repetitions)]
     pub struct ShowIngestFormData {
         user_categories: Vec<String>,
     }
