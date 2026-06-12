@@ -4,7 +4,13 @@
   config,
   inputs,
   ...
-}: {
+}:
+let
+  ortVersion = lib.removeSuffix "\n" (builtins.readFile "${toString ./.}/ort-version");
+in
+lib.assertMsg (pkgs.onnxruntime.version == ortVersion)
+  "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ort-version (${ortVersion})"
+{
   cachix.enable = false;
 
   packages = [
