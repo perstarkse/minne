@@ -1,13 +1,13 @@
 use std::{
     collections::HashMap,
     fs,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use anyhow::{anyhow, Context, Result};
 use common::storage::{db::SurrealDbClient, types::text_chunk::TextChunk};
 
-use crate::{args::Config, corpus, eval::connect_eval_db, snapshot::DbSnapshotState};
+use crate::{args::Config, corpus, db::connect_eval_db};
 
 pub async fn inspect_question(config: &Config) -> Result<()> {
     let question_id = config
@@ -64,39 +64,26 @@ pub async fn inspect_question(config: &Config) -> Result<()> {
         );
     }
 
-    let db_state_path = config
-        .database
-        .inspect_db_state
-        .clone()
-        .unwrap_or_else(|| default_state_path(config, &manifest));
-    if let Some(state) = load_db_state(&db_state_path)? {
-        if let (Some(ns), Some(db_name)) = (state.namespace.as_deref(), state.database.as_deref()) {
-            match connect_eval_db(config, ns, db_name).await {
-                Ok(db) => match verify_chunks_in_db(&db, &question.matching_chunk_ids).await? {
-                    MissingChunks::None => println!(
-                        "All matching_chunk_ids exist in namespace '{ns}', database '{db_name}'"
-                    ),
-                    MissingChunks::Missing(list) => println!(
-                        "Missing chunks in namespace '{ns}', database '{db_name}': {list:?}"
-                    ),
-                },
-                Err(err) => {
-                    println!(
-                        "Failed to connect to SurrealDB namespace '{ns}' / database '{db_name}': {err}"
-                    );
-                }
+    if let Some(seed) = manifest.metadata.namespace_seed.as_ref() {
+        let ns = seed.namespace.as_str();
+        let db_name = seed.database.as_str();
+        match connect_eval_db(config, ns, db_name).await {
+            Ok(db) => match verify_chunks_in_db(&db, &question.matching_chunk_ids).await? {
+                MissingChunks::None => println!(
+                    "All matching_chunk_ids exist in namespace '{ns}', database '{db_name}'"
+                ),
+                MissingChunks::Missing(list) => println!(
+                    "Missing chunks in namespace '{ns}', database '{db_name}': {list:?}"
+                ),
+            },
+            Err(err) => {
+                println!(
+                    "Failed to connect to SurrealDB namespace '{ns}' / database '{db_name}': {err}"
+                );
             }
-        } else {
-            println!(
-                "State file {} is missing namespace/database fields; skipping live DB validation",
-                db_state_path.display()
-            );
         }
     } else {
-        println!(
-            "State file {} not found; skipping live DB validation",
-            db_state_path.display()
-        );
+        println!("Corpus manifest has no namespace seed; skipping live DB validation");
     }
 
     Ok(())
@@ -135,25 +122,6 @@ fn build_chunk_lookup(manifest: &corpus::CorpusManifest) -> HashMap<String, Chun
         }
     }
     lookup
-}
-
-fn default_state_path(config: &Config, manifest: &corpus::CorpusManifest) -> PathBuf {
-    config
-        .cache_dir
-        .join("snapshots")
-        .join(&manifest.metadata.dataset_id)
-        .join(&manifest.metadata.slice_id)
-        .join("db/state.json")
-}
-
-fn load_db_state(path: &Path) -> Result<Option<DbSnapshotState>> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    let bytes = fs::read(path).with_context(|| format!("reading db state {}", path.display()))?;
-    let state = serde_json::from_slice(&bytes)
-        .with_context(|| format!("parsing db state {}", path.display()))?;
-    Ok(Some(state))
 }
 
 enum MissingChunks {

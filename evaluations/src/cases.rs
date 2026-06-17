@@ -156,6 +156,7 @@ mod tests {
                 chunk_min_tokens: 1,
                 chunk_max_tokens: 10,
                 chunk_only: false,
+                namespace_seed: None,
             },
             paragraphs,
             questions,

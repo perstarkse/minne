@@ -7,12 +7,10 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::eval::{
+use crate::types::{
     format_timestamp, CaseSummary, EvaluationStageTimings, EvaluationSummary, LatencyStats,
-    StageLatencyBreakdown,
+    RetrievalContextStats, StageLatencyBreakdown,
 };
-use chrono::Utc;
-use tracing::warn;
 
 #[derive(Debug)]
 pub struct ReportPaths {
@@ -108,6 +106,7 @@ pub struct RetrievalSection {
     pub ingest_chunk_max_tokens: usize,
     pub ingest_chunk_overlap_tokens: usize,
     pub ingest_chunks_only: bool,
+    pub retrieved_context: RetrievalContextStats,
 }
 
 const fn default_chunk_rrf_k() -> f32 {
@@ -242,6 +241,7 @@ impl EvaluationReport {
             ingest_chunk_max_tokens: summary.ingest_chunk_max_tokens,
             ingest_chunk_overlap_tokens: summary.ingest_chunk_overlap_tokens,
             ingest_chunks_only: summary.ingest_chunks_only,
+            retrieved_context: summary.retrieved_context.clone(),
         };
 
         let llm = if summary.llm_cases > 0 {
@@ -345,7 +345,7 @@ impl LlmCaseEntry {
 }
 
 impl RetrievedSnippet {
-    fn from_summary(entry: &crate::eval::RetrievedSummary) -> Self {
+    fn from_summary(entry: &crate::types::RetrievedSummary) -> Self {
         Self {
             rank: entry.rank,
             source_id: entry.source_id.clone(),
@@ -558,6 +558,65 @@ fn render_markdown(report: &EvaluationReport) -> String {
     } else {
         md.push_str("| Rerank | disabled |\\n");
     }
+    write!(
+        md,
+        "| Chunk result cap | {} |\\n",
+        report.retrieval.chunk_result_cap
+    )
+    .unwrap();
+
+    md.push_str("\\n## Retrieved Context Volume\\n\\n");
+    md.push_str("| Metric | Value |\\n| --- | --- |\\n");
+    write!(
+        md,
+        "| Tokenizer | {} |\\n",
+        report.retrieval.retrieved_context.tokenizer
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Queries measured | {} |\\n",
+        report.retrieval.retrieved_context.queries
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Total chunks returned | {} |\\n",
+        report.retrieval.retrieved_context.total_chunks
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Total characters | {} |\\n",
+        report.retrieval.retrieved_context.total_chars
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Total tokens | {} |\\n",
+        report.retrieval.retrieved_context.total_tokens
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Avg chunks / query | {:.1} |\\n",
+        report.retrieval.retrieved_context.avg_chunks_per_query
+    )
+    .unwrap();
+    write!(
+        md,
+        "| Avg tokens / query | {:.1} |\\n",
+        report.retrieval.retrieved_context.avg_tokens_per_query
+    )
+    .unwrap();
+    write!(
+        md,
+        "| P50 / P95 / max tokens / query | {} / {} / {} |\\n",
+        report.retrieval.retrieved_context.p50_tokens_per_query,
+        report.retrieval.retrieved_context.p95_tokens_per_query,
+        report.retrieval.retrieved_context.max_tokens_per_query
+    )
+    .unwrap();
 
     if let Some(llm) = &report.llm {
         md.push_str("\\n## LLM Mode Metrics\\n\\n");
@@ -797,182 +856,6 @@ pub fn dataset_report_dir(report_dir: &Path, dataset_id: &str) -> PathBuf {
     report_dir.join(sanitize_component(dataset_id))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct LegacyHistoryEntry {
-    generated_at: String,
-    run_label: Option<String>,
-    dataset_id: String,
-    dataset_label: String,
-    slice_id: String,
-    slice_seed: u64,
-    slice_window_offset: usize,
-    slice_window_length: usize,
-    slice_cases: usize,
-    slice_total_cases: usize,
-    k: usize,
-    limit: Option<usize>,
-    precision: f64,
-    precision_at_1: f64,
-    precision_at_2: f64,
-    precision_at_3: f64,
-    #[serde(default)]
-    mrr: f64,
-    #[serde(default)]
-    average_ndcg: f64,
-    #[serde(default)]
-    retrieval_cases: usize,
-    #[serde(default)]
-    retrieval_precision: f64,
-    #[serde(default)]
-    llm_cases: usize,
-    #[serde(default)]
-    llm_precision: f64,
-    duration_ms: u128,
-    latency_ms: LatencyStats,
-    embedding_backend: String,
-    embedding_model: Option<String>,
-    ingestion_reused: bool,
-    ingestion_embeddings_reused: bool,
-    rerank_enabled: bool,
-    rerank_keep_top: usize,
-    rerank_pool_size: Option<usize>,
-    #[serde(default)]
-    chunk_result_cap: Option<usize>,
-    #[serde(default)]
-    ingest_chunk_min_tokens: Option<usize>,
-    #[serde(default)]
-    ingest_chunk_max_tokens: Option<usize>,
-    #[serde(default)]
-    ingest_chunk_overlap_tokens: Option<usize>,
-    #[serde(default)]
-    ingest_chunks_only: Option<bool>,
-    #[serde(default)]
-    delta: Option<LegacyHistoryDelta>,
-    openai_base_url: String,
-    ingestion_ms: u128,
-    #[serde(default)]
-    namespace_seed_ms: Option<u128>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct LegacyHistoryDelta {
-    precision: f64,
-    precision_at_1: f64,
-    latency_avg_ms: f64,
-}
-
-#[allow(clippy::too_many_lines)]
-fn convert_legacy_entry(entry: LegacyHistoryEntry) -> EvaluationReport {
-    let overview = OverviewSection {
-        generated_at: entry.generated_at,
-        run_label: entry.run_label,
-        total_cases: entry.slice_cases,
-        filtered_questions: 0,
-    };
-
-    let dataset = DatasetSection {
-        id: entry.dataset_id,
-        label: entry.dataset_label,
-        source: String::new(),
-        includes_unanswerable: entry.llm_cases > 0,
-        require_verified_chunks: true,
-        embedding_backend: entry.embedding_backend,
-        embedding_model: entry.embedding_model,
-        embedding_dimension: 0,
-    };
-
-    let slice = SliceSection {
-        id: entry.slice_id,
-        seed: entry.slice_seed,
-        window_offset: entry.slice_window_offset,
-        window_length: entry.slice_window_length,
-        slice_cases: entry.slice_cases,
-        ledger_total_cases: entry.slice_total_cases,
-        positives: 0,
-        negatives: 0,
-        total_paragraphs: 0,
-        negative_multiplier: 0.0,
-    };
-
-    let retrieval_cases = if entry.retrieval_cases > 0 {
-        entry.retrieval_cases
-    } else {
-        entry.slice_cases.saturating_sub(entry.llm_cases)
-    };
-    let retrieval_precision = if entry.retrieval_precision > 0.0 {
-        entry.retrieval_precision
-    } else {
-        entry.precision
-    };
-
-    let retrieval = RetrievalSection {
-        k: entry.k,
-        cases: retrieval_cases,
-        correct: 0,
-        precision: retrieval_precision,
-        precision_at_1: entry.precision_at_1,
-        precision_at_2: entry.precision_at_2,
-        precision_at_3: entry.precision_at_3,
-        mrr: entry.mrr,
-        average_ndcg: entry.average_ndcg,
-        latency: entry.latency_ms,
-        concurrency: 0,
-        resolve_entities: false,
-        rerank_enabled: entry.rerank_enabled,
-        rerank_pool_size: entry.rerank_pool_size,
-        rerank_keep_top: entry.rerank_keep_top,
-        chunk_result_cap: entry.chunk_result_cap.unwrap_or(5),
-        chunk_rrf_k: default_chunk_rrf_k(),
-        chunk_rrf_vector_weight: default_chunk_rrf_weight(),
-        chunk_rrf_fts_weight: default_chunk_rrf_weight(),
-        chunk_rrf_use_vector: default_chunk_rrf_use(),
-        chunk_rrf_use_fts: default_chunk_rrf_use(),
-        chunk_vector_take: 0,
-        chunk_fts_take: 0,
-        ingest_chunk_min_tokens: entry.ingest_chunk_min_tokens.unwrap_or(256),
-        ingest_chunk_max_tokens: entry.ingest_chunk_max_tokens.unwrap_or(512),
-        ingest_chunk_overlap_tokens: entry.ingest_chunk_overlap_tokens.unwrap_or(50),
-        ingest_chunks_only: entry.ingest_chunks_only.unwrap_or(false),
-    };
-
-    let llm = if entry.llm_cases > 0 {
-        Some(LlmSection {
-            cases: entry.llm_cases,
-            answered: 0,
-            precision: entry.llm_precision,
-        })
-    } else {
-        None
-    };
-
-    let performance = PerformanceSection {
-        openai_base_url: entry.openai_base_url,
-        ingestion_ms: entry.ingestion_ms,
-        namespace_seed_ms: entry.namespace_seed_ms,
-        evaluation_stages_ms: EvaluationStageTimings::default(),
-        stage_latency: StageLatencyBreakdown::default(),
-        namespace_reused: false,
-        ingestion_reused: entry.ingestion_reused,
-        embeddings_reused: entry.ingestion_embeddings_reused,
-        ingestion_cache_path: String::new(),
-        corpus_paragraphs: 0,
-        positive_paragraphs_reused: 0,
-        negative_paragraphs_reused: 0,
-    };
-
-    EvaluationReport {
-        overview,
-        dataset,
-        slice,
-        retrieval,
-        llm,
-        performance,
-        misses: Vec::new(),
-        llm_cases: Vec::new(),
-        detailed_report: false,
-    }
-}
-
 fn load_history(path: &Path) -> Result<Vec<EvaluationReport>> {
     if !path.exists() {
         return Ok(Vec::new());
@@ -981,34 +864,12 @@ fn load_history(path: &Path) -> Result<Vec<EvaluationReport>> {
     let contents =
         fs::read(path).with_context(|| format!("reading evaluation log {}", path.display()))?;
 
-    if let Ok(entries) = serde_json::from_slice::<Vec<EvaluationReport>>(&contents) {
-        return Ok(entries);
-    }
-
-    match serde_json::from_slice::<Vec<LegacyHistoryEntry>>(&contents) {
-        Ok(entries) => Ok(entries.into_iter().map(convert_legacy_entry).collect()),
-        Err(err) => {
-            let timestamp = Utc::now().format("%Y%m%dT%H%M%S");
-            let backup_path = path
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .join(format!("evaluations.json.corrupted.{timestamp}"));
-            warn!(
-                path = %path.display(),
-                backup = %backup_path.display(),
-                error = %err,
-                "Evaluation history file is corrupted; backing up and starting fresh"
-            );
-            if let Err(e) = fs::rename(path, &backup_path) {
-                warn!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to backup corrupted evaluation history"
-                );
-            }
-            Ok(Vec::new())
-        }
-    }
+    serde_json::from_slice(&contents).with_context(|| {
+        format!(
+            "parsing evaluation history at {}; delete the file and re-run if upgrading from an older format",
+            path.display()
+        )
+    })
 }
 
 fn record_history(report: &EvaluationReport, report_dir: &Path) -> Result<PathBuf> {
@@ -1024,9 +885,9 @@ fn record_history(report: &EvaluationReport, report_dir: &Path) -> Result<PathBu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{
-        EvaluationStageTimings, PerformanceTimings, RetrievedSummary, StageLatency,
-        StageLatencyBreakdown,
+    use crate::types::{
+        EvaluationStageTimings, PerformanceTimings, RetrievedContextStats, RetrievedSummary,
+        StageLatency, StageLatencyBreakdown,
     };
     use chrono::Utc;
     use tempfile::tempdir;
@@ -1101,6 +962,7 @@ mod tests {
             has_verified_chunks: !is_impossible,
             match_rank: if matched { Some(1) } else { None },
             latency_ms: 42,
+            retrieved_context: RetrievedContextStats::default(),
             retrieved: vec![RetrievedSummary {
                 rank: 1,
                 entity_id: "entity1".into(),
@@ -1199,6 +1061,13 @@ mod tests {
             chunk_vector_take: 50,
             chunk_fts_take: 50,
             max_chunks_per_entity: 4,
+            retrieved_context: crate::context_stats::aggregate_context_stats(&[
+                RetrievedContextStats {
+                    chunk_count: 1,
+                    char_count: 10,
+                    token_count: 3,
+                },
+            ]),
             cases,
         }
     }

@@ -5,9 +5,13 @@ use common::storage::types::StoredObject;
 use futures::stream::{self, StreamExt};
 use tracing::{debug, info};
 
-use crate::eval::{
-    adapt_retrieval_output, build_case_diagnostics, text_contains_answer, CaseDiagnostics,
-    CaseSummary, RetrievedSummary,
+use crate::{
+    cases::SeededCase,
+    context_stats,
+    types::{
+        adapt_retrieval_output, build_case_diagnostics, text_contains_answer, CaseDiagnostics,
+        CaseSummary, RetrievedSummary,
+    },
 };
 use retrieval_pipeline::{
     pipeline::{self, RetrievalConfig, StageTimings},
@@ -15,17 +19,10 @@ use retrieval_pipeline::{
 };
 use tokio::sync::Semaphore;
 
-use super::super::{
-    context::{EvalStage, EvaluationContext},
-    state::{EvaluationMachine, NamespaceReady, QueriesFinished},
-};
-use super::{map_guard_error, StageResult};
+use super::super::context::{EvalStage, EvaluationContext};
 
 #[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
-pub(crate) async fn run_queries(
-    machine: EvaluationMachine<(), NamespaceReady>,
-    ctx: &mut EvaluationContext<'_>,
-) -> StageResult<QueriesFinished> {
+pub(crate) async fn run_queries(ctx: &mut EvaluationContext<'_>) -> anyhow::Result<()> {
     let stage = EvalStage::RunQueries;
     info!(
         evaluation_stage = stage.label(),
@@ -153,7 +150,7 @@ pub(crate) async fn run_queries(
                     .await
                     .context("acquiring query semaphore permit")?;
 
-                let crate::eval::SeededCase {
+                let SeededCase {
                     question_id,
                     question,
                     expected_source,
@@ -197,6 +194,7 @@ pub(crate) async fn run_queries(
                 let query_latency = query_start.elapsed().as_millis();
 
                 let candidates = adapt_retrieval_output(result_output);
+                let retrieved_context = context_stats::stats_for_candidates(&candidates);
                 let mut retrieved = Vec::new();
                 let mut match_rank = None;
                 let answers_lower: Vec<String> =
@@ -288,6 +286,7 @@ pub(crate) async fn run_queries(
                     reciprocal_rank: Some(reciprocal_rank),
                     ndcg: Some(ndcg),
                     latency_ms: query_latency,
+                    retrieved_context,
                     retrieved,
                 };
 
@@ -353,9 +352,7 @@ pub(crate) async fn run_queries(
         "completed evaluation stage"
     );
 
-    machine
-        .run_queries()
-        .map_err(|(_, guard)| map_guard_error("run_queries", &guard))
+    Ok(())
 }
 
 #[allow(clippy::arithmetic_side_effects, clippy::cast_precision_loss)]

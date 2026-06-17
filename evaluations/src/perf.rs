@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 
 use crate::{
     args,
-    eval::EvaluationSummary,
     report::{self, EvaluationReport},
+    types::EvaluationSummary,
 };
 
 pub fn mirror_perf_outputs(
@@ -91,23 +91,23 @@ fn format_duration(value: Option<u128>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{EvaluationStageTimings, PerformanceTimings};
+    use crate::types::{EvaluationStageTimings, PerformanceTimings, LatencyStats, StageLatency, StageLatencyBreakdown};
     use chrono::Utc;
     use tempfile::tempdir;
 
-    fn sample_latency() -> crate::eval::LatencyStats {
-        crate::eval::LatencyStats {
+    fn sample_latency() -> LatencyStats {
+        LatencyStats {
             avg: 10.0,
             p50: 8,
             p95: 15,
         }
     }
 
-    fn sample_stage_latency() -> crate::eval::StageLatencyBreakdown {
-        crate::eval::StageLatencyBreakdown {
+    fn sample_stage_latency() -> StageLatencyBreakdown {
+        StageLatencyBreakdown {
             stages: ["embed", "search", "rerank", "resolve_entities", "assemble"]
                 .into_iter()
-                .map(|stage| crate::eval::StageLatency {
+                .map(|stage| StageLatency {
                     stage: stage.to_string(),
                     stats: sample_latency(),
                 })
@@ -206,6 +206,7 @@ mod tests {
             chunk_vector_take: 20,
             chunk_fts_take: 20,
             max_chunks_per_entity: 4,
+            retrieved_context: crate::context_stats::aggregate_context_stats(&[]),
             cases: Vec::new(),
         }
     }

@@ -42,7 +42,7 @@ fn default_chunk_max_tokens() -> usize {
 }
 
 fn default_chunk_only() -> bool {
-    false
+    true
 }
 
 // Reuse the pipeline's canonical embedded-artifact types so the on-disk corpus
@@ -123,6 +123,14 @@ pub struct CorpusManifest {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NamespaceSeedRecord {
+    pub namespace: String,
+    pub database: String,
+    pub slice_case_count: usize,
+    pub seeded_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CorpusMetadata {
     pub dataset_id: String,
     pub dataset_label: String,
@@ -144,6 +152,8 @@ pub struct CorpusMetadata {
     pub chunk_max_tokens: usize,
     #[serde(default = "default_chunk_only")]
     pub chunk_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace_seed: Option<NamespaceSeedRecord>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -629,6 +639,7 @@ mod tests {
                 chunk_min_tokens: 1,
                 chunk_max_tokens: 10,
                 chunk_only: false,
+                namespace_seed: None,
             },
             paragraphs: vec![paragraph_one, paragraph_two],
             questions: vec![question],

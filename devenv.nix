@@ -13,6 +13,8 @@ let
     else
       throw "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ort-version (${ortVersion})";
 in {
+  devenv.warnOnNewVersion = false;
+
   cachix.enable = false;
 
   packages = [

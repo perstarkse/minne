@@ -3,25 +3,19 @@ use std::time::Instant;
 use chrono::Utc;
 use tracing::info;
 
-use crate::eval::{
+use crate::types::{
     build_stage_latency_breakdown, compute_latency_stats, EvaluationSummary, PerformanceTimings,
+    RetrievedContextStats,
 };
 
-use super::super::{
-    context::{EvalStage, EvaluationContext},
-    state::{EvaluationMachine, QueriesFinished, Summarized},
-};
-use super::{map_guard_error, StageResult};
+use super::super::context::{EvalStage, EvaluationContext};
 
 #[allow(
     clippy::too_many_lines,
     clippy::arithmetic_side_effects,
     clippy::cast_precision_loss
 )]
-pub(crate) async fn summarize(
-    machine: EvaluationMachine<(), QueriesFinished>,
-    ctx: &mut EvaluationContext<'_>,
-) -> StageResult<Summarized> {
+pub(crate) async fn summarize(ctx: &mut EvaluationContext<'_>) -> anyhow::Result<()> {
     let stage = EvalStage::Summarize;
     info!(
         evaluation_stage = stage.label(),
@@ -123,6 +117,12 @@ pub(crate) async fn summarize(
         sum_ndcg / (retrieval_cases as f64)
     };
 
+    let per_query_context: Vec<RetrievedContextStats> = summaries
+        .iter()
+        .map(|summary| summary.retrieved_context)
+        .collect();
+    let retrieved_context = crate::context_stats::aggregate_context_stats(&per_query_context);
+
     let active_tuning = ctx
         .retrieval_config
         .as_ref()
@@ -133,7 +133,7 @@ pub(crate) async fn summarize(
         openai_base_url: ctx
             .openai_base_url
             .clone()
-            .unwrap_or_else(|| "<unknown>".to_string()),
+            .unwrap_or_else(|| "n/a (chunk-only ingestion)".to_string()),
         ingestion_ms: ctx.ingestion_duration_ms,
         namespace_seed_ms: ctx.namespace_seed_ms,
         evaluation_stage_ms: ctx.stage_timings.clone(),
@@ -217,11 +217,12 @@ pub(crate) async fn summarize(
         chunk_rrf_use_fts: active_tuning.flags.chunk_rrf_use_fts.as_bool(),
         ingest_chunk_min_tokens: config.ingest.ingest_chunk_min_tokens,
         ingest_chunk_max_tokens: config.ingest.ingest_chunk_max_tokens,
-        ingest_chunks_only: config.ingest.ingest_chunks_only,
+        ingest_chunks_only: !config.ingest.include_entities,
         ingest_chunk_overlap_tokens: config.ingest.ingest_chunk_overlap_tokens,
         chunk_vector_take: active_tuning.chunk_vector_take,
         chunk_fts_take: active_tuning.chunk_fts_take,
         max_chunks_per_entity: active_tuning.max_chunks_per_entity,
+        retrieved_context,
         cases: summaries,
     });
 
@@ -233,7 +234,5 @@ pub(crate) async fn summarize(
         "completed evaluation stage"
     );
 
-    machine
-        .summarize()
-        .map_err(|(_, guard)| map_guard_error("summarize", &guard))
+    Ok(())
 }

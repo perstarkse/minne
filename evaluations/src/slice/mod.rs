@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     fmt::Write,
     fs,
     path::{Path, PathBuf},
@@ -12,9 +12,17 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
-use crate::datasets::{
-    ConvertedDataset, ConvertedParagraph, ConvertedQuestion, DatasetKind, BEIR_DATASETS,
+use crate::{
+    args::Config,
+    datasets::{
+        ConvertedDataset, ConvertedParagraph, ConvertedQuestion, DatasetKind,
+    },
 };
+
+mod beir;
+mod build;
+
+use build::{mix_seed, BuildParams};
 
 const SLICE_VERSION: u32 = 2;
 pub const DEFAULT_NEGATIVE_MULTIPLIER: f32 = 4.0;
@@ -80,8 +88,12 @@ pub enum SliceParagraphKind {
     Negative,
 }
 
+pub fn paragraph_storage_key(paragraph_id: &str) -> String {
+    sanitize_identifier(paragraph_id)
+}
+
 pub(crate) fn default_shard_path(paragraph_id: &str) -> String {
-    let sanitized = sanitize_identifier(paragraph_id);
+    let sanitized = paragraph_storage_key(paragraph_id);
     format!("paragraphs/{sanitized}.json")
 }
 
@@ -210,13 +222,6 @@ struct SliceKey<'a> {
     seed: u64,
 }
 
-#[derive(Debug)]
-struct BuildParams {
-    include_impossible: bool,
-    base_seed: u64,
-    rng_seed: u64,
-}
-
 #[allow(clippy::too_many_lines)]
 pub fn resolve_slice<'a>(
     dataset: &'a ConvertedDataset,
@@ -225,15 +230,29 @@ pub fn resolve_slice<'a>(
     let index = DatasetIndex::build(dataset);
 
     if let Some(slice_arg) = config.explicit_slice {
-        let (path, manifest) = load_explicit_slice(dataset, &index, config, slice_arg)?;
-        let resolved = manifest_to_resolved(dataset, &index, manifest, path)?;
+        let path = explicit_slice_path(dataset, config, slice_arg);
+        if path.exists() {
+            let (path, manifest) = load_explicit_slice(dataset, &index, config, slice_arg)?;
+            let resolved = manifest_to_resolved(dataset, &index, manifest, path)?;
+            info!(
+                slice = %resolved.manifest.slice_id,
+                path = %resolved.path.display(),
+                cases = resolved.manifest.case_count,
+                positives = resolved.manifest.positive_paragraphs,
+                negatives = resolved.manifest.negative_paragraphs,
+                "Using explicitly selected slice"
+            );
+            return Ok(resolved);
+        }
+        let resolved =
+            materialize_slice_ledger(dataset, config, &index, slice_arg, path)?;
         info!(
             slice = %resolved.manifest.slice_id,
             path = %resolved.path.display(),
             cases = resolved.manifest.case_count,
             positives = resolved.manifest.positive_paragraphs,
             negatives = resolved.manifest.negative_paragraphs,
-            "Using explicitly selected slice"
+            "Built catalog slice ledger"
         );
         return Ok(resolved);
     }
@@ -256,6 +275,82 @@ pub fn resolve_slice<'a>(
         .join("slices")
         .join(dataset.metadata.id.as_str());
     let path = base.join(format!("{slice_id}.json"));
+    materialize_slice_ledger(dataset, config, &index, &slice_id, path)
+}
+
+#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+pub fn select_window<'a>(
+    resolved: &'a ResolvedSlice<'a>,
+    offset: usize,
+    limit: Option<usize>,
+) -> Result<SliceWindow<'a>> {
+    let total = resolved.manifest.case_count;
+    if total == 0 {
+        return Err(anyhow!(
+            "slice '{}' contains no cases",
+            resolved.manifest.slice_id
+        ));
+    }
+    if offset >= total {
+        return Err(anyhow!(
+            "slice offset {offset} exceeds available cases ({total})",
+        ));
+    }
+    let available = total - offset;
+    let requested = limit.unwrap_or(available).max(1);
+    let length = requested.min(available);
+    let cases = resolved.cases[offset..offset + length].to_vec();
+    let mut seen = HashSet::new();
+    let mut positive_ids = Vec::new();
+    for case in &cases {
+        if seen.insert(case.paragraph.id.as_str()) {
+            positive_ids.push(case.paragraph.id.clone());
+        }
+    }
+    Ok(SliceWindow {
+        offset,
+        length,
+        total_cases: total,
+        cases,
+        positive_paragraph_ids: positive_ids,
+    })
+}
+
+#[allow(dead_code)]
+pub fn full_window<'a>(resolved: &'a ResolvedSlice<'a>) -> Result<SliceWindow<'a>> {
+    select_window(resolved, 0, None)
+}
+
+fn explicit_slice_path(
+    dataset: &ConvertedDataset,
+    config: &SliceConfig<'_>,
+    slice_arg: &str,
+) -> PathBuf {
+    let explicit_path = Path::new(slice_arg);
+    if explicit_path.exists() {
+        explicit_path.to_path_buf()
+    } else {
+        config
+            .cache_dir
+            .join("slices")
+            .join(dataset.metadata.id.as_str())
+            .join(format!("{slice_arg}.json"))
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn materialize_slice_ledger<'a>(
+    dataset: &'a ConvertedDataset,
+    config: &SliceConfig<'_>,
+    index: &DatasetIndex,
+    slice_id: &str,
+    path: PathBuf,
+) -> Result<ResolvedSlice<'a>> {
+    let requested_corpus = config
+        .corpus_limit
+        .unwrap_or(dataset.paragraphs.len())
+        .min(dataset.paragraphs.len())
+        .max(1);
 
     let total_questions = dataset
         .paragraphs
@@ -339,7 +434,7 @@ pub fn resolve_slice<'a>(
     let mut manifest = manifest.unwrap_or_else(|| {
         empty_manifest(
             dataset,
-            slice_id.clone(),
+            slice_id.to_string(),
             &params,
             requested_corpus,
             config.negative_multiplier,
@@ -396,52 +491,7 @@ pub fn resolve_slice<'a>(
         );
     }
 
-    let resolved = manifest_to_resolved(dataset, &index, manifest.clone(), path)?;
-
-    Ok(resolved)
-}
-
-#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
-pub fn select_window<'a>(
-    resolved: &'a ResolvedSlice<'a>,
-    offset: usize,
-    limit: Option<usize>,
-) -> Result<SliceWindow<'a>> {
-    let total = resolved.manifest.case_count;
-    if total == 0 {
-        return Err(anyhow!(
-            "slice '{}' contains no cases",
-            resolved.manifest.slice_id
-        ));
-    }
-    if offset >= total {
-        return Err(anyhow!(
-            "slice offset {offset} exceeds available cases ({total})",
-        ));
-    }
-    let available = total - offset;
-    let requested = limit.unwrap_or(available).max(1);
-    let length = requested.min(available);
-    let cases = resolved.cases[offset..offset + length].to_vec();
-    let mut seen = HashSet::new();
-    let mut positive_ids = Vec::new();
-    for case in &cases {
-        if seen.insert(case.paragraph.id.as_str()) {
-            positive_ids.push(case.paragraph.id.clone());
-        }
-    }
-    Ok(SliceWindow {
-        offset,
-        length,
-        total_cases: total,
-        cases,
-        positive_paragraph_ids: positive_ids,
-    })
-}
-
-#[allow(dead_code)]
-pub fn full_window<'a>(resolved: &'a ResolvedSlice<'a>) -> Result<SliceWindow<'a>> {
-    select_window(resolved, 0, None)
+    manifest_to_resolved(dataset, index, manifest, path)
 }
 
 fn load_explicit_slice(
@@ -450,16 +500,7 @@ fn load_explicit_slice(
     config: &SliceConfig<'_>,
     slice_arg: &str,
 ) -> Result<(PathBuf, SliceManifest)> {
-    let explicit_path = Path::new(slice_arg);
-    let candidate_path = if explicit_path.exists() {
-        explicit_path.to_path_buf()
-    } else {
-        config
-            .cache_dir
-            .join("slices")
-            .join(dataset.metadata.id.as_str())
-            .join(format!("{slice_arg}.json"))
-    };
+    let candidate_path = explicit_slice_path(dataset, config, slice_arg);
 
     let manifest = read_manifest(&candidate_path)
         .with_context(|| format!("reading slice manifest at {}", candidate_path.display()))?;
@@ -613,7 +654,7 @@ fn ordered_question_refs(
     target_cases: usize,
 ) -> Result<Vec<(usize, usize)>> {
     if dataset.metadata.id == DatasetKind::Beir.id() {
-        return ordered_question_refs_beir(dataset, params, target_cases);
+        return beir::ordered_question_refs_beir(dataset, params, target_cases);
     }
 
     let mut question_refs = Vec::new();
@@ -640,171 +681,6 @@ fn ordered_question_refs(
     let mut rng = StdRng::seed_from_u64(params.rng_seed);
     question_refs.shuffle(&mut rng);
     Ok(question_refs)
-}
-
-#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
-fn ordered_question_refs_beir(
-    dataset: &ConvertedDataset,
-    params: &BuildParams,
-    target_cases: usize,
-) -> Result<Vec<(usize, usize)>> {
-    let prefixes: Vec<&str> = BEIR_DATASETS
-        .iter()
-        .map(|kind| kind.source_prefix())
-        .collect();
-
-    let mut grouped: HashMap<&str, Vec<(usize, usize)>> = HashMap::new();
-    for (p_idx, paragraph) in dataset.paragraphs.iter().enumerate() {
-        for (q_idx, question) in paragraph.questions.iter().enumerate() {
-            let include = if params.include_impossible {
-                true
-            } else {
-                !question.is_impossible && !question.answers.is_empty()
-            };
-            if !include {
-                continue;
-            }
-
-            let Some(prefix) = question_prefix(&question.id) else {
-                warn!(
-                    question_id = %question.id,
-                    "Skipping BEIR question without expected prefix"
-                );
-                continue;
-            };
-            if !prefixes.contains(&prefix) {
-                warn!(
-                    question_id = %question.id,
-                    prefix = %prefix,
-                    "Skipping BEIR question with unknown subset prefix"
-                );
-                continue;
-            }
-            grouped.entry(prefix).or_default().push((p_idx, q_idx));
-        }
-    }
-
-    if grouped.values().all(std::vec::Vec::is_empty) {
-        return Err(anyhow!(
-            "no eligible BEIR questions found; cannot build slice"
-        ));
-    }
-
-    for prefix in &prefixes {
-        if let Some(entries) = grouped.get_mut(prefix) {
-            let seed = mix_seed(
-                &format!("{}::{prefix}", dataset.metadata.id),
-                params.base_seed,
-            );
-            let mut rng = StdRng::seed_from_u64(seed);
-            entries.shuffle(&mut rng);
-        }
-    }
-
-    let dataset_count = prefixes.len().max(1);
-    let base_quota = target_cases / dataset_count;
-    let mut remainder = target_cases % dataset_count;
-
-    let mut quotas: HashMap<&str, usize> = HashMap::new();
-    for prefix in &prefixes {
-        let mut quota = base_quota;
-        if remainder > 0 {
-            quota += 1;
-            remainder -= 1;
-        }
-        quotas.insert(*prefix, quota);
-    }
-
-    let mut take_counts: HashMap<&str, usize> = HashMap::new();
-    let mut spare_slots: HashMap<&str, usize> = HashMap::new();
-    let mut shortfall = 0usize;
-
-    for prefix in &prefixes {
-        let available = grouped.get(prefix).map_or(0, std::vec::Vec::len);
-        let quota = *quotas.get(prefix).unwrap_or(&0);
-        let take = quota.min(available);
-        let missing = quota.saturating_sub(take);
-        shortfall += missing;
-        take_counts.insert(*prefix, take);
-        spare_slots.insert(*prefix, available.saturating_sub(take));
-    }
-
-    while shortfall > 0 {
-        let mut allocated = false;
-        for prefix in &prefixes {
-            if shortfall == 0 {
-                break;
-            }
-            let spare = spare_slots.get(prefix).copied().unwrap_or(0);
-            if spare == 0 {
-                continue;
-            }
-            if let Some(count) = take_counts.get_mut(prefix) {
-                *count += 1;
-            }
-            spare_slots.insert(*prefix, spare - 1);
-            shortfall = shortfall.saturating_sub(1);
-            allocated = true;
-        }
-        if !allocated {
-            break;
-        }
-    }
-
-    let mut queues: Vec<VecDeque<(usize, usize)>> = Vec::new();
-    let mut total_selected = 0usize;
-    for prefix in &prefixes {
-        let take = *take_counts.get(prefix).unwrap_or(&0);
-        let mut deque = VecDeque::new();
-        if let Some(entries) = grouped.get(prefix) {
-            for item in entries.iter().take(take) {
-                deque.push_back(*item);
-                total_selected += 1;
-            }
-        }
-        queues.push(deque);
-    }
-
-    if total_selected < target_cases {
-        warn!(
-            requested = target_cases,
-            available = total_selected,
-            "BEIR mix requested more questions than available after balancing; continuing with capped set"
-        );
-    }
-
-    let mut output = Vec::with_capacity(total_selected);
-    loop {
-        let mut progressed = false;
-        for queue in &mut queues {
-            if let Some(item) = queue.pop_front() {
-                output.push(item);
-                progressed = true;
-            }
-        }
-        if !progressed {
-            break;
-        }
-    }
-
-    if output.is_empty() {
-        return Err(anyhow!(
-            "no eligible BEIR questions found; cannot build slice"
-        ));
-    }
-
-    Ok(output)
-}
-
-fn question_prefix(question_id: &str) -> Option<&'static str> {
-    for prefix in BEIR_DATASETS.iter().map(|kind| kind.source_prefix()) {
-        if let Some(rest) = question_id.strip_prefix(prefix) {
-            if rest.starts_with('-') {
-                return Some(prefix);
-            }
-        }
-    }
-    None
 }
 
 #[allow(clippy::indexing_slicing)]
@@ -1028,15 +904,48 @@ fn compute_slice_id(key: &SliceKey<'_>) -> Result<String> {
         }))
 }
 
-#[allow(clippy::indexing_slicing)]
-fn mix_seed(dataset_id: &str, seed: u64) -> u64 {
-    let mut hasher = Sha256::new();
-    hasher.update(dataset_id.as_bytes());
-    hasher.update(seed.to_le_bytes());
-    let digest = hasher.finalize();
-    let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&digest[..8]);
-    u64::from_le_bytes(bytes)
+pub fn read_manifest_if_exists(path: &Path) -> Result<Option<SliceManifest>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    read_manifest(path).map(Some)
+}
+
+pub fn cached_manifest_path(config: &crate::args::Config) -> Option<PathBuf> {
+    let slice_arg = config.slice.as_deref()?;
+    let explicit_path = Path::new(slice_arg);
+    if explicit_path.exists() {
+        return Some(explicit_path.to_path_buf());
+    }
+    Some(
+        config
+            .cache_dir
+            .join("slices")
+            .join(config.dataset.id())
+            .join(format!("{slice_arg}.json")),
+    )
+}
+
+pub fn manifest_is_complete(manifest: &SliceManifest, config: &SliceConfig<'_>) -> bool {
+    let requested_limit = config
+        .limit
+        .unwrap_or(manifest.case_count.max(1))
+        .max(1);
+    if manifest.case_count < requested_limit {
+        return false;
+    }
+
+    let requested_corpus = config
+        .corpus_limit
+        .unwrap_or(manifest.total_paragraphs.max(1))
+        .max(1);
+    let desired_negatives = desired_negative_target(
+        manifest.positive_paragraphs,
+        requested_corpus,
+        manifest.total_paragraphs.max(manifest.positive_paragraphs.max(1)),
+        config.negative_multiplier,
+    );
+    manifest.negative_paragraphs >= desired_negatives
 }
 
 fn read_manifest(path: &Path) -> Result<SliceManifest> {
@@ -1057,12 +966,36 @@ fn write_manifest(path: &Path, manifest: &SliceManifest) -> Result<()> {
     Ok(())
 }
 
-use crate::args::Config;
-
-impl<'a> From<&'a Config> for SliceConfig<'a> {
-    fn from(config: &'a Config) -> Self {
-        slice_config_with_limit(config, None)
+pub fn ledger_target(config: &Config) -> Option<usize> {
+    match (config.slice_grow, config.limit) {
+        (Some(grow), Some(limit)) => Some(limit.max(grow)),
+        (Some(grow), None) => Some(grow),
+        (None, limit) => limit,
     }
+}
+
+/// Grow the slice ledger to contain the target number of cases.
+pub fn grow_slice(dataset: &ConvertedDataset, config: &Config) -> Result<()> {
+    let ledger_limit = ledger_target(config);
+    let slice_settings = slice_config_with_limit(config, ledger_limit);
+    let slice =
+        resolve_slice(dataset, &slice_settings).context("resolving dataset slice")?;
+    info!(
+        slice = slice.manifest.slice_id.as_str(),
+        cases = slice.manifest.case_count,
+        positives = slice.manifest.positive_paragraphs,
+        negatives = slice.manifest.negative_paragraphs,
+        total_paragraphs = slice.manifest.total_paragraphs,
+        "Slice ledger ready"
+    );
+    println!(
+        "Slice `{}` now contains {} questions ({} positives, {} negatives)",
+        slice.manifest.slice_id,
+        slice.manifest.case_count,
+        slice.manifest.positive_paragraphs,
+        slice.manifest.negative_paragraphs
+    );
+    Ok(())
 }
 
 pub fn slice_config_with_limit(config: &Config, limit_override: Option<usize>) -> SliceConfig<'_> {
@@ -1088,7 +1021,7 @@ mod tests {
     use tempfile::tempdir;
 
     fn sample_dataset() -> ConvertedDataset {
-        let metadata = DatasetMetadata::for_kind(DatasetKind::SquadV2, false, None);
+        let metadata = DatasetMetadata::for_kind(DatasetKind::SquadV2, false);
         ConvertedDataset {
             generated_at: Utc::now(),
             metadata,
@@ -1226,7 +1159,7 @@ mod tests {
             }
         }
 
-        let metadata = DatasetMetadata::for_kind(DatasetKind::Beir, false, None);
+        let metadata = DatasetMetadata::for_kind(DatasetKind::Beir, false);
         let dataset = ConvertedDataset {
             generated_at: Utc::now(),
             metadata,
@@ -1240,11 +1173,11 @@ mod tests {
             rng_seed: 0xBB,
         };
 
-        let refs = ordered_question_refs_beir(&dataset, &params, 8)?;
+        let refs = beir::ordered_question_refs_beir(&dataset, &params, 8)?;
         let mut per_prefix: HashMap<String, usize> = HashMap::new();
         for (p_idx, q_idx) in refs {
             let question = &dataset.paragraphs[p_idx].questions[q_idx];
-            let prefix = question_prefix(&question.id).unwrap_or("unknown");
+            let prefix = beir::question_prefix(&question.id).unwrap_or("unknown");
             *per_prefix.entry(prefix.to_string()).or_default() += 1;
         }
 

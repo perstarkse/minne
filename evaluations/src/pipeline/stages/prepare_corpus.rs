@@ -3,19 +3,12 @@ use std::time::Instant;
 use anyhow::Context;
 use tracing::info;
 
-use crate::{corpus, eval::can_reuse_namespace, slice, snapshot};
+use crate::{corpus, db::can_reuse_namespace, slice};
 
-use super::super::{
-    context::{EvalStage, EvaluationContext},
-    state::{CorpusReady, DbReady, EvaluationMachine},
-};
-use super::{map_guard_error, StageResult};
+use super::super::context::{EvalStage, EvaluationContext};
 
 #[allow(clippy::too_many_lines)]
-pub(crate) async fn prepare_corpus(
-    machine: EvaluationMachine<(), DbReady>,
-    ctx: &mut EvaluationContext<'_>,
-) -> StageResult<CorpusReady> {
+pub(crate) async fn prepare_corpus(ctx: &mut EvaluationContext<'_>) -> anyhow::Result<()> {
     let stage = EvalStage::PrepareCorpus;
     info!(
         evaluation_stage = stage.label(),
@@ -31,13 +24,13 @@ pub(crate) async fn prepare_corpus(
     let window = slice::select_window(slice, ctx.config().slice_offset, ctx.config().limit)
         .context("selecting slice window for corpus preparation")?;
 
-    let descriptor = snapshot::Descriptor::new(config, slice, ctx.embedding_provider()?);
     let ingestion_config = corpus::make_ingestion_config(config);
     let expected_fingerprint = corpus::compute_ingestion_fingerprint(
         ctx.dataset(),
         slice,
         config.converted_dataset_path.as_path(),
         &ingestion_config,
+        ctx.content_checksum(),
     )?;
     let base_dir = corpus::cached_corpus_dir(
         &cache_settings,
@@ -47,19 +40,18 @@ pub(crate) async fn prepare_corpus(
 
     if !config.reseed_slice {
         let requested_cases = window.cases.len();
-        if can_reuse_namespace(
-            ctx.db()?,
-            &descriptor,
-            &ctx.namespace,
-            &ctx.database,
-            ctx.dataset().metadata.id.as_str(),
-            slice.manifest.slice_id.as_str(),
-            expected_fingerprint.as_str(),
-            requested_cases,
-        )
-        .await?
-        {
-            if let Some(manifest) = corpus::load_cached_manifest(&base_dir)? {
+        if let Some(manifest) = corpus::load_cached_manifest(&base_dir)? {
+            if can_reuse_namespace(
+                ctx.db()?,
+                &manifest,
+                &embedding_provider,
+                &ctx.namespace,
+                &ctx.database,
+                expected_fingerprint.as_str(),
+                requested_cases,
+            )
+            .await?
+            {
                 info!(
                     cache = %base_dir.display(),
                     namespace = ctx.namespace.as_str(),
@@ -70,7 +62,6 @@ pub(crate) async fn prepare_corpus(
                 ctx.corpus_handle = Some(corpus_handle);
                 ctx.expected_fingerprint = Some(expected_fingerprint);
                 ctx.ingestion_duration_ms = 0;
-                ctx.descriptor = Some(descriptor);
 
                 let elapsed = started.elapsed();
                 ctx.record_stage_duration(stage, elapsed);
@@ -80,14 +71,8 @@ pub(crate) async fn prepare_corpus(
                     "completed evaluation stage"
                 );
 
-                return machine
-                    .prepare_corpus()
-                    .map_err(|(_, guard)| map_guard_error("prepare_corpus", &guard));
+                return Ok(());
             }
-            info!(
-                cache = %base_dir.display(),
-                "Namespace reusable but cached manifest missing; regenerating corpus"
-            );
         }
     }
 
@@ -103,6 +88,7 @@ pub(crate) async fn prepare_corpus(
             openai_client,
             &eval_user_id,
             config.converted_dataset_path.as_path(),
+            ctx.content_checksum(),
             ingestion_config.clone(),
         )
         .await
@@ -126,7 +112,6 @@ pub(crate) async fn prepare_corpus(
     ctx.corpus_handle = Some(corpus_handle);
     ctx.expected_fingerprint = Some(expected_fingerprint);
     ctx.ingestion_duration_ms = ingestion_duration_ms;
-    ctx.descriptor = Some(descriptor);
 
     let elapsed = started.elapsed();
     ctx.record_stage_duration(stage, elapsed);
@@ -136,7 +121,5 @@ pub(crate) async fn prepare_corpus(
         "completed evaluation stage"
     );
 
-    machine
-        .prepare_corpus()
-        .map_err(|(_, guard)| map_guard_error("prepare_corpus", &guard))
+    Ok(())
 }

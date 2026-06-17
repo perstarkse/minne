@@ -3,21 +3,11 @@ use std::time::Instant;
 use anyhow::Context;
 use tracing::info;
 
-use crate::{
-    eval::{default_database, default_namespace, ledger_target},
-    slice,
-};
+use crate::{db::{default_database, default_namespace}, slice};
 
-use super::super::{
-    context::{EvalStage, EvaluationContext},
-    state::{EvaluationMachine, Ready, SlicePrepared},
-};
-use super::{map_guard_error, StageResult};
+use super::super::context::{EvalStage, EvaluationContext};
 
-pub(crate) async fn prepare_slice(
-    machine: EvaluationMachine<(), Ready>,
-    ctx: &mut EvaluationContext<'_>,
-) -> StageResult<SlicePrepared> {
+pub(crate) async fn prepare_slice(ctx: &mut EvaluationContext<'_>) -> anyhow::Result<()> {
     let stage = EvalStage::PrepareSlice;
     info!(
         evaluation_stage = stage.label(),
@@ -25,7 +15,7 @@ pub(crate) async fn prepare_slice(
     );
     let started = Instant::now();
 
-    let ledger_limit = ledger_target(ctx.config());
+    let ledger_limit = slice::ledger_target(ctx.config());
     let slice_settings = slice::slice_config_with_limit(ctx.config(), ledger_limit);
     let resolved_slice =
         slice::resolve_slice(ctx.dataset(), &slice_settings).context("resolving dataset slice")?;
@@ -49,7 +39,11 @@ pub(crate) async fn prepare_slice(
         .db_namespace
         .clone()
         .unwrap_or_else(|| {
-            default_namespace(ctx.dataset().metadata.id.as_str(), ctx.config().limit)
+            default_namespace(
+                ctx.dataset().metadata.id.as_str(),
+                ctx.config().limit,
+                ctx.config().slice.as_deref(),
+            )
         });
     ctx.database = ctx
         .config()
@@ -66,7 +60,5 @@ pub(crate) async fn prepare_slice(
         "completed evaluation stage"
     );
 
-    machine
-        .prepare_slice()
-        .map_err(|(_, guard)| map_guard_error("prepare_slice", &guard))
+    Ok(())
 }

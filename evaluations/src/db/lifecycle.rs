@@ -2,13 +2,6 @@ use anyhow::{Context, Result};
 use common::storage::{db::SurrealDbClient, indexes::ensure_runtime};
 use tracing::info;
 
-// Helper functions for index management during namespace reseed
-pub async fn remove_all_indexes(db: &SurrealDbClient) -> Result<()> {
-    let _ = db;
-    info!("Removing ALL indexes before namespace reseed (no-op placeholder)");
-    Ok(())
-}
-
 pub async fn recreate_indexes(db: &SurrealDbClient, dimension: usize) -> Result<()> {
     info!("Recreating ALL indexes after namespace reseed via shared runtime helper");
     ensure_runtime(db, dimension)
@@ -34,14 +27,39 @@ pub async fn reset_namespace(db: &SurrealDbClient, namespace: &str, database: &s
     Ok(())
 }
 
-// // Test helper to force index dimension change
-// #[allow(dead_code)]
-// pub async fn change_embedding_length_in_hnsw_indexes(
-//     db: &SurrealDbClient,
-//     dimension: usize,
-// ) -> Result<()> {
-//     recreate_indexes(db, dimension).await
-// }
+#[allow(clippy::cast_precision_loss)]
+pub(crate) async fn warm_hnsw_cache(db: &SurrealDbClient, dimension: usize) -> Result<()> {
+    let dummy_embedding: Vec<f32> = (0..dimension).map(|i| (i as f32).sin()).collect();
+
+    info!("Warming HNSW caches with sample queries");
+
+    let _ = db
+        .client
+        .query(
+            r#"SELECT chunk_id
+               FROM text_chunk_embedding
+               WHERE embedding <|1,1|> $embedding
+               LIMIT 5"#,
+        )
+        .bind(("embedding", dummy_embedding.clone()))
+        .await
+        .context("warming text chunk HNSW cache")?;
+
+    let _ = db
+        .client
+        .query(
+            r#"SELECT entity_id
+               FROM knowledge_entity_embedding
+               WHERE embedding <|1,1|> $embedding
+               LIMIT 5"#,
+        )
+        .bind(("embedding", dummy_embedding))
+        .await
+        .context("warming knowledge entity HNSW cache")?;
+
+    info!("HNSW cache warming completed");
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {

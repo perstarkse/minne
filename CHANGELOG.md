@@ -1,5 +1,6 @@
 # Changelog
 ## Unreleased
+- Evaluations: simplified crate layout — linear pipeline, sharded-only converted store, in-memory ingestion, `db/` and `cli/` modules; namespace reuse state in corpus manifest (removed `cache/snapshots/`); no legacy JSON/history compatibility (re-run `--warm` after upgrade)
 - Performance: ingestion skips per-task index rebuild; worker runs scheduled `REBUILD INDEX` (default every 24h via `index_rebuild_interval_secs`, `0` disables)
 - Performance: ingestion persists all artifacts in a single SurrealDB transaction per task (atomic replace by task id)
 - Performance: entity embeddings during ingestion use batched `embed_batch`, matching chunk embedding

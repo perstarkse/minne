@@ -20,11 +20,11 @@ use retrieval_pipeline::{
 
 use crate::{
     args::Config,
-    cache::EmbeddingCache,
+    cases::SeededCase,
     corpus,
     datasets::ConvertedDataset,
-    eval::{CaseDiagnostics, CaseSummary, EvaluationStageTimings, EvaluationSummary, SeededCase},
-    slice, snapshot,
+    slice,
+    types::{CaseDiagnostics, CaseSummary, EvaluationStageTimings, EvaluationSummary},
 };
 
 #[allow(clippy::struct_excessive_bools)]
@@ -41,12 +41,10 @@ pub(super) struct EvaluationContext<'a> {
     pub namespace: String,
     pub database: String,
     pub db: Option<SurrealDbClient>,
-    pub descriptor: Option<snapshot::Descriptor>,
     pub settings: Option<SystemSettings>,
     pub settings_missing: bool,
     pub must_reapply_settings: bool,
     pub embedding_provider: Option<EmbeddingProvider>,
-    pub embedding_cache: Option<EmbeddingCache>,
     pub openai_client: Option<Arc<Client<async_openai::config::OpenAIConfig>>>,
     pub openai_base_url: Option<String>,
     pub expected_fingerprint: Option<String>,
@@ -67,13 +65,19 @@ pub(super) struct EvaluationContext<'a> {
     pub summary: Option<EvaluationSummary>,
     pub diagnostics_path: Option<PathBuf>,
     pub diagnostics_enabled: bool,
+    pub content_checksum: Option<String>,
 }
 
 impl<'a> EvaluationContext<'a> {
-    pub fn new(dataset: &'a ConvertedDataset, config: &'a Config) -> Self {
+    pub fn new(
+        dataset: &'a ConvertedDataset,
+        config: &'a Config,
+        content_checksum: Option<String>,
+    ) -> Self {
         Self {
             dataset,
             config,
+            content_checksum,
             stage_timings: EvaluationStageTimings::default(),
             ledger_limit: None,
             slice_settings: None,
@@ -84,12 +88,10 @@ impl<'a> EvaluationContext<'a> {
             namespace: String::new(),
             database: String::new(),
             db: None,
-            descriptor: None,
             settings: None,
             settings_missing: false,
             must_reapply_settings: false,
             embedding_provider: None,
-            embedding_cache: None,
             openai_client: None,
             openai_base_url: None,
             expected_fingerprint: None,
@@ -133,12 +135,6 @@ impl<'a> EvaluationContext<'a> {
             .ok_or_else(|| anyhow!("database connection missing"))
     }
 
-    pub fn descriptor(&self) -> Result<&snapshot::Descriptor> {
-        self.descriptor
-            .as_ref()
-            .ok_or_else(|| anyhow!("snapshot descriptor unavailable"))
-    }
-
     pub fn embedding_provider(&self) -> Result<&EmbeddingProvider> {
         self.embedding_provider
             .as_ref()
@@ -157,6 +153,10 @@ impl<'a> EvaluationContext<'a> {
         self.corpus_handle
             .as_ref()
             .ok_or_else(|| anyhow!("corpus handle missing"))
+    }
+
+    pub fn content_checksum(&self) -> Option<&str> {
+        self.content_checksum.as_deref()
     }
 
     pub fn evaluation_user(&self) -> Result<&User> {
