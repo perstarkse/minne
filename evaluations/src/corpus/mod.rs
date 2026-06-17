@@ -5,11 +5,11 @@ pub(crate) mod store;
 pub use config::CorpusCacheConfig;
 pub use orchestrator::{
     cached_corpus_dir, compute_ingestion_fingerprint, corpus_handle_from_manifest, ensure_corpus,
-    load_cached_manifest,
+    load_cached_manifest, persist_corpus_manifest,
 };
 pub use store::{
     seed_manifest_into_db, window_manifest, CorpusHandle, CorpusManifest, CorpusMetadata,
-    CorpusQuestion, ParagraphShard, ParagraphShardStore, MANIFEST_VERSION,
+    CorpusQuestion, NamespaceSeedRecord, ParagraphShard, ParagraphShardStore, MANIFEST_VERSION,
 };
 
 pub fn make_ingestion_config(config: &crate::args::Config) -> ingestion_pipeline::IngestionConfig {
@@ -20,6 +20,6 @@ pub fn make_ingestion_config(config: &crate::args::Config) -> ingestion_pipeline
             chunk_overlap_tokens: config.ingest.ingest_chunk_overlap_tokens,
             ..Default::default()
         },
-        chunk_only: config.ingest.ingest_chunks_only,
+        chunk_only: !config.ingest.include_entities,
     }
 }

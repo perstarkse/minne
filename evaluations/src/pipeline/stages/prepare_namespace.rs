@@ -5,25 +5,19 @@ use common::storage::types::system_settings::SystemSettings;
 use tracing::{info, warn};
 
 use crate::{
+    cases::cases_from_manifest,
     corpus,
-    db_helpers::{recreate_indexes, remove_all_indexes, reset_namespace},
-    eval::{
-        can_reuse_namespace, cases_from_manifest, enforce_system_settings, ensure_eval_user,
-        record_namespace_state, warm_hnsw_cache,
+    db::{
+        can_reuse_namespace, ensure_eval_user, record_namespace_seed, recreate_indexes,
+        reset_namespace, warm_hnsw_cache,
     },
+    settings::enforce_system_settings,
 };
 
-use super::super::{
-    context::{EvalStage, EvaluationContext},
-    state::{CorpusReady, EvaluationMachine, NamespaceReady},
-};
-use super::{map_guard_error, StageResult};
+use super::super::context::{EvalStage, EvaluationContext};
 
 #[allow(clippy::too_many_lines)]
-pub(crate) async fn prepare_namespace(
-    machine: EvaluationMachine<(), CorpusReady>,
-    ctx: &mut EvaluationContext<'_>,
-) -> StageResult<NamespaceReady> {
+pub(crate) async fn prepare_namespace(ctx: &mut EvaluationContext<'_>) -> anyhow::Result<()> {
     let stage = EvalStage::PrepareNamespace;
     info!(
         evaluation_stage = stage.label(),
@@ -32,7 +26,6 @@ pub(crate) async fn prepare_namespace(
     let started = Instant::now();
 
     let config = ctx.config();
-    let dataset = ctx.dataset();
     let expected_fingerprint = ctx
         .expected_fingerprint
         .as_deref()
@@ -60,20 +53,16 @@ pub(crate) async fn prepare_namespace(
 
     let mut namespace_reused = false;
     if !config.reseed_slice {
-        namespace_reused = {
-            let slice = ctx.slice()?;
-            can_reuse_namespace(
-                ctx.db()?,
-                ctx.descriptor()?,
-                &namespace,
-                &database,
-                dataset.metadata.id.as_str(),
-                slice.manifest.slice_id.as_str(),
-                expected_fingerprint.as_str(),
-                requested_cases,
-            )
-            .await?
-        };
+        namespace_reused = can_reuse_namespace(
+            ctx.db()?,
+            base_manifest,
+            &embedding_provider,
+            &namespace,
+            &database,
+            expected_fingerprint.as_str(),
+            requested_cases,
+        )
+        .await?;
     }
 
     let mut namespace_seed_ms = None;
@@ -114,34 +103,20 @@ pub(crate) async fn prepare_namespace(
                 "Seeding ingestion corpus into SurrealDB"
             );
         }
-        let indexes_disabled = remove_all_indexes(ctx.db()?).await.is_ok();
-
         let seed_start = Instant::now();
         corpus::seed_manifest_into_db(ctx.db()?, &manifest_for_seed)
             .await
             .context("seeding ingestion corpus from manifest")?;
         namespace_seed_ms = Some(seed_start.elapsed().as_millis());
 
-        // Recreate indexes AFTER data is loaded (correct bulk loading pattern)
-        if indexes_disabled {
-            info!("Recreating indexes after seeding data");
-            recreate_indexes(ctx.db()?, embedding_provider.dimension())
-                .await
-                .context("recreating indexes with correct dimension")?;
-            warm_hnsw_cache(ctx.db()?, embedding_provider.dimension()).await?;
-        }
-        {
-            let slice = ctx.slice()?;
-            record_namespace_state(
-                ctx.descriptor()?,
-                dataset.metadata.id.as_str(),
-                slice.manifest.slice_id.as_str(),
-                expected_fingerprint.as_str(),
-                &namespace,
-                &database,
-                requested_cases,
-            )
-            .await;
+        info!("Recreating indexes after seeding data");
+        recreate_indexes(ctx.db()?, embedding_provider.dimension())
+            .await
+            .context("recreating indexes with correct dimension")?;
+        warm_hnsw_cache(ctx.db()?, embedding_provider.dimension()).await?;
+
+        if let Some(handle) = ctx.corpus_handle.as_mut() {
+            record_namespace_seed(handle, &namespace, &database, requested_cases).await;
         }
     }
 
@@ -198,7 +173,5 @@ pub(crate) async fn prepare_namespace(
         "completed evaluation stage"
     );
 
-    machine
-        .prepare_namespace()
-        .map_err(|(_, guard)| map_guard_error("prepare_namespace", &guard))
+    Ok(())
 }

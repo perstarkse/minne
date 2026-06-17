@@ -1,212 +1,102 @@
 # Evaluations
 
-The `evaluations` crate provides a retrieval evaluation framework for benchmarking Minne's information retrieval pipeline against standard datasets.
+The `evaluations` crate benchmarks Minne's retrieval pipeline against standard datasets.
 
 ## Quick Start
 
 ```bash
-# Run SQuAD v2.0 evaluation (vector-only, recommended)
-cargo run --package evaluations -- --ingest-chunks-only
+# One-time prep (convert, slice ledger, corpus cache, DB seed)
+cargo eval --warm --dataset beir --slice beir-mix-600
 
-# Run a specific dataset
-cargo run --package evaluations -- --dataset fiqa --ingest-chunks-only
+# Check readiness
+cargo eval --status --dataset beir --slice beir-mix-600
 
-# Convert dataset only (no evaluation)
-cargo run --package evaluations -- --convert-only
+# Run benchmark (steady state after warm)
+cargo eval --dataset beir --slice beir-mix-600 --require-ready
 ```
+
+Default dataset is `beir`. When `--slice` is omitted, the first catalog slice for the dataset is applied automatically (e.g. `beir-mix-600`).
+
+Chunk-only ingestion is the default. Pass `--include-entities` to opt into entity extraction during ingestion (requires `OPENAI_API_KEY`).
+
+### Custom slice sizes
+
+`--slice` is a ledger id, not only a catalog name. You can use any id; `--limit` controls how many questions the ledger contains:
+
+```bash
+# 200-case BEIR mix (default --limit is 200)
+cargo eval --warm --dataset beir --slice beir-mix-200
+cargo eval --dataset beir --slice beir-mix-200 --require-ready
+```
+
+The catalog slice `beir-mix-600` in `manifest.yaml` is a preset with `limit: 600` and `negative_multiplier: 9.0`.
+
+### BEIR mix layout
+
+`beir` is a **virtual mix** across eight subset datasets (FEVER, FiQA, HotpotQA, NFCorpus, Quora, TREC-COVID, SciFact, NQ-BEIR). There is no monolithic `beir-minne/` store.
+
+1. Build an in-memory qrels-world mix from raw subset data
+2. Resolve the slice ledger (`cache/slices/beir/<slice-id>.json`)
+3. Materialize only ledger paragraph ids into per-subset stores (`fever-minne/`, `fiqa-minne/`, …)
+4. Ingest the slice corpus and seed SurrealDB
+
+Conversion is **qrels-closed**: only documents that appear in qrels are exported, not the full BEIR corpus.
+
+Chunk-only mode may evaluate fewer cases than the slice ledger size when some questions are impossible or lack verifiable answer chunks.
+
+Reports include a **Retrieved Context Volume** section: total characters and estimated tokens across all chunks returned per query (`~chars/4`, comparable across `--chunk-result-cap` sweeps). Use this to compare the cost of raising `--chunk-result-cap`.
 
 ## Prerequisites
 
-### 1. SurrealDB
-
-Start a SurrealDB instance before running evaluations:
+### SurrealDB
 
 ```bash
 docker-compose up -d surrealdb
 ```
 
-Or using the default endpoint configuration:
+### Raw datasets
 
-```bash
-surreal start --user root_user --pass root_password
-```
+Place raw datasets under `evaluations/data/raw/`. See [manifest.yaml](./manifest.yaml) for paths.
 
-### 2. Download Raw Datasets
+BEIR subsets live in sibling directories (`data/raw/fever`, `data/raw/fiqa`, …). The `data/raw/beir` entry is a virtual catalog placeholder; warm uses the subset paths.
 
-Raw datasets must be downloaded manually and placed in `evaluations/data/raw/`. See [Dataset Sources](#dataset-sources) below for links and formats.
-
-## Directory Structure
+## Directory structure
 
 ```
 evaluations/
 ├── data/
-│   ├── raw/          # Downloaded raw datasets (manual)
-│   │   ├── squad/    # SQuAD v2.0
-│   │   ├── nq-dev/   # Natural Questions
-│   │   ├── fiqa/     # BEIR: FiQA-2018
-│   │   ├── fever/    # BEIR: FEVER
-│   │   ├── hotpotqa/ # BEIR: HotpotQA
-│   │   └── ...       # Other BEIR subsets
-│   └── converted/    # Auto-generated (Minne JSON format)
-├── cache/            # Ingestion and embedding caches
-├── reports/          # Evaluation output (JSON + Markdown)
-├── manifest.yaml     # Dataset and slice definitions
-└── src/              # Evaluation source code
+│   ├── raw/           # Downloaded datasets (manual)
+│   │   ├── fever/     # BEIR subset raw dirs (corpus.jsonl, queries.jsonl, qrels/)
+│   │   ├── fiqa/
+│   │   └── …
+│   └── converted/     # Sharded stores (auto-generated)
+│       ├── fever-minne/  # per-BEIR-subset stores
+│       ├── fiqa-minne/
+│       └── …             # BEIR mix loads from subset stores (no monolithic beir-minne/)
+├── cache/
+│   ├── slices/        # Slice ledgers
+│   └── ingested/      # Corpus ingestion caches (manifest includes namespace seed)
+├── reports/           # JSON + Markdown output from benchmark runs
+├── manifest.yaml
+└── src/
 ```
 
-## Dataset Sources
+**After upgrading:** delete old monolithic `*-minne.json` files, any legacy `beir-minne/` merged store, `cache/snapshots/` directories, and stale `reports/history/` artifacts, then re-run `--warm`.
 
-### SQuAD v2.0
-
-Download and place at `data/raw/squad/dev-v2.0.json`:
-
-```bash
-mkdir -p evaluations/data/raw/squad
-curl -L https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v2.0.json \
-  -o evaluations/data/raw/squad/dev-v2.0.json
-```
-
-### Natural Questions (NQ)
-
-Download and place at `data/raw/nq-dev/dev-all.jsonl`:
-
-```bash
-mkdir -p evaluations/data/raw/nq-dev
-# Download from Google's Natural Questions page or HuggingFace
-# File: dev-all.jsonl (simplified JSONL format)
-```
-
-Source: [Google Natural Questions](https://ai.google.com/research/NaturalQuestions)
-
-### BEIR Datasets
-
-All BEIR datasets follow the same format structure:
-
-```
-data/raw/<dataset>/
-├── corpus.jsonl      # Document corpus
-├── queries.jsonl     # Query set
-└── qrels/
-    └── test.tsv      # Relevance judgments (or dev.tsv)
-```
-
-Download datasets from the [BEIR Benchmark repository](https://github.com/beir-cellar/beir). Each dataset zip extracts to the required directory structure.
-
-| Dataset    | Directory     |
-|------------|---------------|
-| FEVER      | `fever/`      |
-| FiQA-2018  | `fiqa/`       |
-| HotpotQA   | `hotpotqa/`   |
-| NFCorpus   | `nfcorpus/`   |
-| Quora      | `quora/`      |
-| TREC-COVID | `trec-covid/` |
-| SciFact    | `scifact/`    |
-| NQ (BEIR)  | `nq/`         |
-
-Example download:
-
-```bash
-cd evaluations/data/raw
-curl -L https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/fiqa.zip -o fiqa.zip
-unzip fiqa.zip && rm fiqa.zip
-```
-
-## Dataset Conversion
-
-Raw datasets are automatically converted to Minne's internal JSON format on first run. To force reconversion:
-
-```bash
-cargo run --package evaluations -- --force-convert
-```
-
-Converted files are saved to `data/converted/` and cached for subsequent runs.
-
-## CLI Reference
-
-### Common Options
+## Common flags
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--dataset <NAME>` | Dataset to evaluate | `squad-v2` |
-| `--limit <N>` | Max questions to evaluate (0 = all) | `200` |
-| `--k <N>` | Precision@k cutoff | `5` |
-| `--slice <ID>` | Use a predefined slice from manifest | — |
-| `--rerank` | Enable FastEmbed reranking stage | disabled |
-| `--embedding-backend <BE>` | `fastembed` or `hashed` | `fastembed` |
-| `--ingest-chunks-only` | Skip entity extraction, ingest only text chunks | disabled |
+| `--dataset` | Dataset to evaluate | `beir` |
+| `--slice` | Slice ledger id (catalog or custom) | first catalog slice |
+| `--limit` | Max questions in the slice ledger | `200` |
+| `--warm` | Prepare without running queries | — |
+| `--status` | Print readiness | — |
+| `--require-ready` | Fail if not warmed | — |
+| `--include-entities` | Entity extraction during ingestion | off |
+| `--force-convert` | Rebuild converted store | — |
+| `--chunk-result-cap` | Max chunks returned per query (raise with `--k`) | `5` |
+| `--perf-log-console` | Print per-stage timings after a run | off |
+| `--label` | Label stored in JSON/Markdown reports | — |
 
-> [!TIP]
-> Use `--ingest-chunks-only` when evaluating vector-only retrieval strategies. This skips the LLM-based entity extraction and graph generation, significantly speeding up ingestion while focusing on pure chunk-based vector search.
-
-### Available Datasets
-
-```
-squad-v2, natural-questions, beir, fever, fiqa, hotpotqa, 
-nfcorpus, quora, trec-covid, scifact, nq-beir
-```
-
-### Database Configuration
-
-| Flag | Environment | Default |
-|------|-------------|---------|
-| `--db-endpoint` | `EVAL_DB_ENDPOINT` | `ws://127.0.0.1:8000` |
-| `--db-username` | `EVAL_DB_USERNAME` | `root_user` |
-| `--db-password` | `EVAL_DB_PASSWORD` | `root_password` |
-| `--db-namespace` | `EVAL_DB_NAMESPACE` | auto-generated |
-| `--db-database` | `EVAL_DB_DATABASE` | auto-generated |
-
-### Example Runs
-
-```bash
-# Vector-only evaluation (recommended for benchmarking)
-cargo run --package evaluations -- \
-  --dataset fiqa \
-  --ingest-chunks-only \
-  --limit 200
-
-# Full FiQA evaluation with reranking
-cargo run --package evaluations -- \
-  --dataset fiqa \
-  --ingest-chunks-only \
-  --limit 500 \
-  --rerank \
-  --k 10
-
-# Use a predefined slice for reproducibility
-cargo run --package evaluations -- --slice fiqa-test-200 --ingest-chunks-only
-
-# Run the mixed BEIR benchmark
-cargo run --package evaluations -- --dataset beir --slice beir-mix-600 --ingest-chunks-only
-```
-
-## Slices
-
-Slices are predefined, reproducible subsets defined in `manifest.yaml`. Each slice specifies:
-
-- **limit**: Number of questions
-- **corpus_limit**: Maximum corpus size
-- **seed**: Fixed RNG seed for reproducibility
-
-View available slices in [manifest.yaml](./manifest.yaml).
-
-## Reports
-
-Evaluations generate reports in `reports/`:
-
-- **JSON**: Full structured results (`*-report.json`)
-- **Markdown**: Human-readable summary with sample mismatches (`*-report.md`)
-- **History**: Timestamped run history (`history/`)
-
-## Performance Tuning
-
-```bash
-# Log per-stage performance timings
-cargo run --package evaluations -- --perf-log-console
-
-# Save telemetry to file
-cargo run --package evaluations -- --perf-log-json ./perf.json
-```
-
-## License
-
-See [../LICENSE](../LICENSE).
+See [REFACTOR.md](./REFACTOR.md) for architecture notes.

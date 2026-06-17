@@ -1,2 +1,2 @@
 [alias]
-eval = "run -p evaluations --"
+eval = "run -p evaluations --release --"

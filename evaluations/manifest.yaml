@@ -1,4 +1,4 @@
-default_dataset: squad-v2
+default_dataset: beir
 datasets:
   - id: squad-v2
     label: "SQuAD v2.0"
@@ -45,6 +45,7 @@ datasets:
         description: "Balanced slice across FEVER, FiQA, HotpotQA, NFCorpus, Quora, TREC-COVID, SciFact, NQ-BEIR"
         limit: 600
         corpus_limit: 6000
+        negative_multiplier: 9.0
         seed: 0x5eed2025
   - id: fever
     label: "FEVER (BEIR)"

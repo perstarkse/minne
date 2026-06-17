@@ -9,8 +9,6 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use async_openai::Client;
 use chrono::Utc;
-#[cfg(not(test))]
-use common::utils::config::get_config;
 use common::{
     storage::{
         db::SurrealDbClient,
@@ -125,10 +123,14 @@ pub async fn ensure_corpus(
     openai: Arc<OpenAIClient>,
     user_id: &str,
     converted_path: &Path,
+    precomputed_checksum: Option<&str>,
     ingestion_config: IngestionConfig,
 ) -> Result<CorpusHandle> {
-    let checksum = compute_file_checksum(converted_path)
-        .with_context(|| format!("computing checksum for {}", converted_path.display()))?;
+    let checksum = match precomputed_checksum {
+        Some(value) => value.to_string(),
+        None => crate::datasets::content_checksum_for_layout(converted_path)
+            .with_context(|| format!("computing checksum for {}", converted_path.display()))?,
+    };
     let ingestion_fingerprint =
         build_ingestion_fingerprint(dataset, slice, &checksum, &ingestion_config);
 
@@ -381,6 +383,7 @@ pub async fn ensure_corpus(
             chunk_min_tokens: ingestion_config.tuning.chunk_min_tokens,
             chunk_max_tokens: ingestion_config.tuning.chunk_max_tokens,
             chunk_only: ingestion_config.chunk_only,
+            namespace_seed: None,
         },
         paragraphs: corpus_paragraphs,
         questions: corpus_questions,
@@ -415,7 +418,7 @@ pub async fn ensure_corpus(
         negative_ingested: stats.negative_ingested,
     };
 
-    persist_manifest(&handle).context("persisting corpus manifest")?;
+    persist_corpus_manifest(&handle).context("persisting corpus manifest")?;
 
     Ok(handle)
 }
@@ -501,26 +504,10 @@ async fn ingest_paragraph_batch(
     Ok(shards)
 }
 
-#[cfg(test)]
 async fn create_ingest_db(namespace: &str) -> Result<Arc<SurrealDbClient>> {
     let db = SurrealDbClient::memory(namespace, "corpus")
         .await
         .context("creating in-memory surrealdb for ingestion")?;
-    Ok(Arc::new(db))
-}
-
-#[cfg(not(test))]
-async fn create_ingest_db(namespace: &str) -> Result<Arc<SurrealDbClient>> {
-    let config = get_config().context("loading app config for ingestion database")?;
-    let db = SurrealDbClient::new(
-        &config.surrealdb_address,
-        &config.surrealdb_username,
-        &config.surrealdb_password,
-        namespace,
-        "corpus",
-    )
-    .await
-    .context("creating surrealdb database for ingestion")?;
     Ok(Arc::new(db))
 }
 
@@ -631,8 +618,12 @@ pub fn compute_ingestion_fingerprint(
     slice: &ResolvedSlice<'_>,
     converted_path: &Path,
     ingestion_config: &IngestionConfig,
+    precomputed_checksum: Option<&str>,
 ) -> Result<String> {
-    let checksum = compute_file_checksum(converted_path)?;
+    let checksum = match precomputed_checksum {
+        Some(value) => value.to_string(),
+        None => crate::datasets::content_checksum_for_layout(converted_path)?,
+    };
     Ok(build_ingestion_fingerprint(
         dataset,
         slice,
@@ -641,7 +632,7 @@ pub fn compute_ingestion_fingerprint(
     ))
 }
 
-pub fn load_cached_manifest(base_dir: &Path) -> Result<Option<CorpusManifest>> {
+pub fn load_cached_manifest(base_dir: &std::path::Path) -> Result<Option<CorpusManifest>> {
     let path = base_dir.join("manifest.json");
     if !path.exists() {
         return Ok(None);
@@ -656,7 +647,7 @@ pub fn load_cached_manifest(base_dir: &Path) -> Result<Option<CorpusManifest>> {
     Ok(Some(manifest))
 }
 
-fn persist_manifest(handle: &CorpusHandle) -> Result<()> {
+pub fn persist_corpus_manifest(handle: &CorpusHandle) -> Result<()> {
     let path = handle.path.join("manifest.json");
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -683,24 +674,6 @@ pub fn corpus_handle_from_manifest(manifest: CorpusManifest, base_dir: PathBuf) 
         negative_reused: 0,
         negative_ingested: 0,
     }
-}
-
-#[allow(clippy::indexing_slicing)]
-fn compute_file_checksum(path: &Path) -> Result<String> {
-    let mut file = fs::File::open(path)
-        .with_context(|| format!("opening file {} for checksum", path.display()))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .with_context(|| format!("reading {} for checksum", path.display()))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
 }
 
 #[cfg(test)]
@@ -731,7 +704,6 @@ mod tests {
             metadata: crate::datasets::DatasetMetadata::for_kind(
                 DatasetKind::default(),
                 false,
-                None,
             ),
             source: "src".to_string(),
             paragraphs: vec![paragraph],

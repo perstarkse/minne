@@ -1,19 +1,17 @@
 mod args;
-mod cache;
+mod context_stats;
 mod cases;
+mod cli;
 mod corpus;
 mod datasets;
-mod db_helpers;
-mod eval;
+mod db;
 mod inspection;
-mod namespace;
 mod openai;
 mod perf;
 mod pipeline;
 mod report;
 mod settings;
 mod slice;
-mod snapshot;
 mod types;
 
 use anyhow::Context;
@@ -24,7 +22,6 @@ use tracing_subscriber::{fmt, EnvFilter};
 /// Configure `SurrealDB` environment variables for optimal performance
 #[allow(clippy::arithmetic_side_effects, clippy::unwrap_used)]
 fn configure_surrealdb_performance(cpu_count: usize) {
-    // Set environment variables only if they're not already set
     let indexing_batch_size = std::env::var("SURREAL_INDEXING_BATCH_SIZE")
         .unwrap_or_else(|_| (cpu_count * 2).to_string());
     std::env::set_var("SURREAL_INDEXING_BATCH_SIZE", indexing_batch_size);
@@ -62,12 +59,11 @@ fn configure_surrealdb_performance(cpu_count: usize) {
 }
 
 fn main() -> anyhow::Result<()> {
-    // Create an explicit multi-threaded runtime with optimized configuration
     let runtime = Builder::new_multi_thread()
         .enable_all()
         .worker_threads(std::thread::available_parallelism()?.get())
         .max_blocking_threads(std::thread::available_parallelism()?.get())
-        .thread_stack_size(10 * 1024 * 1024) // 10MiB stack size
+        .thread_stack_size(10 * 1024 * 1024)
         .thread_name("eval-retrieval-worker")
         .build()
         .context("failed to create tokio runtime")?;
@@ -77,7 +73,6 @@ fn main() -> anyhow::Result<()> {
 
 #[allow(clippy::too_many_lines)]
 async fn async_main() -> anyhow::Result<()> {
-    // Log runtime configuration
     let cpu_count = std::thread::available_parallelism()?.get();
     info!(
         cpu_cores = cpu_count,
@@ -87,7 +82,6 @@ async fn async_main() -> anyhow::Result<()> {
         "Started multi-threaded tokio runtime"
     );
 
-    // Configure SurrealDB environment variables for better performance
     configure_surrealdb_performance(cpu_count);
 
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
@@ -97,10 +91,19 @@ async fn async_main() -> anyhow::Result<()> {
 
     let parsed = args::parse()?;
 
-    // Clap handles help automatically, so we don't need to check for it manually
-
     if parsed.config.inspect_question.is_some() {
         inspection::inspect_question(&parsed.config).await?;
+        return Ok(());
+    }
+
+    if parsed.config.status {
+        let status = cli::collect_status(&parsed.config).await?;
+        cli::print_status(&status);
+        return Ok(());
+    }
+
+    if parsed.config.warm {
+        cli::warm(&parsed.config).await?;
         return Ok(());
     }
 
@@ -115,7 +118,6 @@ async fn async_main() -> anyhow::Result<()> {
             parsed.config.raw_dataset_path.as_path(),
             dataset_kind,
             parsed.config.llm_mode,
-            parsed.config.context_token_limit(),
         )
         .with_context(|| {
             format!(
@@ -124,56 +126,56 @@ async fn async_main() -> anyhow::Result<()> {
                 parsed.config.raw_dataset_path.display()
             )
         })?;
-        crate::datasets::write_converted(&dataset, parsed.config.converted_dataset_path.as_path())
-            .with_context(|| {
-                format!(
-                    "writing converted dataset to {}",
-                    parsed.config.converted_dataset_path.display()
-                )
-            })?;
+        let store_dir = datasets::store_dir_for(&parsed.config.converted_dataset_path);
+        datasets::write_sharded(&dataset, &store_dir)?;
+        datasets::prebuild_catalog_slices(&dataset, &parsed.config)?;
         println!(
-            "Converted dataset written to {}",
-            parsed.config.converted_dataset_path.display()
+            "Converted dataset written under {}",
+            store_dir.display()
         );
         return Ok(());
     }
 
+    if parsed.config.require_ready {
+        cli::ensure_query_ready(&parsed.config).await?;
+    }
+
     info!(dataset = dataset_kind.id(), "Preparing converted dataset");
-    let dataset = crate::datasets::ensure_converted(
-        dataset_kind,
-        parsed.config.raw_dataset_path.as_path(),
-        parsed.config.converted_dataset_path.as_path(),
-        parsed.config.force_convert,
-        parsed.config.llm_mode,
-        parsed.config.context_token_limit(),
-    )
-    .with_context(|| {
-        format!(
-            "preparing converted dataset at {}",
-            parsed.config.converted_dataset_path.display()
-        )
-    })?;
+    let loaded = crate::datasets::prepare_dataset(dataset_kind, &parsed.config).with_context(
+        || {
+            format!(
+                "preparing converted dataset at {}",
+                parsed.config.converted_dataset_path.display()
+            )
+        },
+    )?;
 
     info!(
-        questions = dataset
+        questions = loaded
+            .dataset
             .paragraphs
             .iter()
             .map(|p| p.questions.len())
             .sum::<usize>(),
-        paragraphs = dataset.paragraphs.len(),
-        dataset = dataset.metadata.id.as_str(),
+        paragraphs = loaded.dataset.paragraphs.len(),
+        partial = loaded.partial,
+        dataset = loaded.dataset.metadata.id.as_str(),
         "Dataset ready"
     );
 
     if parsed.config.slice_grow.is_some() {
-        eval::grow_slice(&dataset, &parsed.config).context("growing slice ledger")?;
+        slice::grow_slice(&loaded.dataset, &parsed.config).context("growing slice ledger")?;
         return Ok(());
     }
 
     info!("Running retrieval evaluation");
-    let summary = eval::run_evaluation(&dataset, &parsed.config)
-        .await
-        .context("running retrieval evaluation")?;
+    let summary = pipeline::run_evaluation(
+        &loaded.dataset,
+        &parsed.config,
+        Some(loaded.content_checksum.as_str()),
+    )
+    .await
+    .context("running retrieval evaluation")?;
 
     let report = report::write_reports(
         &summary,
@@ -226,12 +228,17 @@ async fn async_main() -> anyhow::Result<()> {
         );
     } else {
         println!(
-            "[{}] Retrieval Precision@{k}: {precision:.3} ({correct}/{retrieval_total}) → JSON: {json} | Markdown: {md} | History: {history}{perf_note}",
+            "[{}] Retrieval Precision@{k}: {precision:.3} ({correct}/{retrieval_total}) | Retrieved context: {chunks} chunks, {tokens} tokens ({tokenizer}, avg {avg_tokens:.0}/query, p95 {p95}) → JSON: {json} | Markdown: {md} | History: {history}{perf_note}",
             summary.dataset_label,
             k = summary.k,
             precision = summary.precision,
             correct = summary.correct,
             retrieval_total = summary.retrieval_cases,
+            chunks = summary.retrieved_context.total_chunks,
+            tokens = summary.retrieved_context.total_tokens,
+            tokenizer = summary.retrieved_context.tokenizer,
+            avg_tokens = summary.retrieved_context.avg_tokens_per_query,
+            p95 = summary.retrieved_context.p95_tokens_per_query,
             json = report.paths.json.display(),
             md = report.paths.markdown.display(),
             history = report.history_path.display(),

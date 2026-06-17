@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     fs::File,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -47,20 +47,71 @@ struct QrelEntry {
     score: i32,
 }
 
+/// Convert only documents that appear in qrels (the BEIR evaluation closed world).
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<ConvertedParagraph>> {
+    convert_beir_documents(raw_dir, dataset, None)
+}
+
+/// Convert a subset of qrels-world documents. `doc_ids` use corpus ids (unprefixed).
+#[allow(
+    clippy::too_many_lines,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
+pub fn convert_beir_documents(
+    raw_dir: &Path,
+    dataset: DatasetKind,
+    doc_ids: Option<&HashSet<String>>,
+) -> Result<Vec<ConvertedParagraph>> {
     let corpus_path = raw_dir.join("corpus.jsonl");
     let queries_path = raw_dir.join("queries.jsonl");
     let qrels_path = resolve_qrels_path(raw_dir)?;
 
-    let corpus = load_corpus(&corpus_path)?;
     let queries = load_queries(&queries_path)?;
     let qrels = load_qrels(&qrels_path)?;
 
-    let mut paragraphs = Vec::with_capacity(corpus.len());
+    let mut qrels_doc_ids = HashSet::new();
+    for entries in qrels.values() {
+        for entry in entries {
+            qrels_doc_ids.insert(entry.doc_id.clone());
+        }
+    }
+
+    let target_doc_ids: HashSet<String> = match doc_ids {
+        Some(ids) => ids
+            .iter()
+            .filter(|id| qrels_doc_ids.contains(*id))
+            .cloned()
+            .collect(),
+        None => qrels_doc_ids.clone(),
+    };
+
+    if target_doc_ids.is_empty() {
+        return Err(anyhow!(
+            "no qrels documents to convert for {} at {}",
+            dataset.id(),
+            raw_dir.display()
+        ));
+    }
+
+    let corpus = load_corpus_filtered(&corpus_path, &target_doc_ids)?;
+
+    let mut doc_ids_sorted: Vec<String> = target_doc_ids.into_iter().collect();
+    doc_ids_sorted.sort();
+
+    let mut paragraphs = Vec::with_capacity(doc_ids_sorted.len());
     let mut paragraph_index = HashMap::new();
 
-    for (doc_id, entry) in &corpus {
+    for doc_id in &doc_ids_sorted {
+        let Some(entry) = corpus.get(doc_id) else {
+            warn!(
+                doc_id = %doc_id,
+                dataset = %dataset.id(),
+                "Skipping qrels document missing from corpus"
+            );
+            continue;
+        };
         let paragraph_id = format!("{}-{doc_id}", dataset.source_prefix());
         let paragraph = ConvertedParagraph {
             id: paragraph_id.clone(),
@@ -87,6 +138,12 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
             continue;
         };
 
+        if let Some(filter) = doc_ids {
+            if !filter.contains(&best.doc_id) {
+                continue;
+            }
+        }
+
         let Some(&paragraph_slot) = paragraph_index.get(&best.doc_id) else {
             missing_docs += 1;
             warn!(
@@ -106,7 +163,6 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
             );
             continue;
         };
-        let answers = vec![snippet];
 
         let question_id = format!("{}-{query_id}", dataset.source_prefix());
         paragraphs[paragraph_slot]
@@ -114,7 +170,7 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
             .push(ConvertedQuestion {
                 id: question_id,
                 question: query.text.clone(),
-                answers,
+                answers: vec![snippet],
                 is_impossible: false,
             });
     }
@@ -122,11 +178,21 @@ pub fn convert_beir(raw_dir: &Path, dataset: DatasetKind) -> Result<Vec<Converte
     if missing_queries + missing_docs + skipped_answers > 0 {
         warn!(
             missing_queries,
-            missing_docs, skipped_answers, "Skipped some BEIR qrels entries during conversion"
+            missing_docs,
+            skipped_answers,
+            dataset = %dataset.id(),
+            "Skipped some BEIR qrels entries during conversion"
         );
     }
 
     Ok(paragraphs)
+}
+
+pub fn corpus_doc_id(paragraph_id: &str, dataset: DatasetKind) -> Option<String> {
+    let prefix = format!("{}-", dataset.source_prefix());
+    paragraph_id
+        .strip_prefix(&prefix)
+        .map(str::to_string)
 }
 
 fn resolve_qrels_path(raw_dir: &Path) -> Result<PathBuf> {
@@ -148,7 +214,10 @@ fn resolve_qrels_path(raw_dir: &Path) -> Result<PathBuf> {
 }
 
 #[allow(clippy::arithmetic_side_effects)]
-fn load_corpus(path: &Path) -> Result<BTreeMap<String, BeirParagraph>> {
+fn load_corpus_filtered(
+    path: &Path,
+    doc_ids: &HashSet<String>,
+) -> Result<BTreeMap<String, BeirParagraph>> {
     let file =
         File::open(path).with_context(|| format!("opening BEIR corpus at {}", path.display()))?;
     let reader = BufReader::new(file);
@@ -167,6 +236,9 @@ fn load_corpus(path: &Path) -> Result<BTreeMap<String, BeirParagraph>> {
                 path.display()
             )
         })?;
+        if !doc_ids.contains(&corpus_row.id) {
+            continue;
+        }
         let title = corpus_row.title.unwrap_or_else(|| corpus_row.id.clone());
         let text = corpus_row.text.unwrap_or_default();
         let context = build_context(&title, &text);
@@ -296,10 +368,8 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    #[test]
-    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
-    fn converts_basic_beir_layout() {
-        let dir = tempdir().unwrap();
+    #[allow(clippy::unwrap_used)]
+    fn write_fixture(dir: &tempfile::TempDir) {
         let corpus = r#"
 {"_id":"d1","title":"Doc 1","text":"Doc one has some text for testing."}
 {"_id":"d2","title":"Doc 2","text":"Second document content."}
@@ -313,24 +383,34 @@ mod tests {
         fs::write(dir.path().join("queries.jsonl"), queries.trim()).unwrap();
         fs::create_dir_all(dir.path().join("qrels")).unwrap();
         fs::write(dir.path().join("qrels/test.tsv"), qrels).unwrap();
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+    fn converts_qrels_world_only() {
+        let dir = tempdir().unwrap();
+        write_fixture(&dir);
 
         let paragraphs = convert_beir(dir.path(), DatasetKind::Fever).unwrap();
 
-        assert_eq!(paragraphs.len(), 2);
-        let doc_one = paragraphs
-            .iter()
-            .find(|p| p.id == "fever-d1")
-            .expect("missing paragraph for d1");
+        assert_eq!(paragraphs.len(), 1);
+        let doc_one = &paragraphs[0];
+        assert_eq!(doc_one.id, "fever-d1");
         assert_eq!(doc_one.questions.len(), 1);
-        let question = &doc_one.questions[0];
-        assert_eq!(question.id, "fever-q1");
-        assert!(!question.answers.is_empty());
-        assert!(doc_one.context.contains(&question.answers[0]));
+        assert_eq!(doc_one.questions[0].id, "fever-q1");
+    }
 
-        let doc_two = paragraphs
-            .iter()
-            .find(|p| p.id == "fever-d2")
-            .expect("missing paragraph for d2");
-        assert!(doc_two.questions.is_empty());
+    #[test]
+    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+    fn converts_filtered_doc_ids() {
+        let dir = tempdir().unwrap();
+        write_fixture(&dir);
+
+        let mut ids = HashSet::new();
+        ids.insert("d1".to_string());
+        let paragraphs =
+            convert_beir_documents(dir.path(), DatasetKind::Fever, Some(&ids)).unwrap();
+        assert_eq!(paragraphs.len(), 1);
+        assert_eq!(paragraphs[0].id, "fever-d1");
     }
 }

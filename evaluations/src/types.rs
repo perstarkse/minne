@@ -1,12 +1,14 @@
 use std::collections::HashSet;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use common::storage::types::StoredObject;
 use retrieval_pipeline::{
     Diagnostics, RetrievalOutput, RetrievedChunk, RetrievedEntity, StageKind, StageTimings,
 };
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
+
+pub use crate::context_stats::{RetrievalContextStats, RetrievedContextStats};
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize)]
@@ -83,6 +85,7 @@ pub struct EvaluationSummary {
     pub chunk_vector_take: usize,
     pub chunk_fts_take: usize,
     pub max_chunks_per_entity: usize,
+    pub retrieved_context: RetrievalContextStats,
     pub cases: Vec<CaseSummary>,
 }
 
@@ -108,6 +111,7 @@ pub struct CaseSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ndcg: Option<f64>,
     pub latency_ms: u128,
+    pub retrieved_context: RetrievedContextStats,
     pub retrieved: Vec<RetrievedSummary>,
 }
 
@@ -482,4 +486,8 @@ pub fn build_case_diagnostics(
         retrieved: entity_diagnostics,
         pipeline: pipeline_stats,
     }
+}
+
+pub fn format_timestamp(timestamp: &DateTime<Utc>) -> String {
+    timestamp.to_rfc3339_opts(SecondsFormat::Secs, true)
 }

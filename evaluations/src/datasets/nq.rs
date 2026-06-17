@@ -16,11 +16,7 @@ use super::{ConvertedParagraph, ConvertedQuestion};
     clippy::arithmetic_side_effects,
     clippy::cast_sign_loss
 )]
-pub fn convert_nq(
-    raw_path: &Path,
-    include_unanswerable: bool,
-    _context_token_limit: Option<usize>,
-) -> Result<Vec<ConvertedParagraph>> {
+pub fn convert_nq(raw_path: &Path, include_unanswerable: bool) -> Result<Vec<ConvertedParagraph>> {
     #[allow(dead_code)]
     #[derive(Debug, Deserialize)]
     struct NqExample {

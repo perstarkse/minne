@@ -137,9 +137,9 @@ pub struct IngestConfig {
     #[arg(long, default_value_t = 50)]
     pub ingest_chunk_overlap_tokens: usize,
 
-    /// Run ingestion in chunk-only mode (skip analyzer/graph generation)
+    /// Include entity extraction and graph generation during ingestion (uses LLM tokens)
     #[arg(long)]
-    pub ingest_chunks_only: bool,
+    pub include_entities: bool,
 
     /// Number of paragraphs to ingest concurrently
     #[arg(long, default_value_t = 10)]
@@ -159,6 +159,7 @@ pub struct IngestConfig {
 }
 
 #[derive(Debug, Clone, Args)]
+#[allow(clippy::struct_field_names)]
 pub struct DatabaseArgs {
     /// `SurrealDB` server endpoint
     #[arg(long, default_value = "ws://127.0.0.1:8000", env = "EVAL_DB_ENDPOINT")]
@@ -179,10 +180,6 @@ pub struct DatabaseArgs {
     /// Override the database used on the `SurrealDB` server
     #[arg(long, env = "EVAL_DB_DATABASE")]
     pub db_database: Option<String>,
-
-    /// Path to inspect DB state
-    #[arg(long)]
-    pub inspect_db_state: Option<PathBuf>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -232,10 +229,6 @@ pub struct Config {
     /// Number of mismatches to surface in the Markdown summary
     #[arg(long, default_value_t = 5)]
     pub sample: usize,
-
-    /// Disable context cropping when converting datasets (ingest entire documents)
-    #[arg(long)]
-    pub full_context: bool,
 
     #[command(flatten)]
     pub retrieval: RetrievalSettings,
@@ -322,6 +315,18 @@ pub struct Config {
     #[command(flatten)]
     pub database: DatabaseArgs,
 
+    /// Require warmed corpus/namespace before running queries
+    #[arg(long)]
+    pub require_ready: bool,
+
+    /// Prepare converted data, slice, corpus, and namespace without running queries
+    #[arg(long, conflicts_with = "status")]
+    pub warm: bool,
+
+    /// Print readiness of converted data, slice, corpus, and namespace
+    #[arg(long, conflicts_with = "warm")]
+    pub status: bool,
+
     // Computed fields (not arguments)
     #[arg(skip)]
     pub raw_dataset_path: PathBuf,
@@ -334,11 +339,6 @@ pub struct Config {
 }
 
 impl Config {
-    #[allow(clippy::unused_self)]
-    pub fn context_token_limit(&self) -> Option<usize> {
-        None
-    }
-
     #[allow(clippy::too_many_lines)]
     pub fn finalize(&mut self) -> Result<()> {
         // Handle dataset paths
@@ -367,9 +367,7 @@ impl Config {
         // Handle retrieval settings
         self.retrieval.require_verified_chunks = !self.llm_mode;
 
-        if self.dataset == DatasetKind::Beir {
-            self.negative_multiplier = 9.0;
-        }
+        self.apply_catalog_slice_defaults()?;
 
         // Validations
         if self.ingest.ingest_chunk_min_tokens == 0
@@ -477,6 +475,56 @@ impl Config {
 
         Ok(())
     }
+
+    fn apply_catalog_slice_defaults(&mut self) -> Result<()> {
+        let catalog = crate::datasets::catalog()?;
+        let entry = catalog.dataset(self.dataset.id())?;
+
+        if self.slice.is_none() {
+            if let Some(default_slice) = entry.slices.first() {
+                self.slice = Some(default_slice.id.clone());
+            }
+        }
+
+        let Some(slice_id) = self.slice.as_deref() else {
+            return Ok(());
+        };
+
+        let Ok((_, slice)) = catalog.slice(slice_id) else {
+            return Ok(());
+        };
+
+        if slice.dataset_id != self.dataset.id() {
+            return Ok(());
+        }
+
+        if let Some(limit) = slice.limit {
+            if self.limit_arg == 200 {
+                self.limit_arg = limit;
+                self.limit = Some(limit);
+            }
+        }
+        if self.corpus_limit.is_none() {
+            self.corpus_limit = slice.corpus_limit;
+        }
+        if let Some(seed) = slice.seed {
+            self.slice_seed = seed;
+        }
+        if let Some(include_unanswerable) = slice.include_unanswerable {
+            self.llm_mode = include_unanswerable;
+            self.retrieval.require_verified_chunks = !include_unanswerable;
+        }
+        if let Some(multiplier) = slice.negative_multiplier {
+            if negative_multiplier_is_default(self.negative_multiplier) {
+                self.negative_multiplier = multiplier;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn negative_multiplier_is_default(value: f32) -> bool {
+    (value - crate::slice::DEFAULT_NEGATIVE_MULTIPLIER).abs() < f32::EPSILON
 }
 
 pub struct ParsedArgs {

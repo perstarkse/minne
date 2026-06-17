@@ -3,31 +3,18 @@ use std::time::Instant;
 use anyhow::Context;
 use tracing::info;
 
-use crate::eval::write_chunk_diagnostics;
-
 use super::super::{
     context::{EvalStage, EvaluationContext},
-    state::{Completed, EvaluationMachine, Summarized},
+    diagnostics::write_chunk_diagnostics,
 };
-use super::{map_guard_error, StageResult};
 
-pub(crate) async fn finalize(
-    machine: EvaluationMachine<(), Summarized>,
-    ctx: &mut EvaluationContext<'_>,
-) -> StageResult<Completed> {
+pub(crate) async fn finalize(ctx: &mut EvaluationContext<'_>) -> anyhow::Result<()> {
     let stage = EvalStage::Finalize;
     info!(
         evaluation_stage = stage.label(),
         "starting evaluation stage"
     );
     let started = Instant::now();
-
-    if let Some(cache) = ctx.embedding_cache.as_ref() {
-        cache
-            .persist()
-            .await
-            .context("persisting embedding cache")?;
-    }
 
     if let Some(path) = ctx.diagnostics_path.as_ref() {
         if ctx.diagnostics_enabled {
@@ -53,7 +40,5 @@ pub(crate) async fn finalize(
         "completed evaluation stage"
     );
 
-    machine
-        .finalize()
-        .map_err(|(_, guard)| map_guard_error("finalize", &guard))
+    Ok(())
 }

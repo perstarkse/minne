@@ -1,22 +1,22 @@
-//! Database namespace management utilities.
-
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
-use common::storage::{
-    db::SurrealDbClient,
-    types::user::{Theme, User},
-    types::StoredObject,
+use common::{
+    storage::{
+        db::SurrealDbClient,
+        types::user::{Theme, User},
+        types::StoredObject,
+    },
+    utils::embedding::EmbeddingProvider,
 };
 use serde::Deserialize;
 use tracing::{info, warn};
 
 use crate::{
     args::Config,
+    corpus::{self, CorpusHandle, CorpusManifest, NamespaceSeedRecord},
     datasets,
-    snapshot::{self, DbSnapshotState},
 };
 
-/// Connect to the evaluation database with fallback auth strategies.
 pub(crate) async fn connect_eval_db(
     config: &Config,
     namespace: &str,
@@ -73,7 +73,6 @@ pub(crate) async fn connect_eval_db(
     }
 }
 
-/// Check if the namespace contains any corpus data.
 pub(crate) async fn namespace_has_corpus(db: &SurrealDbClient) -> Result<bool> {
     #[derive(Deserialize)]
     struct CountRow {
@@ -89,41 +88,52 @@ pub(crate) async fn namespace_has_corpus(db: &SurrealDbClient) -> Result<bool> {
     Ok(rows.first().map_or(0, |row| row.count) > 0)
 }
 
-/// Determine if we can reuse an existing namespace based on cached state.
+fn manifest_matches_runtime(
+    manifest: &CorpusManifest,
+    embedding_provider: &EmbeddingProvider,
+    ingestion_fingerprint: &str,
+) -> bool {
+    let metadata = &manifest.metadata;
+    metadata.ingestion_fingerprint == ingestion_fingerprint
+        && metadata.embedding_backend == embedding_provider.backend_label()
+        && metadata.embedding_model == embedding_provider.model_code()
+        && metadata.embedding_dimension == embedding_provider.dimension()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn can_reuse_namespace(
     db: &SurrealDbClient,
-    descriptor: &snapshot::Descriptor,
+    manifest: &CorpusManifest,
+    embedding_provider: &EmbeddingProvider,
     namespace: &str,
     database: &str,
-    dataset_id: &str,
-    slice_id: &str,
     ingestion_fingerprint: &str,
     slice_case_count: usize,
 ) -> Result<bool> {
-    let Some(state) = descriptor.load_db_state().await? else {
-        info!("No namespace state recorded; reseeding corpus from cached shards");
+    if !manifest_matches_runtime(manifest, embedding_provider, ingestion_fingerprint) {
+        info!("Corpus manifest metadata mismatch; rebuilding namespace from cached shards");
+        return Ok(false);
+    }
+
+    let Some(seed) = manifest.metadata.namespace_seed.as_ref() else {
+        info!("No namespace seed recorded in corpus manifest; reseeding");
         return Ok(false);
     };
 
-    if state.slice_case_count != slice_case_count {
+    if seed.slice_case_count != slice_case_count {
         info!(
             requested_cases = slice_case_count,
-            stored_cases = state.slice_case_count,
-            "Skipping live namespace reuse; cached state does not match requested window"
+            stored_cases = seed.slice_case_count,
+            "Skipping namespace reuse; case window mismatch"
         );
         return Ok(false);
     }
 
-    if state.dataset_id != dataset_id
-        || state.slice_id != slice_id
-        || state.ingestion_fingerprint != ingestion_fingerprint
-        || state.namespace.as_deref() != Some(namespace)
-        || state.database.as_deref() != Some(database)
-    {
+    if seed.namespace != namespace || seed.database != database {
         info!(
             namespace,
-            database, "Cached namespace metadata mismatch; rebuilding corpus from ingestion cache"
+            database,
+            "Corpus manifest namespace metadata mismatch; reseeding"
         );
         return Ok(false);
     }
@@ -140,28 +150,20 @@ pub(crate) async fn can_reuse_namespace(
     }
 }
 
-/// Record the current namespace state to allow future reuse checks.
-pub(crate) async fn record_namespace_state(
-    descriptor: &snapshot::Descriptor,
-    dataset_id: &str,
-    slice_id: &str,
-    ingestion_fingerprint: &str,
+pub(crate) async fn record_namespace_seed(
+    handle: &mut CorpusHandle,
     namespace: &str,
     database: &str,
     slice_case_count: usize,
 ) {
-    let state = DbSnapshotState {
-        dataset_id: dataset_id.to_string(),
-        slice_id: slice_id.to_string(),
-        ingestion_fingerprint: ingestion_fingerprint.to_string(),
-        snapshot_hash: descriptor.metadata_hash().to_string(),
-        updated_at: Utc::now(),
-        namespace: Some(namespace.to_string()),
-        database: Some(database.to_string()),
+    handle.manifest.metadata.namespace_seed = Some(NamespaceSeedRecord {
+        namespace: namespace.to_string(),
+        database: database.to_string(),
         slice_case_count,
-    };
-    if let Err(err) = descriptor.store_db_state(&state).await {
-        warn!(error = %err, "Failed to record namespace state");
+        seeded_at: Utc::now(),
+    });
+    if let Err(err) = corpus::persist_corpus_manifest(handle) {
+        warn!(error = %err, "Failed to record namespace seed in corpus manifest");
     }
 }
 
@@ -185,8 +187,17 @@ fn sanitize_identifier(input: &str) -> String {
     cleaned
 }
 
-/// Generate a default namespace name based on dataset and limit.
-pub(crate) fn default_namespace(dataset_id: &str, limit: Option<usize>) -> String {
+pub(crate) fn default_namespace(
+    dataset_id: &str,
+    limit: Option<usize>,
+    slice_id: Option<&str>,
+) -> String {
+    if let Some(slice_id) = slice_id {
+        let sanitized = sanitize_identifier(slice_id);
+        if !sanitized.is_empty() {
+            return format!("eval_{sanitized}");
+        }
+    }
     let dataset_component = sanitize_identifier(dataset_id);
     let limit_component = match limit {
         Some(value) if value > 0 => format!("limit{value}"),
@@ -195,12 +206,10 @@ pub(crate) fn default_namespace(dataset_id: &str, limit: Option<usize>) -> Strin
     format!("eval_{dataset_component}_{limit_component}")
 }
 
-/// Generate the default database name for evaluations.
 pub(crate) fn default_database() -> String {
     "retrieval_eval".to_string()
 }
 
-/// Ensure the evaluation user exists in the database.
 pub(crate) async fn ensure_eval_user(db: &SurrealDbClient) -> Result<User> {
     let timestamp = datasets::base_timestamp();
     let user = User {
@@ -224,4 +233,8 @@ pub(crate) async fn ensure_eval_user(db: &SurrealDbClient) -> Result<User> {
         .await
         .context("storing evaluation user")?;
     Ok(user)
+}
+
+pub(crate) fn sanitize_model_code(code: &str) -> String {
+    sanitize_identifier(code)
 }

@@ -1,28 +1,19 @@
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use anyhow::{anyhow, Context};
 use tracing::info;
 
 use crate::{
     args::EmbeddingBackend,
-    cache::EmbeddingCache,
-    eval::{
-        connect_eval_db, enforce_system_settings, load_or_init_system_settings, sanitize_model_code,
-    },
+    db::{connect_eval_db, sanitize_model_code},
     openai,
+    settings::{enforce_system_settings, load_or_init_system_settings},
 };
 use common::utils::embedding::{default_embedding_pool_size, EmbeddingProvider};
 
-use super::super::{
-    context::{EvalStage, EvaluationContext},
-    state::{DbReady, EvaluationMachine, SlicePrepared},
-};
-use super::{map_guard_error, StageResult};
+use super::super::context::{EvalStage, EvaluationContext};
 
-pub(crate) async fn prepare_db(
-    machine: EvaluationMachine<(), SlicePrepared>,
-    ctx: &mut EvaluationContext<'_>,
-) -> StageResult<DbReady> {
+pub(crate) async fn prepare_db(ctx: &mut EvaluationContext<'_>) -> anyhow::Result<()> {
     let stage = EvalStage::PrepareDb;
     info!(
         evaluation_stage = stage.label(),
@@ -36,19 +27,18 @@ pub(crate) async fn prepare_db(
 
     let db = connect_eval_db(config, &namespace, &database).await?;
 
-    let (raw_openai_client, openai_base_url) =
-        openai::build_client_from_env().context("building OpenAI client")?;
-    let openai_client = Arc::new(raw_openai_client);
+    let (openai_client, openai_base_url) =
+        openai::ingestion_openai_client(config.ingest.include_entities)
+            .context("building OpenAI client for ingestion")?;
 
-    // Create embedding provider directly from config (eval only supports FastEmbed and Hashed)
     let embedding_provider = match config.embedding_backend {
-        crate::args::EmbeddingBackend::FastEmbed => EmbeddingProvider::new_fastembed(
+        EmbeddingBackend::FastEmbed => EmbeddingProvider::new_fastembed(
             config.embedding_model.clone(),
             default_embedding_pool_size(),
         )
         .await
         .context("creating FastEmbed provider")?,
-        crate::args::EmbeddingBackend::Hashed => {
+        EmbeddingBackend::Hashed => {
             EmbeddingProvider::new_hashed(1536).context("creating Hashed provider")?
         }
     };
@@ -68,12 +58,14 @@ pub(crate) async fn prepare_db(
         dimension = provider_dimension,
         "Embedding provider initialised"
     );
-    info!(openai_base_url = %openai_base_url, "OpenAI client configured");
+    if let Some(base_url) = &openai_base_url {
+        info!(openai_base_url = %base_url, "OpenAI client configured for entity ingestion");
+    }
 
     let (mut settings, settings_missing) =
         load_or_init_system_settings(&db, provider_dimension).await?;
 
-    let embedding_cache = if config.embedding_backend == EmbeddingBackend::FastEmbed {
+    if config.embedding_backend == EmbeddingBackend::FastEmbed {
         if let Some(model_code) = embedding_provider.model_code() {
             let sanitized = sanitize_model_code(&model_code);
             let path = config.cache_dir.join(format!("{sanitized}.json"));
@@ -83,15 +75,8 @@ pub(crate) async fn prepare_db(
                     .with_context(|| format!("removing stale cache {}", path.display()))
                     .ok();
             }
-            let cache = EmbeddingCache::load(&path).await?;
-            info!(path = %path.display(), "Embedding cache ready");
-            Some(cache)
-        } else {
-            None
         }
-    } else {
-        None
-    };
+    }
 
     let must_reapply_settings = settings_missing;
     let defer_initial_enforce = settings_missing && !config.reseed_slice;
@@ -104,9 +89,8 @@ pub(crate) async fn prepare_db(
     ctx.must_reapply_settings = must_reapply_settings;
     ctx.settings = Some(settings);
     ctx.embedding_provider = Some(embedding_provider);
-    ctx.embedding_cache = embedding_cache;
     ctx.openai_client = Some(openai_client);
-    ctx.openai_base_url = Some(openai_base_url);
+    ctx.openai_base_url = openai_base_url;
 
     let elapsed = started.elapsed();
     ctx.record_stage_duration(stage, elapsed);
@@ -116,7 +100,5 @@ pub(crate) async fn prepare_db(
         "completed evaluation stage"
     );
 
-    machine
-        .prepare_db()
-        .map_err(|(_, guard)| map_guard_error("prepare_db", &guard))
+    Ok(())
 }
