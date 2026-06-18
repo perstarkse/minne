@@ -496,7 +496,7 @@ mod tests {
     use super::*;
     use crate::storage::indexes::rebuild;
     use crate::storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding;
-    use crate::test_utils::{prepare_knowledge_entity_test_db, setup_test_db};
+    use crate::test_utils::{ensure_fts_index, prepare_knowledge_entity_test_db, setup_test_db};
     use anyhow::{self, Context};
 
     #[test]
@@ -509,27 +509,6 @@ mod tests {
         assert_eq!(text, "name: Alpha, description: Beta, type: TextSnippet");
     }
 
-    async fn ensure_entity_fts_indexes(db: &SurrealDbClient) -> anyhow::Result<()> {
-        let snowball_sql = r#"
-            DEFINE ANALYZER IF NOT EXISTS app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii, snowball(english);
-            DEFINE INDEX IF NOT EXISTS knowledge_entity_fts_name_idx ON TABLE knowledge_entity FIELDS name SEARCH ANALYZER app_en_fts_analyzer BM25;
-            DEFINE INDEX IF NOT EXISTS knowledge_entity_fts_description_idx ON TABLE knowledge_entity FIELDS description SEARCH ANALYZER app_en_fts_analyzer BM25;
-        "#;
-
-        if let Err(err) = db.client.query(snowball_sql).await {
-            let fallback_sql = r#"
-                DEFINE ANALYZER OVERWRITE app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii;
-                DEFINE INDEX IF NOT EXISTS knowledge_entity_fts_name_idx ON TABLE knowledge_entity FIELDS name SEARCH ANALYZER app_en_fts_analyzer BM25;
-                DEFINE INDEX IF NOT EXISTS knowledge_entity_fts_description_idx ON TABLE knowledge_entity FIELDS description SEARCH ANALYZER app_en_fts_analyzer BM25;
-            "#;
-
-            db.client
-                .query(fallback_sql)
-                .await
-                .with_context(|| format!("define entity fts index fallback: {err}"))?;
-        }
-        Ok(())
-    }
     use serde_json::json;
 
     #[tokio::test]
@@ -962,7 +941,12 @@ mod tests {
     #[tokio::test]
     async fn test_fts_search_returns_empty_when_no_entities() -> anyhow::Result<()> {
         let db = setup_test_db().await?;
-        ensure_entity_fts_indexes(&db).await?;
+        ensure_fts_index(
+            &db,
+            "knowledge_entity",
+            &[("name", "name"), ("description", "description")],
+        )
+        .await?;
         rebuild(&db)
             .await
             .with_context(|| "rebuild indexes".to_string())?;
@@ -978,7 +962,12 @@ mod tests {
     #[tokio::test]
     async fn test_fts_search_single_result() -> anyhow::Result<()> {
         let db = setup_test_db().await?;
-        ensure_entity_fts_indexes(&db).await?;
+        ensure_fts_index(
+            &db,
+            "knowledge_entity",
+            &[("name", "name"), ("description", "description")],
+        )
+        .await?;
 
         let user_id = "fts_user";
         let entity = KnowledgeEntity::new(
@@ -1010,7 +999,12 @@ mod tests {
     #[tokio::test]
     async fn test_fts_search_orders_by_score_and_filters_user() -> anyhow::Result<()> {
         let db = setup_test_db().await?;
-        ensure_entity_fts_indexes(&db).await?;
+        ensure_fts_index(
+            &db,
+            "knowledge_entity",
+            &[("name", "name"), ("description", "description")],
+        )
+        .await?;
 
         let user_id = "fts_user_order";
         let high_score_entity = KnowledgeEntity::new(

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Refactor: deduplicated test database setup across common/src/storage/ types by routing remaining inline SurrealDbClient::memory() calls through shared setup_test_db(), prepare_text_chunk_test_db(), and prepare_knowledge_entity_test_db() helpers; removed redundant apply_migrations() calls after setup_test_db() and collapsed configure_embedding_dimension + redefine_hnsw_index triplication into prepare_*_test_db helpers
+- Refactor: deduplicated test database setup across common/src/storage/ types by routing remaining inline SurrealDbClient::memory() calls through shared setup_test_db(), prepare_text_chunk_test_db(), and prepare_knowledge_entity_test_db() helpers; removed redundant apply_migrations() calls after setup_test_db() and collapsed configure_embedding_dimension + redefine_hnsw_index triplication into prepare_**test_db helpers; extracted generic ensure_fts_index helper for FTS index bootstrap replacing duplicated per-table ensure**_fts_indexes helpers
 - Refactor: split knowledge-graph.js monolith into focused functions (loadGraphData, buildSvg, createSimulation, drawLinks/Nodes/Labels, createHighlighting, createZoom, attachResize); fixed dead duplicate zoom instance
 - Refactor: extracted rubberbanding scroll logic in design-polish.js into standalone attachRubberbanding helper; removed dead pullDistance state
 

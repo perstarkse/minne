@@ -91,3 +91,47 @@ pub async fn setup_test_db_with_runtime_indexes() -> Result<SurrealDbClient> {
     rebuild(&db).await?;
     Ok(db)
 }
+
+/// Ensures an FTS analyzer and BM25 indexes exist for a table.
+///
+/// Attempts snowball(english) tokenizer first; falls back to basic
+/// lowercase+ascii when the platform lacks the snowball extension.
+///
+/// `indexes` is a slice of `(field_name, index_id_suffix)` pairs —
+/// e.g. `&[("chunk", "chunk")]` produces index
+/// `text_chunk_fts_chunk_idx` on column `chunk` of `text_chunk`.
+///
+/// # Errors
+///
+/// Returns an error if the fallback definition fails. The initial
+/// snowball attempt is allowed to fail silently.
+pub async fn ensure_fts_index(
+    db: &SurrealDbClient,
+    table: &str,
+    indexes: &[(&str, &str)],
+) -> Result<()> {
+    use std::fmt::Write;
+
+    let mut define_indexes = String::new();
+    for (field, suffix) in indexes {
+        let _ = writeln!(
+            define_indexes,
+            "DEFINE INDEX IF NOT EXISTS {table}_fts_{suffix}_idx ON TABLE {table} FIELDS {field} SEARCH ANALYZER app_en_fts_analyzer BM25;"
+        );
+    }
+
+    let snowball_sql = format!(
+        "DEFINE ANALYZER IF NOT EXISTS app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii, snowball(english);\n{define_indexes}"
+    );
+
+    if let Err(err) = db.client.query(&snowball_sql).await {
+        let fallback_sql = format!(
+            "DEFINE ANALYZER OVERWRITE app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii;\n{define_indexes}"
+        );
+        db.client
+            .query(&fallback_sql)
+            .await
+            .with_context(|| format!("define fts index fallback for {table}: {err}"))?;
+    }
+    Ok(())
+}
