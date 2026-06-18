@@ -630,6 +630,7 @@ mod tests {
 
     use super::*;
     use crate::storage::types::ingestion_payload::IngestionPayload;
+    use crate::test_utils::setup_test_db;
 
     fn create_payload(user_id: &str) -> IngestionPayload {
         IngestionPayload::Text {
@@ -641,11 +642,7 @@ mod tests {
     }
 
     async fn memory_db() -> anyhow::Result<SurrealDbClient> {
-        let namespace = "test_ns";
-        let database = Uuid::new_v4().to_string();
-        SurrealDbClient::memory(namespace, &database)
-            .await
-            .with_context(|| "in-memory surrealdb".to_string())
+        setup_test_db().await
     }
 
     #[tokio::test]

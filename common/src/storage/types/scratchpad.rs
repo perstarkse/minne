@@ -221,19 +221,11 @@ mod tests {
     use anyhow::{self, Context};
 
     use super::*;
+    use crate::test_utils::setup_test_db;
 
     #[tokio::test]
     async fn test_create_scratchpad() -> anyhow::Result<()> {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         // Create a new scratchpad
         let user_id = "test_user";
@@ -271,15 +263,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_user() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id = "test_user";
 
@@ -333,15 +317,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_archive_and_restore() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id = "test_user";
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
@@ -368,15 +344,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_content() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id = "test_user";
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
@@ -398,15 +366,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_content_unauthorized() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let owner_id = "owner";
         let other_user = "other_user";
@@ -428,15 +388,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_scratchpad() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id = "test_user";
         let scratchpad = Scratchpad::new(user_id.to_string(), "Test".to_string());
@@ -461,15 +413,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_unauthorized() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let owner_id = "owner";
         let other_user = "other_user";
@@ -498,13 +442,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_timezone_aware_scratchpad_conversion() -> anyhow::Result<()> {
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to create test database".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id = "test_user_123";
         let scratchpad =

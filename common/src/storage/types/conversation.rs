@@ -157,6 +157,7 @@ impl Conversation {
 mod tests {
     #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use crate::storage::types::message::MessageRole;
+    use crate::test_utils::setup_test_db;
     use anyhow::{self, Context};
 
     use super::*;
@@ -181,11 +182,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_conversation() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id = "test_user";
         let title = "Test Conversation";
@@ -214,11 +211,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_complete_conversation_not_found() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
         let result =
             Conversation::get_complete_conversation("nonexistent_id", "test_user", &db).await;
@@ -234,11 +227,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_complete_conversation_unauthorized() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id_1 = "user_1";
         let conversation =
@@ -264,11 +253,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_patch_title_success() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id = "user_1";
         let original_title = "Original Title";
@@ -297,11 +282,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_patch_title_not_found() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
         let result = Conversation::patch_title("nonexistent", "user_x", "New Title", &db).await;
 
@@ -316,11 +297,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_patch_title_unauthorized() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
         let owner_id = "owner";
         let other_user_id = "intruder";
@@ -345,11 +322,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_user_sidebar_conversations_filters_and_orders_by_updated_at_desc() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = setup_test_db().await.expect("setup_test_db");
 
         let user_id = "sidebar_user";
         let other_user_id = "other_user";
@@ -398,11 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sidebar_projection_reflects_patch_title_and_updated_at_reorder() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = setup_test_db().await.expect("setup_test_db");
 
         let user_id = "sidebar_patch_user";
         let base = Utc::now();
@@ -440,11 +409,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_complete_conversation_with_messages() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
         let user_id_1 = "user_1";
         let conversation = Conversation::new(user_id_1.to_string(), "Conversation".to_string());
@@ -527,11 +492,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sidebar_conversation_deserializes_id_from_db_record() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
+        let db = setup_test_db().await.expect("setup_test_db");
 
         let owner = "sidebar_owner";
         let conversation = Conversation::new(owner.to_string(), "Sidebar title".to_string());
@@ -551,9 +512,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_message_query_filters_by_owner_user_id_in_sql() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
+        let db = setup_test_db().await?;
 
         let owner = "owner_user";
         let intruder = "intruder_user";
@@ -590,9 +549,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_complete_conversation_orders_messages_by_updated_at() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
+        let db = setup_test_db().await?;
 
         let user_id = "order_user";
         let conversation = Conversation::new(user_id.to_string(), "Ordered".to_string());
@@ -637,9 +594,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_patch_title_not_found_when_conversation_deleted() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
+        let db = setup_test_db().await?;
 
         let owner = "owner";
         let conversation = Conversation::new(owner.to_string(), "To delete".to_string());

@@ -78,7 +78,7 @@ pub fn format_history(history: &[Message]) -> String {
 mod tests {
     #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
-    use crate::storage::db::SurrealDbClient;
+    use crate::test_utils::setup_test_db;
     use anyhow::{self, Context};
 
     #[tokio::test]
@@ -106,11 +106,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_message_persistence() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &uuid::Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
         let conversation_id = "test_conversation";
         let message = Message::new(

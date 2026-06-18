@@ -334,6 +334,7 @@ mod tests {
     use anyhow::{self, Context};
 
     use super::*;
+    use crate::test_utils::setup_test_db;
     use uuid::Uuid;
 
     async fn get_hnsw_index_dimension(
@@ -417,17 +418,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_settings_initialization() -> anyhow::Result<()> {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        // Test initialization of system settings
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
         let settings = SystemSettings::get_current(&db)
             .await
             .with_context(|| "Failed to get system settings".to_string())?;
@@ -464,19 +455,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_current_settings() -> anyhow::Result<()> {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
+        let db = setup_test_db().await?;
 
-        // Initialize settings
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
-        // Test get_current method
         let settings = SystemSettings::get_current(&db)
             .await
             .with_context(|| "Failed to get current settings".to_string())?;
@@ -489,17 +469,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_settings() -> anyhow::Result<()> {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        // Initialize settings
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         // Create updated settings
         let mut updated_settings = SystemSettings::get_current(&db)
@@ -532,13 +502,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_current_nonexistent() -> anyhow::Result<()> {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string()).await?;
         // Don't initialize settings and try to get them
         let result = SystemSettings::get_current(&db).await;
 
@@ -555,12 +519,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_rejects_zero_embedding_dimensions() -> anyhow::Result<()> {
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let mut invalid_settings = SystemSettings::get_current(&db)
             .await
@@ -574,12 +533,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_patch_updates_without_cloning_full_settings() -> anyhow::Result<()> {
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let updated = SystemSettingsPatch {
             registrations_enabled: Some(false),
@@ -595,12 +549,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_patch_leaves_unmentioned_fields_unchanged() -> anyhow::Result<()> {
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let original = SystemSettings::get_current(&db)
             .await
@@ -630,12 +579,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_rejects_empty_model_name() -> anyhow::Result<()> {
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let mut invalid_settings = SystemSettings::get_current(&db)
             .await
@@ -649,12 +593,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_normalizes_record_id() -> anyhow::Result<()> {
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let mut settings = SystemSettings::get_current(&db)
             .await
@@ -672,12 +611,7 @@ mod tests {
     async fn test_update_preserves_embedding_backend() -> anyhow::Result<()> {
         use crate::utils::embedding::EmbeddingProvider;
 
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let provider = EmbeddingProvider::new_hashed(384)
             .with_context(|| "Failed to create hashed embedding provider".to_string())?;
@@ -704,12 +638,7 @@ mod tests {
     async fn test_sync_from_embedding_provider_updates_mismatched_settings() -> anyhow::Result<()> {
         use crate::utils::embedding::EmbeddingProvider;
 
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let provider = EmbeddingProvider::new_hashed(384)
             .with_context(|| "Failed to create hashed embedding provider".to_string())?;
@@ -733,12 +662,7 @@ mod tests {
     async fn test_sync_from_embedding_provider_is_noop_when_already_synced() -> anyhow::Result<()> {
         use crate::utils::embedding::EmbeddingProvider;
 
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let provider = EmbeddingProvider::new_hashed(384)
             .with_context(|| "Failed to create hashed embedding provider".to_string())?;
@@ -757,12 +681,7 @@ mod tests {
     async fn test_sync_rejects_provider_dimension_above_u32_max() -> anyhow::Result<()> {
         use crate::utils::embedding::EmbeddingProvider;
 
-        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let provider = EmbeddingProvider::new_hashed((u32::MAX as usize) + 1)
             .with_context(|| "Failed to create oversized hashed provider".to_string())?;
@@ -773,14 +692,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_migration_after_changing_embedding_length() -> anyhow::Result<()> {
-        let db = SurrealDbClient::memory("test", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start DB".to_string())?;
-
-        // Apply initial migrations. This sets up the text_chunk index with DIMENSION 1536.
-        db.apply_migrations()
-            .await
-            .with_context(|| "Initial migration failed".to_string())?;
+        let db = setup_test_db().await?;
 
         let initial_chunk = TextChunk::new(
             "source1".into(),
@@ -811,14 +723,7 @@ mod tests {
     ) -> anyhow::Result<()> {
         use crate::utils::embedding::EmbeddingProvider;
 
-        let db = SurrealDbClient::memory("test", &Uuid::new_v4().to_string())
-            .await
-            .with_context(|| "Failed to start DB".to_string())?;
-
-        // Apply initial migrations. This sets up the text_chunk index with DIMENSION 1536.
-        db.apply_migrations()
-            .await
-            .with_context(|| "Initial migration failed".to_string())?;
+        let db = setup_test_db().await?;
 
         let mut current_settings = SystemSettings::get_current(&db)
             .await
@@ -902,12 +807,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_rebuild_lease_is_exclusive_on_system_settings() -> anyhow::Result<()> {
-        let namespace = "system_settings_index_rebuild";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .context("in-memory db")?;
-        db.apply_migrations().await.context("migrations")?;
+        let db = setup_test_db().await?;
 
         assert!(
             SystemSettings::try_acquire_index_rebuild_lease(&db, "worker-a").await?,
