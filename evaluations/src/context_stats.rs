@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 use serde::{Deserialize, Serialize};
 
 use common::storage::types::StoredObject;
@@ -6,6 +8,7 @@ use crate::types::EvaluationCandidate;
 
 const TOKENIZER_LABEL: &str = "estimated (~chars/4; ingestion uses bert-base-cased)";
 
+#[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RetrievedContextStats {
     pub chunk_count: usize,
@@ -48,6 +51,7 @@ pub fn stats_for_candidates(candidates: &[EvaluationCandidate]) -> RetrievedCont
     stats
 }
 
+#[allow(clippy::cast_precision_loss)]
 pub fn aggregate_context_stats(per_query: &[RetrievedContextStats]) -> RetrievalContextStats {
     let queries = per_query.len();
     if queries == 0 {
@@ -69,9 +73,18 @@ pub fn aggregate_context_stats(per_query: &[RetrievedContextStats]) -> Retrieval
     let total_chunks: usize = per_query.iter().map(|stats| stats.chunk_count).sum();
     let total_chars: usize = per_query.iter().map(|stats| stats.char_count).sum();
     let total_tokens: usize = per_query.iter().map(|stats| stats.token_count).sum();
-    let mut tokens_per_query: Vec<usize> = per_query.iter().map(|stats| stats.token_count).collect();
+    let mut tokens_per_query: Vec<usize> =
+        per_query.iter().map(|stats| stats.token_count).collect();
     tokens_per_query.sort_unstable();
     let max_tokens_per_query = *tokens_per_query.last().unwrap_or(&0);
+
+    let total_chunks_f = total_chunks as f64;
+    let total_chars_f = total_chars as f64;
+    let total_tokens_f = total_tokens as f64;
+    let queries_f = queries as f64;
+    let avg_chunks_per_query = total_chunks_f / queries_f;
+    let avg_chars_per_query = total_chars_f / queries_f;
+    let avg_tokens_per_query = total_tokens_f / queries_f;
 
     RetrievalContextStats {
         tokenizer: TOKENIZER_LABEL.to_string(),
@@ -79,9 +92,9 @@ pub fn aggregate_context_stats(per_query: &[RetrievedContextStats]) -> Retrieval
         total_chunks,
         total_chars,
         total_tokens,
-        avg_chunks_per_query: total_chunks as f64 / queries as f64,
-        avg_chars_per_query: total_chars as f64 / queries as f64,
-        avg_tokens_per_query: total_tokens as f64 / queries as f64,
+        avg_chunks_per_query,
+        avg_chars_per_query,
+        avg_tokens_per_query,
         p50_tokens_per_query: percentile_usize(&tokens_per_query, 0.50),
         p95_tokens_per_query: percentile_usize(&tokens_per_query, 0.95),
         max_tokens_per_query,
@@ -96,7 +109,13 @@ fn estimate_ingestion_tokens(text: &str) -> usize {
     chars.div_ceil(4)
 }
 
-#[allow(clippy::cast_precision_loss, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 fn percentile_usize(sorted: &[usize], fraction: f64) -> usize {
     if sorted.is_empty() {
         return 0;

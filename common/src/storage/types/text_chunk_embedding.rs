@@ -1,11 +1,9 @@
 use surrealdb::RecordId;
 
-use crate::storage::types::text_chunk::TextChunk;
-use crate::{
-    error::AppError,
-    storage::{db::SurrealDbClient, indexes::hnsw_index_redefine_transaction_sql},
-    stored_object,
-};
+use crate::{storage::types::EmbeddingRecord, stored_object};
+
+#[cfg(test)]
+use crate::error::AppError;
 
 stored_object!(TextChunkEmbedding, "text_chunk_embedding", {
     /// Record link to the owning text_chunk
@@ -18,122 +16,45 @@ stored_object!(TextChunkEmbedding, "text_chunk_embedding", {
     user_id: String
 });
 
-impl TextChunkEmbedding {
-    /// Recreate the HNSW index with a new embedding dimension.
-    ///
-    /// This is useful when the embedding length changes; Surreal requires the
-    /// index definition to be recreated with the updated dimension.
-    pub async fn redefine_hnsw_index(
-        db: &SurrealDbClient,
-        dimension: usize,
-    ) -> Result<(), AppError> {
-        let query = hnsw_index_redefine_transaction_sql(
-            "idx_embedding_text_chunk_embedding",
-            Self::table_name(),
-            dimension,
-        );
-
-        let res = db.client.query(query).await.map_err(AppError::from)?;
-        res.check().map_err(AppError::from)?;
-
-        Ok(())
+impl EmbeddingRecord for TextChunkEmbedding {
+    fn link_field() -> &'static str {
+        "chunk_id"
     }
 
-    /// Validates that an embedding vector matches the configured HNSW dimension.
-    #[allow(clippy::result_large_err)]
-    pub fn validate_dimension(embedding: &[f32], expected: usize) -> Result<(), AppError> {
-        if embedding.len() != expected {
-            return Err(AppError::Validation(format!(
-                "embedding dimension mismatch: got {}, expected {expected}",
-                embedding.len()
-            )));
-        }
-        Ok(())
+    fn index_name() -> &'static str {
+        "idx_embedding_text_chunk_embedding"
     }
 
-    /// Create a new text chunk embedding.
-    ///
-    /// The embedding record id equals `chunk_id` so each chunk has at most one embedding row.
-    /// `chunk_id` is the **key** part of the text_chunk id (e.g. the UUID), not "text_chunk:uuid".
-    #[must_use]
-    pub fn new(chunk_id: &str, source_id: String, embedding: Vec<f32>, user_id: String) -> Self {
+    fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    fn user_id(&self) -> &str {
+        &self.user_id
+    }
+
+    fn embedding(&self) -> &[f32] {
+        &self.embedding
+    }
+
+    fn new(
+        chunk_id: &str,
+        source_id: String,
+        embedding: Vec<f32>,
+        user_id: String,
+        entity_table: &str,
+    ) -> Self {
         let now = Utc::now();
 
         Self {
             id: chunk_id.to_owned(),
             created_at: now,
             updated_at: now,
-            chunk_id: RecordId::from_table_key(TextChunk::table_name(), chunk_id),
+            chunk_id: RecordId::from_table_key(entity_table, chunk_id),
             source_id,
             embedding,
             user_id,
         }
-    }
-
-    /// Get a single embedding by its chunk RecordId
-    pub async fn get_by_chunk_id(
-        chunk_id: &RecordId,
-        db: &SurrealDbClient,
-    ) -> Result<Option<Self>, AppError> {
-        let query = format!(
-            "SELECT * FROM {} WHERE chunk_id = $chunk_id LIMIT 1",
-            Self::table_name()
-        );
-
-        let mut result = db
-            .client
-            .query(query)
-            .bind(("chunk_id", chunk_id.clone()))
-            .await
-            .map_err(AppError::from)?;
-
-        let embeddings: Vec<Self> = result.take(0).map_err(AppError::from)?;
-
-        Ok(embeddings.into_iter().next())
-    }
-
-    /// Delete embeddings for a given chunk RecordId
-    pub async fn delete_by_chunk_id(
-        chunk_id: &RecordId,
-        db: &SurrealDbClient,
-    ) -> Result<(), AppError> {
-        let query = format!(
-            "DELETE FROM {} WHERE chunk_id = $chunk_id",
-            Self::table_name()
-        );
-
-        db.client
-            .query(query)
-            .bind(("chunk_id", chunk_id.clone()))
-            .await
-            .map_err(AppError::from)?
-            .check()
-            .map_err(AppError::from)?;
-
-        Ok(())
-    }
-
-    /// Delete all embeddings that belong to chunks with a given `source_id`
-    ///
-    /// This uses the denormalized `source_id` on the embedding table.
-    pub async fn delete_by_source_id(
-        source_id: &str,
-        db: &SurrealDbClient,
-    ) -> Result<(), AppError> {
-        let query = format!(
-            "DELETE FROM {} WHERE source_id = $source_id",
-            Self::table_name()
-        );
-
-        db.client
-            .query(query)
-            .bind(("source_id", source_id.to_owned()))
-            .await
-            .map_err(AppError::from)?
-            .check()
-            .map_err(AppError::from)?;
-
-        Ok(())
     }
 }
 
@@ -144,8 +65,31 @@ mod tests {
 
     use super::*;
     use crate::storage::db::SurrealDbClient;
+    use crate::storage::types::text_chunk::TextChunk;
     use crate::test_utils::{prepare_text_chunk_test_db, setup_test_db};
-    use surrealdb::Value as SurrealValue;
+
+    async fn get_idx_sql(db: &SurrealDbClient) -> anyhow::Result<String> {
+        let mut info_res = db
+            .client
+            .query("INFO FOR TABLE text_chunk_embedding;")
+            .await
+            .with_context(|| "info query failed".to_string())?;
+        let info: surrealdb::Value = info_res
+            .take(0)
+            .with_context(|| "failed to take info result".to_string())?;
+        let info_json: serde_json::Value = serde_json::to_value(info)
+            .with_context(|| "failed to convert info to json".to_string())?;
+        let idx_sql = info_json
+            .get("Object")
+            .and_then(|v| v.get("indexes"))
+            .and_then(|v| v.get("Object"))
+            .and_then(|v| v.get("idx_embedding_text_chunk_embedding"))
+            .and_then(|v| v.get("Strand"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        Ok(idx_sql)
+    }
 
     async fn create_text_chunk_with_id(
         db: &SurrealDbClient,
@@ -169,29 +113,6 @@ mod tests {
         Ok(RecordId::from_table_key(TextChunk::table_name(), key))
     }
 
-    async fn get_idx_sql(db: &SurrealDbClient) -> anyhow::Result<String> {
-        let mut info_res = db
-            .client
-            .query("INFO FOR TABLE text_chunk_embedding;")
-            .await
-            .with_context(|| "info query failed".to_string())?;
-        let info: SurrealValue = info_res
-            .take(0)
-            .with_context(|| "failed to take info result".to_string())?;
-        let info_json: serde_json::Value = serde_json::to_value(info)
-            .with_context(|| "failed to convert info to json".to_string())?;
-        let idx_sql = info_json
-            .get("Object")
-            .and_then(|v| v.get("indexes"))
-            .and_then(|v| v.get("Object"))
-            .and_then(|v| v.get("idx_embedding_text_chunk_embedding"))
-            .and_then(|v| v.get("Strand"))
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        Ok(idx_sql)
-    }
-
     #[test]
     fn new_uses_chunk_id_as_record_id() {
         let emb = TextChunkEmbedding::new(
@@ -199,6 +120,7 @@ mod tests {
             "source-1".to_owned(),
             vec![0.1, 0.2],
             "user-1".to_owned(),
+            TextChunk::table_name(),
         );
         assert_eq!(emb.id, "chunk-abc");
     }
@@ -226,13 +148,14 @@ mod tests {
             source_id.to_string(),
             embedding_vec.clone(),
             user_id.to_string(),
+            TextChunk::table_name(),
         );
 
         db.upsert_item(emb)
             .await
             .with_context(|| "Failed to store embedding".to_string())?;
 
-        let fetched = TextChunkEmbedding::get_by_chunk_id(&chunk_rid, &db)
+        let fetched = TextChunkEmbedding::get_by_record_id(&db, &chunk_rid)
             .await
             .with_context(|| "Failed to get embedding by chunk_id".to_string())?
             .with_context(|| "Expected an embedding to be found".to_string())?;
@@ -259,22 +182,23 @@ mod tests {
             source_id.to_string(),
             vec![0.4_f32, 0.5, 0.6],
             user_id.to_string(),
+            TextChunk::table_name(),
         );
 
         db.upsert_item(emb)
             .await
             .with_context(|| "Failed to store embedding".to_string())?;
 
-        let existing = TextChunkEmbedding::get_by_chunk_id(&chunk_rid, &db)
+        let existing = TextChunkEmbedding::get_by_record_id(&db, &chunk_rid)
             .await
             .with_context(|| "Failed to get embedding before delete".to_string())?;
         assert!(existing.is_some(), "Embedding should exist before delete");
 
-        TextChunkEmbedding::delete_by_chunk_id(&chunk_rid, &db)
+        TextChunkEmbedding::delete_by_record_id(&db, &chunk_rid)
             .await
             .with_context(|| "Failed to delete by chunk_id".to_string())?;
 
-        let after = TextChunkEmbedding::get_by_chunk_id(&chunk_rid, &db)
+        let after = TextChunkEmbedding::get_by_record_id(&db, &chunk_rid)
             .await
             .with_context(|| "Failed to get embedding after delete".to_string())?;
         assert!(after.is_none(), "Embedding should have been deleted");
@@ -299,21 +223,27 @@ mod tests {
             ("chunk-s2", source_id, vec![0.2]),
             ("chunk-other", other_source, vec![0.3]),
         ] {
-            let emb = TextChunkEmbedding::new(key, src.to_string(), vec, user_id.to_string());
+            let emb = TextChunkEmbedding::new(
+                key,
+                src.to_string(),
+                vec,
+                user_id.to_string(),
+                TextChunk::table_name(),
+            );
             db.upsert_item(emb)
                 .await
                 .with_context(|| format!("store embedding for {key}"))?;
         }
 
-        assert!(TextChunkEmbedding::get_by_chunk_id(&chunk1_rid, &db)
+        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk1_rid)
             .await
             .with_context(|| "get chunk1".to_string())?
             .is_some());
-        assert!(TextChunkEmbedding::get_by_chunk_id(&chunk2_rid, &db)
+        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk2_rid)
             .await
             .with_context(|| "get chunk2".to_string())?
             .is_some());
-        assert!(TextChunkEmbedding::get_by_chunk_id(&chunk_other_rid, &db)
+        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk_other_rid)
             .await
             .with_context(|| "get chunk_other".to_string())?
             .is_some());
@@ -322,15 +252,15 @@ mod tests {
             .await
             .with_context(|| "Failed to delete by source_id".to_string())?;
 
-        assert!(TextChunkEmbedding::get_by_chunk_id(&chunk1_rid, &db)
+        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk1_rid)
             .await
             .with_context(|| "check chunk1".to_string())?
             .is_none());
-        assert!(TextChunkEmbedding::get_by_chunk_id(&chunk2_rid, &db)
+        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk2_rid)
             .await
             .with_context(|| "check chunk2".to_string())?
             .is_none());
-        assert!(TextChunkEmbedding::get_by_chunk_id(&chunk_other_rid, &db)
+        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk_other_rid)
             .await
             .with_context(|| "check chunk_other".to_string())?
             .is_some());
@@ -352,6 +282,7 @@ mod tests {
             source_id.to_owned(),
             vec![1.0_f32, 0.0, 0.0],
             user_id.to_owned(),
+            TextChunk::table_name(),
         );
         db.upsert_item(initial)
             .await
@@ -362,6 +293,7 @@ mod tests {
             source_id.to_owned(),
             vec![0.0, 1.0, 0.0],
             user_id.to_owned(),
+            TextChunk::table_name(),
         );
         db.upsert_item(replacement)
             .await

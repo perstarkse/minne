@@ -9,10 +9,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     error::AppError,
-    storage::{
-        db::SurrealDbClient,
-        types::system_settings::SystemSettings,
-    },
+    storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
 };
 
 const INDEX_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -231,9 +228,7 @@ pub async fn rebuild(db: &SurrealDbClient) -> Result<(), AppError> {
 ///
 /// Returns `AppError::InternalError` if any rebuild operation fails.
 pub async fn rebuild_runtime(db: &SurrealDbClient) -> Result<(), AppError> {
-    rebuild_runtime_inner(db)
-        .await
-        .map_err(AppError::internal)
+    rebuild_runtime_inner(db).await.map_err(AppError::internal)
 }
 
 /// Returns whether a scheduled index rebuild is due based on the persisted last-run time.
@@ -525,8 +520,7 @@ async fn rebuild_existing_index_in_place(
     if !index_exists(db, table, index_name).await? {
         debug!(
             index = index_name,
-            table,
-            "Skipping in-place rebuild because index is missing"
+            table, "Skipping in-place rebuild because index is missing"
         );
         return Ok(());
     }
@@ -1074,7 +1068,11 @@ mod tests {
 
         assert!(!scheduled_index_rebuild_due(None, 86_400, now));
         assert!(!scheduled_index_rebuild_due(Some(last), 0, now));
-        assert!(!scheduled_index_rebuild_due(Some(now - chrono::Duration::hours(1)), 86_400, now));
+        assert!(!scheduled_index_rebuild_due(
+            Some(now - chrono::Duration::hours(1)),
+            86_400,
+            now
+        ));
         assert!(scheduled_index_rebuild_due(Some(last), 86_400, now));
     }
 
@@ -1087,7 +1085,9 @@ mod tests {
             .context("in-memory db")?;
 
         db.apply_migrations().await.context("migrations")?;
-        ensure_runtime(&db, 8).await.context("ensure runtime indexes")?;
+        ensure_runtime(&db, 8)
+            .await
+            .context("ensure runtime indexes")?;
 
         rebuild_runtime(&db)
             .await

@@ -4,10 +4,13 @@ use std::fmt::Write;
 
 use crate::{
     error::AppError,
-    storage::db::SurrealDbClient,
-    storage::indexes::hnsw_index_overwrite_sql,
-    storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding,
-    storage::types::system_settings::SystemSettings,
+    storage::{
+        db::SurrealDbClient,
+        indexes::hnsw_index_overwrite_sql,
+        types::knowledge_entity_embedding::KnowledgeEntityEmbedding,
+        types::system_settings::SystemSettings,
+        types::{EmbeddingRecord, HasEmbedding},
+    },
     stored_object,
     utils::embedding::{EmbeddingProvider, RE_EMBED_BATCH_SIZE},
 };
@@ -69,6 +72,18 @@ stored_object!(KnowledgeEntity, "knowledge_entity", {
     metadata: Option<serde_json::Value>,
     user_id: String
 });
+
+impl HasEmbedding for KnowledgeEntity {
+    type Embedding = KnowledgeEntityEmbedding;
+
+    fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    fn user_id(&self) -> &str {
+        &self.user_id
+    }
+}
 
 impl KnowledgeEntity {
     #[must_use]
@@ -227,22 +242,9 @@ impl KnowledgeEntity {
 
     pub async fn delete_by_source_id(
         source_id: &str,
-        db_client: &SurrealDbClient,
+        db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        // Delete embeddings first, while we can still look them up via the entity's source_id
-        KnowledgeEntityEmbedding::delete_by_source_id(source_id, db_client).await?;
-
-        db_client
-            .client
-            .query("DELETE FROM type::table($table) WHERE source_id = $source_id")
-            .bind(("table", Self::table_name()))
-            .bind(("source_id", source_id.to_owned()))
-            .await
-            .map_err(AppError::from)?
-            .check()
-            .map_err(AppError::from)?;
-
-        Ok(())
+        db.delete_by_source_id::<Self>(source_id).await
     }
 
     /// Atomically store one knowledge entity and its embedding (single-record path).
@@ -254,38 +256,8 @@ impl KnowledgeEntity {
         embedding_dimensions: usize,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        KnowledgeEntityEmbedding::validate_dimension(&embedding, embedding_dimensions)?;
-
-        let entity_id = entity.id.clone();
-        let emb = KnowledgeEntityEmbedding::new(
-            &entity_id,
-            entity.source_id.clone(),
-            embedding,
-            entity.user_id.clone(),
-        );
-
-        let query = format!(
-            "
-            BEGIN TRANSACTION;
-              CREATE type::thing('{entity_table}', $entity_id) CONTENT $entity;
-              UPSERT type::thing('{emb_table}', $entity_id) CONTENT $emb;
-            COMMIT TRANSACTION;
-            ",
-            entity_table = Self::table_name(),
-            emb_table = KnowledgeEntityEmbedding::table_name(),
-        );
-
-        db.client
-            .query(query)
-            .bind(("entity_id", entity_id))
-            .bind(("entity", entity))
-            .bind(("emb", emb))
+        db.store_with_embedding(entity, embedding, embedding_dimensions)
             .await
-            .map_err(AppError::from)?
-            .check()
-            .map_err(AppError::from)?;
-
-        Ok(())
     }
 
     /// Vector search over knowledge entities using the embedding table, fetching full entity rows and scores.
@@ -295,48 +267,14 @@ impl KnowledgeEntity {
         db: &SurrealDbClient,
         user_id: &str,
     ) -> Result<Vec<KnowledgeEntitySearchResult>, AppError> {
-        #[derive(Deserialize)]
-        struct Row {
-            entity_id: Option<KnowledgeEntity>,
-            score: f32,
-        }
-
-        let sql = format!(
-            r#"
-            SELECT
-                entity_id,
-                vector::similarity::cosine(embedding, $embedding) AS score
-            FROM {emb_table}
-            WHERE user_id = $user_id
-              AND embedding <|{take},100|> $embedding
-            ORDER BY score DESC
-            LIMIT {take}
-            FETCH entity_id;
-            "#,
-            emb_table = KnowledgeEntityEmbedding::table_name(),
-            take = take
-        );
-
-        let mut response = db
-            .query(&sql)
-            .bind(("embedding", query_embedding.to_vec()))
-            .bind(("user_id", user_id.to_string()))
+        db.vector_search::<Self, KnowledgeEntityEmbedding>(take, query_embedding, user_id)
             .await
-            .map_err(AppError::from)?;
-
-        response = response.check().map_err(AppError::from)?;
-
-        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::from)?;
-
-        Ok(rows
-            .into_iter()
-            .filter_map(|r| {
-                r.entity_id.map(|entity| KnowledgeEntitySearchResult {
-                    entity,
-                    score: r.score,
-                })
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|(entity, score)| KnowledgeEntitySearchResult { entity, score })
+                    .collect()
             })
-            .collect())
     }
 
     pub async fn patch(
@@ -362,7 +300,13 @@ impl KnowledgeEntity {
             settings.embedding_dimensions as usize,
         )?;
 
-        let emb = KnowledgeEntityEmbedding::new(id, entity.source_id, embedding, entity.user_id);
+        let emb = KnowledgeEntityEmbedding::new(
+            id,
+            entity.source_id,
+            embedding,
+            entity.user_id,
+            Self::table_name(),
+        );
 
         let now = Utc::now();
 
@@ -916,7 +860,7 @@ mod tests {
         assert_eq!(stored_embeddings.len(), 1);
 
         let rid = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
-        let fetched_emb = KnowledgeEntityEmbedding::get_by_entity_id(&rid, &db)
+        let fetched_emb = KnowledgeEntityEmbedding::get_by_record_id(&db, &rid)
             .await
             .with_context(|| "fetch embedding".to_string())?;
         assert!(fetched_emb.is_some());
@@ -999,11 +943,11 @@ mod tests {
 
         let rid_e1 = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &e1.id);
         let rid_e2 = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &e2.id);
-        assert!(KnowledgeEntityEmbedding::get_by_entity_id(&rid_e1, &db)
+        assert!(KnowledgeEntityEmbedding::get_by_record_id(&db, &rid_e1)
             .await
             .with_context(|| "get embedding e1".to_string())?
             .is_some());
-        assert!(KnowledgeEntityEmbedding::get_by_entity_id(&rid_e2, &db)
+        assert!(KnowledgeEntityEmbedding::get_by_record_id(&db, &rid_e2)
             .await
             .with_context(|| "get embedding e2".to_string())?
             .is_some());

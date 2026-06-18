@@ -13,10 +13,9 @@ use common::{
         db::SurrealDbClient,
         types::{
             knowledge_entity::KnowledgeEntity,
-            knowledge_entity_embedding::KnowledgeEntityEmbedding,
-            text_chunk::TextChunk,
-            text_chunk_embedding::TextChunkEmbedding,
-            text_content::TextContent,
+            knowledge_entity_embedding::KnowledgeEntityEmbedding, text_chunk::TextChunk,
+            text_chunk_embedding::TextChunkEmbedding, text_content::TextContent, EmbeddingRecord,
+            StoredObject,
         },
     },
 };
@@ -116,8 +115,7 @@ struct PersistPayload {
     entity_embeddings: Arc<[KnowledgeEntityEmbedding]>,
     chunks: Arc<[TextChunk]>,
     chunk_embeddings: Arc<[TextChunkEmbedding]>,
-    relationships:
-        Arc<[common::storage::types::knowledge_relationship::KnowledgeRelationship]>,
+    relationships: Arc<[common::storage::types::knowledge_relationship::KnowledgeRelationship]>,
 }
 
 async fn execute_persist_transaction(
@@ -208,6 +206,7 @@ fn prepare_entity_rows(
             entity.source_id.clone(),
             item.embedding,
             entity.user_id.clone(),
+            KnowledgeEntity::table_name(),
         ));
         entities.push(entity);
     }
@@ -230,6 +229,7 @@ fn prepare_chunk_rows(
             chunk.source_id.clone(),
             item.embedding,
             chunk.user_id.clone(),
+            TextChunk::table_name(),
         ));
         chunks.push(chunk);
     }
@@ -244,7 +244,8 @@ fn is_retryable_conflict(error: &AppError) -> bool {
 }
 
 #[cfg(test)]
-static TEST_PERSIST_FAILURES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static TEST_PERSIST_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 #[cfg(test)]
 fn set_test_persist_failures(count: usize) {
@@ -348,8 +349,16 @@ mod tests {
         let source_b = uuid::Uuid::new_v4().to_string();
         let user_id = "persist-isolation";
 
-        persist(&db, large_artifacts(&source_a, user_id, 5, 3, 4, TEST_EMBEDDING_DIM)).await?;
-        persist(&db, large_artifacts(&source_b, user_id, 2, 1, 1, TEST_EMBEDDING_DIM)).await?;
+        persist(
+            &db,
+            large_artifacts(&source_a, user_id, 5, 3, 4, TEST_EMBEDDING_DIM),
+        )
+        .await?;
+        persist(
+            &db,
+            large_artifacts(&source_b, user_id, 2, 1, 1, TEST_EMBEDDING_DIM),
+        )
+        .await?;
         persist(
             &db,
             large_artifacts(&source_a, user_id, 7, 4, 6, TEST_EMBEDDING_DIM),

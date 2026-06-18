@@ -4,7 +4,7 @@ use surrealdb::RecordId;
 
 use crate::{
     error::AppError,
-    storage::{db::SurrealDbClient, indexes::hnsw_index_redefine_transaction_sql},
+    storage::{db::SurrealDbClient, types::EmbeddingRecord},
     stored_object,
 };
 
@@ -17,72 +17,48 @@ stored_object!(KnowledgeEntityEmbedding, "knowledge_entity_embedding", {
     user_id: String
 });
 
-impl KnowledgeEntityEmbedding {
-    /// Recreate the HNSW index with a new embedding dimension.
-    pub async fn redefine_hnsw_index(
-        db: &SurrealDbClient,
-        dimension: usize,
-    ) -> Result<(), AppError> {
-        let query = hnsw_index_redefine_transaction_sql(
-            "idx_embedding_knowledge_entity_embedding",
-            Self::table_name(),
-            dimension,
-        );
-
-        let res = db.client.query(query).await.map_err(AppError::from)?;
-        res.check().map_err(AppError::from)?;
-
-        Ok(())
+impl EmbeddingRecord for KnowledgeEntityEmbedding {
+    fn link_field() -> &'static str {
+        "entity_id"
     }
 
-    /// Validates that an embedding vector matches the configured HNSW dimension.
-    #[allow(clippy::result_large_err)]
-    pub fn validate_dimension(embedding: &[f32], expected: usize) -> Result<(), AppError> {
-        if embedding.len() != expected {
-            return Err(AppError::Validation(format!(
-                "embedding dimension mismatch: got {}, expected {expected}",
-                embedding.len()
-            )));
-        }
-        Ok(())
+    fn index_name() -> &'static str {
+        "idx_embedding_knowledge_entity_embedding"
     }
 
-    /// Create a new knowledge entity embedding.
-    ///
-    /// The embedding record id equals `entity_id` so each entity has at most one embedding row.
-    #[must_use]
-    pub fn new(entity_id: &str, source_id: String, embedding: Vec<f32>, user_id: String) -> Self {
+    fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    fn user_id(&self) -> &str {
+        &self.user_id
+    }
+
+    fn embedding(&self) -> &[f32] {
+        &self.embedding
+    }
+
+    fn new(
+        entity_id: &str,
+        source_id: String,
+        embedding: Vec<f32>,
+        user_id: String,
+        entity_table: &str,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: entity_id.to_owned(),
             created_at: now,
             updated_at: now,
-            entity_id: RecordId::from_table_key("knowledge_entity", entity_id),
+            entity_id: RecordId::from_table_key(entity_table, entity_id),
             embedding,
             source_id,
             user_id,
         }
     }
+}
 
-    /// Get embedding by entity ID
-    pub async fn get_by_entity_id(
-        entity_id: &RecordId,
-        db: &SurrealDbClient,
-    ) -> Result<Option<Self>, AppError> {
-        let query = format!(
-            "SELECT * FROM {} WHERE entity_id = $entity_id LIMIT 1",
-            Self::table_name()
-        );
-        let mut result = db
-            .client
-            .query(query)
-            .bind(("entity_id", entity_id.clone()))
-            .await
-            .map_err(AppError::from)?;
-        let embeddings: Vec<Self> = result.take(0).map_err(AppError::from)?;
-        Ok(embeddings.into_iter().next())
-    }
-
+impl KnowledgeEntityEmbedding {
     /// Get embeddings for multiple entities in batch
     pub async fn get_by_entity_ids(
         entity_ids: &[RecordId],
@@ -108,44 +84,6 @@ impl KnowledgeEntityEmbedding {
             .into_iter()
             .map(|e| (e.entity_id.key().to_string(), e.embedding))
             .collect())
-    }
-
-    /// Delete embedding by entity ID
-    pub async fn delete_by_entity_id(
-        entity_id: &RecordId,
-        db: &SurrealDbClient,
-    ) -> Result<(), AppError> {
-        let query = format!(
-            "DELETE FROM {} WHERE entity_id = $entity_id",
-            Self::table_name()
-        );
-        db.client
-            .query(query)
-            .bind(("entity_id", entity_id.clone()))
-            .await
-            .map_err(AppError::from)?
-            .check()
-            .map_err(AppError::from)?;
-        Ok(())
-    }
-
-    /// Delete all embeddings with the given denormalized `source_id`.
-    pub async fn delete_by_source_id(
-        source_id: &str,
-        db: &SurrealDbClient,
-    ) -> Result<(), AppError> {
-        let query = format!(
-            "DELETE FROM {} WHERE source_id = $source_id",
-            Self::table_name()
-        );
-        db.client
-            .query(query)
-            .bind(("source_id", source_id.to_owned()))
-            .await
-            .map_err(AppError::from)?
-            .check()
-            .map_err(AppError::from)?;
-        Ok(())
     }
 }
 
@@ -184,6 +122,7 @@ mod tests {
             "source-1".to_owned(),
             vec![0.1, 0.2],
             "user-1".to_owned(),
+            KnowledgeEntity::table_name(),
         );
         assert_eq!(emb.id, "entity-abc");
     }
@@ -211,7 +150,7 @@ mod tests {
 
         let entity_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
 
-        let fetched = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
+        let fetched = KnowledgeEntityEmbedding::get_by_record_id(&db, &entity_rid)
             .await
             .with_context(|| "Failed to get embedding by entity_id".to_string())?
             .ok_or_else(|| anyhow::anyhow!("Expected embedding to exist"))?;
@@ -240,16 +179,16 @@ mod tests {
 
         let entity_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
 
-        let existing = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
+        let existing = KnowledgeEntityEmbedding::get_by_record_id(&db, &entity_rid)
             .await
             .with_context(|| "Failed to get embedding before delete".to_string())?;
         assert!(existing.is_some());
 
-        KnowledgeEntityEmbedding::delete_by_entity_id(&entity_rid, &db)
+        KnowledgeEntityEmbedding::delete_by_record_id(&db, &entity_rid)
             .await
             .with_context(|| "Failed to delete by entity_id".to_string())?;
 
-        let after = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
+        let after = KnowledgeEntityEmbedding::get_by_record_id(&db, &entity_rid)
             .await
             .with_context(|| "Failed to get embedding after delete".to_string())?;
         assert!(after.is_none());
@@ -277,7 +216,7 @@ mod tests {
         assert!(stored_entity.is_some());
 
         let entity_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity.id);
-        let stored_embedding = KnowledgeEntityEmbedding::get_by_entity_id(&entity_rid, &db)
+        let stored_embedding = KnowledgeEntityEmbedding::get_by_record_id(&db, &entity_rid)
             .await
             .with_context(|| "Failed to fetch embedding".to_string())?;
         let stored_embedding =
@@ -319,9 +258,14 @@ mod tests {
         KnowledgeEntity::store_with_embedding(entity2.clone(), vec![2.0_f32, 2.1, 2.2], 3, &db)
             .await
             .with_context(|| "Failed to store entity with embedding".to_string())?;
-        KnowledgeEntity::store_with_embedding(entity_other.clone(), vec![3.0_f32, 3.1, 3.2], 3, &db)
-            .await
-            .with_context(|| "Failed to store entity with embedding".to_string())?;
+        KnowledgeEntity::store_with_embedding(
+            entity_other.clone(),
+            vec![3.0_f32, 3.1, 3.2],
+            3,
+            &db,
+        )
+        .await
+        .with_context(|| "Failed to store entity with embedding".to_string())?;
 
         let entity1_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity1.id);
         let entity2_rid = RecordId::from_table_key(KnowledgeEntity::table_name(), &entity2.id);
@@ -332,18 +276,18 @@ mod tests {
             .with_context(|| "Failed to delete by source_id".to_string())?;
 
         assert!(
-            KnowledgeEntityEmbedding::get_by_entity_id(&entity1_rid, &db)
+            KnowledgeEntityEmbedding::get_by_record_id(&db, &entity1_rid)
                 .await
                 .with_context(|| "get entity1 embedding after delete".to_string())?
                 .is_none()
         );
         assert!(
-            KnowledgeEntityEmbedding::get_by_entity_id(&entity2_rid, &db)
+            KnowledgeEntityEmbedding::get_by_record_id(&db, &entity2_rid)
                 .await
                 .with_context(|| "get entity2 embedding after delete".to_string())?
                 .is_none()
         );
-        assert!(KnowledgeEntityEmbedding::get_by_entity_id(&other_rid, &db)
+        assert!(KnowledgeEntityEmbedding::get_by_record_id(&db, &other_rid)
             .await
             .with_context(|| "get other embedding after delete".to_string())?
             .is_some());
@@ -450,6 +394,7 @@ mod tests {
             source_id.to_owned(),
             vec![0.0, 1.0, 0.0],
             user_id.to_owned(),
+            KnowledgeEntity::table_name(),
         );
         db.upsert_item(replacement)
             .await
