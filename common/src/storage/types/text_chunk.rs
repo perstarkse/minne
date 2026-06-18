@@ -322,9 +322,10 @@ mod tests {
     use super::*;
     use crate::storage::indexes::{ensure_runtime, rebuild};
     use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
-    use crate::test_utils::configure_embedding_dimension;
+    use crate::test_utils::{
+        configure_embedding_dimension, prepare_text_chunk_test_db, setup_test_db,
+    };
     use surrealdb::RecordId;
-    use uuid::Uuid;
 
     async fn ensure_chunk_fts_index(db: &SurrealDbClient) -> anyhow::Result<()> {
         let snowball_sql = r#"
@@ -363,21 +364,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_source_id() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
+        let db = prepare_text_chunk_test_db(5).await?;
         let source_id = "source123".to_string();
         let user_id = "user123".to_string();
-        configure_embedding_dimension(&db, 5).await?;
-        TextChunkEmbedding::redefine_hnsw_index(&db, 5)
-            .await
-            .with_context(|| "redefine index".to_string())?;
 
         let chunk1 = TextChunk::new(
             source_id.clone(),
@@ -446,18 +435,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_nonexistent_source_id() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-        configure_embedding_dimension(&db, 5).await?;
-        TextChunkEmbedding::redefine_hnsw_index(&db, 5)
-            .await
-            .with_context(|| "redefine index".to_string())?;
+        let db = prepare_text_chunk_test_db(5).await?;
 
         let real_source_id = "real_source".to_string();
         let chunk = TextChunk::new(
@@ -490,18 +468,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_source_id_resists_query_injection() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
+        let db = prepare_text_chunk_test_db(5)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations().await.expect("migrations");
-        configure_embedding_dimension(&db, 5)
-            .await
-            .expect("configure dim");
-        TextChunkEmbedding::redefine_hnsw_index(&db, 5)
-            .await
-            .expect("redefine index");
+            .expect("prepare test db");
 
         let chunk1 = TextChunk::new(
             "safe_source".to_string(),
@@ -544,23 +513,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_with_embedding_creates_both_records() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
+        let db = prepare_text_chunk_test_db(3).await?;
         let source_id = "store-src".to_string();
         let user_id = "user_store".to_string();
         let chunk = TextChunk::new(source_id.clone(), "chunk body".to_string(), user_id.clone());
-
-        configure_embedding_dimension(&db, 3).await?;
-        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "redefine index".to_string())?;
 
         TextChunk::store_with_embedding(chunk.clone(), vec![0.1, 0.2, 0.3], 3, &db)
             .await
@@ -588,14 +544,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_with_embedding_with_runtime_indexes() -> anyhow::Result<()> {
-        let namespace = "test_ns_runtime";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
+        let db = setup_test_db().await?;
 
         let embedding_dimension = 3usize;
         configure_embedding_dimension(
@@ -639,19 +588,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_returns_empty_when_no_embeddings() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
-        configure_embedding_dimension(&db, 3).await?;
-        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "redefine index".to_string())?;
+        let db = prepare_text_chunk_test_db(3).await?;
 
         let results: Vec<TextChunkSearchResult> =
             TextChunk::vector_search(5, &[0.1, 0.2, 0.3], &db, "user")
@@ -663,19 +600,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_single_result() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
-        configure_embedding_dimension(&db, 3).await?;
-        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "redefine index".to_string())?;
+        let db = prepare_text_chunk_test_db(3).await?;
 
         let source_id = "src".to_string();
         let user_id = "user".to_string();
@@ -704,19 +629,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_orders_by_similarity() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
-        configure_embedding_dimension(&db, 3).await?;
-        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "redefine index".to_string())?;
+        let db = prepare_text_chunk_test_db(3).await?;
 
         let user_id = "user".to_string();
         let chunk1 = TextChunk::new("s1".to_string(), "chunk one".to_string(), user_id.clone());
@@ -745,14 +658,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search_returns_empty_when_no_chunks() -> anyhow::Result<()> {
-        let namespace = "fts_chunk_ns_empty";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
+        let db = setup_test_db().await?;
         ensure_chunk_fts_index(&db).await?;
         rebuild(&db)
             .await
@@ -768,14 +674,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search_single_result() -> anyhow::Result<()> {
-        let namespace = "fts_chunk_ns_single";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
+        let db = setup_test_db().await?;
         ensure_chunk_fts_index(&db).await?;
 
         let user_id = "fts_user";
@@ -804,14 +703,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search_orders_by_score_and_filters_user() -> anyhow::Result<()> {
-        let namespace = "fts_chunk_ns_order";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
+        let db = setup_test_db().await?;
         ensure_chunk_fts_index(&db).await?;
 
         let user_id = "fts_user_order";
@@ -866,14 +758,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_with_embedding_rejects_wrong_dimension() -> anyhow::Result<()> {
-        let namespace = "test_ns_dim";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
+        let db = setup_test_db().await?;
         configure_embedding_dimension(&db, 3).await?;
 
         let chunk = TextChunk::new("src".to_string(), "body".to_string(), "user".to_string());
@@ -888,18 +773,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_with_orphaned_embedding() -> anyhow::Result<()> {
-        let namespace = "test_ns_orphan_chunk";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-        configure_embedding_dimension(&db, 3).await?;
-        TextChunkEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "redefine index".to_string())?;
+        let db = prepare_text_chunk_test_db(3).await?;
 
         let user_id = "user".to_string();
         let chunk = TextChunk::new(

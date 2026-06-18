@@ -327,6 +327,7 @@ mod tests {
 
     use super::*;
     use crate::storage::store::testing::TestStorageManager;
+    use crate::test_utils::setup_test_db;
     use axum::http::HeaderMap;
     use axum_typed_multipart::FieldMetadata;
     use std::{io::Write, path::Path};
@@ -378,15 +379,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fileinfo_create_read_delete_with_storage_manager() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
+        let db = setup_test_db().await?;
         let content = b"This is a test file for StorageManager operations";
         let file_name = "storage_manager_test.txt";
         let field_data = create_test_file(content, file_name)?;
@@ -435,15 +428,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fileinfo_preserves_original_filename_and_sanitizes_path() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
+        let db = setup_test_db().await?;
         let content = b"filename sanitization";
         let original_name = "Complex name (1).txt";
         let expected_sanitized = "Complex_name__1_.txt";
@@ -470,15 +455,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fileinfo_duplicate_detection_with_storage_manager() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
+        let db = setup_test_db().await?;
         let content = b"This is a test file for StorageManager duplicate detection";
         let file_name = "storage_manager_duplicate.txt";
         let field_data = create_test_file(content, file_name)?;
@@ -538,15 +515,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_creation() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
+        let db = setup_test_db().await?;
         let content = b"This is a test file content";
         let file_name = "test_file.txt";
         let field_data = create_test_file(content, file_name)?;
@@ -585,15 +554,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_duplicate_detection() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
+        let db = setup_test_db().await?;
         // First, store a file with known content
         let content = b"This is a test file for duplicate detection";
         let file_name = "original.txt";
@@ -692,12 +653,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_sha_not_found() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
+        let db = setup_test_db().await?;
         let result = FileInfo::get_by_sha("nonexistent_sha_hash", "user123", &db).await;
         assert!(result.is_err());
 
@@ -710,12 +666,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_sha_resists_query_injection() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
-
+        let db = setup_test_db().await.expect("setup test db");
         let now = Utc::now();
         let file_info = FileInfo {
             id: Uuid::new_v4().to_string(),
@@ -740,15 +691,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_duplicate_detection_is_per_user() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
-
+        let db = setup_test_db().await?;
         let content = b"shared content across users";
         let test_storage = TestStorageManager::new_memory()
             .await
@@ -783,10 +726,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_sha_not_found_for_other_user() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         let now = Utc::now();
         let sha = "abc123sha";
         let owner = "owner_user";
@@ -816,9 +756,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_new_with_storage_missing_file_name() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
+        let db = setup_test_db().await?;
         let test_storage = TestStorageManager::new_memory().await?;
 
         let field_data = create_test_file_without_name(b"data")?;
@@ -832,9 +770,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_new_with_storage_empty_file() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
+        let db = setup_test_db().await?;
         let test_storage = TestStorageManager::new_memory().await?;
 
         let file_info = FileInfo::new_with_storage(
@@ -856,10 +792,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_duplicate_upload_persists_single_row_per_user_sha() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-        db.apply_migrations().await?;
+        let db = setup_test_db().await?;
         let test_storage = TestStorageManager::new_memory().await?;
         let storage = test_storage.storage();
         let user_id = "dedup_user";
@@ -901,12 +834,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_manual_file_info_creation() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .expect("Failed to start in-memory surrealdb");
-
+        let db = setup_test_db().await.expect("setup test db");
         // Create a FileInfo instance directly
         let now = Utc::now();
         let file_info = FileInfo {
@@ -939,15 +867,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_id() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
+        let db = setup_test_db().await?;
         // Create and persist a test file via FileInfo::new_with_storage
         let user_id = "user123";
         let test_storage = TestStorageManager::new_memory()
@@ -985,12 +905,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_id_not_found() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
+        let db = setup_test_db().await?;
         // Try to delete a file that doesn't exist
         let test_storage = TestStorageManager::new_memory()
             .await
@@ -1006,12 +921,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_id() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
+        let db = setup_test_db().await?;
         // Create a FileInfo instance directly
         let now = Utc::now();
         let file_id = Uuid::new_v4().to_string();
@@ -1045,12 +955,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_id_not_found() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
+        let db = setup_test_db().await?;
         // Try to retrieve a non-existent ID
         let non_existent_id = "non-existent-file-id";
         let result = FileInfo::get_by_id(non_existent_id, &db).await;

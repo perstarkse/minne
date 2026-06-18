@@ -108,6 +108,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::must_use_candidate)]
     use super::*;
     use crate::stored_object;
+    use crate::test_utils::setup_test_db;
     use anyhow::{self};
     use uuid::Uuid;
 
@@ -120,10 +121,7 @@ mod tests {
     #[tokio::test]
     async fn test_analytics_initialization() -> anyhow::Result<()> {
         // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         // Test initialization of analytics
         let analytics = Analytics::ensure_initialized(&db).await?;
 
@@ -145,10 +143,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_current_analytics() -> anyhow::Result<()> {
         // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         // Initialize analytics
         Analytics::ensure_initialized(&db).await?;
 
@@ -165,10 +160,7 @@ mod tests {
     #[tokio::test]
     async fn test_increment_visitors() -> anyhow::Result<()> {
         // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         // Initialize analytics
         Analytics::ensure_initialized(&db).await?;
 
@@ -190,10 +182,7 @@ mod tests {
     #[tokio::test]
     async fn test_increment_page_loads() -> anyhow::Result<()> {
         // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         // Initialize analytics
         Analytics::ensure_initialized(&db).await?;
 
@@ -214,11 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_users_amount() -> anyhow::Result<()> {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string()).await?;
         // Test with no users
         let count = Analytics::get_users_amount(&db).await?;
         assert_eq!(count, 0);
@@ -246,10 +231,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_increment_visitors_without_prior_init() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         let analytics = Analytics::increment_visitors(&db).await?;
         assert_eq!(analytics.visitors, 1);
         assert_eq!(analytics.page_loads, 0);
@@ -259,10 +241,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_increment_page_loads_without_prior_init() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         let analytics = Analytics::increment_page_loads(&db).await?;
         assert_eq!(analytics.page_loads, 1);
         assert_eq!(analytics.visitors, 0);
@@ -272,10 +251,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_visitor_and_page_load_increments_are_independent() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         let after_visitors = Analytics::increment_visitors(&db).await?;
         assert_eq!(after_visitors.visitors, 1);
         assert_eq!(after_visitors.page_loads, 0);
@@ -293,10 +269,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_record_page_view() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = setup_test_db().await?;
         let first_view = Analytics::record_page_view(&db, true).await?;
         assert_eq!(first_view.visitors, 1);
         assert_eq!(first_view.page_loads, 1);
@@ -310,11 +283,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_current_nonexistent() -> anyhow::Result<()> {
-        // Setup in-memory database for testing
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database).await?;
-
+        let db = SurrealDbClient::memory("test_ns", &Uuid::new_v4().to_string()).await?;
         // Don't initialize analytics and try to get it
         let result = Analytics::get_current(&db).await;
 

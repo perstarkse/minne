@@ -496,9 +496,8 @@ mod tests {
     use super::*;
     use crate::storage::indexes::rebuild;
     use crate::storage::types::knowledge_entity_embedding::KnowledgeEntityEmbedding;
-    use crate::test_utils::configure_embedding_dimension;
+    use crate::test_utils::{prepare_knowledge_entity_test_db, setup_test_db};
     use anyhow::{self, Context};
-    use uuid::Uuid;
 
     #[test]
     fn embedding_input_text_uses_canonical_type_label() {
@@ -617,19 +616,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_source_id() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
-        configure_embedding_dimension(&db, 5).await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 5)
-            .await
-            .with_context(|| "Failed to redefine index length".to_string())?;
+        let db = prepare_knowledge_entity_test_db(5).await?;
 
         let source_id = "source123".to_string();
         let entity_type = KnowledgeEntityType::Document;
@@ -725,21 +712,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_by_source_id_resists_query_injection() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
+        let db = prepare_knowledge_entity_test_db(3)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations()
-            .await
-            .expect("Failed to apply migrations");
-
-        configure_embedding_dimension(&db, 3)
-            .await
-            .expect("configure dim");
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .expect("Failed to redefine index length");
+            .expect("prepare test db");
 
         let user_id = "user123".to_string();
 
@@ -791,18 +766,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_returns_empty_when_no_embeddings() {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
+        let db = prepare_knowledge_entity_test_db(3)
             .await
-            .expect("Failed to start in-memory surrealdb");
-        db.apply_migrations()
-            .await
-            .expect("Failed to apply migrations");
-
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .expect("Failed to redefine index length");
+            .expect("prepare test db");
 
         let results = KnowledgeEntity::vector_search(5, &[0.1, 0.2, 0.3], &db, "user")
             .await
@@ -812,19 +778,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_single_result() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
-        configure_embedding_dimension(&db, 3).await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "Failed to redefine index length".to_string())?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
 
         let user_id = "user".to_string();
         let source_id = "src".to_string();
@@ -880,19 +834,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_orders_by_similarity() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
-        configure_embedding_dimension(&db, 3).await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "Failed to redefine index length".to_string())?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
 
         let user_id = "user".to_string();
         let e1 = KnowledgeEntity::new(
@@ -979,19 +921,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_with_orphaned_embedding() -> anyhow::Result<()> {
-        let namespace = "test_ns_orphan";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to apply migrations".to_string())?;
-
-        configure_embedding_dimension(&db, 3).await?;
-        KnowledgeEntityEmbedding::redefine_hnsw_index(&db, 3)
-            .await
-            .with_context(|| "Failed to redefine index length".to_string())?;
+        let db = prepare_knowledge_entity_test_db(3).await?;
 
         let user_id = "user".to_string();
         let source_id = "src".to_string();
@@ -1031,14 +961,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search_returns_empty_when_no_entities() -> anyhow::Result<()> {
-        let namespace = "fts_entity_ns_empty";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
+        let db = setup_test_db().await?;
         ensure_entity_fts_indexes(&db).await?;
         rebuild(&db)
             .await
@@ -1054,14 +977,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search_single_result() -> anyhow::Result<()> {
-        let namespace = "fts_entity_ns_single";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
+        let db = setup_test_db().await?;
         ensure_entity_fts_indexes(&db).await?;
 
         let user_id = "fts_user";
@@ -1093,14 +1009,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search_orders_by_score_and_filters_user() -> anyhow::Result<()> {
-        let namespace = "fts_entity_ns_order";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-        db.apply_migrations()
-            .await
-            .with_context(|| "migrations".to_string())?;
+        let db = setup_test_db().await?;
         ensure_entity_fts_indexes(&db).await?;
 
         let user_id = "fts_user_order";

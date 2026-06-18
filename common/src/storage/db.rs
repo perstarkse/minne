@@ -313,8 +313,7 @@ mod tests {
     use crate::stored_object;
     use anyhow::{self, Context};
 
-    use super::*;
-    use uuid::Uuid;
+    use crate::test_utils::setup_test_db;
 
     stored_object!(Dummy, "dummy", {
         name: String
@@ -322,15 +321,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialization_and_crud() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to initialize schema".to_string())?;
+        let db = setup_test_db().await?;
 
         let dummy = Dummy {
             id: "abc".to_string(),
@@ -374,15 +365,7 @@ mod tests {
 
     #[tokio::test]
     async fn upsert_item_overwrites_existing_records() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
-        db.apply_migrations()
-            .await
-            .with_context(|| "Failed to initialize schema".to_string())?;
+        let db = setup_test_db().await?;
 
         let mut dummy = Dummy {
             id: "abc".to_string(),
@@ -431,12 +414,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_applying_migrations() -> anyhow::Result<()> {
-        let namespace = "test_ns";
-        let database = &Uuid::new_v4().to_string();
-        let db = SurrealDbClient::memory(namespace, database)
-            .await
-            .with_context(|| "Failed to start in-memory surrealdb".to_string())?;
-
+        let db = setup_test_db().await?;
         db.apply_migrations()
             .await
             .with_context(|| "Failed to build indexes".to_string())?;
