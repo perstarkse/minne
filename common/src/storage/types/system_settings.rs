@@ -910,13 +910,11 @@ mod tests {
         db.apply_migrations().await.context("migrations")?;
 
         assert!(
-            SystemSettings::try_acquire_index_rebuild_lease(&db, "worker-a")
-                .await?,
+            SystemSettings::try_acquire_index_rebuild_lease(&db, "worker-a").await?,
             "first lease claim should succeed"
         );
         assert!(
-            !SystemSettings::try_acquire_index_rebuild_lease(&db, "worker-b")
-                .await?,
+            !SystemSettings::try_acquire_index_rebuild_lease(&db, "worker-b").await?,
             "second lease claim should fail while lease is held"
         );
 

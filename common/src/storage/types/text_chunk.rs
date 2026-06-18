@@ -3,11 +3,13 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use crate::storage::indexes::hnsw_index_overwrite_sql;
-use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
+use crate::storage::types::{
+    text_chunk_embedding::TextChunkEmbedding, EmbeddingRecord, HasEmbedding,
+};
 use crate::utils::embedding::RE_EMBED_BATCH_SIZE;
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
 
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
 
 stored_object!(TextChunk, "text_chunk", {
@@ -22,6 +24,18 @@ stored_object!(TextChunk, "text_chunk", {
 pub struct TextChunkSearchResult {
     pub chunk: TextChunk,
     pub score: f32,
+}
+
+impl HasEmbedding for TextChunk {
+    type Embedding = TextChunkEmbedding;
+
+    fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    fn user_id(&self) -> &str {
+        &self.user_id
+    }
 }
 
 impl TextChunk {
@@ -40,25 +54,9 @@ impl TextChunk {
 
     pub async fn delete_by_source_id(
         source_id: &str,
-        db_client: &SurrealDbClient,
+        db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        db_client
-            .client
-            .query("BEGIN TRANSACTION;")
-            .query(format!(
-                "DELETE FROM {} WHERE source_id = $source_id;",
-                TextChunkEmbedding::table_name()
-            ))
-            .query("DELETE FROM type::table($table) WHERE source_id = $source_id;")
-            .query("COMMIT TRANSACTION;")
-            .bind(("source_id", source_id.to_owned()))
-            .bind(("table", Self::table_name()))
-            .await
-            .map_err(AppError::from)?
-            .check()
-            .map_err(AppError::from)?;
-
-        Ok(())
+        db.delete_by_source_id::<Self>(source_id).await
     }
 
     /// Atomically store one text chunk and its embedding (single-record path).
@@ -70,38 +68,8 @@ impl TextChunk {
         embedding_dimensions: usize,
         db: &SurrealDbClient,
     ) -> Result<(), AppError> {
-        TextChunkEmbedding::validate_dimension(&embedding, embedding_dimensions)?;
-
-        let chunk_id = chunk.id.clone();
-        let emb = TextChunkEmbedding::new(
-            &chunk_id,
-            chunk.source_id.clone(),
-            embedding,
-            chunk.user_id.clone(),
-        );
-
-        let query = format!(
-            "
-            BEGIN TRANSACTION;
-              CREATE type::thing('{chunk_table}', $chunk_id) CONTENT $chunk;
-              UPSERT type::thing('{emb_table}', $chunk_id) CONTENT $emb;
-            COMMIT TRANSACTION;
-            ",
-            chunk_table = Self::table_name(),
-            emb_table = TextChunkEmbedding::table_name(),
-        );
-
-        db.client
-            .query(query)
-            .bind(("chunk_id", chunk_id))
-            .bind(("chunk", chunk))
-            .bind(("emb", emb))
+        db.store_with_embedding(chunk, embedding, embedding_dimensions)
             .await
-            .map_err(AppError::from)?
-            .check()
-            .map_err(AppError::from)?;
-
-        Ok(())
     }
 
     /// Vector search over text chunks using the embedding table, fetching full chunk rows and scores.
@@ -111,52 +79,14 @@ impl TextChunk {
         db: &SurrealDbClient,
         user_id: &str,
     ) -> Result<Vec<TextChunkSearchResult>, AppError> {
-        #[allow(clippy::missing_docs_in_private_items)]
-        #[derive(Deserialize)]
-        struct Row {
-            chunk_id: Option<TextChunk>,
-            score: f32,
-        }
-
-        let sql = format!(
-            r#"
-            SELECT
-                chunk_id,
-                vector::similarity::cosine(embedding, $embedding) AS score
-            FROM {emb_table}
-            WHERE user_id = $user_id
-              AND embedding <|{take},100|> $embedding
-            ORDER BY score DESC
-            LIMIT {take}
-            FETCH chunk_id;
-            "#,
-            emb_table = TextChunkEmbedding::table_name(),
-            take = take
-        );
-
-        let mut response = db
-            .query(&sql)
-            .bind(("embedding", query_embedding.to_vec()))
-            .bind(("user_id", user_id.to_string()))
+        db.vector_search::<Self, TextChunkEmbedding>(take, query_embedding, user_id)
             .await
-            .map_err(AppError::from)?;
-
-        response = response.check().map_err(AppError::from)?;
-
-        let rows: Vec<Row> = response.take::<Vec<Row>>(0).map_err(AppError::from)?;
-
-        Ok(rows
-            .into_iter()
-            .filter_map(|r| {
-                r.chunk_id.map(|chunk| TextChunkSearchResult {
-                    chunk,
-                    score: r.score,
-                }).or_else(|| {
-                    warn!("vector search hit orphaned text_chunk_embedding row with missing chunk");
-                    None
-                })
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|(chunk, score)| TextChunkSearchResult { chunk, score })
+                    .collect()
             })
-            .collect())
     }
 
     /// Full-text search over text chunks using the BM25 FTS index.
@@ -645,7 +575,7 @@ mod tests {
         assert_eq!(stored_chunk.user_id, user_id);
 
         let rid = RecordId::from_table_key(TextChunk::table_name(), &chunk.id);
-        let embedding = TextChunkEmbedding::get_by_chunk_id(&rid, &db)
+        let embedding = TextChunkEmbedding::get_by_record_id(&db, &rid)
             .await
             .with_context(|| "get embedding".to_string())?
             .with_context(|| "expected embedding".to_string())?;
@@ -695,7 +625,7 @@ mod tests {
         assert!(stored_chunk.id == chunk.id, "chunk should be stored");
 
         let rid = RecordId::from_table_key(TextChunk::table_name(), &chunk.id);
-        let embedding = TextChunkEmbedding::get_by_chunk_id(&rid, &db)
+        let embedding = TextChunkEmbedding::get_by_record_id(&db, &rid)
             .await
             .with_context(|| "get embedding".to_string())?
             .with_context(|| "embedding should exist".to_string())?;

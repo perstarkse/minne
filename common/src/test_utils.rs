@@ -9,7 +9,7 @@ use crate::storage::{
     indexes::{ensure_runtime, rebuild},
     types::{
         knowledge_entity_embedding::KnowledgeEntityEmbedding, system_settings::SystemSettings,
-        text_chunk_embedding::TextChunkEmbedding,
+        text_chunk_embedding::TextChunkEmbedding, EmbeddingRecord,
     },
 };
 
