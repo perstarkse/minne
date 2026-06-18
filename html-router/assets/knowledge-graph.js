@@ -1,429 +1,637 @@
 // Knowledge graph renderer: interactive 2D force graph with
 // zoom/pan, search, neighbor highlighting, curved links with arrows,
 // responsive resize, and type/relationship legends.
-(function () {
-  const D3_SRC = '/assets/d3.min.js';
+(() => {
+	const D3_SRC = "/assets/d3.min.js";
 
-  let d3Loading = null;
+	let d3Loading = null;
 
-  function ensureD3() {
-    if (window.d3) return Promise.resolve();
-    if (d3Loading) return d3Loading;
-    d3Loading = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = D3_SRC;
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Failed to load D3'));
-      document.head.appendChild(s);
-    });
-    return d3Loading;
-  }
+	function ensureD3() {
+		if (window.d3) return Promise.resolve();
+		if (d3Loading) return d3Loading;
+		d3Loading = new Promise((resolve, reject) => {
+			const s = document.createElement("script");
+			s.src = D3_SRC;
+			s.async = true;
+			s.onload = () => resolve();
+			s.onerror = () => reject(new Error("Failed to load D3"));
+			document.head.appendChild(s);
+		});
+		return d3Loading;
+	}
 
-  // Simple palettes (kept deterministic across renders)
-  const PALETTE_A = ['#60A5FA', '#34D399', '#F59E0B', '#A78BFA', '#F472B6', '#F87171', '#22D3EE', '#84CC16', '#FB7185'];
-  const PALETTE_B = ['#94A3B8', '#A3A3A3', '#9CA3AF', '#C084FC', '#FDA4AF', '#FCA5A5', '#67E8F9', '#A3E635', '#FDBA74'];
+	// Simple palettes (kept deterministic across renders)
+	const PALETTE_A = [
+		"#60A5FA",
+		"#34D399",
+		"#F59E0B",
+		"#A78BFA",
+		"#F472B6",
+		"#F87171",
+		"#22D3EE",
+		"#84CC16",
+		"#FB7185",
+	];
+	const PALETTE_B = [
+		"#94A3B8",
+		"#A3A3A3",
+		"#9CA3AF",
+		"#C084FC",
+		"#FDA4AF",
+		"#FCA5A5",
+		"#67E8F9",
+		"#A3E635",
+		"#FDBA74",
+	];
 
-  function buildMap(values) {
-    const unique = Array.from(new Set(values.filter(Boolean)));
-    const map = new Map();
-    unique.forEach((v, i) => map.set(v, PALETTE_A[i % PALETTE_A.length]));
-    return map;
-  }
+	function buildMap(values) {
+		const unique = Array.from(new Set(values.filter(Boolean)));
+		const map = new Map();
+		unique.forEach((v, i) => map.set(v, PALETTE_A[i % PALETTE_A.length]));
+		return map;
+	}
 
-  function linkColorMap(values) {
-    const unique = Array.from(new Set(values.filter(Boolean)));
-    const map = new Map();
-    unique.forEach((v, i) => map.set(v, PALETTE_B[i % PALETTE_B.length]));
-    return map;
-  }
+	function linkColorMap(values) {
+		const unique = Array.from(new Set(values.filter(Boolean)));
+		const map = new Map();
+		unique.forEach((v, i) => map.set(v, PALETTE_B[i % PALETTE_B.length]));
+		return map;
+	}
 
-  function radiusForDegree(deg) {
-    const d = Math.max(0, +deg || 0);
-    const r = 6 + Math.sqrt(d) * 3; // gentle growth
-    return Math.max(6, Math.min(r, 24));
-  }
+	function radiusForDegree(deg) {
+		const d = Math.max(0, +deg || 0);
+		const r = 6 + Math.sqrt(d) * 3;
+		return Math.max(6, Math.min(r, 24));
+	}
 
-  function curvedPath(d) {
-    const sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
-    const dx = tx - sx, dy = ty - sy;
-    const dr = Math.hypot(dx, dy) * 0.7; // curve radius
-    const mx = (sx + tx) / 2;
-    const my = (sy + ty) / 2;
-    // Offset normal to create a consistent arc
-    const nx = -dy / (Math.hypot(dx, dy) || 1);
-    const ny = dx / (Math.hypot(dx, dy) || 1);
-    const cx = mx + nx * 20;
-    const cy = my + ny * 20;
-    return `M ${sx},${sy} Q ${cx},${cy} ${tx},${ty}`;
-  }
+	function curvedPath(d) {
+		const sx = d.source.x,
+			sy = d.source.y,
+			tx = d.target.x,
+			ty = d.target.y;
+		const dx = tx - sx,
+			dy = ty - sy;
+		const mx = (sx + tx) / 2;
+		const my = (sy + ty) / 2;
+		const nx = -dy / (Math.hypot(dx, dy) || 1);
+		const ny = dx / (Math.hypot(dx, dy) || 1);
+		const cx = mx + nx * 20;
+		const cy = my + ny * 20;
+		return `M ${sx},${sy} Q ${cx},${cy} ${tx},${ty}`;
+	}
 
-  function buildAdjacency(nodes, links) {
-    const idToNode = new Map(nodes.map(n => [n.id, n]));
-    const neighbors = new Map();
-    nodes.forEach(n => neighbors.set(n.id, new Set()));
-    links.forEach(l => {
-      const s = typeof l.source === 'object' ? l.source.id : l.source;
-      const t = typeof l.target === 'object' ? l.target.id : l.target;
-      if (neighbors.has(s)) neighbors.get(s).add(t);
-      if (neighbors.has(t)) neighbors.get(t).add(s);
-    });
-    return { idToNode, neighbors };
-  }
+	function buildAdjacency(nodes, links) {
+		const idToNode = new Map(nodes.map((n) => [n.id, n]));
+		const neighbors = new Map();
+		nodes.forEach((n) => neighbors.set(n.id, new Set()));
+		links.forEach((l) => {
+			const s = typeof l.source === "object" ? l.source.id : l.source;
+			const t = typeof l.target === "object" ? l.target.id : l.target;
+			if (neighbors.has(s)) neighbors.get(s).add(t);
+			if (neighbors.has(t)) neighbors.get(t).add(s);
+		});
+		return { idToNode, neighbors };
+	}
 
-  function attachOverlay(container, { onSearch, onToggleNames, onToggleEdgeLabels, onCenter }) {
-    const overlay = document.createElement('div');
-    overlay.className = 'kg-overlay';
+	function buildColorMaps(nodes, links) {
+		return {
+			typeColor: buildMap(nodes.map((n) => n.entity_type)),
+			relColor: linkColorMap(links.map((l) => l.relationship_type)),
+		};
+	}
 
-    const primaryRow = document.createElement('div');
-    primaryRow.className = 'kg-control-row kg-control-row-primary';
+	// ---------------------------------------------------------------------------
+	// Data loading
+	// ---------------------------------------------------------------------------
 
-    const secondaryRow = document.createElement('div');
-    secondaryRow.className = 'kg-control-row kg-control-row-secondary';
+	async function loadGraphData(container) {
+		const et = container.dataset.entityType || "";
+		const cc = container.dataset.contentCategory || "";
+		const qs = new URLSearchParams();
+		if (et) qs.set("entity_type", et);
+		if (cc) qs.set("content_category", cc);
 
-    // search box
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = 'Search nodes…';
-    input.className = 'nb-input kg-search-input';
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') onSearch && onSearch(input.value.trim());
-    });
+		const url =
+			"/knowledge/graph.json" + (qs.toString() ? "?" + qs.toString() : "");
+		const res = await fetch(url, { headers: { Accept: "application/json" } });
+		if (!res.ok) throw new Error("Failed to load graph data");
+		return res.json();
+	}
 
-    const searchBtn = document.createElement('button');
-    searchBtn.className = 'nb-btn btn-xs nb-cta kg-search-btn';
-    searchBtn.textContent = 'Go';
-    searchBtn.addEventListener('click', () => onSearch && onSearch(input.value.trim()));
+	// ---------------------------------------------------------------------------
+	// SVG scaffolding
+	// ---------------------------------------------------------------------------
 
-    const namesToggle = document.createElement('button');
-    namesToggle.className = 'nb-btn btn-xs kg-toggle';
-    namesToggle.type = 'button';
-    namesToggle.textContent = 'Names';
-    namesToggle.addEventListener('click', () => onToggleNames && onToggleNames());
+	function buildSvg(container, width, height) {
+		const svg = d3
+			.select(container)
+			.append("svg")
+			.attr("width", "100%")
+			.attr("height", height)
+			.attr("viewBox", [0, 0, width, height])
+			.attr(
+				"style",
+				"cursor: grab; touch-action: none; background: transparent;",
+			);
+		return { svg, g: svg.append("g"), defs: svg.append("defs") };
+	}
 
-    const labelToggle = document.createElement('button');
-    labelToggle.className = 'nb-btn btn-xs kg-toggle';
-    labelToggle.type = 'button';
-    labelToggle.textContent = 'Labels';
-    labelToggle.addEventListener('click', () => onToggleEdgeLabels && onToggleEdgeLabels());
+	function createArrowMarker(defs, relationshipType, color) {
+		const id = `arrow-${relationshipType.replace(/[^a-z0-9_-]/gi, "_")}`;
+		if (document.getElementById(id)) return id;
+		defs
+			.append("marker")
+			.attr("id", id)
+			.attr("viewBox", "0 -5 10 10")
+			.attr("refX", 16)
+			.attr("refY", 0)
+			.attr("markerWidth", 6)
+			.attr("markerHeight", 6)
+			.attr("orient", "auto")
+			.append("path")
+			.attr("d", "M0,-5L10,0L0,5")
+			.attr("fill", color);
+		return id;
+	}
 
-    const centerBtn = document.createElement('button');
-    centerBtn.className = 'nb-btn btn-xs';
-    centerBtn.textContent = 'Center';
-    centerBtn.addEventListener('click', () => onCenter && onCenter());
+	// ---------------------------------------------------------------------------
+	// Simulation
+	// ---------------------------------------------------------------------------
 
-    primaryRow.appendChild(input);
-    primaryRow.appendChild(searchBtn);
+	function createSimulation(nodes, links, width, height) {
+		return d3
+			.forceSimulation(nodes)
+			.force(
+				"link",
+				d3
+					.forceLink(links)
+					.id((d) => d.id)
+					.distance(70)
+					.strength(0.5),
+			)
+			.force("charge", d3.forceManyBody().strength(-220))
+			.force("center", d3.forceCenter(width / 2, height / 2))
+			.force(
+				"collision",
+				d3.forceCollide().radius((d) => radiusForDegree(d.degree) + 6),
+			)
+			.force("y", d3.forceY(height / 2).strength(0.02))
+			.force("x", d3.forceX(width / 2).strength(0.02));
+	}
 
-    secondaryRow.appendChild(namesToggle);
-    secondaryRow.appendChild(labelToggle);
-    secondaryRow.appendChild(centerBtn);
+	// ---------------------------------------------------------------------------
+	// Drawing helpers
+	// ---------------------------------------------------------------------------
 
-    overlay.appendChild(primaryRow);
-    overlay.appendChild(secondaryRow);
+	function drawLinks(g, links, relColor, markerFor) {
+		return g
+			.append("g")
+			.attr("fill", "none")
+			.attr("stroke-opacity", 0.7)
+			.selectAll("path")
+			.data(links)
+			.join("path")
+			.attr("stroke", (d) => relColor.get(d.relationship_type) || "#CBD5E1")
+			.attr("stroke-width", 1.5)
+			.attr("marker-end", (d) =>
+				markerFor(
+					d.relationship_type || "rel",
+					relColor.get(d.relationship_type) || "#CBD5E1",
+				),
+			);
+	}
 
-    container.style.position = 'relative';
-    container.appendChild(overlay);
+	function drawLinkLabels(g, links) {
+		return g
+			.append("g")
+			.selectAll("text")
+			.data(links)
+			.join("text")
+			.attr("font-size", 9)
+			.attr("fill", "#475569")
+			.attr("text-anchor", "middle")
+			.attr("opacity", 0.7)
+			.text((d) => d.relationship_type || "");
+	}
 
-    return { input, overlay, namesToggle, labelToggle };
-  }
+	function drawNodes(
+		g,
+		nodes,
+		typeColor,
+		{ setHighlight, clearHighlight },
+		simulation,
+	) {
+		const node = g
+			.append("g")
+			.attr("stroke", "#fff")
+			.attr("stroke-width", 1.5)
+			.selectAll("circle")
+			.data(nodes)
+			.join("circle")
+			.attr("r", (d) => radiusForDegree(d.degree))
+			.attr("fill", (d) => typeColor.get(d.entity_type) || "#94A3B8")
+			.attr("cursor", "pointer")
+			.on("mouseenter", (_evt, d) => {
+				setHighlight(d);
+			})
+			.on("mouseleave", () => {
+				clearHighlight();
+			})
+			.on("click", function (_evt, d) {
+				if (d.fx == null) {
+					d.fx = d.x;
+					d.fy = d.y;
+					this.setAttribute("data-pinned", "true");
+				} else {
+					d.fx = null;
+					d.fy = null;
+					this.removeAttribute("data-pinned");
+				}
+			})
+			.call(
+				d3
+					.drag()
+					.on("start", (event, d) => {
+						if (!event.active) simulation.alphaTarget(0.3).restart();
+						d.fx = d.x;
+						d.fy = d.y;
+					})
+					.on("drag", (event, d) => {
+						d.fx = event.x;
+						d.fy = event.y;
+					})
+					.on("end", (event, _d) => {
+						if (!event.active) simulation.alphaTarget(0);
+					}),
+			);
+		node
+			.append("title")
+			.text((d) => `${d.name} • ${d.entity_type} • deg ${d.degree}`);
+		return node;
+	}
 
-  function attachLegends(container, typeColor, relColor) {
-    const wrap = document.createElement('div');
-    wrap.className = 'kg-legend';
+	function drawLabels(g, nodes) {
+		return g
+			.append("g")
+			.selectAll("text")
+			.data(nodes)
+			.join("text")
+			.text((d) => d.name)
+			.attr("font-size", 11)
+			.attr("fill", "#111827")
+			.attr("stroke", "white")
+			.attr("paint-order", "stroke")
+			.attr("stroke-width", 3)
+			.attr("dx", (d) => radiusForDegree(d.degree) + 6)
+			.attr("dy", 4);
+	}
 
-    function section(title, items) {
-      const sec = document.createElement('div');
-      sec.className = 'nb-card kg-legend-card';
-      const h = document.createElement('div'); h.className = 'kg-legend-heading'; h.textContent = title; sec.appendChild(h);
-      items.forEach(([label, color]) => {
-        const row = document.createElement('div'); row.className = 'kg-legend-row';
-        const sw = document.createElement('span'); sw.style.background = color; sw.style.width = '12px'; sw.style.height = '12px'; sw.style.border = '2px solid #000';
-        const t = document.createElement('span'); t.textContent = label || '—';
-        row.appendChild(sw); row.appendChild(t); sec.appendChild(row);
-      });
-      return sec;
-    }
+	// ---------------------------------------------------------------------------
+	// Highlight / search
+	// ---------------------------------------------------------------------------
 
-    const typeItems = Array.from(typeColor.entries());
-    if (typeItems.length) wrap.appendChild(section('Entity Type', typeItems));
-    const relItems = Array.from(relColor.entries());
-    if (relItems.length) wrap.appendChild(section('Relationship', relItems));
+	function createHighlighting(neighbors, relColor, markerFor) {
+		let node, label, link, linkLabel;
 
-    container.appendChild(wrap);
-    return wrap;
-  }
+		function setHighlight(n) {
+			const ns = neighbors.get(n.id) || new Set();
+			node.attr("opacity", (d) => (d.id === n.id || ns.has(d.id) ? 1 : 0.15));
+			label.attr("opacity", (d) => (d.id === n.id || ns.has(d.id) ? 1 : 0.15));
+			link
+				.attr("stroke-opacity", (d) => {
+					const s = typeof d.source === "object" ? d.source.id : d.source;
+					const t = typeof d.target === "object" ? d.target.id : d.target;
+					return s === n.id || t === n.id || (ns.has(s) && ns.has(t))
+						? 0.9
+						: 0.05;
+				})
+				.attr("marker-end", (d) => {
+					const c = relColor.get(d.relationship_type) || "#CBD5E1";
+					return markerFor(d.relationship_type || "rel", c);
+				});
+			linkLabel.attr("opacity", (d) => {
+				const s = typeof d.source === "object" ? d.source.id : d.source;
+				const t = typeof d.target === "object" ? d.target.id : d.target;
+				return s === n.id || t === n.id ? 0.9 : 0.05;
+			});
+		}
 
-  async function renderKnowledgeGraph(root) {
-    const container = (root || document).querySelector('#knowledge-graph');
-    if (!container) return;
+		function clearHighlight() {
+			node.attr("opacity", 1);
+			label.attr("opacity", 1);
+			link.attr("stroke-opacity", 0.7);
+			linkLabel.attr("opacity", 0.7);
+		}
 
-    await ensureD3().catch(() => {
-      const err = document.createElement('div');
-      err.className = 'alert alert-error';
-      err.textContent = 'Unable to load graph library (D3).';
-      container.appendChild(err);
-    });
-    if (!window.d3) return;
+		return {
+			bind: (_node, _label, _link, _linkLabel) => {
+				node = _node;
+				label = _label;
+				link = _link;
+				linkLabel = _linkLabel;
+			},
+			setHighlight,
+			clearHighlight,
+		};
+	}
 
-    // Clear previous render
-    container.innerHTML = '';
+	// ---------------------------------------------------------------------------
+	// Zoom
+	// ---------------------------------------------------------------------------
 
-    const width = container.clientWidth || 800;
-    const height = container.clientHeight || 600;
+	function createZoom(svg, g) {
+		const zoom = d3
+			.zoom()
+			.scaleExtent([0.25, 5])
+			.on("zoom", (event) => {
+				g.attr("transform", event.transform);
+			});
+		svg.call(zoom);
 
-    const et = container.dataset.entityType || '';
-    const cc = container.dataset.contentCategory || '';
-    const qs = new URLSearchParams();
-    if (et) qs.set('entity_type', et);
-    if (cc) qs.set('content_category', cc);
+		function zoomTo(k, center) {
+			const transform = d3.zoomIdentity
+				.translate(center[0] - k * center[0], center[1] - k * center[1])
+				.scale(k);
+			svg.transition().duration(250).call(zoom.transform, transform);
+		}
 
-    const url = '/knowledge/graph.json' + (qs.toString() ? ('?' + qs.toString()) : '');
-    let data;
-    try {
-      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!res.ok) throw new Error('Failed to load graph data');
-      data = await res.json();
-    } catch (_e) {
-      const err = document.createElement('div');
-      err.className = 'alert alert-error';
-      err.textContent = 'Unable to load graph data.';
-      container.appendChild(err);
-      return;
-    }
+		return { zoom, zoomTo };
+	}
 
-    // Color maps
-    const typeColor = buildMap(data.nodes.map(n => n.entity_type));
-    const relColor = linkColorMap(data.links.map(l => l.relationship_type));
-    const { neighbors } = buildAdjacency(data.nodes, data.links);
+	// ---------------------------------------------------------------------------
+	// Resize
+	// ---------------------------------------------------------------------------
 
-    // Build overlay controls
-    let namesVisible = true;
-    let edgeLabelsVisible = true;
+	function attachResize(
+		container,
+		svg,
+		simulation,
+		fallbackWidth,
+		fallbackHeight,
+	) {
+		const ro = new ResizeObserver(() => {
+			const w = container.clientWidth || fallbackWidth;
+			const h = container.clientHeight || fallbackHeight;
+			svg.attr("viewBox", [0, 0, w, h]).attr("height", h);
+			simulation.force("center", d3.forceCenter(w / 2, h / 2));
+			simulation.alpha(0.3).restart();
+		});
+		ro.observe(container);
+	}
 
-    const togglePressedState = (button, state) => {
-      if (!button) return;
-      button.setAttribute('aria-pressed', state ? 'true' : 'false');
-      button.classList.toggle('kg-toggle-active', !!state);
-    };
+	// ---------------------------------------------------------------------------
+	// Overlay controls
+	// ---------------------------------------------------------------------------
 
-    const { input, namesToggle, labelToggle } = attachOverlay(container, {
-      onSearch: (q) => focusSearch(q),
-      onToggleNames: () => {
-        namesVisible = !namesVisible;
-        label.style('display', namesVisible ? null : 'none');
-        togglePressedState(namesToggle, namesVisible);
-      },
-      onToggleEdgeLabels: () => {
-        edgeLabelsVisible = !edgeLabelsVisible;
-        linkLabel.style('display', edgeLabelsVisible ? null : 'none');
-        togglePressedState(labelToggle, edgeLabelsVisible);
-      },
-      onCenter: () => zoomTo(1, [width / 2, height / 2])
-    });
+	function attachOverlay(
+		container,
+		{ onSearch, onToggleNames, onToggleEdgeLabels, onCenter },
+	) {
+		const overlay = document.createElement("div");
+		overlay.className = "kg-overlay";
 
-    togglePressedState(namesToggle, namesVisible);
-    togglePressedState(labelToggle, edgeLabelsVisible);
+		const primaryRow = document.createElement("div");
+		primaryRow.className = "kg-control-row kg-control-row-primary";
 
-    // SVG + zoom
-    const svg = d3.select(container)
-      .append('svg')
-      .attr('width', '100%')
-      .attr('height', height)
-      .attr('viewBox', [0, 0, width, height])
-      .attr('style', 'cursor: grab; touch-action: none; background: transparent;')
-      .call(d3.zoom().scaleExtent([0.25, 5]).on('zoom', (event) => {
-        g.attr('transform', event.transform);
-      }));
+		const secondaryRow = document.createElement("div");
+		secondaryRow.className = "kg-control-row kg-control-row-secondary";
 
-    const g = svg.append('g');
+		const input = document.createElement("input");
+		input.type = "text";
+		input.placeholder = "Search nodes…";
+		input.className = "nb-input kg-search-input";
+		input.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") onSearch && onSearch(input.value.trim());
+		});
 
-    // Defs for arrows
-    const defs = svg.append('defs');
-    const markerFor = (key, color) => {
-      const id = `arrow-${key.replace(/[^a-z0-9_-]/gi, '_')}`;
-      if (!document.getElementById(id)) {
-        defs.append('marker')
-          .attr('id', id)
-          .attr('viewBox', '0 -5 10 10')
-          .attr('refX', 16)
-          .attr('refY', 0)
-          .attr('markerWidth', 6)
-          .attr('markerHeight', 6)
-          .attr('orient', 'auto')
-          .append('path')
-          .attr('d', 'M0,-5L10,0L0,5')
-          .attr('fill', color);
-      }
-      return `url(#${id})`;
-    };
+		const searchBtn = document.createElement("button");
+		searchBtn.className = "nb-btn btn-xs nb-cta kg-search-btn";
+		searchBtn.textContent = "Go";
+		searchBtn.addEventListener(
+			"click",
+			() => onSearch && onSearch(input.value.trim()),
+		);
 
-    // Forces
-    const linkForce = d3.forceLink(data.links)
-      .id(d => d.id)
-      .distance(l => 70)
-      .strength(0.5);
+		const namesToggle = document.createElement("button");
+		namesToggle.className = "nb-btn btn-xs kg-toggle";
+		namesToggle.type = "button";
+		namesToggle.textContent = "Names";
+		namesToggle.addEventListener(
+			"click",
+			() => onToggleNames && onToggleNames(),
+		);
 
-    const simulation = d3.forceSimulation(data.nodes)
-      .force('link', linkForce)
-      .force('charge', d3.forceManyBody().strength(-220))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(d => radiusForDegree(d.degree) + 6))
-      .force('y', d3.forceY(height / 2).strength(0.02))
-      .force('x', d3.forceX(width / 2).strength(0.02));
+		const labelToggle = document.createElement("button");
+		labelToggle.className = "nb-btn btn-xs kg-toggle";
+		labelToggle.type = "button";
+		labelToggle.textContent = "Labels";
+		labelToggle.addEventListener(
+			"click",
+			() => onToggleEdgeLabels && onToggleEdgeLabels(),
+		);
 
-    // Links as paths so we can curve + arrow
-    const link = g.append('g')
-      .attr('fill', 'none')
-      .attr('stroke-opacity', 0.7)
-      .selectAll('path')
-      .data(data.links)
-      .join('path')
-      .attr('stroke', d => relColor.get(d.relationship_type) || '#CBD5E1')
-      .attr('stroke-width', 1.5)
-      .attr('marker-end', d => markerFor(d.relationship_type || 'rel', relColor.get(d.relationship_type) || '#CBD5E1'));
+		const centerBtn = document.createElement("button");
+		centerBtn.className = "nb-btn btn-xs";
+		centerBtn.textContent = "Center";
+		centerBtn.addEventListener("click", () => onCenter && onCenter());
 
-    // Optional edge labels (midpoint)
-    const linkLabel = g.append('g')
-      .selectAll('text')
-      .data(data.links)
-      .join('text')
-      .attr('font-size', 9)
-      .attr('fill', '#475569')
-      .attr('text-anchor', 'middle')
-      .attr('opacity', 0.7)
-      .text(d => d.relationship_type || '');
+		primaryRow.appendChild(input);
+		primaryRow.appendChild(searchBtn);
 
-    // Nodes
-    const node = g.append('g')
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 1.5)
-      .selectAll('circle')
-      .data(data.nodes)
-      .join('circle')
-      .attr('r', d => radiusForDegree(d.degree))
-      .attr('fill', d => typeColor.get(d.entity_type) || '#94A3B8')
-      .attr('cursor', 'pointer')
-      .on('mouseenter', function (_evt, d) { setHighlight(d); })
-      .on('mouseleave', function () { clearHighlight(); })
-      .on('click', function (_evt, d) {
-        // pin/unpin on click
-        if (d.fx == null) { d.fx = d.x; d.fy = d.y; this.setAttribute('data-pinned', 'true'); }
-        else { d.fx = null; d.fy = null; this.removeAttribute('data-pinned'); }
-      })
-      .call(d3.drag()
-        .on('start', (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.3).restart();
-          d.fx = d.x; d.fy = d.y;
-        })
-        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
-        .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); }));
+		secondaryRow.appendChild(namesToggle);
+		secondaryRow.appendChild(labelToggle);
+		secondaryRow.appendChild(centerBtn);
 
-    node.append('title').text(d => `${d.name} • ${d.entity_type} • deg ${d.degree}`);
+		overlay.appendChild(primaryRow);
+		overlay.appendChild(secondaryRow);
 
-    // Labels
-    const label = g.append('g')
-      .selectAll('text')
-      .data(data.nodes)
-      .join('text')
-      .text(d => d.name)
-      .attr('font-size', 11)
-      .attr('fill', '#111827')
-      .attr('stroke', 'white')
-      .attr('paint-order', 'stroke')
-      .attr('stroke-width', 3)
-      .attr('dx', d => radiusForDegree(d.degree) + 6)
-      .attr('dy', 4);
+		container.style.position = "relative";
+		container.appendChild(overlay);
 
-    // Legends
-    attachLegends(container, typeColor, relColor);
+		return { input, overlay, namesToggle, labelToggle };
+	}
 
-    // Highlight logic
-    function setHighlight(n) {
-      const ns = neighbors.get(n.id) || new Set();
-      node.attr('opacity', d => (d.id === n.id || ns.has(d.id)) ? 1 : 0.15);
-      label.attr('opacity', d => (d.id === n.id || ns.has(d.id)) ? 1 : 0.15);
-      link
-        .attr('stroke-opacity', d => {
-          const s = (typeof d.source === 'object') ? d.source.id : d.source;
-          const t = (typeof d.target === 'object') ? d.target.id : d.target;
-          return (s === n.id || t === n.id || (ns.has(s) && ns.has(t))) ? 0.9 : 0.05;
-        })
-        .attr('marker-end', d => {
-          const c = relColor.get(d.relationship_type) || '#CBD5E1';
-          return markerFor(d.relationship_type || 'rel', c);
-        });
-      linkLabel.attr('opacity', d => {
-        const s = (typeof d.source === 'object') ? d.source.id : d.source;
-        const t = (typeof d.target === 'object') ? d.target.id : d.target;
-        return (s === n.id || t === n.id) ? 0.9 : 0.05;
-      });
-    }
-    function clearHighlight() {
-      node.attr('opacity', 1);
-      label.attr('opacity', 1);
-      link.attr('stroke-opacity', 0.7);
-      linkLabel.attr('opacity', 0.7);
-    }
+	// ---------------------------------------------------------------------------
+	// Legends
+	// ---------------------------------------------------------------------------
 
-    // Search + center helpers
-    function centerOnNode(n) {
-      const k = 1.5; // zoom factor
-      const x = n.x, y = n.y;
-      const transform = d3.zoomIdentity.translate(width / 2 - k * x, height / 2 - k * y).scale(k);
-      svg.transition().duration(350).call(zoom.transform, transform);
-    }
-    function focusSearch(query) {
-      if (!query) return;
-      const q = query.toLowerCase();
-      const found = data.nodes.find(n => (n.name || '').toLowerCase().includes(q));
-      if (found) { setHighlight(found); centerOnNode(found); }
-    }
+	function attachLegends(container, typeColor, relColor) {
+		const wrap = document.createElement("div");
+		wrap.className = "kg-legend";
 
-    // Expose zoom instance
-    const zoom = d3.zoom().scaleExtent([0.25, 5]).on('zoom', (event) => g.attr('transform', event.transform));
-    svg.call(zoom);
-    function zoomTo(k, center) {
-      const transform = d3.zoomIdentity.translate(width / 2 - k * center[0], height / 2 - k * center[1]).scale(k);
-      svg.transition().duration(250).call(zoom.transform, transform);
-    }
+		function section(title, items) {
+			const sec = document.createElement("div");
+			sec.className = "nb-card kg-legend-card";
+			const h = document.createElement("div");
+			h.className = "kg-legend-heading";
+			h.textContent = title;
+			sec.appendChild(h);
+			items.forEach(([label, color]) => {
+				const row = document.createElement("div");
+				row.className = "kg-legend-row";
+				const sw = document.createElement("span");
+				sw.style.background = color;
+				sw.style.width = "12px";
+				sw.style.height = "12px";
+				sw.style.border = "2px solid #000";
+				const t = document.createElement("span");
+				t.textContent = label || "—";
+				row.appendChild(sw);
+				row.appendChild(t);
+				sec.appendChild(row);
+			});
+			return sec;
+		}
 
-    // Tick update
-    simulation.on('tick', () => {
-      link.attr('d', curvedPath);
-      node.attr('cx', d => d.x).attr('cy', d => d.y);
-      label.attr('x', d => d.x).attr('y', d => d.y);
-      linkLabel.attr('x', d => (d.source.x + d.target.x) / 2).attr('y', d => (d.source.y + d.target.y) / 2);
-    });
+		const typeItems = Array.from(typeColor.entries());
+		if (typeItems.length) wrap.appendChild(section("Entity Type", typeItems));
+		const relItems = Array.from(relColor.entries());
+		if (relItems.length) wrap.appendChild(section("Relationship", relItems));
 
-    // Resize handling
-    const ro = new ResizeObserver(() => {
-      const w = container.clientWidth || width;
-      const h = container.clientHeight || height;
-      svg.attr('viewBox', [0, 0, w, h]).attr('height', h);
-      simulation.force('center', d3.forceCenter(w / 2, h / 2));
-      simulation.alpha(0.3).restart();
-    });
-    ro.observe(container);
-  }
+		container.appendChild(wrap);
+		return wrap;
+	}
 
-  function tryRender(root) {
-    const container = (root || document).querySelector('#knowledge-graph');
-    if (container) renderKnowledgeGraph(root);
-  }
+	// ---------------------------------------------------------------------------
+	// Main orchestrator
+	// ---------------------------------------------------------------------------
 
-  // Expose for debugging/manual re-render
-  window.renderKnowledgeGraph = () => renderKnowledgeGraph(document);
+	async function renderKnowledgeGraph(root) {
+		const container = (root || document).querySelector("#knowledge-graph");
+		if (!container) return;
 
-  // Full page load
-  document.addEventListener('DOMContentLoaded', () => tryRender(document));
+		await ensureD3().catch(() => {
+			const err = document.createElement("div");
+			err.className = "alert alert-error";
+			err.textContent = "Unable to load graph library (D3).";
+			container.appendChild(err);
+		});
+		if (!window.d3) return;
 
-  // HTMX partial swaps
-  document.body.addEventListener('knowledge-graph-refresh', () => {
-    tryRender(document);
-  });
+		container.replaceChildren();
 
-  document.body.addEventListener('htmx:afterSettle', (evt) => {
-    tryRender(evt && evt.target ? evt.target : document);
-  });
+		const width = container.clientWidth || 800;
+		const height = container.clientHeight || 600;
+
+		// 1. Load data
+		let data;
+		try {
+			data = await loadGraphData(container);
+		} catch (_e) {
+			const err = document.createElement("div");
+			err.className = "alert alert-error";
+			err.textContent = "Unable to load graph data.";
+			container.appendChild(err);
+			return;
+		}
+
+		// 2. Color maps + adjacency
+		const { typeColor, relColor } = buildColorMaps(data.nodes, data.links);
+		const { neighbors } = buildAdjacency(data.nodes, data.links);
+
+		// 3. Build SVG scaffolding
+		const { svg, g, defs } = buildSvg(container, width, height);
+
+		// 4. Arrow marker factory
+		const markerFor = (rel, color) =>
+			`url(#${createArrowMarker(defs, rel, color)})`;
+
+		// 5. Simulation
+		const simulation = createSimulation(data.nodes, data.links, width, height);
+
+		// 6. Highlighting (created before drawing so callbacks exist)
+		const highlighting = createHighlighting(neighbors, relColor, markerFor);
+
+		// 7. Draw elements
+		const link = drawLinks(g, data.links, relColor, markerFor);
+		const linkLabel = drawLinkLabels(g, data.links);
+		const node = drawNodes(g, data.nodes, typeColor, highlighting, simulation);
+		const label = drawLabels(g, data.nodes);
+		highlighting.bind(node, label, link, linkLabel);
+
+		// 8. Zoom (single instance)
+		const { zoom, zoomTo } = createZoom(svg, g);
+
+		// 9. Search helper
+		function centerOnNode(n) {
+			const k = 1.5;
+			// recenter: svg dimensions / 2 minus k * node position
+			const transform = d3.zoomIdentity
+				.translate(width / 2 - k * n.x, height / 2 - k * n.y)
+				.scale(k);
+			svg.transition().duration(350).call(zoom.transform, transform);
+		}
+		function focusSearch(query) {
+			if (!query) return;
+			const q = query.toLowerCase();
+			const found = data.nodes.find((n) =>
+				(n.name || "").toLowerCase().includes(q),
+			);
+			if (found) {
+				highlighting.setHighlight(found);
+				centerOnNode(found);
+			}
+		}
+
+		// 10. Overlay controls
+		let namesVisible = true;
+		let edgeLabelsVisible = true;
+		const togglePressedState = (button, state) => {
+			if (!button) return;
+			button.setAttribute("aria-pressed", state ? "true" : "false");
+			button.classList.toggle("kg-toggle-active", !!state);
+		};
+
+		const { namesToggle, labelToggle } = attachOverlay(container, {
+			onSearch: (q) => focusSearch(q),
+			onToggleNames: () => {
+				namesVisible = !namesVisible;
+				label.style("display", namesVisible ? null : "none");
+				togglePressedState(namesToggle, namesVisible);
+			},
+			onToggleEdgeLabels: () => {
+				edgeLabelsVisible = !edgeLabelsVisible;
+				linkLabel.style("display", edgeLabelsVisible ? null : "none");
+				togglePressedState(labelToggle, edgeLabelsVisible);
+			},
+			onCenter: () => zoomTo(1, [width / 2, height / 2]),
+		});
+		togglePressedState(namesToggle, namesVisible);
+		togglePressedState(labelToggle, edgeLabelsVisible);
+
+		// 11. Tick update
+		simulation.on("tick", () => {
+			link.attr("d", curvedPath);
+			node.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+			label.attr("x", (d) => d.x).attr("y", (d) => d.y);
+			linkLabel
+				.attr("x", (d) => (d.source.x + d.target.x) / 2)
+				.attr("y", (d) => (d.source.y + d.target.y) / 2);
+		});
+
+		// 12. Legends + resize
+		attachLegends(container, typeColor, relColor);
+		attachResize(container, svg, simulation, width, height);
+	}
+
+	// ---------------------------------------------------------------------------
+	// Bootstrap
+	// ---------------------------------------------------------------------------
+
+	function tryRender(root) {
+		const container = (root || document).querySelector("#knowledge-graph");
+		if (container) renderKnowledgeGraph(root);
+	}
+
+	window.renderKnowledgeGraph = () => renderKnowledgeGraph(document);
+
+	document.addEventListener("DOMContentLoaded", () => tryRender(document));
+
+	document.body.addEventListener("knowledge-graph-refresh", () => {
+		tryRender(document);
+	});
+
+	document.body.addEventListener("htmx:afterSettle", (evt) => {
+		tryRender(evt && evt.target ? evt.target : document);
+	});
 })();
