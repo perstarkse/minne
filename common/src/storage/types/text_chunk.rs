@@ -323,29 +323,9 @@ mod tests {
     use crate::storage::indexes::{ensure_runtime, rebuild};
     use crate::storage::types::text_chunk_embedding::TextChunkEmbedding;
     use crate::test_utils::{
-        configure_embedding_dimension, prepare_text_chunk_test_db, setup_test_db,
+        configure_embedding_dimension, ensure_fts_index, prepare_text_chunk_test_db, setup_test_db,
     };
     use surrealdb::RecordId;
-
-    async fn ensure_chunk_fts_index(db: &SurrealDbClient) -> anyhow::Result<()> {
-        let snowball_sql = r#"
-            DEFINE ANALYZER IF NOT EXISTS app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii, snowball(english);
-            DEFINE INDEX IF NOT EXISTS text_chunk_fts_chunk_idx ON TABLE text_chunk FIELDS chunk SEARCH ANALYZER app_en_fts_analyzer BM25;
-        "#;
-
-        if let Err(err) = db.client.query(snowball_sql).await {
-            let fallback_sql = r#"
-                DEFINE ANALYZER OVERWRITE app_en_fts_analyzer TOKENIZERS class, punct FILTERS lowercase, ascii;
-                DEFINE INDEX IF NOT EXISTS text_chunk_fts_chunk_idx ON TABLE text_chunk FIELDS chunk SEARCH ANALYZER app_en_fts_analyzer BM25;
-            "#;
-
-            db.client
-                .query(fallback_sql)
-                .await
-                .with_context(|| format!("define chunk fts index fallback: {err}"))?;
-        }
-        Ok(())
-    }
 
     #[tokio::test]
     async fn test_text_chunk_creation() -> anyhow::Result<()> {
@@ -659,7 +639,7 @@ mod tests {
     #[tokio::test]
     async fn test_fts_search_returns_empty_when_no_chunks() -> anyhow::Result<()> {
         let db = setup_test_db().await?;
-        ensure_chunk_fts_index(&db).await?;
+        ensure_fts_index(&db, "text_chunk", &[("chunk", "chunk")]).await?;
         rebuild(&db)
             .await
             .with_context(|| "rebuild indexes".to_string())?;
@@ -675,7 +655,7 @@ mod tests {
     #[tokio::test]
     async fn test_fts_search_single_result() -> anyhow::Result<()> {
         let db = setup_test_db().await?;
-        ensure_chunk_fts_index(&db).await?;
+        ensure_fts_index(&db, "text_chunk", &[("chunk", "chunk")]).await?;
 
         let user_id = "fts_user";
         let chunk = TextChunk::new(
@@ -704,7 +684,7 @@ mod tests {
     #[tokio::test]
     async fn test_fts_search_orders_by_score_and_filters_user() -> anyhow::Result<()> {
         let db = setup_test_db().await?;
-        ensure_chunk_fts_index(&db).await?;
+        ensure_fts_index(&db, "text_chunk", &[("chunk", "chunk")]).await?;
 
         let user_id = "fts_user_order";
         let high_score_chunk = TextChunk::new(
