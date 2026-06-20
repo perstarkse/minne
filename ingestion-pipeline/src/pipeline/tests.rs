@@ -1,5 +1,15 @@
 use std::sync::Arc;
 
+use super::{
+    config::{IngestionConfig, IngestionTuning},
+    enrichment_result::LLMEnrichmentResult,
+    services::PipelineServices,
+    test_support::{
+        count_chunks_for_source, count_entities_for_source, count_relationships_for_source,
+        persist, sample_artifacts, setup_db,
+    },
+    IngestionPipeline,
+};
 use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
 use anyhow::{self, Context};
 use async_trait::async_trait;
@@ -20,16 +30,6 @@ use common::{
 };
 use retrieval_pipeline::{RetrievedChunk, RetrievedEntity};
 use tokio::sync::Mutex;
-use super::{
-    config::{IngestionConfig, IngestionTuning},
-    enrichment_result::LLMEnrichmentResult,
-    services::PipelineServices,
-    test_support::{
-        count_chunks_for_source, count_entities_for_source, count_relationships_for_source,
-        persist, sample_artifacts, setup_db,
-    },
-    IngestionPipeline,
-};
 
 pub(crate) struct MockServices {
     text_content: TextContent,
@@ -221,9 +221,7 @@ impl PipelineServices for FailingServices {
         content: &TextContent,
         analysis: &LLMEnrichmentResult,
     ) -> Result<(Vec<EmbeddedKnowledgeEntity>, Vec<KnowledgeRelationship>), AppError> {
-        self.inner
-            .convert_analysis(content, analysis)
-            .await
+        self.inner.convert_analysis(content, analysis).await
     }
 
     async fn prepare_chunks(

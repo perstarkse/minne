@@ -56,8 +56,8 @@ impl ChecksumSidecar {
 
 #[allow(clippy::indexing_slicing)]
 pub fn hash_file(path: &Path) -> Result<String> {
-    let mut file =
-        File::open(path).with_context(|| format!("opening file {} for checksum", path.display()))?;
+    let mut file = File::open(path)
+        .with_context(|| format!("opening file {} for checksum", path.display()))?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; 65_536];
     loop {
@@ -176,7 +176,10 @@ fn collect_store_files(base: &Path, current: &Path, entries: &mut Vec<String>) -
     for entry in fs::read_dir(current)? {
         let entry = entry?;
         let path = entry.path();
-        if path.file_name().is_some_and(|name| name == "checksum.sha256") {
+        if path
+            .file_name()
+            .is_some_and(|name| name == "checksum.sha256")
+        {
             continue;
         }
         if path.is_dir() {

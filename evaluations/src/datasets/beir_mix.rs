@@ -11,12 +11,9 @@ use super::{
         self, build_dataset_from_catalog, paragraph_path, read_meta, store_dir_for,
         upsert_sharded_paragraphs, write_sharded,
     },
-    BEIR_DATASETS, ConvertedDataset, DatasetKind, DatasetMetadata,
+    ConvertedDataset, DatasetKind, DatasetMetadata, BEIR_DATASETS,
 };
-use crate::{
-    args::Config,
-    slice,
-};
+use crate::{args::Config, slice};
 
 pub fn subset_for_paragraph_id(paragraph_id: &str) -> Option<DatasetKind> {
     let mut kinds: Vec<DatasetKind> = BEIR_DATASETS.to_vec();
@@ -53,9 +50,8 @@ pub fn build_beir_mix_qrels_dataset(include_unanswerable: bool) -> Result<Conver
 pub fn prepare_beir_mix(config: &Config) -> Result<super::loader::LoadedDataset> {
     let virtual_ds = build_beir_mix_qrels_dataset(config.llm_mode)?;
     let slice_config = slice::slice_config_with_limit(config, slice::ledger_target(config));
-    let resolved = slice::resolve_slice(&virtual_ds, &slice_config).context(
-        "resolving BEIR mix slice ledger (check --slice and --limit match your intent)",
-    )?;
+    let resolved = slice::resolve_slice(&virtual_ds, &slice_config)
+        .context("resolving BEIR mix slice ledger (check --slice and --limit match your intent)")?;
 
     let unique: HashSet<String> = resolved
         .manifest
@@ -83,16 +79,16 @@ pub fn prepare_beir_mix(config: &Config) -> Result<super::loader::LoadedDataset>
     })
 }
 
-pub fn materialize_subset_stores(
-    paragraph_ids: &HashSet<String>,
-    force: bool,
-) -> Result<()> {
+pub fn materialize_subset_stores(paragraph_ids: &HashSet<String>, force: bool) -> Result<()> {
     let mut by_subset: HashMap<DatasetKind, Vec<String>> = HashMap::new();
     for paragraph_id in paragraph_ids {
         let kind = subset_for_paragraph_id(paragraph_id).with_context(|| {
             format!("routing BEIR mix paragraph id '{paragraph_id}' to subset store")
         })?;
-        by_subset.entry(kind).or_default().push(paragraph_id.clone());
+        by_subset
+            .entry(kind)
+            .or_default()
+            .push(paragraph_id.clone());
     }
 
     for (kind, ids) in by_subset {
@@ -120,11 +116,7 @@ pub fn materialize_subset_stores(
             .iter()
             .filter_map(|paragraph_id| beir::corpus_doc_id(paragraph_id, kind))
             .collect();
-        let paragraphs = beir::convert_beir_documents(
-            &entry.raw_path,
-            kind,
-            Some(&corpus_ids),
-        )?;
+        let paragraphs = beir::convert_beir_documents(&entry.raw_path, kind, Some(&corpus_ids))?;
 
         if store_dir.join("meta.json").is_file() {
             upsert_sharded_paragraphs(&store_dir, &paragraphs)?;
@@ -233,7 +225,11 @@ pub fn beir_subset_store_summary() -> Result<Vec<(String, usize, usize)>> {
         let store_dir = store_dir_for(&entry.converted_path);
         if store_dir.join("meta.json").is_file() {
             let meta = read_meta(&store_dir)?;
-            summary.push((kind.id().to_string(), meta.paragraph_count, meta.question_count));
+            summary.push((
+                kind.id().to_string(),
+                meta.paragraph_count,
+                meta.question_count,
+            ));
         }
     }
     Ok(summary)

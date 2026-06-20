@@ -190,9 +190,7 @@ pub fn convert_beir_documents(
 
 pub fn corpus_doc_id(paragraph_id: &str, dataset: DatasetKind) -> Option<String> {
     let prefix = format!("{}-", dataset.source_prefix());
-    paragraph_id
-        .strip_prefix(&prefix)
-        .map(str::to_string)
+    paragraph_id.strip_prefix(&prefix).map(str::to_string)
 }
 
 fn resolve_qrels_path(raw_dir: &Path) -> Result<PathBuf> {

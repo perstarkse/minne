@@ -14,10 +14,7 @@ pub fn ingestion_openai_client(
         )?;
         Ok((Arc::new(client), Some(base_url)))
     } else {
-        Ok((
-            Arc::new(Client::with_config(OpenAIConfig::default())),
-            None,
-        ))
+        Ok((Arc::new(Client::with_config(OpenAIConfig::default())), None))
     }
 }
 

@@ -222,10 +222,8 @@ fn resolve_path(root: &Path, value: &str) -> PathBuf {
     }
 }
 
+pub use beir_mix::{beir_subset_store_summary, beir_subset_stores_ready, mix_content_checksum};
 pub use checksum::store_aggregate_checksum;
-pub use beir_mix::{
-    beir_subset_store_summary, beir_subset_stores_ready, mix_content_checksum,
-};
 pub use loader::{prebuild_catalog_slices, prepare_dataset};
 pub use store::{
     content_checksum_for_layout, detect_layout, store_dir_for, write_sharded, ConvertedLayout,

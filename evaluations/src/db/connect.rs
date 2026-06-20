@@ -132,8 +132,7 @@ pub(crate) async fn can_reuse_namespace(
     if seed.namespace != namespace || seed.database != database {
         info!(
             namespace,
-            database,
-            "Corpus manifest namespace metadata mismatch; reseeding"
+            database, "Corpus manifest namespace metadata mismatch; reseeding"
         );
         return Ok(false);
     }

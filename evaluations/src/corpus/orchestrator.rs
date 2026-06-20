@@ -701,10 +701,7 @@ mod tests {
 
         ConvertedDataset {
             generated_at: Utc::now(),
-            metadata: crate::datasets::DatasetMetadata::for_kind(
-                DatasetKind::default(),
-                false,
-            ),
+            metadata: crate::datasets::DatasetMetadata::for_kind(DatasetKind::default(), false),
             source: "src".to_string(),
             paragraphs: vec![paragraph],
         }

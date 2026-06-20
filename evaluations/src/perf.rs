@@ -91,7 +91,10 @@ fn format_duration(value: Option<u128>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{EvaluationStageTimings, PerformanceTimings, LatencyStats, StageLatency, StageLatencyBreakdown};
+    use crate::types::{
+        EvaluationStageTimings, LatencyStats, PerformanceTimings, StageLatency,
+        StageLatencyBreakdown,
+    };
     use chrono::Utc;
     use tempfile::tempdir;
 

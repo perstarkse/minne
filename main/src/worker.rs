@@ -74,9 +74,7 @@ mod tests {
         let db = Arc::clone(&services.db);
         let pipeline = Arc::new(pipeline);
         let worker =
-            tokio::spawn(async move {
-                ingestion_pipeline::run_worker_loop(db, pipeline, 0).await
-            });
+            tokio::spawn(async move { ingestion_pipeline::run_worker_loop(db, pipeline, 0).await });
 
         tokio::time::sleep(Duration::from_millis(250)).await;
         assert!(

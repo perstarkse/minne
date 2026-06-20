@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use super::{
-    checksum::store_aggregate_checksum,
-    ConvertedDataset, ConvertedParagraph, ConvertedQuestion, DatasetMetadata,
+    checksum::store_aggregate_checksum, ConvertedDataset, ConvertedParagraph, ConvertedQuestion,
+    DatasetMetadata,
 };
 use crate::slice;
 
@@ -50,11 +50,10 @@ pub fn store_dir_for(converted_path: &Path) -> PathBuf {
     converted_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
-        .join(
-            converted_path
-                .file_stem()
-                .map_or_else(|| "dataset".to_string(), |stem| stem.to_string_lossy().into()),
-        )
+        .join(converted_path.file_stem().map_or_else(
+            || "dataset".to_string(),
+            |stem| stem.to_string_lossy().into(),
+        ))
 }
 
 pub fn detect_layout(converted_path: &Path) -> ConvertedLayout {
@@ -167,8 +166,8 @@ pub fn content_checksum_for_layout(converted_path: &Path) -> Result<String> {
 
 fn load_paragraph(store_dir: &Path, paragraph_id: &str) -> Result<ConvertedParagraph> {
     let path = paragraph_path(store_dir, paragraph_id);
-    let raw = fs::read(&path)
-        .with_context(|| format!("reading sharded paragraph {}", path.display()))?;
+    let raw =
+        fs::read(&path).with_context(|| format!("reading sharded paragraph {}", path.display()))?;
     serde_json::from_slice(&raw)
         .with_context(|| format!("parsing sharded paragraph {}", path.display()))
 }
@@ -180,7 +179,10 @@ fn load_paragraphs(store_dir: &Path, paragraph_ids: &[String]) -> Result<Vec<Con
         .collect()
 }
 
-pub fn load_sharded_partial(store_dir: &Path, paragraph_ids: &[String]) -> Result<ConvertedDataset> {
+pub fn load_sharded_partial(
+    store_dir: &Path,
+    paragraph_ids: &[String],
+) -> Result<ConvertedDataset> {
     let meta = read_meta(store_dir)?;
     let mut paragraphs = load_paragraphs(store_dir, paragraph_ids)?;
     paragraphs.sort_by(|left, right| left.id.cmp(&right.id));
@@ -333,8 +335,8 @@ pub fn load_question_catalog(store_dir: &Path) -> Result<QuestionCatalog> {
         if line.trim().is_empty() {
             continue;
         }
-        let record: QuestionRecord = serde_json::from_str(&line)
-            .context("parsing question catalog record")?;
+        let record: QuestionRecord =
+            serde_json::from_str(&line).context("parsing question catalog record")?;
         entries.push(record);
     }
     Ok(QuestionCatalog { entries })

@@ -109,10 +109,7 @@ impl<'a> PipelineContext<'a> {
         let content = self.take_text_content()?;
         let analysis = self.take_analysis()?;
 
-        let (entities, relationships) = self
-            .services
-            .convert_analysis(&content, &analysis)
-            .await?;
+        let (entities, relationships) = self.services.convert_analysis(&content, &analysis).await?;
 
         let chunk_range = self.chunk_token_range();
         let chunk_overlap = self.chunk_overlap_tokens();

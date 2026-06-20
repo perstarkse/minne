@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs,
-    path::Path,
-};
+use std::{collections::HashMap, fs, path::Path};
 
 use anyhow::{anyhow, Context, Result};
 use common::storage::{db::SurrealDbClient, types::text_chunk::TextChunk};
@@ -72,9 +68,9 @@ pub async fn inspect_question(config: &Config) -> Result<()> {
                 MissingChunks::None => println!(
                     "All matching_chunk_ids exist in namespace '{ns}', database '{db_name}'"
                 ),
-                MissingChunks::Missing(list) => println!(
-                    "Missing chunks in namespace '{ns}', database '{db_name}': {list:?}"
-                ),
+                MissingChunks::Missing(list) => {
+                    println!("Missing chunks in namespace '{ns}', database '{db_name}': {list:?}");
+                }
             },
             Err(err) => {
                 println!(

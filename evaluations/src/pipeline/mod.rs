@@ -26,12 +26,7 @@ pub async fn warm_evaluation(
     config: &Config,
     content_checksum: &str,
 ) -> Result<()> {
-    let _ctx = run_through_namespace(
-        dataset,
-        config,
-        Some(content_checksum.to_string()),
-    )
-    .await?;
+    let _ctx = run_through_namespace(dataset, config, Some(content_checksum.to_string())).await?;
     Ok(())
 }
 
@@ -40,11 +35,7 @@ pub async fn run_evaluation(
     config: &Config,
     content_checksum: Option<&str>,
 ) -> Result<EvaluationSummary> {
-    let mut ctx = EvaluationContext::new(
-        dataset,
-        config,
-        content_checksum.map(str::to_string),
-    );
+    let mut ctx = EvaluationContext::new(dataset, config, content_checksum.map(str::to_string));
     stages::prepare_slice(&mut ctx).await?;
     stages::prepare_db(&mut ctx).await?;
     stages::prepare_corpus(&mut ctx).await?;

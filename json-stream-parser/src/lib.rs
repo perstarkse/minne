@@ -219,7 +219,7 @@ fn add_char_into_object(
             }
         }
         (&Value::Bool(true) | &Value::Bool(false), &ObjectStatus::Scalar { .. }, 'e')
-| (&Value::Object(_), &ObjectStatus::ValueQuoteClose, '}') => {
+        | (&Value::Object(_), &ObjectStatus::ValueQuoteClose, '}') => {
             *current_status = ObjectStatus::Closed;
         }
 

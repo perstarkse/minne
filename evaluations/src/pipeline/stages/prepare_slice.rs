@@ -3,7 +3,10 @@ use std::time::Instant;
 use anyhow::Context;
 use tracing::info;
 
-use crate::{db::{default_database, default_namespace}, slice};
+use crate::{
+    db::{default_database, default_namespace},
+    slice,
+};
 
 use super::super::context::{EvalStage, EvaluationContext};
 

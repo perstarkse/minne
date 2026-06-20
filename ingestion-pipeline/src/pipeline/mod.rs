@@ -186,11 +186,7 @@ impl IngestionPipeline {
     }
 
     async fn artifacts_persisted(&self, task_id: &str) -> Result<bool, AppError> {
-        Ok(self
-            .db
-            .get_item::<TextContent>(task_id)
-            .await?
-            .is_some())
+        Ok(self.db.get_item::<TextContent>(task_id).await?.is_some())
     }
 
     async fn finalize_succeeded(&self, task: &IngestionTask) -> Result<(), AppError> {
@@ -379,8 +375,7 @@ mod finalize_tests {
             persist_max_backoff_ms: 10,
             ..IngestionTuning::default()
         };
-        let pipeline =
-            IngestionPipeline::with_services(Arc::new(db.clone()), config, services)?;
+        let pipeline = IngestionPipeline::with_services(Arc::new(db.clone()), config, services)?;
 
         let task = reserve_task(
             &db,
@@ -397,9 +392,7 @@ mod finalize_tests {
         let processing = task.mark_processing(&db).await?;
 
         db.client
-            .query(
-                "UPDATE type::thing('ingestion_task', $id) SET worker_id = $wrong_worker;",
-            )
+            .query("UPDATE type::thing('ingestion_task', $id) SET worker_id = $wrong_worker;")
             .bind(("id", processing.id.clone()))
             .bind(("wrong_worker", "wrong-worker"))
             .await?;
@@ -410,9 +403,7 @@ mod finalize_tests {
             sleep(Duration::from_millis(5)).await;
             let _ = db_fix
                 .client
-                .query(
-                    "UPDATE type::thing('ingestion_task', $id) SET worker_id = $worker_id;",
-                )
+                .query("UPDATE type::thing('ingestion_task', $id) SET worker_id = $worker_id;")
                 .bind(("id", task_id))
                 .bind(("worker_id", worker_id))
                 .await;
@@ -420,10 +411,7 @@ mod finalize_tests {
 
         pipeline.finalize_succeeded(&processing).await?;
 
-        let stored: IngestionTask = db
-            .get_item(&processing.id)
-            .await?
-            .context("task stored")?;
+        let stored: IngestionTask = db.get_item(&processing.id).await?.context("task stored")?;
         assert_eq!(stored.state, TaskState::Succeeded);
 
         Ok(())
