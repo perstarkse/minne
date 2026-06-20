@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use async_openai::types::{
+use async_openai::types::chat::{
     ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
     CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
     ResponseFormatJsonSchema,
@@ -111,7 +111,7 @@ impl DefaultPipelineServices {
             json_schema: ResponseFormatJsonSchema {
                 description: Some("Structured analysis of the submitted content".into()),
                 name: "content_analysis".into(),
-                schema: Some(get_ingress_analysis_schema()),
+                schema: get_ingress_analysis_schema(),
                 strict: Some(true),
             },
         };
@@ -358,7 +358,7 @@ mod tests {
     use std::sync::Arc;
 
     use anyhow::Context;
-    use async_openai::{config::OpenAIConfig, types::ChatCompletionRequestMessage, Client};
+    use async_openai::{config::OpenAIConfig, types::chat::ChatCompletionRequestMessage, Client};
     use common::{
         storage::{
             db::SurrealDbClient, store::StorageManager, types::system_settings::SystemSettingsPatch,
@@ -375,12 +375,12 @@ mod tests {
     use common::error::AppError;
 
     fn system_prompt_from_request(
-        request: &async_openai::types::CreateChatCompletionRequest,
+        request: &async_openai::types::chat::CreateChatCompletionRequest,
     ) -> anyhow::Result<String> {
         let Some(ChatCompletionRequestMessage::System(system)) = request.messages.first() else {
             anyhow::bail!("expected first message to be system");
         };
-        let async_openai::types::ChatCompletionRequestSystemMessageContent::Text(text) =
+        let async_openai::types::chat::ChatCompletionRequestSystemMessageContent::Text(text) =
             &system.content
         else {
             anyhow::bail!("unexpected system message content: {:?}", system.content);

@@ -1,4 +1,4 @@
-use async_openai::types::{AudioResponseFormat, CreateTranscriptionRequestArgs};
+use async_openai::types::audio::{AudioResponseFormat, CreateTranscriptionRequestArgs};
 use common::{
     error::AppError,
     storage::{db::SurrealDbClient, types::system_settings::SystemSettings},
@@ -21,7 +21,8 @@ pub async fn transcribe_audio_file(
 
     let response = openai_client
         .audio()
-        .transcribe(request)
+        .transcription()
+        .create(request)
         .await
         .map_err(|e| AppError::Processing(format!("Audio transcription failed: {e}")))?;
     Ok(response.text)

@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Fix: added pre-commit hooks to further maintain code consistency.
+- Security: updated some deps because dependabot told me, good bot.
+- Security: bump `async-openai` to 0.41.1 (feature-gated types, transcription API rename; removes `backoff` transitive dep)
 - Refactor: deduplicated test database setup across common/src/storage/.
 - Refactor: split knowledge-graph.js monolith into focused functions.
 - Evaluations: simplified crate layout — linear pipeline, sharded-only converted store, in-memory ingestion, `db/` and `cli/` modules; namespace reuse state in corpus manifest (removed `cache/snapshots/`); no legacy JSON/history compatibility (re-run `--warm` after upgrade)
