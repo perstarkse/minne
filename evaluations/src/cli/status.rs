@@ -103,10 +103,16 @@ pub async fn collect_status(config: &Config) -> Result<EvalStatus> {
         ready: slice_manifest
             .as_ref()
             .is_some_and(|manifest| slice::manifest_is_complete(manifest, &slice_config)),
-        path: manifest_path.as_ref().map(|path| path.display().to_string()),
+        path: manifest_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
         cases: slice_manifest.as_ref().map(|manifest| manifest.case_count),
-        positives: slice_manifest.as_ref().map(|manifest| manifest.positive_paragraphs),
-        negatives: slice_manifest.as_ref().map(|manifest| manifest.negative_paragraphs),
+        positives: slice_manifest
+            .as_ref()
+            .map(|manifest| manifest.positive_paragraphs),
+        negatives: slice_manifest
+            .as_ref()
+            .map(|manifest| manifest.negative_paragraphs),
     };
 
     let beir_paragraph_ids = slice_manifest.as_ref().map(|manifest| {
@@ -159,17 +165,9 @@ pub async fn collect_status(config: &Config) -> Result<EvalStatus> {
         }
     };
 
-    let namespace = config
-        .database
-        .db_namespace
-        .clone()
-        .unwrap_or_else(|| {
-            default_namespace(
-                config.dataset.id(),
-                config.limit,
-                config.slice.as_deref(),
-            )
-        });
+    let namespace = config.database.db_namespace.clone().unwrap_or_else(|| {
+        default_namespace(config.dataset.id(), config.limit, config.slice.as_deref())
+    });
     let database = config
         .database
         .db_database
@@ -183,16 +181,17 @@ pub async fn collect_status(config: &Config) -> Result<EvalStatus> {
             .and_then(|manifest| manifest.metadata.namespace_seed)
     });
 
-    let (seeded, namespace_seed_recorded) = match connect_eval_db(config, &namespace, &database).await {
-        Ok(db) => {
-            let has_corpus = namespace_has_corpus(&db).await.unwrap_or(false);
-            (has_corpus, namespace_seed.is_some())
-        }
-        Err(err) => {
-            notes.push(format!("SurrealDB unavailable: {err}"));
-            (false, false)
-        }
-    };
+    let (seeded, namespace_seed_recorded) =
+        match connect_eval_db(config, &namespace, &database).await {
+            Ok(db) => {
+                let has_corpus = namespace_has_corpus(&db).await.unwrap_or(false);
+                (has_corpus, namespace_seed.is_some())
+            }
+            Err(err) => {
+                notes.push(format!("SurrealDB unavailable: {err}"));
+                (false, false)
+            }
+        };
 
     let query_ready = converted_ready
         && slice_ledger.ready
@@ -281,11 +280,7 @@ pub fn print_status(status: &EvalStatus) {
     );
     println!(
         "Query-ready: {}",
-        if status.query_ready {
-            "yes"
-        } else {
-            "no"
-        }
+        if status.query_ready { "yes" } else { "no" }
     );
     for note in &status.notes {
         println!("Note: {note}");

@@ -133,15 +133,15 @@ pub fn large_artifacts(
     }
 }
 
-pub async fn persist(
-    db: &SurrealDbClient,
-    artifacts: PipelineArtifacts,
-) -> Result<(), AppError> {
+pub async fn persist(db: &SurrealDbClient, artifacts: PipelineArtifacts) -> Result<(), AppError> {
     persist_artifacts(db, &tuning(), TEST_EMBEDDING_DIM, artifacts).await?;
     Ok(())
 }
 
-pub async fn count_chunks_for_source(db: &SurrealDbClient, source_id: &str) -> anyhow::Result<usize> {
+pub async fn count_chunks_for_source(
+    db: &SurrealDbClient,
+    source_id: &str,
+) -> anyhow::Result<usize> {
     let chunks: Vec<TextChunk> = db
         .client
         .query("SELECT * FROM text_chunk WHERE source_id = $source_id;")

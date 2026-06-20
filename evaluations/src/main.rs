@@ -1,7 +1,7 @@
 mod args;
-mod context_stats;
 mod cases;
 mod cli;
+mod context_stats;
 mod corpus;
 mod datasets;
 mod db;
@@ -129,10 +129,7 @@ async fn async_main() -> anyhow::Result<()> {
         let store_dir = datasets::store_dir_for(&parsed.config.converted_dataset_path);
         datasets::write_sharded(&dataset, &store_dir)?;
         datasets::prebuild_catalog_slices(&dataset, &parsed.config)?;
-        println!(
-            "Converted dataset written under {}",
-            store_dir.display()
-        );
+        println!("Converted dataset written under {}", store_dir.display());
         return Ok(());
     }
 
@@ -141,14 +138,13 @@ async fn async_main() -> anyhow::Result<()> {
     }
 
     info!(dataset = dataset_kind.id(), "Preparing converted dataset");
-    let loaded = crate::datasets::prepare_dataset(dataset_kind, &parsed.config).with_context(
-        || {
+    let loaded =
+        crate::datasets::prepare_dataset(dataset_kind, &parsed.config).with_context(|| {
             format!(
                 "preparing converted dataset at {}",
                 parsed.config.converted_dataset_path.display()
             )
-        },
-    )?;
+        })?;
 
     info!(
         questions = loaded

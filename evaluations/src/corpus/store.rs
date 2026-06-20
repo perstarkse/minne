@@ -10,11 +10,8 @@ use chrono::{DateTime, Utc};
 use common::storage::{
     db::SurrealDbClient,
     types::{
-        knowledge_entity::KnowledgeEntity,
-        knowledge_relationship::KnowledgeRelationship,
-        text_chunk::TextChunk,
-        text_content::TextContent,
-        StoredObject,
+        knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
+        text_chunk::TextChunk, text_content::TextContent, StoredObject,
     },
 };
 use ingestion_pipeline::{persist_artifacts, IngestionTuning, PipelineArtifacts};

@@ -60,12 +60,7 @@ async fn main() -> anyhow::Result<()> {
             worker_embedding,
         )?);
 
-        run_worker_loop(
-            worker_db,
-            ingestion_pipeline,
-            index_rebuild_interval_secs,
-        )
-        .await
+        run_worker_loop(worker_db, ingestion_pipeline, index_rebuild_interval_secs).await
     });
 
     tokio::select! {

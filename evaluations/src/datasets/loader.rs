@@ -186,9 +186,7 @@ fn slice_config_for_catalog_entry<'a>(
         limit: slice_entry.limit,
         corpus_limit: slice_entry.corpus_limit,
         slice_seed: slice_entry.seed.unwrap_or(config.slice_seed),
-        llm_mode: slice_entry
-            .include_unanswerable
-            .unwrap_or(config.llm_mode),
+        llm_mode: slice_entry.include_unanswerable.unwrap_or(config.llm_mode),
         negative_multiplier: slice_entry
             .negative_multiplier
             .unwrap_or(config.negative_multiplier),

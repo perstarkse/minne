@@ -14,9 +14,7 @@ use tracing::{info, warn};
 
 use crate::{
     args::Config,
-    datasets::{
-        ConvertedDataset, ConvertedParagraph, ConvertedQuestion, DatasetKind,
-    },
+    datasets::{ConvertedDataset, ConvertedParagraph, ConvertedQuestion, DatasetKind},
 };
 
 mod beir;
@@ -244,8 +242,7 @@ pub fn resolve_slice<'a>(
             );
             return Ok(resolved);
         }
-        let resolved =
-            materialize_slice_ledger(dataset, config, &index, slice_arg, path)?;
+        let resolved = materialize_slice_ledger(dataset, config, &index, slice_arg, path)?;
         info!(
             slice = %resolved.manifest.slice_id,
             path = %resolved.path.display(),
@@ -927,10 +924,7 @@ pub fn cached_manifest_path(config: &crate::args::Config) -> Option<PathBuf> {
 }
 
 pub fn manifest_is_complete(manifest: &SliceManifest, config: &SliceConfig<'_>) -> bool {
-    let requested_limit = config
-        .limit
-        .unwrap_or(manifest.case_count.max(1))
-        .max(1);
+    let requested_limit = config.limit.unwrap_or(manifest.case_count.max(1)).max(1);
     if manifest.case_count < requested_limit {
         return false;
     }
@@ -942,7 +936,9 @@ pub fn manifest_is_complete(manifest: &SliceManifest, config: &SliceConfig<'_>) 
     let desired_negatives = desired_negative_target(
         manifest.positive_paragraphs,
         requested_corpus,
-        manifest.total_paragraphs.max(manifest.positive_paragraphs.max(1)),
+        manifest
+            .total_paragraphs
+            .max(manifest.positive_paragraphs.max(1)),
         config.negative_multiplier,
     );
     manifest.negative_paragraphs >= desired_negatives
@@ -978,8 +974,7 @@ pub fn ledger_target(config: &Config) -> Option<usize> {
 pub fn grow_slice(dataset: &ConvertedDataset, config: &Config) -> Result<()> {
     let ledger_limit = ledger_target(config);
     let slice_settings = slice_config_with_limit(config, ledger_limit);
-    let slice =
-        resolve_slice(dataset, &slice_settings).context("resolving dataset slice")?;
+    let slice = resolve_slice(dataset, &slice_settings).context("resolving dataset slice")?;
     info!(
         slice = slice.manifest.slice_id.as_str(),
         cases = slice.manifest.case_count,

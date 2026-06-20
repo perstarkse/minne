@@ -4,18 +4,31 @@
   config,
   inputs,
   ...
-}:
-let
+}: let
   ortVersion = lib.removeSuffix "\n" (builtins.readFile "${toString ./.}/ort-version");
   _ortVersionCheck =
     if pkgs.onnxruntime.version == ortVersion
     then null
-    else
-      throw "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ort-version (${ortVersion})";
+    else throw "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ort-version (${ortVersion})";
 in {
   devenv.warnOnNewVersion = false;
 
   cachix.enable = false;
+
+  git-hooks.install.enable = true;
+  git-hooks.hooks = {
+    rustfmt.enable = true;
+    clippy = {
+      enable = true;
+      settings.allFeatures = true;
+    };
+  };
+
+  # Use pinned Rust toolchain from languages.rust for git-hooks wrappers
+  # (git-hooks.nix defaults to nixpkgs's cargo/clippy/rustfmt, ignoring the pin)
+  git-hooks.tools.cargo = lib.mkDefault config.languages.rust.toolchain.cargo;
+  git-hooks.tools.clippy = lib.mkDefault config.languages.rust.toolchain.clippy;
+  git-hooks.tools.rustfmt = lib.mkDefault config.languages.rust.toolchain.rustfmt;
 
   packages = [
     pkgs.openssl
