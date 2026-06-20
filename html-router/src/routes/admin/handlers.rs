@@ -1,4 +1,4 @@
-use async_openai::types::ListModelResponse;
+use async_openai::types::models::ListModelResponse;
 use axum::{
     extract::{Query, State},
     Form,

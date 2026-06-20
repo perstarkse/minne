@@ -9,7 +9,7 @@ use std::{
 use serde::Serialize;
 use tracing::warn;
 
-use async_openai::{types::CreateEmbeddingRequestArgs, Client};
+use async_openai::{types::embeddings::CreateEmbeddingRequestArgs, Client};
 use fastembed::{EmbeddingModel, ModelTrait, TextEmbedding, TextInitOptions};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 

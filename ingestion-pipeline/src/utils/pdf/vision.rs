@@ -1,6 +1,6 @@
 //! Vision-LLM transcription of rendered PDF pages into Markdown.
 
-use async_openai::types::{
+use async_openai::types::chat::{
     ChatCompletionRequestMessageContentPartImageArgs,
     ChatCompletionRequestMessageContentPartTextArgs, ChatCompletionRequestUserMessageArgs,
     CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ImageDetail, ImageUrlArgs,

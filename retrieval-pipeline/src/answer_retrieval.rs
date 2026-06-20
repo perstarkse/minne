@@ -2,7 +2,7 @@
 
 use async_openai::{
     error::OpenAIError,
-    types::{
+    types::chat::{
         ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
         CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ResponseFormat,
         ResponseFormatJsonSchema,
@@ -107,7 +107,7 @@ pub fn create_chat_request(
         json_schema: ResponseFormatJsonSchema {
             description: Some("Query answering AI".into()),
             name: "query_answering_with_uuids".into(),
-            schema: Some(get_query_response_schema()),
+            schema: get_query_response_schema(),
             strict: Some(true),
         },
     };

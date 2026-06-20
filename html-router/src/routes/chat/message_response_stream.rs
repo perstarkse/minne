@@ -234,7 +234,7 @@ fn build_chat_event_stream(
     state: HtmlState,
     openai_stream: impl Stream<
             Item = Result<
-                async_openai::types::CreateChatCompletionStreamResponse,
+                async_openai::types::chat::CreateChatCompletionStreamResponse,
                 async_openai::error::OpenAIError,
             >,
         > + Send
@@ -342,7 +342,7 @@ async fn prepare_chat_request(
     history: &[Message],
 ) -> Result<
     (
-        async_openai::types::CreateChatCompletionRequest,
+        async_openai::types::chat::CreateChatCompletionRequest,
         Vec<String>,
     ),
     SseResponse,
