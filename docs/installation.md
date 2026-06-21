@@ -12,13 +12,13 @@ cd minne
 docker compose up -d
 ```
 
-The included `docker-compose.yml` handles SurrealDB and Chromium automatically.
+The included `docker-compose.yml` handles SurrealDB automatically.
 
 **Required:** Set your `OPENAI_API_KEY` in `docker-compose.yml` before starting.
 
 ## Nix
 
-Run Minne directly with Nix (includes Chromium):
+Run Minne directly with Nix:
 
 ```bash
 nix run 'github:perstarkse/minne#main'
@@ -31,8 +31,9 @@ Configure via environment variables or a `config.yaml` file. See [Configuration]
 Download binaries for Windows, macOS, and Linux from [GitHub Releases](https://github.com/perstarkse/minne/releases/latest).
 
 **Requirements:**
+
 - SurrealDB instance (local or remote)
-- Chromium (for web scraping)
+- `libEGL` + `libfontconfig` (for servo-fetch web scraping)
 
 ## Build from Source
 
@@ -45,9 +46,10 @@ cargo build --release --bin main
 The binary will be at `target/release/main`.
 
 **Requirements:**
+
 - Rust toolchain
 - SurrealDB accessible at configured address
-- Chromium in PATH
+- `libEGL` + `libfontconfig` for servo-fetch (web scraping) — bundled in Nix and Docker images
 
 ## Process Modes
 

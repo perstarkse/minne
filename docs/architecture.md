@@ -8,7 +8,7 @@
 | Frontend | HTML + HTMX + minimal JS |
 | Database | SurrealDB (graph, document, vector) |
 | AI | OpenAI-compatible API |
-| Web Processing | Headless Chromium |
+| Web Processing | Servo engine (servo-fetch) + PDFium |
 
 ## Crate Structure
 

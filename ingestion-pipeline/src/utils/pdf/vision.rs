@@ -116,7 +116,7 @@ async fn transcribe_batch(
             );
             if attempt == last_attempt {
                 return Err(AppError::Processing(
-                    "Vision model failed to transcribe PDF page contents".into(),
+                    "vision model failed to transcribe PDF page contents".into(),
                 ));
             }
             continue;
@@ -126,7 +126,7 @@ async fn transcribe_batch(
     }
 
     Err(AppError::Processing(
-        "Vision model did not return usable Markdown".into(),
+        "vision model did not return usable Markdown".into(),
     ))
 }
 

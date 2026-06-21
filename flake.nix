@@ -50,16 +50,16 @@
         doCheck = false;
 
         nativeBuildInputs = [pkgs.pkg-config pkgs.rustfmt pkgs.makeWrapper];
-        buildInputs = [pkgs.openssl pkgs.chromium pkgs.onnxruntime];
+        buildInputs = [pkgs.openssl pkgs.libglvnd pkgs.onnxruntime];
 
         postInstall = ''
           wrapProgram $out/bin/main \
-            --set CHROME ${pkgs.chromium}/bin/chromium \
+            --prefix LD_LIBRARY_PATH : ${pkgs.libglvnd}/lib \
             --set ORT_DYLIB_PATH ${pkgs.onnxruntime}/lib/libonnxruntime.${libExt}
           for b in worker server; do
             if [ -x "$out/bin/$b" ]; then
               wrapProgram $out/bin/$b \
-                --set CHROME ${pkgs.chromium}/bin/chromium \
+                --prefix LD_LIBRARY_PATH : ${pkgs.libglvnd}/lib \
                 --set ORT_DYLIB_PATH ${pkgs.onnxruntime}/lib/libonnxruntime.${libExt}
             fi
           done

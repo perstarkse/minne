@@ -10,7 +10,7 @@
 
 Minne automatically processes saved content:
 
-1. **Web scraping** extracts readable text from URLs (via headless Chrome)
+1. **Web scraping** extracts readable text from URLs (via embedded Servo engine)
 2. **Text analysis** identifies key concepts and relationships
 3. **Graph creation** builds connections between related content
 4. **Embedding generation** enables semantic search
@@ -43,6 +43,7 @@ Optional **reranking** can rescore fused chunk lists with a cross-encoder model;
 When enabled, retrieval results are rescored with a cross-encoder model for improved relevance. Powered by [fastembed-rs](https://github.com/Anush008/fastembed-rs).
 
 **Trade-offs:**
+
 - Downloads ~1.1 GB of model data
 - Adds latency per query
 - Potentially improves answer quality, see [blog post](https://blog.stark.pub/posts/eval-retrieval-refactor/)
@@ -52,6 +53,7 @@ Enable via `RERANKING_ENABLED=true`. See [Configuration](./configuration.md).
 ## Multi-Format Ingestion
 
 Supported content types:
+
 - Plain text and notes
 - URLs (web pages)
 - PDF documents

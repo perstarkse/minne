@@ -7,13 +7,18 @@ members = [
   "ingestion-pipeline",
   "retrieval-pipeline",
   "json-stream-parser",
-  "evaluations"
+  "evaluations",
 ]
 resolver = "3"
 
 [workspace.dependencies]
 anyhow = "1.0.94"
-async-openai = { version = "0.41.1", features = ["chat-completion", "embedding", "audio", "model"] }
+async-openai = { version = "0.41.1", features = [
+  "chat-completion",
+  "embedding",
+  "audio",
+  "model",
+] }
 async-stream = "0.3.6"
 async-trait = "0.1.88"
 axum-htmx = "0.7.0"
@@ -27,7 +32,6 @@ chrono = { version = "0.4.39", features = ["serde"] }
 config = "0.15.4"
 dom_smoothie = "0.10.0"
 futures = "0.3.31"
-headless_chrome = "1.0.17"
 include_dir = "0.7.4"
 mime = "0.3.17"
 mime_guess = "2.0.5"
@@ -35,7 +39,7 @@ minijinja-autoreload = "2.5.0"
 minijinja-contrib = { version = "2.6.0", features = ["datetime", "timezone"] }
 minijinja-embed = { version = "2.8.0" }
 minijinja = { version = "2.5.0", features = ["loader", "multi_template"] }
-reqwest = {version = "0.12.12", features = ["charset", "json"]}
+reqwest = { version = "0.12.12", features = ["charset", "json"] }
 serde_json = "1.0.128"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10.8"
@@ -61,14 +65,24 @@ bytes = "1.7.1"
 state-machines = "0.9"
 pdf-extract = "0.9"
 lopdf = "0.32"
-fastembed = { version = "5.2.0", default-features = false, features = ["hf-hub-native-tls", "ort-load-dynamic"] }
+pdfium-auto = "0.3"
+pdfium-render = "0.8"
+servo-fetch = "0.13"
+tendril = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+fastembed = { version = "5.2.0", default-features = false, features = [
+  "hf-hub-native-tls",
+  "ort-load-dynamic",
+] }
 
 [profile.dist]
 inherits = "release"
 lto = "thin"
 
 [workspace.lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(feature, values(\"inspect\"))"] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+  "cfg(feature, values(\"inspect\"))",
+] }
 
 [workspace.lints.clippy]
 # Performance-focused lints
@@ -118,4 +132,3 @@ needless_raw_string_hashes = "allow"
 multiple_bound_locations = "allow"
 cargo_common_metadata = "allow"
 multiple-crate-versions = "allow"
-

@@ -14,18 +14,18 @@ COPY html-router/Cargo.toml ./html-router/
 COPY ingestion-pipeline/Cargo.toml ./ingestion-pipeline/
 COPY json-stream-parser/Cargo.toml ./json-stream-parser/
 COPY main/Cargo.toml ./main/
-RUN cargo build --release --bin main --features ingestion-pipeline/docker || true
+RUN cargo build --release --bin main || true
 
 # Build
 COPY . .
-RUN cargo build --release --bin main --features ingestion-pipeline/docker
+RUN cargo build --release --bin main
 
 # === Runtime ===
 FROM debian:bookworm-slim
 
-# Chromium + runtime deps + OpenMP for ORT
+# Servo engine (for servo-fetch web scraping) + runtime deps + OpenMP for ORT
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium libnss3 libasound2 libgbm1 libxshmfence1 \
+    libegl1 libegl-mesa0 libgles2 libfontconfig1 libfreetype6 \
     ca-certificates fonts-dejavu fonts-noto-color-emoji \
     libgomp1 libstdc++6 curl \
   && rm -rf /var/lib/apt/lists/*
@@ -39,8 +39,7 @@ RUN ORT_VERSION="${ORT_VERSION:-$(tr -d '[:space:]' < /tmp/ort-version)}" && \
       "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" && \
     tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 && rm /tmp/ort.tgz
 
-ENV CHROME_BIN=/usr/bin/chromium \
-    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     ORT_DYLIB_PATH=/opt/onnxruntime/lib/libonnxruntime.so
 
 # Non-root

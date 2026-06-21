@@ -1,7 +1,9 @@
 //! Fast-path PDF text extraction and Markdown reflow heuristics.
 //!
-//! These are pure (non-IO, non-Chrome) helpers used before falling back to the
-//! vision pipeline, plus the Markdown normalization applied to both paths.
+//! Pure text-extraction helpers that run before falling back to the vision pipeline,
+//! plus the Markdown normalization applied to both paths. The fast path uses
+//! `pdf-extract` to pull embedded text layers directly, avoiding the cost of
+//! page-by-page rasterization for well-structured PDFs.
 
 use common::error::AppError;
 
@@ -15,7 +17,7 @@ pub(super) async fn try_fast_path(pdf_bytes: Vec<u8>) -> Result<Option<String>, 
         pdf_extract::extract_text_from_mem(&pdf_bytes).map(|s| s.trim().to_string())
     })
     .await?
-    .map_err(|err| AppError::Processing(format!("Failed to extract text from PDF: {err}")))?;
+    .map_err(|err| AppError::Processing(format!("failed to extract text from PDF: {err}")))?;
 
     if extraction.is_empty() {
         return Ok(None);
@@ -28,7 +30,7 @@ pub(super) async fn try_fast_path(pdf_bytes: Vec<u8>) -> Result<Option<String>, 
     Ok(Some(normalize_fast_text(&extraction)))
 }
 
-/// Heuristic that determines whether the fast-path text looks like well-formed prose.
+/// Heuristic that determines whether the fast-path text looks like readable text.
 #[allow(clippy::cast_precision_loss)]
 fn looks_good_enough(text: &str) -> bool {
     if text.len() < FAST_PATH_MIN_LEN {

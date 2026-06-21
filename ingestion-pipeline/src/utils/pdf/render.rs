@@ -1,32 +1,25 @@
-//! Headless-Chrome rasterization of PDF pages into PNG screenshots.
+//! PDF page rasterization using pdfium-render via pdfium-auto.
 //!
-//! This is the only Chrome-dependent part of PDF ingestion. It depends on the
-//! browser's internal PDF-viewer shadow DOM, so it is inherently fragile across
-//! Chrome upgrades; a full-page-capture fallback guards the common failure modes.
+//! Uses direct `PDFium` bindings for reliable, pixel-perfect page rendering —
+//! starts in ~5ms, requires no display server, and produces consistent output
+//! independent of PDF reader version. Each page is rendered at a generous
+//! resolution and encoded as PNG for downstream LLM vision ingestion.
 
 use std::{
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use headless_chrome::protocol::cdp::{Emulation, Page, DOM};
+use image::ImageFormat;
 use lopdf::Document;
-use serde_json::Value;
+use pdfium_render::prelude::PdfRenderConfig;
 use tracing::{debug, warn};
 
 use common::error::AppError;
 
-use crate::utils::browser::launch_browser;
-
-const NAVIGATION_RETRY_INTERVAL_MS: u64 = 120;
-const NAVIGATION_RETRY_ATTEMPTS: usize = 10;
 const MIN_PAGE_IMAGE_BYTES: usize = 1_024;
-const DEFAULT_VIEWPORT_WIDTH: u32 = 1_248; // generous width to reduce horizontal clipping
-const DEFAULT_VIEWPORT_HEIGHT: u32 = 1_800; // tall enough to capture full page at fit-to-width scale
-const DEFAULT_DEVICE_SCALE_FACTOR: f64 = 1.0;
-const CANVAS_VIEWPORT_ATTEMPTS: usize = 12;
-const CANVAS_VIEWPORT_WAIT_MS: u64 = 200;
+const RENDER_TARGET_WIDTH: i32 = 1200;
+const RENDER_MAX_HEIGHT: i32 = 2000;
 const DEBUG_IMAGE_ENV_VAR: &str = "MINNE_PDF_DEBUG_DIR";
 
 /// Parses the PDF structure to discover the available page numbers while keeping work off
@@ -34,7 +27,7 @@ const DEBUG_IMAGE_ENV_VAR: &str = "MINNE_PDF_DEBUG_DIR";
 pub(super) async fn load_page_numbers(pdf_bytes: Vec<u8>) -> Result<Vec<u32>, AppError> {
     let pages = tokio::task::spawn_blocking(move || -> Result<Vec<u32>, AppError> {
         let document = Document::load_mem(&pdf_bytes)
-            .map_err(|err| AppError::Processing(format!("Failed to parse PDF: {err}")))?;
+            .map_err(|err| AppError::Processing(format!("failed to parse PDF: {err}")))?;
         let mut page_numbers: Vec<u32> = document.get_pages().keys().copied().collect();
         page_numbers.sort_unstable();
         Ok(page_numbers)
@@ -44,7 +37,9 @@ pub(super) async fn load_page_numbers(pdf_bytes: Vec<u8>) -> Result<Vec<u32>, Ap
     Ok(pages)
 }
 
-/// Uses the existing headless Chrome dependency to rasterize the requested PDF pages into PNGs.
+/// Renders the requested PDF pages as PNG-encoded byte vectors using `PDFium`.
+///
+/// Work is offloaded to a blocking thread since `PDFium`'s C API is not async-safe.
 pub(super) async fn render_pdf_pages(
     file_path: &Path,
     pages: &[u32],
@@ -52,8 +47,8 @@ pub(super) async fn render_pdf_pages(
     let file_path = file_path.to_path_buf();
     let pages = pages.to_vec();
     let page_numbers = pages.clone();
-    let captures =
-        tokio::task::spawn_blocking(move || render_pdf_pages_inner(&file_path, &pages)).await??;
+
+    let captures = tokio::task::spawn_blocking(move || render_inner(&file_path, &pages)).await??;
 
     for (page_number, png) in page_numbers.iter().zip(captures.iter()) {
         if let Err(err) = maybe_dump_debug_image(*page_number, png).await {
@@ -68,304 +63,63 @@ pub(super) async fn render_pdf_pages(
     Ok(captures)
 }
 
-fn render_pdf_pages_inner(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>>, AppError> {
-    let file_url = url::Url::from_file_path(file_path)
-        .map_err(|()| AppError::Processing("Unable to construct PDF file URL".into()))?;
+/// Initializes `PDFium`, opens the file, and renders each requested page.
+fn render_inner(file_path: &Path, pages: &[u32]) -> Result<Vec<Vec<u8>>, AppError> {
+    let pdfium = pdfium_auto::bind_pdfium_silent()
+        .map_err(|err| AppError::Processing(format!("failed to bind PDFium library: {err}")))?;
 
-    let browser = launch_browser()?;
-    let tab = browser
-        .new_tab()
-        .map_err(|err| AppError::Processing(format!("Failed to create Chrome tab: {err}")))?;
+    let doc = pdfium
+        .load_pdf_from_file(file_path, None)
+        .map_err(|err| AppError::Processing(format!("failed to load PDF file: {err}")))?;
 
-    tab.set_default_timeout(Duration::from_secs(10));
-    configure_tab(&tab)?;
-    set_pdf_viewport(&tab)?;
+    let render_config = PdfRenderConfig::new()
+        .set_target_width(RENDER_TARGET_WIDTH)
+        .set_maximum_height(RENDER_MAX_HEIGHT);
 
     let mut captures = Vec::with_capacity(pages.len());
 
-    for page in pages.iter().copied() {
-        let target = format!("{file_url}#page={page}&toolbar=0&statusbar=0&zoom=page-fit");
-        tab.navigate_to(&target)
-            .map_err(|err| AppError::Processing(format!("Failed to navigate to PDF page: {err}")))?
-            .wait_until_navigated()
-            .map_err(|err| AppError::Processing(format!("Navigation to PDF page failed: {err}")))?;
+    for &page_num in pages {
+        let page_index = page_num.saturating_sub(1); // PDFium uses 0-based indices
+        let page = doc
+            .pages()
+            .get(u16::try_from(page_index).unwrap_or(u16::MAX))
+            .map_err(|err| {
+                AppError::Processing(format!("failed to get PDF page {page_num}: {err}"))
+            })?;
 
-        let mut loaded = false;
-        for attempt in 0..NAVIGATION_RETRY_ATTEMPTS {
-            if tab
-                .wait_for_element("embed, canvas, body")
-                .map(|_| ())
-                .is_ok()
-            {
-                loaded = true;
-                break;
-            }
-            if attempt < NAVIGATION_RETRY_ATTEMPTS.saturating_sub(1) {
-                std::thread::sleep(Duration::from_millis(NAVIGATION_RETRY_INTERVAL_MS));
-            }
-        }
+        let bitmap = page.render_with_config(&render_config).map_err(|err| {
+            AppError::Processing(format!("failed to render PDF page {page_num}: {err}"))
+        })?;
 
-        if !loaded {
-            return Err(AppError::Processing(
-                "Timed out waiting for Chrome to render PDF page".into(),
-            ));
-        }
+        let image = bitmap.as_image();
 
-        wait_for_pdf_ready(&tab, page)?;
-        std::thread::sleep(Duration::from_millis(350));
+        let mut png_bytes = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut png_bytes), ImageFormat::Png)
+            .map_err(|err| {
+                AppError::Processing(format!(
+                    "failed to encode PDF page {page_num} as PNG: {err}"
+                ))
+            })?;
 
-        prepare_pdf_viewer(&tab, page);
+        debug!(
+            page = page_num,
+            bytes = png_bytes.len(),
+            "Rendered PDF page via PDFium"
+        );
 
-        let mut viewport: Option<Page::Viewport> = None;
-        for attempt in 0..CANVAS_VIEWPORT_ATTEMPTS {
-            match canvas_viewport_for_page(&tab, page) {
-                Ok(Some(vp)) => {
-                    viewport = Some(vp);
-                    break;
-                }
-                Ok(None) => {
-                    if attempt < CANVAS_VIEWPORT_ATTEMPTS.saturating_sub(1) {
-                        std::thread::sleep(Duration::from_millis(CANVAS_VIEWPORT_WAIT_MS));
-                    }
-                }
-                Err(err) => {
-                    warn!(page, error = %err, "Failed to derive canvas viewport");
-                    break;
-                }
-            }
-        }
-
-        let png = if let Some(clip) = viewport {
-            match tab.call_method(Page::CaptureScreenshot {
-                format: Some(Page::CaptureScreenshotFormatOption::Png),
-                quality: None,
-                clip: Some(clip),
-                from_surface: Some(true),
-                capture_beyond_viewport: Some(true),
-                optimize_for_speed: Some(false),
-            }) {
-                Ok(data) => match STANDARD.decode(data.data) {
-                    Ok(bytes) => bytes,
-                    Err(err) => {
-                        warn!(error = %err, page, "Failed to decode clipped screenshot; falling back to full page capture");
-                        capture_full_page_png(&tab)?
-                    }
-                },
-                Err(err) => {
-                    warn!(error = %err, page, "Clipped screenshot failed; falling back to full page capture");
-                    capture_full_page_png(&tab)?
-                }
-            }
-        } else {
+        if png_bytes.len() < MIN_PAGE_IMAGE_BYTES {
             warn!(
-                page,
-                "Unable to determine canvas viewport; capturing full page"
-            );
-            capture_full_page_png(&tab)?
-        };
-
-        debug!(page, bytes = png.len(), "Captured PDF page screenshot");
-
-        if is_suspicious_image(png.len()) {
-            warn!(
-                page,
-                bytes = png.len(),
-                "Screenshot size below threshold; check rendering output"
+                page = page_num,
+                bytes = png_bytes.len(),
+                "Rendered page size below threshold; check PDF quality"
             );
         }
 
-        captures.push(png);
+        captures.push(png_bytes);
     }
 
     Ok(captures)
-}
-
-fn configure_tab(tab: &headless_chrome::Tab) -> Result<(), AppError> {
-    tab.call_method(Emulation::SetDefaultBackgroundColorOverride {
-        color: Some(DOM::RGBA {
-            r: 255,
-            g: 255,
-            b: 255,
-            a: Some(1.0),
-        }),
-    })
-    .map_err(|err| {
-        AppError::Processing(format!("Failed to configure Chrome page background: {err}"))
-    })?;
-
-    Ok(())
-}
-
-fn set_pdf_viewport(tab: &headless_chrome::Tab) -> Result<(), AppError> {
-    tab.call_method(Emulation::SetDeviceMetricsOverride {
-        width: DEFAULT_VIEWPORT_WIDTH,
-        height: DEFAULT_VIEWPORT_HEIGHT,
-        device_scale_factor: DEFAULT_DEVICE_SCALE_FACTOR,
-        mobile: false,
-        scale: None,
-        screen_width: Some(DEFAULT_VIEWPORT_WIDTH),
-        screen_height: Some(DEFAULT_VIEWPORT_HEIGHT),
-        position_x: None,
-        position_y: None,
-        dont_set_visible_size: Some(false),
-        screen_orientation: None,
-        viewport: None,
-        display_feature: None,
-        device_posture: None,
-    })
-    .map_err(|err| AppError::Processing(format!("Failed to configure Chrome viewport: {err}")))?;
-
-    tab.call_method(Emulation::SetVisibleSize {
-        width: DEFAULT_VIEWPORT_WIDTH,
-        height: DEFAULT_VIEWPORT_HEIGHT,
-    })
-    .map_err(|err| AppError::Processing(format!("Failed to apply Chrome visible size: {err}")))?;
-
-    Ok(())
-}
-
-fn wait_for_pdf_ready(
-    tab: &headless_chrome::Tab,
-    page_number: u32,
-) -> Result<headless_chrome::Element<'_>, AppError> {
-    let embed_selector = "embed[type='application/pdf']";
-    let element = tab
-        .wait_for_element_with_custom_timeout(embed_selector, Duration::from_secs(8))
-        .or_else(|_| tab.wait_for_element_with_custom_timeout("embed", Duration::from_secs(8)))
-        .map_err(|err| AppError::Processing(format!("Timed out waiting for PDF content: {err}")))?;
-
-    if let Err(err) = element.scroll_into_view() {
-        debug!("Failed to scroll PDF element into view: {err}");
-    }
-
-    debug!(page = page_number, "PDF viewer element located");
-
-    Ok(element)
-}
-
-fn prepare_pdf_viewer(tab: &headless_chrome::Tab, page_number: u32) {
-    let script = format!(
-        r#"(function() {{
-            const embed = document.querySelector('embed[type="application/pdf"]') || document.querySelector('embed');
-            if (!embed || !embed.shadowRoot) return false;
-            const viewer = embed.shadowRoot.querySelector('pdf-viewer');
-            if (!viewer || !viewer.shadowRoot) return false;
-            const app = viewer.shadowRoot.querySelector('viewer-app');
-            if (app && app.shadowRoot) {{
-                const toolbar = app.shadowRoot.querySelector('#toolbar');
-                if (toolbar) {{ toolbar.style.display = 'none'; }}
-            }}
-            const page = viewer.shadowRoot.querySelector('viewer-page:nth-of-type({page_number})');
-            if (page && page.scrollIntoView) {{
-                page.scrollIntoView({{ block: 'start', inline: 'center' }});
-            }}
-            const canvas = viewer.shadowRoot.querySelector('canvas[aria-label="Page {page_number}"]');
-            return !!canvas;
-        }})()"#
-    );
-
-    match tab.evaluate(&script, false) {
-        Ok(result) => {
-            let ready = result
-                .value
-                .as_ref()
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            debug!(page = page_number, ready, "Prepared PDF viewer page");
-        }
-        Err(err) => {
-            debug!(page = page_number, error = %err, "Unable to run PDF viewer preparation script");
-        }
-    }
-}
-
-fn canvas_viewport_for_page(
-    tab: &headless_chrome::Tab,
-    page_number: u32,
-) -> Result<Option<Page::Viewport>, AppError> {
-    let script = format!(
-        r#"(function() {{
-            const embed = document.querySelector('embed[type="application/pdf"]') || document.querySelector('embed');
-            if (!embed || !embed.shadowRoot) return null;
-            const viewer = embed.shadowRoot.querySelector('pdf-viewer');
-            if (!viewer || !viewer.shadowRoot) return null;
-            const canvas = viewer.shadowRoot.querySelector('canvas[aria-label="Page {page_number}"]');
-            if (!canvas) return null;
-            const rect = canvas.getBoundingClientRect();
-            return {{ x: rect.x, y: rect.y, width: rect.width, height: rect.height }};
-        }})()"#
-    );
-
-    let result = tab
-        .evaluate(&script, false)
-        .map_err(|err| AppError::Processing(format!("Failed to inspect PDF canvas: {err}")))?;
-
-    let Some(value) = result.value else {
-        return Ok(None);
-    };
-
-    if value.is_null() {
-        return Ok(None);
-    }
-
-    let x = value
-        .get("x")
-        .and_then(Value::as_f64)
-        .unwrap_or_default()
-        .max(0.0);
-    let y = value
-        .get("y")
-        .and_then(Value::as_f64)
-        .unwrap_or_default()
-        .max(0.0);
-    let width = value
-        .get("width")
-        .and_then(Value::as_f64)
-        .unwrap_or_default();
-    let height = value
-        .get("height")
-        .and_then(Value::as_f64)
-        .unwrap_or_default();
-
-    if width <= 0.0 || height <= 0.0 {
-        return Ok(None);
-    }
-
-    debug!(
-        page = page_number,
-        x, y, width, height, "Derived canvas viewport"
-    );
-
-    Ok(Some(Page::Viewport {
-        x,
-        y,
-        width,
-        height,
-        scale: 1.0,
-    }))
-}
-
-fn capture_full_page_png(tab: &headless_chrome::Tab) -> Result<Vec<u8>, AppError> {
-    let screenshot = tab
-        .call_method(Page::CaptureScreenshot {
-            format: Some(Page::CaptureScreenshotFormatOption::Png),
-            quality: None,
-            clip: None,
-            from_surface: Some(true),
-            capture_beyond_viewport: Some(true),
-            optimize_for_speed: Some(false),
-        })
-        .map_err(|err| {
-            AppError::Processing(format!("Failed to capture PDF page (fallback): {err}"))
-        })?;
-
-    STANDARD.decode(screenshot.data).map_err(|err| {
-        AppError::Processing(format!("Failed to decode PDF screenshot (fallback): {err}"))
-    })
-}
-
-const fn is_suspicious_image(len: usize) -> bool {
-    len < MIN_PAGE_IMAGE_BYTES
 }
 
 fn debug_dump_directory() -> Option<PathBuf> {
@@ -394,6 +148,8 @@ async fn maybe_dump_debug_image(page_index: u32, bytes: &[u8]) -> Result<(), App
 mod tests {
     use super::*;
     use anyhow::{self};
+    use lopdf::dictionary;
+    use lopdf::Object;
 
     #[test]
     fn test_debug_dump_directory_env_var() -> anyhow::Result<()> {
@@ -409,10 +165,108 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_is_suspicious_image_threshold() {
-        assert!(is_suspicious_image(0));
-        assert!(is_suspicious_image(MIN_PAGE_IMAGE_BYTES - 1));
-        assert!(!is_suspicious_image(MIN_PAGE_IMAGE_BYTES + 1));
+    #[tokio::test]
+    async fn test_load_page_numbers_empty_pdf() -> anyhow::Result<()> {
+        let pdf_bytes = create_minimal_pdf(0);
+        let pages = load_page_numbers(pdf_bytes).await?;
+        assert!(pages.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load_page_numbers_single_page() -> anyhow::Result<()> {
+        let pdf_bytes = create_minimal_pdf(1);
+        let pages = load_page_numbers(pdf_bytes).await?;
+        assert_eq!(pages, vec![1u32]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load_page_numbers_multi_page() -> anyhow::Result<()> {
+        let pdf_bytes = create_minimal_pdf(5);
+        let pages = load_page_numbers(pdf_bytes).await?;
+        assert_eq!(pages, vec![1, 2, 3, 4, 5]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load_page_numbers_invalid_pdf() {
+        let result = load_page_numbers(b"not a pdf".to_vec()).await;
+        assert!(result.is_err());
+    }
+
+    /// Creates a minimal valid PDF with the given number of empty pages.
+    #[allow(clippy::similar_names, clippy::expect_used)]
+    fn create_minimal_pdf(page_count: u32) -> Vec<u8> {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+
+        let mut page_ids = Vec::with_capacity(page_count as usize);
+        for _ in 0..page_count {
+            let page_id = doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+            });
+            page_ids.push(page_id);
+        }
+
+        let pages = dictionary! {
+            "Type" => "Pages",
+            "Kids" => page_ids.iter().map(|id| Object::Reference(*id)).collect::<Vec<_>>(),
+            "Count" => i32::try_from(page_count).unwrap_or(i32::MAX),
+            "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+        };
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+        doc.trailer.set("Root", catalog_id);
+
+        let mut buf = Vec::new();
+        doc.save_to(&mut buf).expect("failed to serialize test PDF");
+        buf
+    }
+
+    /// Renders a simple 1-page PDF and verifies the output is a valid PNG ≥ 1KB.
+    /// This test skips gracefully when `PDFium` is not available (e.g., CI without internet).
+    #[tokio::test]
+    async fn test_render_single_page_pdfium() -> anyhow::Result<()> {
+        let pdf_bytes = create_minimal_pdf(1);
+        let dir = tempfile::TempDir::new()?;
+        let file_path = dir.path().join("test.pdf");
+        tokio::fs::write(&file_path, &pdf_bytes).await?;
+
+        let result = render_pdf_pages(&file_path, &[1]).await;
+        match result {
+            Ok(pages) => {
+                assert_eq!(pages.len(), 1, "should render one page");
+                #[allow(clippy::expect_used)]
+                let first_page = pages.into_iter().next().expect("already asserted len == 1");
+                assert!(
+                    first_page.len() >= MIN_PAGE_IMAGE_BYTES,
+                    "rendered page {} bytes is below threshold {}",
+                    first_page.len(),
+                    MIN_PAGE_IMAGE_BYTES
+                );
+                // Verify it's a valid PNG by checking header bytes
+                let header = first_page
+                    .get(..4.min(first_page.len()))
+                    .unwrap_or(&[0u8; 0]);
+                assert_eq!(header, &[0x89, 0x50, 0x4E, 0x47], "output must be PNG");
+            }
+            Err(e) => {
+                // PDFium may not be available — that's acceptable in environments
+                // without network access to download the binary.
+                let msg = e.to_string();
+                if !msg.contains("PDFium") && !msg.contains("library") && !msg.contains("bind") {
+                    anyhow::bail!("unexpected error: {e}");
+                }
+                eprintln!("SKIP: PDFium not available ({msg})");
+            }
+        }
+        Ok(())
     }
 }

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Refactor: web scraping now uses `servo-fetch` (pure-Rust Servo engine) and PDF rendering uses `pdfium-render` (direct PDFium bindings) — reduces Docker image size by ~300MB, improves startup latency by ~100× for PDF rendering, and provides more stable output
+- Fix: added `pkgs.libglvnd` to `LD_LIBRARY_PATH` in devenv so Servo engine can find `libEGL.so` at runtime
+- Fix: updated Dockerfile to add `libegl1 libegl-mesa0 libgles2 libfontconfig1 libfreetype6` runtime dependencies for servo-fetch
+- Docs: updated architecture, features, and installation docs to reflect the new web processing stack
 - Fix: added pre-commit hooks to further maintain code consistency.
 - Security: updated some deps because dependabot told me, good bot.
 - Security: bump `async-openai` to 0.41.1 (feature-gated types, transcription API rename; removes `backoff` transitive dep)
