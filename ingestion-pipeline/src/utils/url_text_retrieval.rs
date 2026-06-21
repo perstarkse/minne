@@ -5,14 +5,18 @@ use common::{
     error::AppError,
     storage::{db::SurrealDbClient, store::StorageManager, types::file_info::FileInfo},
 };
-use dom_smoothie::{Article, Readability, TextMode};
+use dom_smoothie::Article;
 use std::{
     io::{Seek, SeekFrom, Write},
     net::IpAddr,
     time::Instant,
 };
 use tempfile::NamedTempFile;
-use tracing::{error, info, warn};
+use tendril::StrTendril;
+use tracing::{info, warn};
+
+use crate::utils::page_fetcher::create_fetcher;
+
 pub async fn extract_text_from_url(
     url: &str,
     db: &SurrealDbClient,
@@ -22,46 +26,22 @@ pub async fn extract_text_from_url(
     info!("Fetching URL: {}", url);
     let now = Instant::now();
 
-    let browser = crate::utils::browser::launch_browser()?;
-
-    let tab = browser
-        .new_tab()
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
-    let page = tab
-        .navigate_to(url)
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
-    let loaded_page = page
-        .wait_until_navigated()
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
-    let raw_content = loaded_page
-        .get_content()
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
-    let screenshot = loaded_page
-        .capture_screenshot(
-            headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Jpeg,
-            None,
-            None,
-            true,
-        )
-        .map_err(|e| AppError::InternalError(e.to_string()))?;
-
-    let mut tmp_file = NamedTempFile::new()?;
-    let temp_path_str = tmp_file.path().display().to_string();
-
-    tmp_file.write_all(&screenshot)?;
-    tmp_file.as_file().sync_all()?;
-
-    if let Err(e) = tmp_file.seek(SeekFrom::Start(0)) {
-        error!(
-            "URL: {}. Failed to seek temp file {} to start: {:?}. Proceeding, but hashing might fail.",
-            url, temp_path_str, e
-        );
-    }
-
     let parsed_url =
         url::Url::parse(url).map_err(|_| AppError::Validation("invalid URL".to_string()))?;
-
     let domain = ensure_ingestion_url_allowed(&parsed_url)?;
+
+    let fetcher = create_fetcher();
+    let capture = fetcher.fetch(url)?;
+
+    // Save the screenshot to storage
+    let mut tmp_file = NamedTempFile::new()?;
+
+    if !capture.screenshot.is_empty() {
+        tmp_file.write_all(&capture.screenshot)?;
+        tmp_file.as_file().sync_all()?;
+        tmp_file.seek(SeekFrom::Start(0))?;
+    }
+
     let timestamp = Utc::now().format("%Y%m%d%H%M%S");
     let file_name = format!("{}_{}_{}.jpg", domain, "screenshot", timestamp);
 
@@ -78,12 +58,25 @@ pub async fn extract_text_from_url(
 
     let file_info = FileInfo::new_with_storage(field_data, db, user_id, storage).await?;
 
-    let config = dom_smoothie::Config {
-        text_mode: TextMode::Markdown,
-        ..Default::default()
+    // servo-fetch doesn't extract byline/site_name/metadata, so those are left empty.
+    let title = extract_title_from_html(&capture.html);
+    let article = Article {
+        title,
+        byline: None,
+        content: StrTendril::from_slice(&capture.markdown),
+        text_content: StrTendril::from_slice(&capture.markdown),
+        length: capture.markdown.len(),
+        excerpt: None,
+        site_name: None,
+        dir: None,
+        lang: None,
+        published_time: None,
+        modified_time: None,
+        image: None,
+        favicon: None,
+        url: Some(url.to_string()),
     };
-    let mut readability = Readability::new(raw_content, None, Some(config))?;
-    let article: Article = readability.parse()?;
+
     let end = now.elapsed();
     info!(
         "URL: {}. Total time: {:?}. Final File ID: {}",
@@ -93,13 +86,31 @@ pub async fn extract_text_from_url(
     Ok((article, file_info))
 }
 
+/// Extracts a page title from raw HTML. Returns empty string when no title is found.
+fn extract_title_from_html(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    if let Some(start) = lower.find("<title>") {
+        let content_start = start.saturating_add("<title>".len());
+        if let Some(end) = lower[content_start..].find("</title>") {
+            let title_end = content_start.saturating_add(end);
+            if title_end <= html.len() {
+                let title = html[content_start..title_end].trim().to_string();
+                if !title.is_empty() {
+                    return title;
+                }
+            }
+        }
+    }
+    String::new()
+}
+
 fn ensure_ingestion_url_allowed(url: &url::Url) -> Result<String, AppError> {
     match url.scheme() {
         "http" | "https" => {}
         scheme => {
             warn!(%url, %scheme, "Rejected ingestion URL due to unsupported scheme");
             return Err(AppError::Validation(
-                "Unsupported URL scheme for ingestion".to_string(),
+                "unsupported URL scheme for ingestion".to_string(),
             ));
         }
     }
@@ -107,14 +118,14 @@ fn ensure_ingestion_url_allowed(url: &url::Url) -> Result<String, AppError> {
     let Some(host) = url.host_str() else {
         warn!(%url, "Rejected ingestion URL missing host");
         return Err(AppError::Validation(
-            "URL is missing a host component".to_string(),
+            "URL missing a host component".to_string(),
         ));
     };
 
     if host.eq_ignore_ascii_case("localhost") {
         warn!(%url, host, "Rejected ingestion URL to localhost");
         return Err(AppError::Validation(
-            "Ingestion URL host is not allowed".to_string(),
+            "ingestion URL host is not allowed".to_string(),
         ));
     }
 
@@ -127,7 +138,7 @@ fn ensure_ingestion_url_allowed(url: &url::Url) -> Result<String, AppError> {
         if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() || is_disallowed {
             warn!(%url, host, %ip, "Rejected ingestion URL pointing to restricted network range");
             return Err(AppError::Validation(
-                "Ingestion URL host is not allowed".to_string(),
+                "ingestion URL host is not allowed".to_string(),
             ));
         }
     }
@@ -167,5 +178,29 @@ mod tests {
         let sanitized = ensure_ingestion_url_allowed(&url)?;
         assert_eq!(sanitized, "sub_example_com");
         Ok(())
+    }
+
+    #[test]
+    fn test_extract_title_from_html_with_title() {
+        let html = "<html><head><title>Hello World</title></head><body></body></html>";
+        assert_eq!(extract_title_from_html(html), "Hello World");
+    }
+
+    #[test]
+    fn test_extract_title_from_html_mixed_case() {
+        let html = "<html><head><TITLE>Mixed Case</TITLE></head><body></body></html>";
+        assert_eq!(extract_title_from_html(html), "Mixed Case");
+    }
+
+    #[test]
+    fn test_extract_title_from_html_no_title() {
+        let html = "<html><head></head><body><p>No title here</p></body></html>";
+        assert_eq!(extract_title_from_html(html), "");
+    }
+
+    #[test]
+    fn test_extract_title_from_html_empty_title() {
+        let html = "<html><head><title></title></head><body></body></html>";
+        assert_eq!(extract_title_from_html(html), "");
     }
 }

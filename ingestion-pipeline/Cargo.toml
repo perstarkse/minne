@@ -18,17 +18,22 @@ async-openai = { workspace = true }
 surrealdb = { workspace = true }
 dom_smoothie = { workspace = true }
 tempfile = { workspace = true }
-axum_typed_multipart = { workspace = true}
-anyhow = { workspace = true } 
+axum_typed_multipart = { workspace = true }
+anyhow = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
 text-splitter = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-headless_chrome = { workspace = true }
 base64 = { workspace = true }
 pdf-extract = { workspace = true }
 lopdf = { workspace = true }
+tendril = { workspace = true }
+servo-fetch = { workspace = true }
+servo-allocator = { version = "0.2", features = ["use-system-allocator"] }
+pdfium-auto = { workspace = true }
+pdfium-render = { workspace = true }
+image = { workspace = true }
 bytes = { workspace = true }
 async-trait = { workspace = true }
 state-machines = { workspace = true }
@@ -37,7 +42,6 @@ common = { path = "../common" }
 retrieval-pipeline = { path = "../retrieval-pipeline" }
 
 [features]
-docker = []
 
 [dev-dependencies]
 common = { path = "../common", features = ["test-utils"] }

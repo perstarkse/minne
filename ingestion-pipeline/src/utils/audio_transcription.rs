@@ -24,6 +24,6 @@ pub async fn transcribe_audio_file(
         .transcription()
         .create(request)
         .await
-        .map_err(|e| AppError::Processing(format!("Audio transcription failed: {e}")))?;
+        .map_err(|e| AppError::Processing(format!("audio transcription failed: {e}")))?;
     Ok(response.text)
 }

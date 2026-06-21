@@ -121,7 +121,7 @@ fastembed_cache_dir: "/var/lib/minne/fastembed"  # optional override, defaults t
 - **Frontend:** HTML with HTMX and minimal JavaScript for interactivity
 - **Database:** SurrealDB (graph, document, and vector search)
 - **AI Integration:** OpenAI-compatible API with structured outputs
-- **Web Processing:** Headless Chrome for robust webpage content extraction
+- **Web Processing:** Embedded Servo engine (servo-fetch) for webpage content extraction + PDFium for PDF rendering
 
 ## Configuration
 
@@ -172,7 +172,7 @@ cd minne
 docker compose up -d
 ```
 
-The included `docker-compose.yml` handles SurrealDB and Chromium dependencies automatically.
+The included `docker-compose.yml` handles SurrealDB automatically.
 
 ### 2. Nix
 
@@ -180,13 +180,13 @@ The included `docker-compose.yml` handles SurrealDB and Chromium dependencies au
 nix run 'github:perstarkse/minne#main'
 ```
 
-This fetches Minne and all dependencies, including Chromium.
+This fetches Minne and all dependencies.
 
 ### 3. Pre-built Binaries
 
 Download binaries for Windows, macOS, and Linux from the [GitHub Releases](https://github.com/perstarkse/minne/releases/latest).
 
-**Requirements:** You'll need to provide SurrealDB and Chromium separately.
+**Requirements:** You'll need to provide SurrealDB separately.
 
 ### 4. Build from Source
 
@@ -196,7 +196,7 @@ cd minne
 cargo run --release --bin main
 ```
 
-**Requirements:** SurrealDB and Chromium must be installed and accessible in your PATH.
+**Requirements:** SurrealDB must be installed and accessible in your PATH.
 
 ## Application Architecture
 

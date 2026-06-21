@@ -41,6 +41,14 @@ in {
     pkgs.onnxruntime
     pkgs.cargo-watch
     pkgs.tailwindcss_4
+    pkgs.python3
+    pkgs.fontconfig
+    pkgs.fontconfig.dev
+    pkgs.libGL
+    pkgs.libGLU
+    pkgs.libclang
+    pkgs.wayland
+    pkgs.libxkbcommon
   ];
 
   languages.rust = {
@@ -53,6 +61,10 @@ in {
   };
 
   env = {
+    # tikv-jemalloc-sys configure flags: -O0 + -Werror triggers glibc _FORTIFY_SOURCE warning
+    NIX_CFLAGS_COMPILE = "-Wno-error=cpp";
+    LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+    LD_LIBRARY_PATH = "${pkgs.wayland}/lib:${pkgs.libxkbcommon}/lib:${pkgs.pipewire}/lib:${pkgs.libglvnd}/lib";
     ORT_DYLIB_PATH = "${pkgs.onnxruntime}/lib/libonnxruntime.so";
     S3_ENDPOINT = "http://127.0.0.1:19000";
     S3_BUCKET = "minne-tests";
