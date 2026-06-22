@@ -1,7 +1,6 @@
 name: CI
 permissions:
   contents: read
-  id-token: write
   actions: write
 
 on:
@@ -10,33 +9,18 @@ on:
     branches: [main]
 
 jobs:
-  checks:
-    name: Nix checks
+  check:
+    name: Format, lint, build & test
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-      actions: write
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
 
-      - name: Set up Nix store cache
-        uses: nix-community/cache-nix-action@v6
-        with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 10G
-          purge: true
-          purge-prefixes: nix-${{ runner.os }}-
-          purge-created: 14
-          purge-last-access: 7
-          purge-primary-key: never
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Run all flake checks
-        run: nix flake check -L --show-trace
+      - name: Check formatting, clippy lint, unit tests & ort version
+        run: nix flake check --show-trace

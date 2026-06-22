@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Infra: CI workflow fixes. CI is now a nix flake check which includes compilation, caching and running tests, clippy, fmt, validation for ort version.
 - Docker-compose: The example now references the ghcr image, this is so we can remove the Dockerfile and reducing maintenance scope.
 - Refactor: web scraping now uses `servo-fetch` (pure-Rust Servo engine) and PDF rendering uses `pdfium-render` (direct PDFium bindings) — reduces Docker image size by ~300MB, improves startup latency by ~100× for PDF rendering, and provides more stable output
 - Fix: added `pkgs.libglvnd` to `LD_LIBRARY_PATH` in devenv so Servo engine can find `libEGL.so` at runtime
