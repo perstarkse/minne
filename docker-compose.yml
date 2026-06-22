@@ -1,6 +1,6 @@
 services:
   minne:
-    build: . 
+    image: ghcr.io/perstarkse/minne:latest
     container_name: minne_app
     ports:
       - "3000:3000" 

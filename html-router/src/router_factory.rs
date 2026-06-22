@@ -22,13 +22,13 @@ macro_rules! create_asset_service {
             let crate_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let assets_path = crate_dir.join($relative_path);
             tracing::debug!("Assets: Serving from filesystem: {:?}", assets_path);
-            tower_http::services::ServeDir::new(assets_path)
+            tower_http::services::ServeDir::new(&assets_path)
         }
         #[cfg(not(debug_assertions))]
         {
-            tracing::debug!("Assets: Serving embedded directory");
             static ASSETS_DIR: include_dir::Dir<'static> =
                 include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets");
+            tracing::debug!(directory = %$relative_path, "Assets: Serving embedded directory");
             tower_serve_static::ServeDir::new(&ASSETS_DIR)
         }
     }};

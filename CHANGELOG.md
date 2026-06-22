@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Docker-compose: The example now references the ghcr image, this is so we can remove the Dockerfile and reducing maintenance scope.
 - Refactor: web scraping now uses `servo-fetch` (pure-Rust Servo engine) and PDF rendering uses `pdfium-render` (direct PDFium bindings) — reduces Docker image size by ~300MB, improves startup latency by ~100× for PDF rendering, and provides more stable output
 - Fix: added `pkgs.libglvnd` to `LD_LIBRARY_PATH` in devenv so Servo engine can find `libEGL.so` at runtime
 - Fix: updated Dockerfile to add `libegl1 libegl-mesa0 libgles2 libfontconfig1 libfreetype6` runtime dependencies for servo-fetch
@@ -19,6 +20,8 @@
 - Fix: content deletion clears graph relationships via shared `TextContent::clear_ingested_children`
 - Fix: regression re suggestion of relationships
 - Internal: extracted duplicate entity+embedding patterns into `HasEmbedding` and `EmbeddingRecord` traits with generic `store_with_embedding`, `delete_by_source_id`, and `vector_search` on `SurrealDbClient`.
+- Infra: `ort-version` file removed — version inlined in `flake.nix` and `devenv.nix`; `release.yml` reads it via `nix eval .#lib.ortVersion` from the plan job
+- Infra: `screenshot-graph.webp` and `.dockerignore` deleted — stale artifacts from Dockerfile era
 
 ## 1.0.3 (2026-06-12)
 
