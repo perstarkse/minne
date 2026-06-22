@@ -26,29 +26,16 @@ jobs:
           submodules: recursive
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@main
-        with:
-          extra-conf: |
-            experimental-features = nix-command flakes
+        uses: DeterminateSystems/determinate-nix-action@v3
 
-      - name: Set up Nix store cache
-        uses: nix-community/cache-nix-action@v6
-        with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 10G
-          purge: true
-          purge-prefixes: nix-${{ runner.os }}-
-          purge-created: 14
-          purge-last-access: 7
-          purge-primary-key: never
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Read ORT version from flake
         id: ort_version
         run: echo "value=$(nix eval .#lib.ortVersion --raw)" >> "$GITHUB_OUTPUT"
 
       - name: Verify ort-version matches nixpkgs onnxruntime
-        run: nix flake check --system x86_64-linux -L
+        run: nix flake check --system x86_64-linux
 
       - name: Install dist
         shell: bash
@@ -217,19 +204,9 @@ jobs:
           submodules: recursive
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@main
+        uses: DeterminateSystems/determinate-nix-action@v3
 
-      - name: Set up Nix store cache
-        uses: nix-community/cache-nix-action@v6
-        with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 10G
-          purge: true
-          purge-prefixes: nix-${{ runner.os }}-
-          purge-created: 14
-          purge-last-access: 7
-          purge-primary-key: never
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Build Docker image with Nix
         run: nix build .#dockerImage -L --show-trace
