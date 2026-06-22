@@ -5,11 +5,11 @@
   inputs,
   ...
 }: let
-  ortVersion = lib.removeSuffix "\n" (builtins.readFile "${toString ./.}/ort-version");
+  ortVersion = "1.23.2";
   _ortVersionCheck =
     if pkgs.onnxruntime.version == ortVersion
     then null
-    else throw "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ort-version (${ortVersion})";
+    else throw "pkgs.onnxruntime.version (${pkgs.onnxruntime.version}) must match ortVersion in flake.nix (${ortVersion})";
 in {
   devenv.warnOnNewVersion = false;
 

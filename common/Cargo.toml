@@ -24,7 +24,7 @@ dom_smoothie = { workspace = true }
 axum_session = { workspace = true }
 axum_session_auth = { workspace = true }
 axum_session_surreal =  { workspace = true}
-axum_typed_multipart = { workspace = true} 
+axum_typed_multipart = { workspace = true}
 include_dir = { workspace = true }
 minijinja = { workspace = true }
 minijinja-autoreload = { workspace = true }

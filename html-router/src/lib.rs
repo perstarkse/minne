@@ -4,6 +4,9 @@
 //! the template middleware renders them with shared layout context. Route composition
 //! and middleware layering are handled by [`router_factory::RouterFactory`].
 
+// minijinja_embed output (release builds) triggers these lints.
+#![allow(unused_variables, clippy::expect_used, clippy::missing_panics_doc)]
+
 pub mod html_state;
 pub mod middlewares;
 pub mod router_factory;
