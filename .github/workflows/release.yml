@@ -27,10 +27,12 @@ jobs:
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
-        with:
-          determinate: false
 
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 10G
 
       - name: Read ORT version from flake
         id: ort_version
@@ -207,10 +209,12 @@ jobs:
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
-        with:
-          determinate: false
 
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 10G
 
       - name: Build Docker image with Nix
         run: nix build .#dockerImage -L --show-trace
