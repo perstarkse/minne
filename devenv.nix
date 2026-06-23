@@ -35,7 +35,6 @@ in {
     pkgs.nodejs
     pkgs.watchman
     pkgs.vscode-langservers-extracted
-    pkgs.cargo-dist
     pkgs.cargo-xwin
     pkgs.clang
     pkgs.onnxruntime
