@@ -28,12 +28,15 @@ Configure via environment variables or a `config.yaml` file. See [Configuration]
 
 ## Pre-built Binaries
 
-Download binaries for Windows, macOS, and Linux from [GitHub Releases](https://github.com/perstarkse/minne/releases/latest).
+Download binaries for Windows, macOS (Apple Silicon), and Linux from [GitHub Releases](https://github.com/perstarkse/minne/releases/latest).
+
+**macOS:** Release builds target `aarch64-apple-darwin` (Apple Silicon). Intel Macs can run the binary via [Rosetta 2](https://support.apple.com/en-us/102527).
 
 **Requirements:**
 
 - SurrealDB instance (local or remote)
-- `libEGL` + `libfontconfig` (for servo-fetch web scraping)
+- Linux: `libEGL` + `libfontconfig` for servo-fetch (bundled in release archives)
+- macOS: system frameworks; ONNX Runtime is bundled in the archive `lib/` directory
 
 ## Build from Source
 

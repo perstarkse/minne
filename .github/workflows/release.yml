@@ -10,16 +10,12 @@ on:
       - "**[0-9]+.[0-9]+.[0-9]+*"
 
 jobs:
-  plan:
-    runs-on: ubuntu-22.04
+  ci:
+    runs-on: ubuntu-24.04
     outputs:
-      val: ${{ steps.plan.outputs.manifest }}
       tag: ${{ !github.event.pull_request && github.ref_name || '' }}
-      tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
       publishing: ${{ !github.event.pull_request }}
       ort-version: ${{ steps.ort_version.outputs.value }}
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,171 +28,85 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 10G
+          gc-max-store-size-linux: 5G
 
       - name: Read ORT version from flake
         id: ort_version
         run: echo "value=$(nix eval .#lib.ortVersion --raw)" >> "$GITHUB_OUTPUT"
 
-      - name: Verify ort-version matches nixpkgs onnxruntime
+      - name: Run nix flake check
         run: nix flake check --system x86_64-linux
 
-      - name: Install dist
-        shell: bash
-        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.30.3/cargo-dist-installer.sh | sh"
-
-      - name: Cache dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-dist-cache
-          path: ~/.cargo/bin/dist
-
-      - id: plan
-        run: |
-          dist ${{ (!github.event.pull_request && format('host --steps=create --tag={0}', github.ref_name)) || 'plan' }} --output-format=json > plan-dist-manifest.json
-          echo "dist ran successfully"
-          cat plan-dist-manifest.json
-          echo "manifest=$(jq -c . plan-dist-manifest.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload dist-manifest.json
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifacts-plan-dist-manifest
-          path: plan-dist-manifest.json
-
-  build-local-artifacts:
-    name: build-local-artifacts (${{ join(matrix.targets, ', ') }})
-    needs: [plan]
-    if: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix.include != null && (needs.plan.outputs.publishing == 'true' || fromJson(needs.plan.outputs.val).ci.github.pr_run_mode == 'upload') }}
+  build-nix-artifacts:
+    name: build (${{ matrix.triple }})
+    needs: [ci]
+    if: ${{ needs.ci.outputs.publishing == 'true' }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix }}
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            triple: x86_64-unknown-linux-gnu
+            nix_package: minne-release
+            cache_save: false
+          - runner: macos-latest
+            triple: aarch64-apple-darwin
+            nix_package: minne-release
+            cache_save: true
+          - runner: ubuntu-24.04
+            triple: x86_64-pc-windows-msvc
+            nix_package: minne-release-windows
+            cache_save: false
     runs-on: ${{ matrix.runner }}
-    container: ${{ matrix.container && matrix.container.image || null }}
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BUILD_MANIFEST_NAME: target/distrib/${{ join(matrix.targets, '-') }}-dist-manifest.json
     steps:
-      - name: enable windows longpaths
-        run: git config --global core.longpaths true
-
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Load ONNX Runtime version
-        shell: bash
-        run: echo "ORT_VER=${{ needs.plan.outputs.ort-version }}" >> "$GITHUB_ENV"
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
 
-      - name: Install Rust non-interactively if not already installed
-        if: ${{ matrix.container }}
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          gc-max-store-size-darwin: 5G
+          save: ${{ matrix.cache_save }}
+
+      - name: Build release archive (Nix)
+        run: nix build .#${{ matrix.nix_package }} -L --out-link minne-release
+
+      - name: Stage artifact
+        shell: bash
         run: |
-          if ! command -v cargo > /dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          set -euo pipefail
+          TRIPLE="${{ matrix.triple }}"
+          if [[ "$TRIPLE" == *windows* ]]; then
+            ARTIFACT="main-${TRIPLE}.zip"
+          else
+            ARTIFACT="main-${TRIPLE}.tar.xz"
+          fi
+          RELEASE="$(nix path-info ./minne-release)"
+          cp "$RELEASE/${ARTIFACT}" "$ARTIFACT"
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$ARTIFACT" > "${ARTIFACT}.sha256"
+          else
+            shasum -a 256 "$ARTIFACT" > "${ARTIFACT}.sha256"
           fi
 
-      - name: Install dist
-        run: ${{ matrix.install_dist.run }}
-
-      - name: Fetch local artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: artifacts-*
-          path: target/distrib/
-          merge-multiple: true
-
-      # ===== BEGIN: Injected ORT staging for cargo-dist bundling =====
-      - run: echo "=== BUILD-SETUP START ==="
-
-      # Unix shells
-      - name: Prepare lib dir (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          mkdir -p lib
-          rm -f lib/*
-
-      # Windows PowerShell
-      - name: Prepare lib dir (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path lib | Out-Null
-          # remove contents if any
-          Get-ChildItem -Path lib -Force | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-
-      - name: Fetch ONNX Runtime (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          set -euo pipefail
-          ARCH="$(uname -m)"
-          case "$ARCH" in
-            x86_64)  URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-x64-${ORT_VER}.tgz" ;;
-            aarch64) URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-aarch64-${ORT_VER}.tgz" ;;
-            *) echo "Unsupported arch $ARCH"; exit 1 ;;
-          esac
-          curl -fsSL -o ort.tgz "$URL"
-          tar -xzf ort.tgz
-          cp -v onnxruntime-*/lib/libonnxruntime.so* lib/
-          # normalize to stable name if needed
-          [ -f lib/libonnxruntime.so ] || cp -v lib/libonnxruntime.so.* lib/libonnxruntime.so
-
-      - name: Fetch ONNX Runtime (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          curl -fsSL -o ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-osx-universal2-${ORT_VER}.tgz"
-          tar -xzf ort.tgz
-          cp -v onnxruntime-*/lib/libonnxruntime*.dylib lib/
-          [ -f lib/libonnxruntime.dylib ] || cp -v lib/libonnxruntime*.dylib lib/libonnxruntime.dylib
-
-      - name: Fetch ONNX Runtime (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $url = "https://github.com/microsoft/onnxruntime/releases/download/v$env:ORT_VER/onnxruntime-win-x64-$env:ORT_VER.zip"
-          Invoke-WebRequest $url -OutFile ort.zip
-          Expand-Archive ort.zip -DestinationPath ort
-          $dll = Get-ChildItem -Recurse -Path ort -Filter onnxruntime.dll | Select-Object -First 1
-          Copy-Item $dll.FullName lib\onnxruntime.dll
-
-      - run: |
-          echo "=== BUILD-SETUP END ==="
-          echo "lib/ contents:"
-          ls -l lib || dir lib
-      # ===== END: Injected ORT staging =====
-      - name: Install dependencies
-        run: |
-          ${{ matrix.packages_install }}
-
-      - name: Build artifacts
-        run: |
-          dist build ${{ needs.plan.outputs.tag-flag }} --print=linkage --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
-          echo "dist ran successfully"
-
-      - id: cargo-dist
-        name: Post-build
-        shell: bash
-        run: |
-          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
-          dist print-upload-files-from-manifest --manifest dist-manifest.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-          cp dist-manifest.json "$BUILD_MANIFEST_NAME"
-
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-build-local-${{ join(matrix.targets, '_') }}
+          name: release-${{ matrix.triple }}
           path: |
-            ${{ steps.cargo-dist.outputs.paths }}
-            ${{ env.BUILD_MANIFEST_NAME }}
+            main-${{ matrix.triple }}.*
 
   build_and_push_docker_image:
     name: Build and Push Docker Image (Nix)
-    runs-on: ubuntu-latest
-    needs: [plan]
-    if: ${{ needs.plan.outputs.publishing == 'true' }}
+    runs-on: ubuntu-24.04
+    needs: [ci]
+    if: ${{ needs.ci.outputs.publishing == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -214,7 +124,8 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 10G
+          gc-max-store-size-linux: 5G
+          save: false
 
       - name: Build Docker image with Nix
         run: nix build .#dockerImage -L --show-trace
@@ -226,134 +137,84 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-
       - name: Load and push Docker image
         env:
           IMAGE_NAME: ghcr.io/${{ github.repository }}
-          IMAGE_TAG: ${{ needs.plan.outputs.tag }}
+          IMAGE_TAG: ${{ needs.ci.outputs.tag }}
         run: |
-          docker load < result
-          docker tag "minne:1.0.3" "$IMAGE_NAME:$IMAGE_TAG"
-          docker tag "minne:1.0.3" "$IMAGE_NAME:latest"
+          set -euo pipefail
+          LOADED_IMAGE="$(docker load < result | awk '/Loaded image:/ {print $3; exit}')"
+          if [ -z "$LOADED_IMAGE" ]; then
+            echo "failed to load docker image from nix result" >&2
+            exit 1
+          fi
+          docker tag "$LOADED_IMAGE" "$IMAGE_NAME:$IMAGE_TAG"
+          docker tag "$LOADED_IMAGE" "$IMAGE_NAME:latest"
           docker push "$IMAGE_NAME:$IMAGE_TAG"
           docker push "$IMAGE_NAME:latest"
 
-  build-global-artifacts:
-    needs: [plan, build-local-artifacts]
-    runs-on: ubuntu-22.04
+  release:
+    name: Create GitHub Release
+    needs: [ci, build-nix-artifacts, build_and_push_docker_image]
+    if: ${{ needs.ci.outputs.publishing == 'true' }}
+    runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BUILD_MANIFEST_NAME: target/distrib/global-dist-manifest.json
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install cached dist
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
-          name: cargo-dist-cache
-          path: ~/.cargo/bin/
-      - run: chmod +x ~/.cargo/bin/dist
-
-      - name: Fetch local artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: artifacts-*
-          path: target/distrib/
-          merge-multiple: true
-
-      - id: cargo-dist
-        shell: bash
-        run: |
-          dist build ${{ needs.plan.outputs.tag-flag }} --output-format=json "--artifacts=global" > dist-manifest.json
-          echo "dist ran successfully"
-          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
-          jq --raw-output ".upload_files[]" dist-manifest.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-          cp dist-manifest.json "$BUILD_MANIFEST_NAME"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifacts-build-global
-          path: |
-            ${{ steps.cargo-dist.outputs.paths }}
-            ${{ env.BUILD_MANIFEST_NAME }}
-
-  host:
-    needs: [plan, build-local-artifacts, build-global-artifacts]
-    if: ${{ always() && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    runs-on: ubuntu-22.04
-    outputs:
-      val: ${{ steps.host.outputs.manifest }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install cached dist
-        uses: actions/download-artifact@v4
-        with:
-          name: cargo-dist-cache
-          path: ~/.cargo/bin/
-      - run: chmod +x ~/.cargo/bin/dist
-
-      - name: Fetch artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: artifacts-*
-          path: target/distrib/
-          merge-multiple: true
-
-      - id: host
-        shell: bash
-        run: |
-          dist host ${{ needs.plan.outputs.tag-flag }} --steps=upload --steps=release --output-format=json > dist-manifest.json
-          echo "artifacts uploaded and released successfully"
-          cat dist-manifest.json
-          echo "manifest=$(jq -c . dist-manifest.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload dist-manifest.json
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifacts-dist-manifest
-          path: dist-manifest.json
-
-      - name: Download GitHub Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: artifacts-*
+          pattern: release-*
           path: artifacts
           merge-multiple: true
 
-      - name: Cleanup
-        run: rm -f artifacts/*-dist-manifest.json
+      - name: Flatten artifacts
+        run: find artifacts -type f -exec mv {} . \;
+
+      - name: Prepare release notes
+        env:
+          VERSION: ${{ needs.ci.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if grep -q "^## ${VERSION} (" CHANGELOG.md; then
+            awk -v ver="$VERSION" '
+              /^## / { if (found) exit; if ($0 ~ "^## " ver " \\(") found=1; next }
+              found { print }
+            ' CHANGELOG.md > "$RUNNER_TEMP/notes.txt"
+          else
+            awk '
+              /^## Unreleased/ { found=1; next }
+              found && /^## [0-9]/ { exit }
+              found { print }
+            ' CHANGELOG.md > "$RUNNER_TEMP/notes.txt"
+          fi
+          if [ ! -s "$RUNNER_TEMP/notes.txt" ]; then
+            echo "Release ${VERSION}" > "$RUNNER_TEMP/notes.txt"
+          fi
 
       - name: Create GitHub Release
         env:
-          PRERELEASE_FLAG: "${{ fromJson(steps.host.outputs.manifest).announcement_is_prerelease && '--prerelease' || '' }}"
-          ANNOUNCEMENT_TITLE: "${{ fromJson(steps.host.outputs.manifest).announcement_title }}"
-          ANNOUNCEMENT_BODY: "${{ fromJson(steps.host.outputs.manifest).announcement_github_body }}"
-          RELEASE_COMMIT: "${{ github.sha }}"
+          TAG: ${{ needs.ci.outputs.tag }}
+          PRERELEASE_FLAG: ${{ contains(needs.ci.outputs.tag, 'alpha') || contains(needs.ci.outputs.tag, 'beta') || contains(needs.ci.outputs.tag, 'rc') && '--prerelease' || '' }}
         run: |
-          echo "$ANNOUNCEMENT_BODY" > $RUNNER_TEMP/notes.txt
-          gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
-
-  announce:
-    needs: [plan, host]
-    if: ${{ always() && needs.host.result == 'success' }}
-    runs-on: ubuntu-22.04
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+          set -euo pipefail
+          FILES=()
+          for f in main-*; do
+            [ -f "$f" ] || continue
+            FILES+=("$f")
+          done
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "no release artifacts found" >&2
+            ls -la
+            exit 1
+          fi
+          gh release create "$TAG" \
+            --target "${{ github.sha }}" \
+            --title "minne $TAG" \
+            --notes-file "$RUNNER_TEMP/notes.txt" \
+            $PRERELEASE_FLAG \
+            "${FILES[@]}"

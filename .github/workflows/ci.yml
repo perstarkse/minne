@@ -11,7 +11,8 @@ on:
 jobs:
   check:
     name: Format, lint, build & test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    if: ${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'release:') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +25,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 10G
+          gc-max-store-size-linux: 5G
 
       - name: Check formatting, clippy lint, unit tests & ort version
         run: nix flake check --show-trace
