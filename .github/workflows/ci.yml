@@ -4,9 +4,9 @@ permissions:
   actions: write
 
 on:
-  pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   check:
@@ -19,10 +19,12 @@ jobs:
           submodules: recursive
 
       - uses: DeterminateSystems/determinate-nix-action@v3
-        with:
-          determinate: false
 
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 10G
 
       - name: Check formatting, clippy lint, unit tests & ort version
         run: nix flake check --show-trace
