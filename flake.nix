@@ -24,7 +24,7 @@
         if pkgs.stdenv.isDarwin
         then "dylib"
         else "so";
-      minneVersion = "1.0.3";
+      minneVersion = "1.0.4";
 
       # Pre-download mozjs binary archive for mozjs_sys (servo dep).
       # When updating mozjs_sys version in Cargo.lock, update this URL too.
@@ -185,7 +185,7 @@
           // {
             cargoArtifacts = minne-pkg;
             pname = "minne";
-            buildInputs = commonArgs.buildInputs ++ [ pkgs.cacert ];
+            buildInputs = commonArgs.buildInputs ++ [pkgs.cacert];
             SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-certificates.crt";
             cargoTestExtraArgs = "--lib --bins";
           });
