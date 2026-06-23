@@ -19,6 +19,8 @@ jobs:
           submodules: recursive
 
       - uses: DeterminateSystems/determinate-nix-action@v3
+        with:
+          determinate: false
 
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
