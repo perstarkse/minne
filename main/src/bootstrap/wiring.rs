@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use api_router::{api_routes_v1, api_state::ApiState};
-use axum::{extract::FromRef, Router};
+use axum::{Router, extract::FromRef};
 use html_router::{
     html_routes,
     html_state::{HtmlState, StateResources},

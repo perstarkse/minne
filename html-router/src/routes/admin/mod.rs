@@ -1,9 +1,9 @@
 mod handlers;
 use axum::{
+    Router,
     extract::FromRef,
     middleware::from_fn,
     routing::{get, patch},
-    Router,
 };
 use handlers::{
     patch_image_prompt, patch_ingestion_prompt, patch_query_prompt, show_admin_panel,

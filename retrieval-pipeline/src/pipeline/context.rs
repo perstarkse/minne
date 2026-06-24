@@ -6,12 +6,12 @@ use common::{
 
 use crate::scoring::Scored;
 
-use crate::{reranking::RerankerLease, RetrievedChunk, RetrievedEntity};
+use crate::{RetrievedChunk, RetrievedEntity, reranking::RerankerLease};
 
 use super::{
+    RetrievalParams, StageKind, StageTimings,
     config::RetrievalConfig,
     diagnostics::{AssembleStats, Diagnostics, SearchStats},
-    RetrievalParams, StageKind, StageTimings,
 };
 
 /// Mutable working state threaded through every retrieval stage.

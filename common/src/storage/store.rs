@@ -2,14 +2,14 @@ use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result as AnyResult};
+use anyhow::{Context, Result as AnyResult, anyhow};
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use object_store::aws::AmazonS3Builder;
 use object_store::local::LocalFileSystem;
 use object_store::memory::InMemory;
-use object_store::{path::Path as ObjPath, ObjectStore};
+use object_store::{ObjectStore, path::Path as ObjPath};
 
 use crate::utils::config::{AppConfig, StorageKind};
 
@@ -461,9 +461,12 @@ pub mod testing {
         pub async fn new_s3() -> object_store::Result<Self> {
             // Ensure credentials are set for MinIO
             // We set these env vars for the process, which AmazonS3Builder will pick up
-            std::env::set_var("AWS_ACCESS_KEY_ID", "minioadmin");
-            std::env::set_var("AWS_SECRET_ACCESS_KEY", "minioadmin");
-            std::env::set_var("AWS_REGION", "us-east-1");
+            // SAFETY: test setup runs before concurrent S3 client use in this process.
+            unsafe {
+                std::env::set_var("AWS_ACCESS_KEY_ID", "minioadmin");
+                std::env::set_var("AWS_SECRET_ACCESS_KEY", "minioadmin");
+                std::env::set_var("AWS_REGION", "us-east-1");
+            }
 
             let cfg = test_config_s3();
             let storage = StorageManager::new(&cfg).await?;
@@ -543,10 +546,10 @@ pub mod testing {
     impl Drop for TestStorageManager {
         fn drop(&mut self) {
             // Clean up temporary directories for local storage
-            if let Some((_, path)) = &self.temp_dir {
-                if path.exists() {
-                    let _ = std::fs::remove_dir_all(path);
-                }
+            if let Some((_, path)) = &self.temp_dir
+                && path.exists()
+            {
+                let _ = std::fs::remove_dir_all(path);
             }
         }
     }
@@ -690,20 +693,24 @@ mod tests {
         assert_eq!(retrieved.as_ref(), data);
 
         // Test exists
-        assert!(storage
-            .exists(location)
-            .await
-            .with_context(|| "exists check".to_string())?);
+        assert!(
+            storage
+                .exists(location)
+                .await
+                .with_context(|| "exists check".to_string())?
+        );
 
         // Test delete
         storage
             .delete_prefix("test/data/")
             .await
             .with_context(|| "delete".to_string())?;
-        assert!(!storage
-            .exists(location)
-            .await
-            .with_context(|| "exists check after delete".to_string())?);
+        assert!(
+            !storage
+                .exists(location)
+                .await
+                .with_context(|| "exists check after delete".to_string())?
+        );
 
         Ok(())
     }
@@ -741,20 +748,24 @@ mod tests {
             .with_context(|| "object directory exists after write".to_string())?;
 
         // Test exists
-        assert!(storage
-            .exists(location)
-            .await
-            .with_context(|| "exists check".to_string())?);
+        assert!(
+            storage
+                .exists(location)
+                .await
+                .with_context(|| "exists check".to_string())?
+        );
 
         // Test delete
         storage
             .delete_prefix("test/data/")
             .await
             .with_context(|| "delete".to_string())?;
-        assert!(!storage
-            .exists(location)
-            .await
-            .with_context(|| "exists check after delete".to_string())?);
+        assert!(
+            !storage
+                .exists(location)
+                .await
+                .with_context(|| "exists check after delete".to_string())?
+        );
         assert!(
             tokio::fs::metadata(&object_dir).await.is_err(),
             "object directory should be removed"
@@ -846,12 +857,16 @@ mod tests {
             .await
             .with_context(|| "list dir1".to_string())?;
         assert_eq!(dir1_files.len(), 2);
-        assert!(dir1_files
-            .iter()
-            .any(|meta| meta.location.as_ref().contains("file1.txt")));
-        assert!(dir1_files
-            .iter()
-            .any(|meta| meta.location.as_ref().contains("file2.txt")));
+        assert!(
+            dir1_files
+                .iter()
+                .any(|meta| meta.location.as_ref().contains("file1.txt"))
+        );
+        assert!(
+            dir1_files
+                .iter()
+                .any(|meta| meta.location.as_ref().contains("file2.txt"))
+        );
 
         // Test listing non-existent prefix
         let empty_files = storage
@@ -918,10 +933,12 @@ mod tests {
             .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
-        assert!(storage
-            .exists(location)
-            .await
-            .with_context(|| "exists".to_string())?);
+        assert!(
+            storage
+                .exists(location)
+                .await
+                .with_context(|| "exists".to_string())?
+        );
         assert_eq!(*storage.backend_kind(), StorageKind::Memory);
 
         Ok(())
@@ -975,10 +992,12 @@ mod tests {
         assert_eq!(retrieved.as_ref(), data);
 
         // Test existence check
-        assert!(test_storage
-            .exists(location)
-            .await
-            .with_context(|| "exists".to_string())?);
+        assert!(
+            test_storage
+                .exists(location)
+                .await
+                .with_context(|| "exists".to_string())?
+        );
 
         // Test list
         let files = test_storage
@@ -992,10 +1011,12 @@ mod tests {
             .delete_prefix("test/storage/")
             .await
             .with_context(|| "delete".to_string())?;
-        assert!(!test_storage
-            .exists(location)
-            .await
-            .with_context(|| "exists after delete".to_string())?);
+        assert!(
+            !test_storage
+                .exists(location)
+                .await
+                .with_context(|| "exists after delete".to_string())?
+        );
 
         Ok(())
     }
@@ -1019,10 +1040,12 @@ mod tests {
             .with_context(|| "get".to_string())?;
         assert_eq!(retrieved.as_ref(), data);
 
-        assert!(test_storage
-            .exists(location)
-            .await
-            .with_context(|| "exists".to_string())?);
+        assert!(
+            test_storage
+                .exists(location)
+                .await
+                .with_context(|| "exists".to_string())?
+        );
 
         Ok(())
     }
@@ -1119,20 +1142,24 @@ mod tests {
         assert_eq!(retrieved.as_ref(), data);
 
         // Test exists
-        assert!(storage
-            .exists(&location)
-            .await
-            .with_context(|| "exists".to_string())?);
+        assert!(
+            storage
+                .exists(&location)
+                .await
+                .with_context(|| "exists".to_string())?
+        );
 
         // Test delete
         storage
             .delete_prefix(&format!("{prefix}/"))
             .await
             .with_context(|| "delete".to_string())?;
-        assert!(!storage
-            .exists(&location)
-            .await
-            .with_context(|| "exists after delete".to_string())?);
+        assert!(
+            !storage
+                .exists(&location)
+                .await
+                .with_context(|| "exists after delete".to_string())?
+        );
 
         Ok(())
     }

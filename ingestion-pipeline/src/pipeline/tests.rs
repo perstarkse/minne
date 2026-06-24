@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::{
+    IngestionPipeline,
     config::{IngestionConfig, IngestionTuning},
     enrichment_result::LLMEnrichmentResult,
     services::PipelineServices,
@@ -8,7 +9,6 @@ use super::{
         count_chunks_for_source, count_entities_for_source, count_relationships_for_source,
         persist, sample_artifacts, setup_db,
     },
-    IngestionPipeline,
 };
 use crate::pipeline::context::{EmbeddedKnowledgeEntity, EmbeddedTextChunk};
 use anyhow::{self, Context};
@@ -405,9 +405,11 @@ async fn ingestion_pipeline_happy_path_persists_artifacts() -> anyhow::Result<()
         call_log.get(0..4),
         Some(&["prepare", "retrieve", "enrich", "convert"][..])
     );
-    assert!(call_log
-        .get(4..)
-        .is_some_and(|tail| tail.iter().all(|entry| *entry == "chunk")));
+    assert!(
+        call_log
+            .get(4..)
+            .is_some_and(|tail| tail.iter().all(|entry| *entry == "chunk"))
+    );
     Ok(())
 }
 

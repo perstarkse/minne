@@ -3,7 +3,7 @@ use async_openai::types::chat::{
     ChatCompletionRequestMessageContentPartTextArgs, ChatCompletionRequestUserMessageArgs,
     CreateChatCompletionRequestArgs, ImageDetail, ImageUrlArgs,
 };
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use common::{
     error::AppError,
     storage::{db::SurrealDbClient, types::system_settings::SystemSettings},

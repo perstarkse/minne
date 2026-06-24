@@ -1,7 +1,7 @@
 mod startup;
 pub mod wiring;
 
-pub use startup::{prepare_embedding_runtime, EmbeddingRuntimeRole};
+pub use startup::{EmbeddingRuntimeRole, prepare_embedding_runtime};
 
 use std::sync::Arc;
 
@@ -10,12 +10,12 @@ use async_openai::Client;
 use common::{
     storage::{db::SurrealDbClient, store::StorageManager},
     utils::{
-        config::{get_config, AppConfig},
-        embedding::{align_fastembed_system_settings, EmbeddingProvider},
+        config::{AppConfig, get_config},
+        embedding::{EmbeddingProvider, align_fastembed_system_settings},
     },
 };
 use retrieval_pipeline::reranking::RerankerPool;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 pub struct SharedServices {
     pub db: Arc<SurrealDbClient>,

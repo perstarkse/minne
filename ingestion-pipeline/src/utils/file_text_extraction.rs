@@ -38,11 +38,11 @@ async fn materialize_temp_file(
     let mut path = env::temp_dir();
     let mut file_name = format!("minne-ingest-{}", Uuid::new_v4());
 
-    if let Some(ext) = extension {
-        if !ext.is_empty() {
-            file_name.push('.');
-            file_name.push_str(ext);
-        }
+    if let Some(ext) = extension
+        && !ext.is_empty()
+    {
+        file_name.push('.');
+        file_name.push_str(ext);
     }
 
     path.push(file_name);
@@ -142,7 +142,7 @@ pub async fn extract_text_from_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_openai::{config::OpenAIConfig, Client};
+    use async_openai::{Client, config::OpenAIConfig};
     use bytes::Bytes;
     use chrono::Utc;
     use common::{

@@ -16,12 +16,12 @@ pub(crate) async fn finalize(ctx: &mut EvaluationContext<'_>) -> anyhow::Result<
     );
     let started = Instant::now();
 
-    if let Some(path) = ctx.diagnostics_path.as_ref() {
-        if ctx.diagnostics_enabled {
-            write_chunk_diagnostics(path.as_path(), &ctx.diagnostics_output)
-                .await
-                .with_context(|| format!("writing chunk diagnostics to {}", path.display()))?;
-        }
+    if let Some(path) = ctx.diagnostics_path.as_ref()
+        && ctx.diagnostics_enabled
+    {
+        write_chunk_diagnostics(path.as_path(), &ctx.diagnostics_output)
+            .await
+            .with_context(|| format!("writing chunk diagnostics to {}", path.display()))?;
     }
 
     info!(

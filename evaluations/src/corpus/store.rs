@@ -5,16 +5,17 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use common::storage::{
     db::SurrealDbClient,
     types::{
-        knowledge_entity::KnowledgeEntity, knowledge_relationship::KnowledgeRelationship,
-        text_chunk::TextChunk, text_content::TextContent, StoredObject,
+        StoredObject, knowledge_entity::KnowledgeEntity,
+        knowledge_relationship::KnowledgeRelationship, text_chunk::TextChunk,
+        text_content::TextContent,
     },
 };
-use ingestion_pipeline::{persist_artifacts, IngestionTuning, PipelineArtifacts};
+use ingestion_pipeline::{IngestionTuning, PipelineArtifacts, persist_artifacts};
 use serde::Deserialize;
 use tracing::{debug, warn};
 
@@ -304,7 +305,7 @@ impl ParagraphShardStore {
             Ok(file) => file,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(err) => {
-                return Err(err).with_context(|| format!("opening shard {}", path.display()))
+                return Err(err).with_context(|| format!("opening shard {}", path.display()));
             }
         };
         let reader = BufReader::new(file);

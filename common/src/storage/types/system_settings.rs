@@ -223,16 +223,16 @@ impl SystemSettings {
             needs_update = true;
         }
 
-        if let Some(model) = provider_model {
-            if settings.embedding_model != model {
-                tracing::info!(
-                    old_model = %settings.embedding_model,
-                    new_model = %model,
-                    "Embedding model changed, updating SystemSettings"
-                );
-                settings.embedding_model = model;
-                needs_update = true;
-            }
+        if let Some(model) = provider_model
+            && settings.embedding_model != model
+        {
+            tracing::info!(
+                old_model = %settings.embedding_model,
+                new_model = %model,
+                "Embedding model changed, updating SystemSettings"
+            );
+            settings.embedding_model = model;
+            needs_update = true;
         }
 
         if needs_update {
@@ -719,8 +719,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_should_change_embedding_length_on_indexes_when_switching_length(
-    ) -> anyhow::Result<()> {
+    async fn test_should_change_embedding_length_on_indexes_when_switching_length()
+    -> anyhow::Result<()> {
         use crate::utils::embedding::EmbeddingProvider;
 
         let db = setup_test_db().await?;

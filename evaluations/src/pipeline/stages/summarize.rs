@@ -4,8 +4,8 @@ use chrono::Utc;
 use tracing::info;
 
 use crate::types::{
-    build_stage_latency_breakdown, compute_latency_stats, EvaluationSummary, PerformanceTimings,
-    RetrievedContextStats,
+    EvaluationSummary, PerformanceTimings, RetrievedContextStats, build_stage_latency_breakdown,
+    compute_latency_stats,
 };
 
 use super::super::context::{EvalStage, EvaluationContext};

@@ -9,11 +9,11 @@ use async_openai::{
     },
 };
 use common::storage::types::{
-    message::{format_history, Message},
+    message::{Message, format_history},
     system_settings::SystemSettings,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// JSON schema describing the structured chat answer (answer text + references).
 fn get_query_response_schema() -> Value {
@@ -62,16 +62,18 @@ impl LLMResponseFormat {
 pub fn chunks_to_chat_context(chunks: &[crate::RetrievedChunk]) -> Value {
     use crate::round_score;
 
-    serde_json::json!(chunks
-        .iter()
-        .map(|chunk| {
-            serde_json::json!({
-                "id": chunk.chunk.id,
-                "content": chunk.chunk.chunk,
-                "score": round_score(chunk.score),
+    serde_json::json!(
+        chunks
+            .iter()
+            .map(|chunk| {
+                serde_json::json!({
+                    "id": chunk.chunk.id,
+                    "content": chunk.chunk.chunk,
+                    "score": round_score(chunk.score),
+                })
             })
-        })
-        .collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    )
 }
 
 pub fn create_user_message_with_history(

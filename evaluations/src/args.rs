@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, ValueEnum};
 
 use crate::datasets::DatasetKind;
@@ -394,26 +394,26 @@ impl Config {
             ));
         }
 
-        if let Some(k) = self.retrieval.chunk_rrf_k {
-            if k <= 0.0 || !k.is_finite() {
-                return Err(anyhow!(
-                    "--chunk-rrf-k must be a positive, finite number (got {k})"
-                ));
-            }
+        if let Some(k) = self.retrieval.chunk_rrf_k
+            && (k <= 0.0 || !k.is_finite())
+        {
+            return Err(anyhow!(
+                "--chunk-rrf-k must be a positive, finite number (got {k})"
+            ));
         }
-        if let Some(weight) = self.retrieval.chunk_rrf_vector_weight {
-            if weight < 0.0 || !weight.is_finite() {
-                return Err(anyhow!(
-                    "--chunk-rrf-vector-weight must be a non-negative, finite number (got {weight})"
-                ));
-            }
+        if let Some(weight) = self.retrieval.chunk_rrf_vector_weight
+            && (weight < 0.0 || !weight.is_finite())
+        {
+            return Err(anyhow!(
+                "--chunk-rrf-vector-weight must be a non-negative, finite number (got {weight})"
+            ));
         }
-        if let Some(weight) = self.retrieval.chunk_rrf_fts_weight {
-            if weight < 0.0 || !weight.is_finite() {
-                return Err(anyhow!(
-                    "--chunk-rrf-fts-weight must be a non-negative, finite number (got {weight})"
-                ));
-            }
+        if let Some(weight) = self.retrieval.chunk_rrf_fts_weight
+            && (weight < 0.0 || !weight.is_finite())
+        {
+            return Err(anyhow!(
+                "--chunk-rrf-fts-weight must be a non-negative, finite number (got {weight})"
+            ));
         }
 
         if self.concurrency == 0 {
@@ -426,16 +426,16 @@ impl Config {
             ));
         }
 
-        if let Some(query_model) = &self.query_model {
-            if query_model.trim().is_empty() {
-                return Err(anyhow!("--query-model requires a non-empty model name"));
-            }
+        if let Some(query_model) = &self.query_model
+            && query_model.trim().is_empty()
+        {
+            return Err(anyhow!("--query-model requires a non-empty model name"));
         }
 
-        if let Some(grow) = self.slice_grow {
-            if grow == 0 {
-                return Err(anyhow!("--slice-grow must be greater than zero"));
-            }
+        if let Some(grow) = self.slice_grow
+            && grow == 0
+        {
+            return Err(anyhow!("--slice-grow must be greater than zero"));
         }
 
         if self.negative_multiplier <= 0.0 || !self.negative_multiplier.is_finite() {
@@ -465,12 +465,11 @@ impl Config {
         }
 
         // Handle perf log dir env var fallback
-        if self.perf_log_dir.is_none() {
-            if let Ok(dir) = env::var("EVAL_PERF_LOG_DIR") {
-                if !dir.trim().is_empty() {
-                    self.perf_log_dir = Some(PathBuf::from(dir));
-                }
-            }
+        if self.perf_log_dir.is_none()
+            && let Ok(dir) = env::var("EVAL_PERF_LOG_DIR")
+            && !dir.trim().is_empty()
+        {
+            self.perf_log_dir = Some(PathBuf::from(dir));
         }
 
         Ok(())
@@ -480,10 +479,10 @@ impl Config {
         let catalog = crate::datasets::catalog()?;
         let entry = catalog.dataset(self.dataset.id())?;
 
-        if self.slice.is_none() {
-            if let Some(default_slice) = entry.slices.first() {
-                self.slice = Some(default_slice.id.clone());
-            }
+        if self.slice.is_none()
+            && let Some(default_slice) = entry.slices.first()
+        {
+            self.slice = Some(default_slice.id.clone());
         }
 
         let Some(slice_id) = self.slice.as_deref() else {
@@ -498,11 +497,11 @@ impl Config {
             return Ok(());
         }
 
-        if let Some(limit) = slice.limit {
-            if self.limit_arg == 200 {
-                self.limit_arg = limit;
-                self.limit = Some(limit);
-            }
+        if let Some(limit) = slice.limit
+            && self.limit_arg == 200
+        {
+            self.limit_arg = limit;
+            self.limit = Some(limit);
         }
         if self.corpus_limit.is_none() {
             self.corpus_limit = slice.corpus_limit;
@@ -514,10 +513,10 @@ impl Config {
             self.llm_mode = include_unanswerable;
             self.retrieval.require_verified_chunks = !include_unanswerable;
         }
-        if let Some(multiplier) = slice.negative_multiplier {
-            if negative_multiplier_is_default(self.negative_multiplier) {
-                self.negative_multiplier = multiplier;
-            }
+        if let Some(multiplier) = slice.negative_multiplier
+            && negative_multiplier_is_default(self.negative_multiplier)
+        {
+            self.negative_multiplier = multiplier;
         }
         Ok(())
     }

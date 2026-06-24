@@ -15,14 +15,14 @@ use common::{
         db::SurrealDbClient,
         store::StorageManager,
         types::{
-            ingestion_payload::IngestionPayload, knowledge_relationship::KnowledgeRelationship,
-            system_settings::SystemSettings, text_chunk::TextChunk, text_content::TextContent,
-            StoredObject,
+            StoredObject, ingestion_payload::IngestionPayload,
+            knowledge_relationship::KnowledgeRelationship, system_settings::SystemSettings,
+            text_chunk::TextChunk, text_content::TextContent,
         },
     },
     utils::{config::AppConfig, embedding::EmbeddingProvider},
 };
-use retrieval_pipeline::{reranking::RerankerPool, retrieved_entities_to_json, RetrievedEntity};
+use retrieval_pipeline::{RetrievedEntity, reranking::RerankerPool, retrieved_entities_to_json};
 use text_splitter::{ChunkCapacity, ChunkConfig, TextSplitter};
 
 use super::{enrichment_result::LLMEnrichmentResult, preparation::to_text_content};
@@ -358,7 +358,7 @@ mod tests {
     use std::sync::Arc;
 
     use anyhow::Context;
-    use async_openai::{config::OpenAIConfig, types::chat::ChatCompletionRequestMessage, Client};
+    use async_openai::{Client, config::OpenAIConfig, types::chat::ChatCompletionRequestMessage};
     use common::{
         storage::{
             db::SurrealDbClient, store::StorageManager, types::system_settings::SystemSettingsPatch,

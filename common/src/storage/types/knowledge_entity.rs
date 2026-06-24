@@ -399,7 +399,9 @@ impl KnowledgeEntity {
                 if embedding.len() != new_dimensions {
                     let err_msg = format!(
                         "CRITICAL: Generated embedding for entity {} has incorrect dimension ({}). Expected {}. Aborting.",
-                        entity.id, embedding.len(), new_dimensions
+                        entity.id,
+                        embedding.len(),
+                        new_dimensions
                     );
                     error!("{err_msg}");
                     return Err(AppError::internal(err_msg));
@@ -864,14 +866,18 @@ mod tests {
 
         let rid_e1 = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &e1.id);
         let rid_e2 = surrealdb::RecordId::from_table_key(KnowledgeEntity::table_name(), &e2.id);
-        assert!(KnowledgeEntityEmbedding::get_by_record_id(&db, &rid_e1)
-            .await
-            .with_context(|| "get embedding e1".to_string())?
-            .is_some());
-        assert!(KnowledgeEntityEmbedding::get_by_record_id(&db, &rid_e2)
-            .await
-            .with_context(|| "get embedding e2".to_string())?
-            .is_some());
+        assert!(
+            KnowledgeEntityEmbedding::get_by_record_id(&db, &rid_e1)
+                .await
+                .with_context(|| "get embedding e1".to_string())?
+                .is_some()
+        );
+        assert!(
+            KnowledgeEntityEmbedding::get_by_record_id(&db, &rid_e2)
+                .await
+                .with_context(|| "get embedding e2".to_string())?
+                .is_some()
+        );
 
         let results = KnowledgeEntity::vector_search(2, &[0.0, 1.0, 0.0], &db, &user_id)
             .await

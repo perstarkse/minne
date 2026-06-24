@@ -287,10 +287,12 @@ mod tests {
                 .with_context(|| "get entity2 embedding after delete".to_string())?
                 .is_none()
         );
-        assert!(KnowledgeEntityEmbedding::get_by_record_id(&db, &other_rid)
-            .await
-            .with_context(|| "get other embedding after delete".to_string())?
-            .is_some());
+        assert!(
+            KnowledgeEntityEmbedding::get_by_record_id(&db, &other_rid)
+                .await
+                .with_context(|| "get other embedding after delete".to_string())?
+                .is_some()
+        );
 
         Ok(())
     }

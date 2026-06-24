@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use crate::storage::indexes::hnsw_index_overwrite_sql;
 use crate::storage::types::{
-    text_chunk_embedding::TextChunkEmbedding, EmbeddingRecord, HasEmbedding,
+    EmbeddingRecord, HasEmbedding, text_chunk_embedding::TextChunkEmbedding,
 };
 use crate::utils::embedding::RE_EMBED_BATCH_SIZE;
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
@@ -216,7 +216,9 @@ impl TextChunk {
                 if embedding.len() != new_dimensions {
                     let err_msg = format!(
                         "CRITICAL: Generated embedding for chunk {} has incorrect dimension ({}). Expected {}. Aborting.",
-                        chunk.id, embedding.len(), new_dimensions
+                        chunk.id,
+                        embedding.len(),
+                        new_dimensions
                     );
                     error!("{err_msg}");
                     return Err(AppError::internal(err_msg));

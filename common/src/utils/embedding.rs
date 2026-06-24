@@ -9,7 +9,7 @@ use std::{
 use serde::Serialize;
 use tracing::warn;
 
-use async_openai::{types::embeddings::CreateEmbeddingRequestArgs, Client};
+use async_openai::{Client, types::embeddings::CreateEmbeddingRequestArgs};
 use fastembed::{EmbeddingModel, ModelTrait, TextEmbedding, TextInitOptions};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -588,9 +588,8 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
-        align_fastembed_system_settings, fastembed_model_dimension,
-        list_fastembed_embedding_models, resolve_fastembed_model_code, EmbeddingError,
-        DEFAULT_FASTEMBED_MODEL_CODE,
+        DEFAULT_FASTEMBED_MODEL_CODE, EmbeddingError, align_fastembed_system_settings,
+        fastembed_model_dimension, list_fastembed_embedding_models, resolve_fastembed_model_code,
     };
     use crate::storage::types::system_settings::SystemSettings;
     use crate::utils::config::{AppConfig, EmbeddingBackend, ParseEmbeddingBackendError};

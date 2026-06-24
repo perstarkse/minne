@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Path, Query, State},
     Form,
+    extract::{Path, Query, State},
 };
 use axum_htmx::{HxBoosted, HxRequest, HxTarget};
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use crate::{
         auth_middleware::RequireUser,
         response_middleware::{TemplateResponse, TemplateResult},
     },
-    utils::pagination::{paginate_items, Pagination},
+    utils::pagination::{Pagination, paginate_items},
     utils::text_content_preview::truncate_text_contents,
 };
 use url::form_urlencoded;

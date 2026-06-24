@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+
+## 1.0.5 (2026-06-24)
+
 - Infra: CI workflow fixes. CI is now a nix flake check which includes compilation, caching and running tests, clippy, fmt, validation for ort version.
 - Docker-compose: The example now references the ghcr image, this is so we can remove the Dockerfile and reducing maintenance scope.
 - Refactor: web scraping now uses `servo-fetch` (pure-Rust Servo engine) and PDF rendering uses `pdfium-render` (direct PDFium bindings) — reduces Docker image size by ~300MB, improves startup latency by ~100× for PDF rendering, and provides more stable output
@@ -10,7 +13,6 @@
 - Docs: updated architecture, features, and installation docs to reflect the new web processing stack
 - Fix: added pre-commit hooks to further maintain code consistency.
 - Security: updated some deps because dependabot told me, good bot.
-- Security: bump `async-openai` to 0.41.1 (feature-gated types, transcription API rename; removes `backoff` transitive dep)
 - Refactor: deduplicated test database setup across common/src/storage/.
 - Refactor: split knowledge-graph.js monolith into focused functions.
 - Evaluations: simplified crate layout — linear pipeline, sharded-only converted store, in-memory ingestion, `db/` and `cli/` modules; namespace reuse state in corpus manifest (removed `cache/snapshots/`); no legacy JSON/history compatibility (re-run `--warm` after upgrade)

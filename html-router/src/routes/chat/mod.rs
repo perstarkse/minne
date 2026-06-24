@@ -3,7 +3,7 @@ mod message_response_stream;
 mod reference_validation;
 mod references;
 
-use axum::{extract::FromRef, routing::get, Router};
+use axum::{Router, extract::FromRef, routing::get};
 pub use chat_handlers::{
     delete_conversation, new_chat_user_message, new_user_message, patch_conversation_title,
     reload_sidebar, show_chat_base as show_base, show_conversation_editing_title,

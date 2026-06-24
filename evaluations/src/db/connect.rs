@@ -1,10 +1,10 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use common::{
     storage::{
         db::SurrealDbClient,
-        types::user::{Theme, User},
         types::StoredObject,
+        types::user::{Theme, User},
     },
     utils::embedding::EmbeddingProvider,
 };

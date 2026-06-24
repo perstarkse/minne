@@ -3,15 +3,15 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use axum::{
+    Form, Json,
     extract::{Path, Query, State},
     http::HeaderValue,
     response::{IntoResponse, Response},
-    Form, Json,
 };
-use axum_htmx::{HxBoosted, HxRequest, HX_TRIGGER};
+use axum_htmx::{HX_TRIGGER, HxBoosted, HxRequest};
 use serde::{
-    de::{self, Deserializer, MapAccess, Visitor},
     Deserialize, Serialize,
+    de::{self, Deserializer, MapAccess, Visitor},
 };
 
 use common::{
@@ -27,7 +27,7 @@ use common::{
     utils::embedding::EmbeddingProvider,
 };
 use retrieval_pipeline::{
-    normalize_fts_terms, reciprocal_rank_fusion, RetrievalTuning, RrfConfig, Scored,
+    RetrievalTuning, RrfConfig, Scored, normalize_fts_terms, reciprocal_rank_fusion,
 };
 use tracing::debug;
 use uuid::Uuid;
@@ -37,10 +37,10 @@ use crate::{
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{
-            template_with_headers, ResponseResult, TemplateResponse, TemplateResult,
+            ResponseResult, TemplateResponse, TemplateResult, template_with_headers,
         },
     },
-    utils::pagination::{paginate_items, paginate_slice, Pagination},
+    utils::pagination::{Pagination, paginate_items, paginate_slice},
 };
 use url::form_urlencoded;
 
@@ -950,12 +950,11 @@ fn normalize_filter(input: Option<String>) -> Option<String> {
 
 fn trim_matching_quotes(value: &str) -> &str {
     let bytes = value.as_bytes();
-    if let (Some(&first), Some(&last)) = (bytes.first(), bytes.last()) {
-        if bytes.len() >= 2
-            && ((first == b'"' && last == b'"') || (first == b'\'' && last == b'\''))
-        {
-            return &value[1..value.len().saturating_sub(1)];
-        }
+    if let (Some(&first), Some(&last)) = (bytes.first(), bytes.last())
+        && bytes.len() >= 2
+        && ((first == b'"' && last == b'"') || (first == b'\'' && last == b'\''))
+    {
+        return &value[1..value.len().saturating_sub(1)];
     }
     value
 }

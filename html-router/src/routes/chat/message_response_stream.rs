@@ -6,24 +6,24 @@ use async_stream::stream;
 use axum::{
     extract::{Query, State},
     response::{
-        sse::{Event, KeepAlive, KeepAliveStream},
         Sse,
+        sse::{Event, KeepAlive, KeepAliveStream},
     },
 };
 use futures::{
-    stream::{self, once},
     Stream, StreamExt, TryStreamExt,
+    stream::{self, once},
 };
 use json_stream_parser::JsonStreamParser;
 use minijinja::Value;
 use retrieval_pipeline::answer_retrieval::{
-    chunks_to_chat_context, create_chat_request, create_user_message_with_history,
-    LLMResponseFormat,
+    LLMResponseFormat, chunks_to_chat_context, create_chat_request,
+    create_user_message_with_history,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
-use tokio::sync::mpsc::channel;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::channel;
 use tracing::{debug, error, info};
 
 use common::storage::{
@@ -66,7 +66,7 @@ async fn get_message_and_user(
         Ok(None) => {
             return Err(sse_with_keep_alive(create_error_stream(
                 "Message not found: the specified message does not exist",
-            )))
+            )));
         }
         Err(e) => {
             error!("Database error retrieving message {}: {:?}", message_id, e);
@@ -233,12 +233,12 @@ pub async fn get_response_stream(
 fn build_chat_event_stream(
     state: HtmlState,
     openai_stream: impl Stream<
-            Item = Result<
-                async_openai::types::chat::CreateChatCompletionStreamResponse,
-                async_openai::error::OpenAIError,
-            >,
-        > + Send
-        + 'static,
+        Item = Result<
+            async_openai::types::chat::CreateChatCompletionStreamResponse,
+            async_openai::error::OpenAIError,
+        >,
+    > + Send
+    + 'static,
     user_message: &Message,
     user_id: String,
     allowed_reference_ids: Vec<String>,
@@ -502,17 +502,17 @@ impl StreamParserState {
 
         let json = self.parser.result();
 
-        if let Some(obj) = json.as_object() {
-            if let Some(answer) = obj.get("answer") {
-                self.in_answer_field = true;
+        if let Some(obj) = json.as_object()
+            && let Some(answer) = obj.get("answer")
+        {
+            self.in_answer_field = true;
 
-                let current_content = answer.as_str().unwrap_or_default().to_string();
+            let current_content = answer.as_str().unwrap_or_default().to_string();
 
-                if current_content.len() > self.last_answer_content.len() {
-                    let new_content = current_content[self.last_answer_content.len()..].to_string();
-                    self.last_answer_content = current_content;
-                    return new_content;
-                }
+            if current_content.len() > self.last_answer_content.len() {
+                let new_content = current_content[self.last_answer_content.len()..].to_string();
+                self.last_answer_content = current_content;
+                return new_content;
             }
         }
 

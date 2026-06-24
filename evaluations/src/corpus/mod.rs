@@ -8,8 +8,9 @@ pub use orchestrator::{
     load_cached_manifest, persist_corpus_manifest,
 };
 pub use store::{
-    seed_manifest_into_db, window_manifest, CorpusHandle, CorpusManifest, CorpusMetadata,
-    CorpusQuestion, NamespaceSeedRecord, ParagraphShard, ParagraphShardStore, MANIFEST_VERSION,
+    CorpusHandle, CorpusManifest, CorpusMetadata, CorpusQuestion, MANIFEST_VERSION,
+    NamespaceSeedRecord, ParagraphShard, ParagraphShardStore, seed_manifest_into_db,
+    window_manifest,
 };
 
 pub fn make_ingestion_config(config: &crate::args::Config) -> ingestion_pipeline::IngestionConfig {

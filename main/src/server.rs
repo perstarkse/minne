@@ -2,9 +2,8 @@ mod bootstrap;
 
 use axum::extract::FromRef;
 use bootstrap::{
-    init, prepare_embedding_runtime,
+    EmbeddingRuntimeRole, init, prepare_embedding_runtime,
     wiring::{build_api_state, build_html_state, minne_routes},
-    EmbeddingRuntimeRole,
 };
 use tracing::info;
 

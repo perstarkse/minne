@@ -1,7 +1,7 @@
 use axum::{
+    Form,
     extract::{Path, State},
     http::HeaderValue,
-    Form,
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,8 +18,8 @@ use crate::{
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{
-            template_as_response, template_with_headers, ResponseResult, TemplateResponse,
-            TemplateResult,
+            ResponseResult, TemplateResponse, TemplateResult, template_as_response,
+            template_with_headers,
         },
     },
 };

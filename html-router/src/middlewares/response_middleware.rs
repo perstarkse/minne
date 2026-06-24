@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{
+    Extension,
     extract::{Request, State},
     http::{HeaderName, StatusCode},
     middleware::Next,
     response::{Html, IntoResponse, Redirect, Response},
-    Extension,
 };
-use axum_htmx::{HxRequest, HX_TRIGGER};
+use axum_htmx::{HX_TRIGGER, HxRequest};
 use common::{
     error::AppError,
     utils::template_engine::{ProvidesTemplateEngine, Value},
@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde_json::json;
 use tracing::error;
 
-use crate::{html_state::HtmlState, AuthSessionType};
+use crate::{AuthSessionType, html_state::HtmlState};
 use common::storage::types::{
     conversation::{Conversation, SidebarConversation},
     user::{Theme, User},
@@ -175,10 +175,10 @@ const HTMX_HEADERS_TO_FORWARD: &[&str] = &["HX-Push", "HX-Trigger", "HX-Redirect
 
 fn forward_headers(from: &axum::http::HeaderMap, to: &mut axum::http::HeaderMap) {
     for &header_name in HTMX_HEADERS_TO_FORWARD {
-        if let Ok(name) = HeaderName::from_bytes(header_name.as_bytes()) {
-            if let Some(value) = from.get(&name) {
-                to.insert(name.clone(), value.clone());
-            }
+        if let Ok(name) = HeaderName::from_bytes(header_name.as_bytes())
+            && let Some(value) = from.get(&name)
+        {
+            to.insert(name.clone(), value.clone());
         }
     }
 }
@@ -219,13 +219,13 @@ where
     let mut current_user = None;
 
     {
-        if let Some(auth) = req.extensions().get::<AuthSessionType>() {
-            if let Some(user) = &auth.current_user {
-                is_authenticated = true;
-                user_theme = user.theme.as_str();
-                initial_theme = user.theme.initial_theme();
-                current_user = Some(TemplateUser::from(user));
-            }
+        if let Some(auth) = req.extensions().get::<AuthSessionType>()
+            && let Some(user) = &auth.current_user
+        {
+            is_authenticated = true;
+            user_theme = user.theme.as_str();
+            initial_theme = user.theme.initial_theme();
+            current_user = Some(TemplateUser::from(user));
         }
     }
 

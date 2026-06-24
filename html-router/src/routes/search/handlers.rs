@@ -4,9 +4,9 @@ use axum::extract::{Query, State};
 use axum_htmx::{HxBoosted, HxRequest};
 use common::storage::types::{text_content::TextContent, user::User};
 use retrieval_pipeline::{
-    retrieve, RetrievalConfig, RetrievalOutput, RetrievedChunk, RetrievedEntity,
+    RetrievalConfig, RetrievalOutput, RetrievedChunk, RetrievedEntity, retrieve,
 };
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use std::{fmt, str::FromStr};
 
 use crate::{

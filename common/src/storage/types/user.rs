@@ -3,7 +3,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use axum_session_auth::Authentication;
 use chrono_tz::Tz;
-use surrealdb::{engine::any::Any, Surreal};
+use surrealdb::{Surreal, engine::any::Any};
 use uuid::Uuid;
 
 use super::text_chunk::TextChunk;
@@ -729,7 +729,7 @@ mod tests {
 
     use super::*;
     use crate::storage::types::ingestion_payload::IngestionPayload;
-    use crate::storage::types::ingestion_task::{IngestionTask, TaskState, MAX_ATTEMPTS};
+    use crate::storage::types::ingestion_task::{IngestionTask, MAX_ATTEMPTS, TaskState};
     use std::collections::HashSet;
 
     use crate::test_utils::setup_test_db;

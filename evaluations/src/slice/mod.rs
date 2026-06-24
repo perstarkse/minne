@@ -5,9 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
-use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
@@ -20,7 +20,7 @@ use crate::{
 mod beir;
 mod build;
 
-use build::{mix_seed, BuildParams};
+use build::{BuildParams, mix_seed};
 
 const SLICE_VERSION: u32 = 2;
 pub const DEFAULT_NEGATIVE_MULTIPLIER: f32 = 4.0;
@@ -1116,11 +1116,13 @@ mod tests {
         assert_eq!(window.cases.len(), 1);
         let positive_ids: Vec<&str> = window.positive_ids().collect();
         assert_eq!(positive_ids.len(), 1);
-        assert!(resolved
-            .manifest
-            .paragraphs
-            .iter()
-            .any(|entry| entry.id == positive_ids[0]));
+        assert!(
+            resolved
+                .manifest
+                .paragraphs
+                .iter()
+                .any(|entry| entry.id == positive_ids[0])
+        );
         Ok(())
     }
 

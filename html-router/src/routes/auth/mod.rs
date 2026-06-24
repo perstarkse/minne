@@ -2,7 +2,7 @@ pub mod signin;
 pub mod signout;
 pub mod signup;
 
-use axum::{extract::FromRef, routing::get, Router};
+use axum::{Router, extract::FromRef, routing::get};
 use signin::{authenticate_user, show_signin_form};
 use signout::sign_out_user;
 use signup::{process_signup_and_show_verification, show_signup_form};

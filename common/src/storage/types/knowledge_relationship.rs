@@ -575,12 +575,16 @@ mod tests {
         KnowledgeRelationship::delete_relationships_by_source_id(shared_source, user_a, &db)
             .await?;
 
-        assert!(get_relationship_by_id(&owner_relationship_id, &db)
-            .await
-            .is_none());
-        assert!(get_relationship_by_id(&other_relationship_id, &db)
-            .await
-            .is_some());
+        assert!(
+            get_relationship_by_id(&owner_relationship_id, &db)
+                .await
+                .is_none()
+        );
+        assert!(
+            get_relationship_by_id(&other_relationship_id, &db)
+                .await
+                .is_some()
+        );
 
         Ok(())
     }

@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use tracing::warn;
 
@@ -138,10 +138,10 @@ pub fn convert_beir_documents(
             continue;
         };
 
-        if let Some(filter) = doc_ids {
-            if !filter.contains(&best.doc_id) {
-                continue;
-            }
+        if let Some(filter) = doc_ids
+            && !filter.contains(&best.doc_id)
+        {
+            continue;
         }
 
         let Some(&paragraph_slot) = paragraph_index.get(&best.doc_id) else {

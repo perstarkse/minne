@@ -1,13 +1,13 @@
-use axum::{extract::State, Form};
+use axum::{Form, extract::State};
 use chrono_tz::TZ_VARIANTS;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    AuthSessionType,
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{TemplateResponse, TemplateResult},
     },
-    AuthSessionType,
 };
 use common::storage::types::user::{Theme, User};
 

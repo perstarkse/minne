@@ -4,12 +4,12 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
     response::{
-        sse::{Event, KeepAlive, KeepAliveStream},
         Sse,
+        sse::{Event, KeepAlive, KeepAliveStream},
     },
 };
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
-use futures::{future::try_join_all, stream, Stream, StreamExt, TryFutureExt};
+use futures::{Stream, StreamExt, TryFutureExt, future::try_join_all, stream};
 use minijinja::context;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
@@ -24,7 +24,7 @@ use common::{
         ingestion_task::{IngestionTask, TaskState},
         user::User,
     },
-    utils::ingest_limits::{validate_ingest_input, IngestValidationError},
+    utils::ingest_limits::{IngestValidationError, validate_ingest_input},
 };
 
 use crate::{

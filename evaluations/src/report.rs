@@ -8,8 +8,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::types::{
-    format_timestamp, CaseSummary, EvaluationStageTimings, EvaluationSummary, LatencyStats,
-    RetrievalContextStats, StageLatencyBreakdown,
+    CaseSummary, EvaluationStageTimings, EvaluationSummary, LatencyStats, RetrievalContextStats,
+    StageLatencyBreakdown, format_timestamp,
 };
 
 #[derive(Debug)]
@@ -804,11 +804,7 @@ fn prettify_stage(label: &str) -> String {
 }
 
 fn bool_badge(value: bool) -> &'static str {
-    if value {
-        "✅"
-    } else {
-        "⚪"
-    }
+    if value { "✅" } else { "⚪" }
 }
 
 fn render_retrieved(entries: &[RetrievedSnippet]) -> String {

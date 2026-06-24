@@ -198,7 +198,10 @@ pub fn ensure_ort_path() {
                 exe.join("lib").join("onnxruntime.dll"),
             ] {
                 if p.exists() {
-                    env::set_var("ORT_DYLIB_PATH", p);
+                    // SAFETY: `Once` ensures this runs on a single thread during startup.
+                    unsafe {
+                        env::set_var("ORT_DYLIB_PATH", p);
+                    }
                     return;
                 }
             }
@@ -210,7 +213,10 @@ pub fn ensure_ort_path() {
         };
         let p = exe.join("lib").join(name);
         if p.exists() {
-            env::set_var("ORT_DYLIB_PATH", p);
+            // SAFETY: `Once` ensures this runs on a single thread during startup.
+            unsafe {
+                env::set_var("ORT_DYLIB_PATH", p);
+            }
         }
     });
 }

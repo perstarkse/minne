@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc, time::Instant};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use common::storage::types::StoredObject;
 use futures::stream::{self, StreamExt};
 use tracing::{debug, info};
@@ -9,8 +9,8 @@ use crate::{
     cases::SeededCase,
     context_stats,
     types::{
-        adapt_retrieval_output, build_case_diagnostics, text_contains_answer, CaseDiagnostics,
-        CaseSummary, RetrievedSummary,
+        CaseDiagnostics, CaseSummary, RetrievedSummary, adapt_retrieval_output,
+        build_case_diagnostics, text_contains_answer,
     },
 };
 use retrieval_pipeline::{
@@ -391,9 +391,5 @@ fn calculate_ndcg(retrieved: &[RetrievedSummary], k: usize) -> f64 {
         idcg += rel / (f64::from(i) + 2.0).log2();
     }
 
-    if idcg == 0.0 {
-        0.0
-    } else {
-        dcg / idcg
-    }
+    if idcg == 0.0 { 0.0 } else { dcg / idcg }
 }

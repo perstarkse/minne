@@ -21,6 +21,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache 2>/dev/null || true
+          sudo apt-get clean
+          df -h /
+
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
@@ -28,7 +34,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 5G
+          gc-max-store-size-linux: 8G
 
       - name: Read ORT version from flake
         id: ort_version
@@ -37,9 +43,39 @@ jobs:
       - name: Run nix flake check
         run: nix flake check --system x86_64-linux
 
+  warm-xwin-cache:
+    name: Warm xwin FOD cache
+    runs-on: ubuntu-24.04
+    needs: [ci]
+    if: ${{ needs.ci.outputs.publishing == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache 2>/dev/null || true
+          sudo apt-get clean
+          df -h /
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - uses: nix-community/cache-nix-action@v7
+        id: xwin-cache
+        with:
+          primary-key: nix-Linux-xwin-${{ hashFiles('nix/windows-cross.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-Linux-xwin-
+          gc-max-store-size-linux: 8G
+
+      - name: Build xwin Cargo cache
+        if: steps.xwin-cache.outputs.hit-primary-key != 'true'
+        run: nix build .#xwinCargoCache --no-link -L
+
   build-nix-artifacts:
     name: build (${{ matrix.triple }})
-    needs: [ci]
+    needs: [ci, warm-xwin-cache]
     if: ${{ needs.ci.outputs.publishing == 'true' }}
     strategy:
       fail-fast: false
@@ -48,31 +84,38 @@ jobs:
           - runner: ubuntu-24.04
             triple: x86_64-unknown-linux-gnu
             nix_package: minne-release
-            cache_save: false
-          - runner: macos-latest
+            cache_restore_prefix: nix-Linux-
+          - runner: macos-14
             triple: aarch64-apple-darwin
             nix_package: minne-release
-            cache_save: true
+            cache_restore_prefix: ""
           - runner: ubuntu-24.04
             triple: x86_64-pc-windows-msvc
             nix_package: minne-release-windows
-            cache_save: false
+            cache_restore_prefix: nix-Linux-xwin-
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache 2>/dev/null || true
+          sudo apt-get clean
+          df -h /
+
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - uses: nix-community/cache-nix-action@v7
+        if: matrix.cache_restore_prefix != ''
         with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 5G
-          gc-max-store-size-darwin: 5G
-          save: ${{ matrix.cache_save }}
+          primary-key: ${{ matrix.cache_restore_prefix }}${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
+          restore-prefixes-first-match: ${{ matrix.cache_restore_prefix }}
+          save: false
+          gc-max-store-size-linux: 8G
 
       - name: Build release archive (Nix)
         run: nix build .#${{ matrix.nix_package }} -L --out-link minne-release
@@ -88,7 +131,21 @@ jobs:
             ARTIFACT="main-${TRIPLE}.tar.xz"
           fi
           RELEASE="$(nix path-info ./minne-release)"
-          cp "$RELEASE/${ARTIFACT}" "$ARTIFACT"
+          echo "Release output at $RELEASE:"
+          ls -la "$RELEASE"
+          BUILT=""
+          while IFS= read -r f; do
+            if [ -n "$BUILT" ]; then
+              echo "Expected exactly one release archive in $RELEASE, found multiple" >&2
+              exit 1
+            fi
+            BUILT="$f"
+          done < <(find "$RELEASE" -maxdepth 1 \( -name 'main-*.tar.xz' -o -name 'main-*.zip' \) -print)
+          if [ -z "$BUILT" ]; then
+            echo "Expected exactly one release archive in $RELEASE, found none" >&2
+            exit 1
+          fi
+          cp "$BUILT" "$ARTIFACT"
           if command -v sha256sum >/dev/null; then
             sha256sum "$ARTIFACT" > "${ARTIFACT}.sha256"
           else
@@ -117,6 +174,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache 2>/dev/null || true
+          sudo apt-get clean
+          df -h /
+
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
@@ -124,8 +187,8 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 5G
           save: false
+          gc-max-store-size-linux: 8G
 
       - name: Build Docker image with Nix
         run: nix build .#dockerImage -L --show-trace

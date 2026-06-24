@@ -1,6 +1,6 @@
 mod handlers;
 
-use axum::{extract::DefaultBodyLimit, extract::FromRef, routing::get, Router};
+use axum::{Router, extract::DefaultBodyLimit, extract::FromRef, routing::get};
 use handlers::{get_task_updates_stream, hide_ingest_form, process_ingest_form, show_ingest_form};
 
 use crate::html_state::HtmlState;

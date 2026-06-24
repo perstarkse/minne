@@ -1,4 +1,4 @@
-use axum::{extract::State, response::IntoResponse, Extension, Json};
+use axum::{Extension, Json, extract::State, response::IntoResponse};
 use common::storage::types::user::User;
 
 use crate::{api_state::ApiState, error::ApiErr};
