@@ -40,8 +40,8 @@ pub(crate) async fn prepare_corpus(ctx: &mut EvaluationContext<'_>) -> anyhow::R
 
     if !config.reseed_slice {
         let requested_cases = window.cases.len();
-        if let Some(manifest) = corpus::load_cached_manifest(&base_dir)? {
-            if can_reuse_namespace(
+        if let Some(manifest) = corpus::load_cached_manifest(&base_dir)?
+            && can_reuse_namespace(
                 ctx.db()?,
                 &manifest,
                 &embedding_provider,
@@ -51,28 +51,27 @@ pub(crate) async fn prepare_corpus(ctx: &mut EvaluationContext<'_>) -> anyhow::R
                 requested_cases,
             )
             .await?
-            {
-                info!(
-                    cache = %base_dir.display(),
-                    namespace = ctx.namespace.as_str(),
-                    database = ctx.database.as_str(),
-                    "Namespace already seeded; reusing cached corpus manifest"
-                );
-                let corpus_handle = corpus::corpus_handle_from_manifest(manifest, base_dir);
-                ctx.corpus_handle = Some(corpus_handle);
-                ctx.expected_fingerprint = Some(expected_fingerprint);
-                ctx.ingestion_duration_ms = 0;
+        {
+            info!(
+                cache = %base_dir.display(),
+                namespace = ctx.namespace.as_str(),
+                database = ctx.database.as_str(),
+                "Namespace already seeded; reusing cached corpus manifest"
+            );
+            let corpus_handle = corpus::corpus_handle_from_manifest(manifest, base_dir);
+            ctx.corpus_handle = Some(corpus_handle);
+            ctx.expected_fingerprint = Some(expected_fingerprint);
+            ctx.ingestion_duration_ms = 0;
 
-                let elapsed = started.elapsed();
-                ctx.record_stage_duration(stage, elapsed);
-                info!(
-                    evaluation_stage = stage.label(),
-                    duration_ms = elapsed.as_millis(),
-                    "completed evaluation stage"
-                );
+            let elapsed = started.elapsed();
+            ctx.record_stage_duration(stage, elapsed);
+            info!(
+                evaluation_stage = stage.label(),
+                duration_ms = elapsed.as_millis(),
+                "completed evaluation stage"
+            );
 
-                return Ok(());
-            }
+            return Ok(());
         }
     }
 

@@ -21,11 +21,17 @@ jobs:
 
       - uses: DeterminateSystems/determinate-nix-action@v3
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache 2>/dev/null || true
+          sudo apt-get clean
+          df -h /
+
       - uses: nix-community/cache-nix-action@v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 5G
+          gc-max-store-size-linux: 8G
 
       - name: Check formatting, clippy lint, unit tests & ort version
         run: nix flake check --show-trace

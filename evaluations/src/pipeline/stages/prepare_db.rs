@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use tracing::info;
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     openai,
     settings::{enforce_system_settings, load_or_init_system_settings},
 };
-use common::utils::embedding::{default_embedding_pool_size, EmbeddingProvider};
+use common::utils::embedding::{EmbeddingProvider, default_embedding_pool_size};
 
 use super::super::context::{EvalStage, EvaluationContext};
 
@@ -65,16 +65,16 @@ pub(crate) async fn prepare_db(ctx: &mut EvaluationContext<'_>) -> anyhow::Resul
     let (mut settings, settings_missing) =
         load_or_init_system_settings(&db, provider_dimension).await?;
 
-    if config.embedding_backend == EmbeddingBackend::FastEmbed {
-        if let Some(model_code) = embedding_provider.model_code() {
-            let sanitized = sanitize_model_code(&model_code);
-            let path = config.cache_dir.join(format!("{sanitized}.json"));
-            if config.force_convert && path.exists() {
-                tokio::fs::remove_file(&path)
-                    .await
-                    .with_context(|| format!("removing stale cache {}", path.display()))
-                    .ok();
-            }
+    if config.embedding_backend == EmbeddingBackend::FastEmbed
+        && let Some(model_code) = embedding_provider.model_code()
+    {
+        let sanitized = sanitize_model_code(&model_code);
+        let path = config.cache_dir.join(format!("{sanitized}.json"));
+        if config.force_convert && path.exists() {
+            tokio::fs::remove_file(&path)
+                .await
+                .with_context(|| format!("removing stale cache {}", path.display()))
+                .ok();
         }
     }
 

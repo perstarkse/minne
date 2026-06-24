@@ -3,14 +3,14 @@ use crate::error::AppError;
 use axum_session::{SessionConfig, SessionError, SessionStore};
 use axum_session_surreal::SessionSurrealPool;
 use futures::Stream;
-use include_dir::{include_dir, Dir};
-use serde::de::DeserializeOwned;
+use include_dir::{Dir, include_dir};
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::{ops::Deref, sync::Arc};
 use surrealdb::{
-    engine::any::{connect, Any},
-    opt::auth::{Namespace, Root},
     Error, Notification, Surreal,
+    engine::any::{Any, connect},
+    opt::auth::{Namespace, Root},
 };
 use surrealdb_migrations::MigrationRunner;
 use tracing::debug;

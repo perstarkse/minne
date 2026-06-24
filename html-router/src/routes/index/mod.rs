@@ -1,9 +1,9 @@
 pub mod handlers;
 
 use axum::{
+    Router,
     extract::FromRef,
     routing::{delete, get},
-    Router,
 };
 use handlers::{
     delete_job, delete_text_content, index_handler, serve_file, show_active_jobs, show_task_archive,

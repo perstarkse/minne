@@ -235,35 +235,47 @@ mod tests {
                 .with_context(|| format!("store embedding for {key}"))?;
         }
 
-        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk1_rid)
-            .await
-            .with_context(|| "get chunk1".to_string())?
-            .is_some());
-        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk2_rid)
-            .await
-            .with_context(|| "get chunk2".to_string())?
-            .is_some());
-        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk_other_rid)
-            .await
-            .with_context(|| "get chunk_other".to_string())?
-            .is_some());
+        assert!(
+            TextChunkEmbedding::get_by_record_id(&db, &chunk1_rid)
+                .await
+                .with_context(|| "get chunk1".to_string())?
+                .is_some()
+        );
+        assert!(
+            TextChunkEmbedding::get_by_record_id(&db, &chunk2_rid)
+                .await
+                .with_context(|| "get chunk2".to_string())?
+                .is_some()
+        );
+        assert!(
+            TextChunkEmbedding::get_by_record_id(&db, &chunk_other_rid)
+                .await
+                .with_context(|| "get chunk_other".to_string())?
+                .is_some()
+        );
 
         TextChunkEmbedding::delete_by_source_id(source_id, &db)
             .await
             .with_context(|| "Failed to delete by source_id".to_string())?;
 
-        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk1_rid)
-            .await
-            .with_context(|| "check chunk1".to_string())?
-            .is_none());
-        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk2_rid)
-            .await
-            .with_context(|| "check chunk2".to_string())?
-            .is_none());
-        assert!(TextChunkEmbedding::get_by_record_id(&db, &chunk_other_rid)
-            .await
-            .with_context(|| "check chunk_other".to_string())?
-            .is_some());
+        assert!(
+            TextChunkEmbedding::get_by_record_id(&db, &chunk1_rid)
+                .await
+                .with_context(|| "check chunk1".to_string())?
+                .is_none()
+        );
+        assert!(
+            TextChunkEmbedding::get_by_record_id(&db, &chunk2_rid)
+                .await
+                .with_context(|| "check chunk2".to_string())?
+                .is_none()
+        );
+        assert!(
+            TextChunkEmbedding::get_by_record_id(&db, &chunk_other_rid)
+                .await
+                .with_context(|| "check chunk_other".to_string())?
+                .is_some()
+        );
         Ok(())
     }
 

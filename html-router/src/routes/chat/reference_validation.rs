@@ -6,7 +6,7 @@ use common::{
     error::AppError,
     storage::{
         db::SurrealDbClient,
-        types::{knowledge_entity::KnowledgeEntity, text_chunk::TextChunk, StoredObject},
+        types::{StoredObject, knowledge_entity::KnowledgeEntity, text_chunk::TextChunk},
     },
 };
 use retrieval_pipeline::RetrievalOutput;
@@ -448,10 +448,12 @@ mod tests {
 
         assert_eq!(result.valid_refs, vec![first.id, second.id]);
         assert_eq!(result.invalid_refs.len(), 2);
-        assert!(result
-            .invalid_refs
-            .iter()
-            .all(|entry| entry.reason == InvalidReferenceReason::Duplicate));
+        assert!(
+            result
+                .invalid_refs
+                .iter()
+                .all(|entry| entry.reason == InvalidReferenceReason::Duplicate)
+        );
     }
 
     #[tokio::test]

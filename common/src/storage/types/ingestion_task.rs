@@ -315,9 +315,10 @@ impl IngestionTask {
         "#;
 
         debug_assert!(lifecycle::pending().reserve().is_ok());
-        debug_assert!(lifecycle::pending().reserve().is_ok_and(|m| m
-            .start_processing()
-            .is_ok_and(|m| m.fail().is_ok_and(|m| m.reserve().is_ok()))));
+        debug_assert!(lifecycle::pending().reserve().is_ok_and(|m| {
+            m.start_processing()
+                .is_ok_and(|m| m.fail().is_ok_and(|m| m.reserve().is_ok()))
+        }));
 
         let mut result = db
             .client

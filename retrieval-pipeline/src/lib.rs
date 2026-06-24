@@ -33,11 +33,11 @@ pub enum RetrievalOutput {
 }
 
 pub use pipeline::{
-    retrieved_entities_to_json, Diagnostics, RetrievalConfig, RetrievalParams, RetrievalTuning,
-    StageKind, StageTimings,
+    Diagnostics, RetrievalConfig, RetrievalParams, RetrievalTuning, StageKind, StageTimings,
+    retrieved_entities_to_json,
 };
 pub use query::normalize_fts_terms;
-pub use scoring::{reciprocal_rank_fusion, RrfConfig, Scored};
+pub use scoring::{RrfConfig, Scored, reciprocal_rank_fusion};
 
 /// Round a score to three decimal places for JSON output.
 pub(crate) fn round_score(value: f32) -> f64 {

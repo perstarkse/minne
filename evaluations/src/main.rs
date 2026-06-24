@@ -17,36 +17,35 @@ mod types;
 use anyhow::Context;
 use tokio::runtime::Builder;
 use tracing::info;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 /// Configure `SurrealDB` environment variables for optimal performance
 #[allow(clippy::arithmetic_side_effects, clippy::unwrap_used)]
 fn configure_surrealdb_performance(cpu_count: usize) {
     let indexing_batch_size = std::env::var("SURREAL_INDEXING_BATCH_SIZE")
         .unwrap_or_else(|_| (cpu_count * 2).to_string());
-    std::env::set_var("SURREAL_INDEXING_BATCH_SIZE", indexing_batch_size);
-
     let max_order_queue = std::env::var("SURREAL_MAX_ORDER_LIMIT_PRIORITY_QUEUE_SIZE")
         .unwrap_or_else(|_| (cpu_count * 4).to_string());
-    std::env::set_var(
-        "SURREAL_MAX_ORDER_LIMIT_PRIORITY_QUEUE_SIZE",
-        max_order_queue,
-    );
-
     let websocket_concurrent = std::env::var("SURREAL_WEBSOCKET_MAX_CONCURRENT_REQUESTS")
         .unwrap_or_else(|_| cpu_count.to_string());
-    std::env::set_var(
-        "SURREAL_WEBSOCKET_MAX_CONCURRENT_REQUESTS",
-        websocket_concurrent,
-    );
-
     let websocket_buffer = std::env::var("SURREAL_WEBSOCKET_RESPONSE_BUFFER_SIZE")
         .unwrap_or_else(|_| (cpu_count * 8).to_string());
-    std::env::set_var("SURREAL_WEBSOCKET_RESPONSE_BUFFER_SIZE", websocket_buffer);
-
     let transaction_cache = std::env::var("SURREAL_TRANSACTION_CACHE_SIZE")
         .unwrap_or_else(|_| (cpu_count * 16).to_string());
-    std::env::set_var("SURREAL_TRANSACTION_CACHE_SIZE", transaction_cache);
+    // SAFETY: single-threaded setup before SurrealDB clients are created.
+    unsafe {
+        std::env::set_var("SURREAL_INDEXING_BATCH_SIZE", indexing_batch_size);
+        std::env::set_var(
+            "SURREAL_MAX_ORDER_LIMIT_PRIORITY_QUEUE_SIZE",
+            max_order_queue,
+        );
+        std::env::set_var(
+            "SURREAL_WEBSOCKET_MAX_CONCURRENT_REQUESTS",
+            websocket_concurrent,
+        );
+        std::env::set_var("SURREAL_WEBSOCKET_RESPONSE_BUFFER_SIZE", websocket_buffer);
+        std::env::set_var("SURREAL_TRANSACTION_CACHE_SIZE", transaction_cache);
+    }
 
     info!(
         indexing_batch_size = %std::env::var("SURREAL_INDEXING_BATCH_SIZE").unwrap(),

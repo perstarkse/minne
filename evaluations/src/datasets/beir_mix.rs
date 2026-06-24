@@ -1,17 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use sha2::{Digest, Sha256};
 use tracing::info;
 
 use super::{
-    beir,
+    BEIR_DATASETS, ConvertedDataset, DatasetKind, DatasetMetadata, beir,
     checksum::hash_file,
     store::{
         self, build_dataset_from_catalog, paragraph_path, read_meta, store_dir_for,
         upsert_sharded_paragraphs, write_sharded,
     },
-    ConvertedDataset, DatasetKind, DatasetMetadata, BEIR_DATASETS,
 };
 use crate::{args::Config, slice};
 

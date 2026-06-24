@@ -4,9 +4,8 @@ use std::sync::Arc;
 
 use axum::extract::FromRef;
 use bootstrap::{
-    init, prepare_embedding_runtime,
+    EmbeddingRuntimeRole, init, prepare_embedding_runtime,
     wiring::{build_api_state, build_html_state, minne_routes},
-    EmbeddingRuntimeRole,
 };
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use tracing::info;
@@ -82,16 +81,15 @@ struct AppState {
 mod tests {
     use super::*;
     use axum::{
-        body::Body,
-        http::{header, Request, StatusCode},
-        response::Response,
         Router,
+        body::Body,
+        http::{Request, StatusCode, header},
+        response::Response,
     };
     use bootstrap::{
-        prepare_embedding_runtime,
+        EmbeddingRuntimeRole, prepare_embedding_runtime,
         tests::init_smoke_services,
         wiring::{build_api_state, build_html_state, minne_routes},
-        EmbeddingRuntimeRole,
     };
     use common::storage::types::{system_settings::SystemSettings, user::User};
     use tower::ServiceExt;

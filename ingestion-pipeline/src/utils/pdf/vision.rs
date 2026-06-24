@@ -5,7 +5,7 @@ use async_openai::types::chat::{
     ChatCompletionRequestMessageContentPartTextArgs, ChatCompletionRequestUserMessageArgs,
     CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ImageDetail, ImageUrlArgs,
 };
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use tracing::{debug, warn};
 
 use common::{

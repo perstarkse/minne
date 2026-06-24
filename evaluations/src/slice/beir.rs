@@ -1,12 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 
-use anyhow::{anyhow, Result};
-use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use anyhow::{Result, anyhow};
+use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use tracing::warn;
 
-use crate::datasets::{ConvertedDataset, BEIR_DATASETS};
+use crate::datasets::{BEIR_DATASETS, ConvertedDataset};
 
-use super::build::{mix_seed, BuildParams};
+use super::build::{BuildParams, mix_seed};
 
 #[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
 pub(super) fn ordered_question_refs_beir(
@@ -164,10 +164,10 @@ pub(super) fn ordered_question_refs_beir(
 
 pub(super) fn question_prefix(question_id: &str) -> Option<&'static str> {
     for prefix in BEIR_DATASETS.iter().map(|kind| kind.source_prefix()) {
-        if let Some(rest) = question_id.strip_prefix(prefix) {
-            if rest.starts_with('-') {
-                return Some(prefix);
-            }
+        if let Some(rest) = question_id.strip_prefix(prefix)
+            && rest.starts_with('-')
+        {
+            return Some(prefix);
         }
     }
     None

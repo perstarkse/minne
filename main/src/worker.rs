@@ -2,7 +2,7 @@ mod bootstrap;
 
 use std::sync::Arc;
 
-use bootstrap::{init, prepare_embedding_runtime, EmbeddingRuntimeRole};
+use bootstrap::{EmbeddingRuntimeRole, init, prepare_embedding_runtime};
 use ingestion_pipeline::{pipeline::IngestionPipeline, run_worker_loop};
 use tracing::info;
 
@@ -40,7 +40,7 @@ mod tests {
     use std::time::Duration;
 
     use chrono::Utc;
-    use common::storage::types::ingestion_task::{IngestionTask, DEFAULT_LEASE_SECS};
+    use common::storage::types::ingestion_task::{DEFAULT_LEASE_SECS, IngestionTask};
     use ingestion_pipeline::pipeline::IngestionPipeline;
 
     use crate::bootstrap::tests::init_smoke_services;

@@ -27,7 +27,7 @@
         if pkgs.stdenv.isDarwin
         then "dylib"
         else "so";
-      minneVersion = "1.0.4";
+      minneVersion = "1.0.5";
       mozjsRelease = "mozjs-sys-v140.10.1-0";
 
       mozjsTarget =

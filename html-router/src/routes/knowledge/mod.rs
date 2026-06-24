@@ -1,9 +1,9 @@
 mod handlers;
 
 use axum::{
+    Router,
     extract::FromRef,
     routing::{delete, get, post},
-    Router,
 };
 use handlers::{
     create_knowledge_entity, delete_knowledge_entity, delete_knowledge_relationship,

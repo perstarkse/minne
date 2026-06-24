@@ -1,4 +1,4 @@
-pub use minijinja::{path_loader, Environment, Value};
+pub use minijinja::{Environment, Value, path_loader};
 pub use minijinja_autoreload::AutoReloader;
 pub use minijinja_contrib;
 pub use minijinja_embed;

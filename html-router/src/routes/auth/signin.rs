@@ -1,11 +1,11 @@
-use axum::{extract::State, Form};
+use axum::{Form, extract::State};
 use axum_htmx::HxBoosted;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    AuthSessionType,
     html_state::HtmlState,
     middlewares::response_middleware::{TemplateResponse, TemplateResult},
-    AuthSessionType,
 };
 use common::storage::types::user::User;
 

@@ -1,4 +1,4 @@
-use crate::storage::types::{user::User, StoredObject};
+use crate::storage::types::{StoredObject, user::User};
 use crate::utils::serde_helpers::deserialize_flexible_id;
 use serde::{Deserialize, Serialize};
 

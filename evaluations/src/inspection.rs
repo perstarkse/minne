@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs, path::Path};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use common::storage::{db::SurrealDbClient, types::text_chunk::TextChunk};
 
 use crate::{args::Config, corpus, db::connect_eval_db};

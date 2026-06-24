@@ -1,11 +1,11 @@
 use std::{
     cmp::Ordering,
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     sync::Arc,
 };
 
 use common::storage::types::{
-    knowledge_entity::KnowledgeEntity, text_chunk::TextChunk, StoredObject,
+    StoredObject, knowledge_entity::KnowledgeEntity, text_chunk::TextChunk,
 };
 
 /// Identifier access for retrieval fusion and sorting.

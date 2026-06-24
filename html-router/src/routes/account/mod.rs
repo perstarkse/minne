@@ -1,8 +1,8 @@
 mod handlers;
 use axum::{
+    Router,
     extract::FromRef,
     routing::{delete, get, patch, post},
-    Router,
 };
 
 use crate::html_state::HtmlState;

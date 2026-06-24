@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
-use surrealdb::opt::PatchOp;
 use surrealdb::RecordId;
+use surrealdb::opt::PatchOp;
 use uuid::Uuid;
 
 use crate::{error::AppError, storage::db::SurrealDbClient, stored_object};
@@ -682,8 +682,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn clear_ingested_children_removes_chunks_entities_and_relationships(
-    ) -> anyhow::Result<()> {
+    async fn clear_ingested_children_removes_chunks_entities_and_relationships()
+    -> anyhow::Result<()> {
         let db = setup_test_db().await?;
         let user_id = "clear-user";
         let source_id = Uuid::new_v4().to_string();

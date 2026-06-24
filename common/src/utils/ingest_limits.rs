@@ -47,13 +47,13 @@ pub fn validate_ingest_input(
         )));
     }
 
-    if let Some(content) = content {
-        if content.len() > config.ingest_max_content_bytes {
-            return Err(IngestValidationError::PayloadTooLarge(format!(
-                "content is too large: maximum allowed is {} bytes",
-                config.ingest_max_content_bytes
-            )));
-        }
+    if let Some(content) = content
+        && content.len() > config.ingest_max_content_bytes
+    {
+        return Err(IngestValidationError::PayloadTooLarge(format!(
+            "content is too large: maximum allowed is {} bytes",
+            config.ingest_max_content_bytes
+        )));
     }
 
     if ctx.len() > config.ingest_max_context_bytes {

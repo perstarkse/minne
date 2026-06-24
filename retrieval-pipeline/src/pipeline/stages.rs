@@ -8,16 +8,16 @@ use std::{collections::HashMap, fmt::Write, sync::Arc};
 use tracing::{debug, instrument, warn};
 
 use crate::{
-    query::normalize_fts_terms,
-    scoring::{clamp_unit, min_max_normalize, reciprocal_rank_fusion, RrfConfig, Scored},
     RetrievedChunk, RetrievedEntity,
+    query::normalize_fts_terms,
+    scoring::{RrfConfig, Scored, clamp_unit, min_max_normalize, reciprocal_rank_fusion},
 };
 
 use super::{
+    Stage, StageKind,
     config::RetrievalTuning,
     context::PipelineContext,
     diagnostics::{AssembleStats, SearchStats},
-    Stage, StageKind,
 };
 
 #[derive(Debug, Clone, Copy)]

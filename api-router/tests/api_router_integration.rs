@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use api_router::{api_routes_v1, api_state::ApiState};
 use axum::{
-    body::{to_bytes, Body},
-    http::{Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
 };
 use common::{
     storage::{db::SurrealDbClient, store::StorageManager, types::user::User},

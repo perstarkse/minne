@@ -5,14 +5,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use super::{
-    checksum::store_aggregate_checksum, ConvertedDataset, ConvertedParagraph, ConvertedQuestion,
-    DatasetMetadata,
+    ConvertedDataset, ConvertedParagraph, ConvertedQuestion, DatasetMetadata,
+    checksum::store_aggregate_checksum,
 };
 use crate::slice;
 

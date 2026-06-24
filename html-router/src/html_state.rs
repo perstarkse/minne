@@ -6,8 +6,8 @@ use common::{create_template_engine, storage::db::ProvidesDb, utils::config::App
 use retrieval_pipeline::reranking::RerankerPool;
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;

@@ -3,10 +3,10 @@
 use std::sync::Arc;
 
 use axum::{
-    body::{to_bytes, Body},
-    http::{header, Request, StatusCode},
-    response::Response,
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode, header},
+    response::Response,
 };
 use common::{
     storage::{db::SurrealDbClient, store::StorageManager, types::user::User},

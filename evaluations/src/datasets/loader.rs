@@ -4,12 +4,11 @@ use anyhow::{Context, Result};
 use tracing::info;
 
 use super::{
-    catalog,
+    ConvertedDataset, DatasetKind, catalog,
     store::{
-        self, build_dataset_from_catalog, detect_layout, read_meta, store_dir_for, write_sharded,
-        ConvertedLayout,
+        self, ConvertedLayout, build_dataset_from_catalog, detect_layout, read_meta, store_dir_for,
+        write_sharded,
     },
-    ConvertedDataset, DatasetKind,
 };
 use crate::{
     args::Config,
@@ -69,21 +68,19 @@ fn load_from_store(
     let meta = read_meta(store_dir)?;
     validate_metadata_fields(&meta.metadata, dataset_kind, config)?;
 
-    if allow_partial {
-        if let Some(paragraph_ids) = slice_paragraph_ids_for_fast_path(config)? {
-            let unique: HashSet<String> = paragraph_ids.into_iter().collect();
-            info!(
-                paragraphs = unique.len(),
-                store = %store_dir.display(),
-                "Loading slice-addressed paragraphs from sharded converted store"
-            );
-            let dataset = build_dataset_from_catalog(store_dir, &unique)?;
-            return Ok(LoadedDataset {
-                dataset,
-                content_checksum: checksum,
-                partial: true,
-            });
-        }
+    if allow_partial && let Some(paragraph_ids) = slice_paragraph_ids_for_fast_path(config)? {
+        let unique: HashSet<String> = paragraph_ids.into_iter().collect();
+        info!(
+            paragraphs = unique.len(),
+            store = %store_dir.display(),
+            "Loading slice-addressed paragraphs from sharded converted store"
+        );
+        let dataset = build_dataset_from_catalog(store_dir, &unique)?;
+        return Ok(LoadedDataset {
+            dataset,
+            content_checksum: checksum,
+            partial: true,
+        });
     }
 
     info!(

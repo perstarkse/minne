@@ -1,6 +1,6 @@
 use crate::{
-    middlewares::response_middleware::{TemplateResponse, TemplateResult},
     AuthSessionType,
+    middlewares::response_middleware::{TemplateResponse, TemplateResult},
 };
 
 pub async fn sign_out_user(auth: AuthSessionType) -> TemplateResult {

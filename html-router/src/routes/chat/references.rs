@@ -17,7 +17,7 @@ use crate::{
     },
 };
 
-use super::reference_validation::{normalize_reference, ReferenceLookupTarget};
+use super::reference_validation::{ReferenceLookupTarget, normalize_reference};
 
 #[derive(Serialize)]
 struct ReferenceTooltipData {

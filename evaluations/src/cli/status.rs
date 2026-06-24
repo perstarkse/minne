@@ -9,8 +9,8 @@ use crate::{
     args::Config,
     corpus::{self, CorpusCacheConfig},
     datasets::{
-        beir_subset_store_summary, beir_subset_stores_ready, content_checksum_for_layout,
-        detect_layout, mix_content_checksum, store_dir_for, ConvertedLayout, DatasetKind,
+        ConvertedLayout, DatasetKind, beir_subset_store_summary, beir_subset_stores_ready,
+        content_checksum_for_layout, detect_layout, mix_content_checksum, store_dir_for,
     },
     db::{connect_eval_db, default_database, default_namespace, namespace_has_corpus},
     slice::{self, ledger_target},

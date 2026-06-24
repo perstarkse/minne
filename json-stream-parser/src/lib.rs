@@ -1,7 +1,7 @@
 // This code is based on the json-stream-rust library (https://github.com/json-stream/json-stream-rust)
 // Original code is MIT licensed
 // Modified to fix escape character handling in strings
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::mem;
 
 #[derive(Clone, Debug)]
@@ -50,7 +50,7 @@ fn add_char_into_object(
             if let Value::String(s) = object {
                 s.push('"');
             }
-            if let ObjectStatus::StringQuoteOpen(ref mut escaped) = current_status {
+            if let ObjectStatus::StringQuoteOpen(escaped) = current_status {
                 *escaped = false;
             }
         }
@@ -62,12 +62,12 @@ fn add_char_into_object(
                 s.push('\\');
                 s.push(c);
             }
-            if let ObjectStatus::StringQuoteOpen(ref mut escaped) = current_status {
+            if let ObjectStatus::StringQuoteOpen(escaped) = current_status {
                 *escaped = false;
             }
         }
         (&Value::String(_), &ObjectStatus::StringQuoteOpen(false), '\\') => {
-            if let ObjectStatus::StringQuoteOpen(ref mut escaped) = current_status {
+            if let ObjectStatus::StringQuoteOpen(escaped) = current_status {
                 *escaped = true;
             }
         }
@@ -80,8 +80,8 @@ fn add_char_into_object(
         // --- Object: key with escaped quote ---
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: true, .. }, '"') => {
             if let ObjectStatus::KeyQuoteOpen {
-                ref mut key_so_far,
-                ref mut escaped,
+                key_so_far,
+                escaped,
             } = current_status
             {
                 key_so_far.push('"');
@@ -89,10 +89,7 @@ fn add_char_into_object(
             }
         }
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: false, .. }, '"') => {
-            if let ObjectStatus::KeyQuoteOpen {
-                ref mut key_so_far, ..
-            } = current_status
-            {
+            if let ObjectStatus::KeyQuoteOpen { key_so_far, .. } = current_status {
                 let key = mem::take(key_so_far);
                 if let Value::Object(obj) = object {
                     obj.insert(key.clone(), Value::Null);
@@ -103,8 +100,8 @@ fn add_char_into_object(
         // --- Object: key with escaped other char ---
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: true, .. }, c) => {
             if let ObjectStatus::KeyQuoteOpen {
-                ref mut key_so_far,
-                ref mut escaped,
+                key_so_far,
+                escaped,
             } = current_status
             {
                 key_so_far.push('\\');
@@ -113,33 +110,23 @@ fn add_char_into_object(
             }
         }
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: false, .. }, '\\') => {
-            if let ObjectStatus::KeyQuoteOpen {
-                ref mut escaped, ..
-            } = current_status
-            {
+            if let ObjectStatus::KeyQuoteOpen { escaped, .. } = current_status {
                 *escaped = true;
             }
         }
         (&Value::Object(_), &ObjectStatus::KeyQuoteOpen { escaped: false, .. }, c) => {
-            if let ObjectStatus::KeyQuoteOpen {
-                ref mut key_so_far, ..
-            } = current_status
-            {
+            if let ObjectStatus::KeyQuoteOpen { key_so_far, .. } = current_status {
                 key_so_far.push(c);
             }
         }
 
         // --- Object: value with escaped quote ---
         (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: true, .. }, '"') => {
-            if let ObjectStatus::ValueQuoteOpen {
-                ref key,
-                ref mut escaped,
-            } = current_status
-            {
-                if let Value::Object(obj) = object {
-                    if let Some(Value::String(value)) = obj.get_mut(key) {
-                        value.push('"');
-                    }
+            if let ObjectStatus::ValueQuoteOpen { key, escaped } = current_status {
+                if let Value::Object(obj) = object
+                    && let Some(Value::String(value)) = obj.get_mut(key)
+                {
+                    value.push('"');
                 }
                 *escaped = false;
             }
@@ -148,36 +135,29 @@ fn add_char_into_object(
             *current_status = ObjectStatus::ValueQuoteClose;
         }
         (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: true, .. }, c) => {
-            if let ObjectStatus::ValueQuoteOpen {
-                ref key,
-                ref mut escaped,
-            } = current_status
-            {
-                if let Value::Object(obj) = object {
-                    if let Some(Value::String(value)) = obj.get_mut(key) {
-                        value.push('\\');
-                        value.push(c);
-                    }
+            if let ObjectStatus::ValueQuoteOpen { key, escaped } = current_status {
+                if let Value::Object(obj) = object
+                    && let Some(Value::String(value)) = obj.get_mut(key)
+                {
+                    value.push('\\');
+                    value.push(c);
                 }
                 *escaped = false;
             }
         }
         (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: false, .. }, '\\') => {
-            if let ObjectStatus::ValueQuoteOpen {
-                ref mut escaped, ..
-            } = current_status
-            {
+            if let ObjectStatus::ValueQuoteOpen { escaped, .. } = current_status {
                 *escaped = true;
             }
         }
         (&Value::Object(_), &ObjectStatus::ValueQuoteOpen { escaped: false, .. }, c) => {
-            if let ObjectStatus::ValueQuoteOpen { ref key, .. } = current_status {
-                if let Value::Object(obj) = object {
-                    if let Some(Value::String(value)) = obj.get_mut(key) {
-                        value.push(c);
-                    } else {
-                        return Err(ParseError::InvalidValueType(key.clone()));
-                    }
+            if let ObjectStatus::ValueQuoteOpen { key, .. } = current_status
+                && let Value::Object(obj) = object
+            {
+                if let Some(Value::String(value)) = obj.get_mut(key) {
+                    value.push(c);
+                } else {
+                    return Err(ParseError::InvalidValueType(key.clone()));
                 }
             }
         }
@@ -199,23 +179,17 @@ fn add_char_into_object(
             };
         }
         (&Value::Bool(true), &ObjectStatus::Scalar { .. }, 'r') => {
-            if let ObjectStatus::Scalar {
-                ref mut value_so_far,
-            } = current_status
+            if let ObjectStatus::Scalar { value_so_far } = current_status
+                && *value_so_far == "t"
             {
-                if *value_so_far == "t" {
-                    value_so_far.push('r');
-                }
+                value_so_far.push('r');
             }
         }
         (&Value::Bool(true), &ObjectStatus::Scalar { .. }, 'u') => {
-            if let ObjectStatus::Scalar {
-                ref mut value_so_far,
-            } = current_status
+            if let ObjectStatus::Scalar { value_so_far } = current_status
+                && *value_so_far == "tr"
             {
-                if *value_so_far == "tr" {
-                    value_so_far.push('u');
-                }
+                value_so_far.push('u');
             }
         }
         (&Value::Bool(true) | &Value::Bool(false), &ObjectStatus::Scalar { .. }, 'e')
@@ -230,33 +204,24 @@ fn add_char_into_object(
             };
         }
         (&Value::Bool(false), &ObjectStatus::Scalar { .. }, 'a') => {
-            if let ObjectStatus::Scalar {
-                ref mut value_so_far,
-            } = current_status
+            if let ObjectStatus::Scalar { value_so_far } = current_status
+                && *value_so_far == "f"
             {
-                if *value_so_far == "f" {
-                    value_so_far.push('a');
-                }
+                value_so_far.push('a');
             }
         }
         (&Value::Bool(false), &ObjectStatus::Scalar { .. }, 'l') => {
-            if let ObjectStatus::Scalar {
-                ref mut value_so_far,
-            } = current_status
+            if let ObjectStatus::Scalar { value_so_far } = current_status
+                && *value_so_far == "fa"
             {
-                if *value_so_far == "fa" {
-                    value_so_far.push('l');
-                }
+                value_so_far.push('l');
             }
         }
         (&Value::Bool(false), &ObjectStatus::Scalar { .. }, 's') => {
-            if let ObjectStatus::Scalar {
-                ref mut value_so_far,
-            } = current_status
+            if let ObjectStatus::Scalar { value_so_far } = current_status
+                && *value_so_far == "fal"
             {
-                if *value_so_far == "fal" {
-                    value_so_far.push('s');
-                }
+                value_so_far.push('s');
             }
         }
 
@@ -267,20 +232,14 @@ fn add_char_into_object(
             };
         }
         (&Value::Null, &ObjectStatus::Scalar { .. }, 'u') => {
-            if let ObjectStatus::Scalar {
-                ref mut value_so_far,
-            } = current_status
+            if let ObjectStatus::Scalar { value_so_far } = current_status
+                && *value_so_far == "n"
             {
-                if *value_so_far == "n" {
-                    value_so_far.push('u');
-                }
+                value_so_far.push('u');
             }
         }
         (&Value::Null, &ObjectStatus::Scalar { .. }, 'l') => {
-            if let ObjectStatus::Scalar {
-                ref mut value_so_far,
-            } = current_status
-            {
+            if let ObjectStatus::Scalar { value_so_far } = current_status {
                 if *value_so_far == "nu" {
                     value_so_far.push('l');
                 } else if *value_so_far == "nul" {
@@ -305,12 +264,9 @@ fn add_char_into_object(
             };
         }
         (&Value::Number(_), &ObjectStatus::ScalarNumber { .. }, c @ '0'..='9') => {
-            if let ObjectStatus::ScalarNumber {
-                ref mut value_so_far,
-            } = current_status
-            {
+            if let ObjectStatus::ScalarNumber { value_so_far } = current_status {
                 value_so_far.push(c);
-                if let Value::Number(ref mut num) = object {
+                if let Value::Number(num) = object {
                     if value_so_far.contains('.') {
                         let parsed: f64 = value_so_far.parse().map_err(|e| {
                             ParseError::InvalidNumber(format!(
@@ -332,10 +288,7 @@ fn add_char_into_object(
             }
         }
         (&Value::Number(_), &ObjectStatus::ScalarNumber { .. }, '.') => {
-            if let ObjectStatus::ScalarNumber {
-                ref mut value_so_far,
-            } = current_status
-            {
+            if let ObjectStatus::ScalarNumber { value_so_far } = current_status {
                 value_so_far.push('.');
             }
         }
@@ -348,14 +301,14 @@ fn add_char_into_object(
             };
         }
         (&Value::Object(_), &ObjectStatus::KeyQuoteClose { .. }, ':') => {
-            if let ObjectStatus::KeyQuoteClose { ref mut key } = current_status {
+            if let ObjectStatus::KeyQuoteClose { key } = current_status {
                 let key = mem::take(key);
                 *current_status = ObjectStatus::Colon { key };
             }
         }
         (&Value::Object(_), &ObjectStatus::Colon { .. }, ' ' | '\n' | '\t' | '\r') => {}
         (&Value::Object(_), &ObjectStatus::Colon { .. }, '"') => {
-            if let ObjectStatus::Colon { ref mut key } = current_status {
+            if let ObjectStatus::Colon { key } = current_status {
                 let key_str = mem::take(key);
                 if let Value::Object(obj) = object {
                     obj.insert(key_str.clone(), json!(""));
@@ -368,7 +321,7 @@ fn add_char_into_object(
         }
 
         (&Value::Object(_), &ObjectStatus::Colon { .. }, char) => {
-            if let ObjectStatus::Colon { ref mut key } = current_status {
+            if let ObjectStatus::Colon { key } = current_status {
                 let key = mem::take(key);
                 *current_status = ObjectStatus::ValueScalar {
                     key,
@@ -377,11 +330,7 @@ fn add_char_into_object(
             }
         }
         (&Value::Object(_), &ObjectStatus::ValueScalar { .. }, ',') => {
-            if let ObjectStatus::ValueScalar {
-                ref mut key,
-                ref mut value_so_far,
-            } = current_status
-            {
+            if let ObjectStatus::ValueScalar { key, value_so_far } = current_status {
                 let key = mem::take(key);
                 let value_str = mem::take(value_so_far);
                 if let Value::Object(obj) = object {
@@ -398,11 +347,7 @@ fn add_char_into_object(
             }
         }
         (&Value::Object(_), &ObjectStatus::ValueScalar { .. }, '}') => {
-            if let ObjectStatus::ValueScalar {
-                ref mut key,
-                ref mut value_so_far,
-            } = current_status
-            {
+            if let ObjectStatus::ValueScalar { key, value_so_far } = current_status {
                 let key = mem::take(key);
                 let value_str = mem::take(value_so_far);
                 if let Value::Object(obj) = object {
@@ -419,11 +364,7 @@ fn add_char_into_object(
             }
         }
         (&Value::Object(_), &ObjectStatus::ValueScalar { .. }, char) => {
-            if let ObjectStatus::ValueScalar {
-                ref mut value_so_far,
-                ..
-            } = current_status
-            {
+            if let ObjectStatus::ValueScalar { value_so_far, .. } = current_status {
                 value_so_far.push(char);
             }
         }

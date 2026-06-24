@@ -1,9 +1,9 @@
 use api_state::ApiState;
 use axum::{
+    Router,
     extract::{DefaultBodyLimit, FromRef},
     middleware::from_fn_with_state,
     routing::{get, post},
-    Router,
 };
 use middleware_api_auth::api_auth;
 use routes::{categories::list, ingest::handle, liveness::live, readiness::ready};

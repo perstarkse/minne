@@ -13,7 +13,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, TimeZone, Utc};
 use clap::ValueEnum;
 use once_cell::sync::OnceCell;
@@ -226,7 +226,7 @@ pub use beir_mix::{beir_subset_store_summary, beir_subset_stores_ready, mix_cont
 pub use checksum::store_aggregate_checksum;
 pub use loader::{prebuild_catalog_slices, prepare_dataset};
 pub use store::{
-    content_checksum_for_layout, detect_layout, store_dir_for, write_sharded, ConvertedLayout,
+    ConvertedLayout, content_checksum_for_layout, detect_layout, store_dir_for, write_sharded,
 };
 
 pub fn catalog() -> Result<&'static DatasetCatalog> {
@@ -383,7 +383,9 @@ impl FromStr for DatasetKind {
             "scifact" => Ok(Self::Scifact),
             "nq-beir" | "natural-questions-beir" => Ok(Self::NqBeir),
             other => {
-                anyhow::bail!("unknown dataset '{other}'. Expected one of: squad, natural-questions, beir, fever, fiqa, hotpotqa, nfcorpus, quora, trec-covid, scifact, nq-beir.")
+                anyhow::bail!(
+                    "unknown dataset '{other}'. Expected one of: squad, natural-questions, beir, fever, fiqa, hotpotqa, nfcorpus, quora, trec-covid, scifact, nq-beir."
+                )
             }
         }
     }

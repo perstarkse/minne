@@ -12,14 +12,13 @@ use common::{
     storage::{
         db::SurrealDbClient,
         types::{
-            knowledge_entity::KnowledgeEntity,
+            EmbeddingRecord, StoredObject, knowledge_entity::KnowledgeEntity,
             knowledge_entity_embedding::KnowledgeEntityEmbedding, text_chunk::TextChunk,
-            text_chunk_embedding::TextChunkEmbedding, text_content::TextContent, EmbeddingRecord,
-            StoredObject,
+            text_chunk_embedding::TextChunkEmbedding, text_content::TextContent,
         },
     },
 };
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::warn;
 
 use super::{
@@ -268,8 +267,8 @@ mod tests {
 
     use super::*;
     use crate::pipeline::test_support::{
-        self, count_chunks_for_source, count_entities_for_source, count_relationships_for_source,
-        large_artifacts, persist, sample_artifacts, setup_db, TEST_EMBEDDING_DIM,
+        self, TEST_EMBEDDING_DIM, count_chunks_for_source, count_entities_for_source,
+        count_relationships_for_source, large_artifacts, persist, sample_artifacts, setup_db,
     };
 
     #[tokio::test]

@@ -112,10 +112,10 @@ pub fn write_sidecar(content_path: &Path, sha256: &str) -> Result<()> {
 #[cfg(test)]
 pub fn content_checksum(content_path: &Path) -> Result<String> {
     let sidecar_path = ChecksumSidecar::sidecar_path(content_path);
-    if let Some(sidecar) = read_sidecar(&sidecar_path)? {
-        if sidecar.is_valid_for(content_path) {
-            return Ok(sidecar.sha256);
-        }
+    if let Some(sidecar) = read_sidecar(&sidecar_path)?
+        && sidecar.is_valid_for(content_path)
+    {
+        return Ok(sidecar.sha256);
     }
     let sha256 = hash_file(content_path)?;
     write_sidecar(content_path, &sha256)?;
@@ -125,19 +125,17 @@ pub fn content_checksum(content_path: &Path) -> Result<String> {
 pub fn store_aggregate_checksum(store_dir: &Path) -> Result<String> {
     let marker = store_dir.join("checksum.sha256");
     let meta = store_dir.join("meta.json");
-    if marker.is_file() && meta.is_file() {
-        if let (Ok(marker_meta), Ok(meta_meta)) = (marker.metadata(), meta.metadata()) {
-            if marker_meta
-                .modified()
-                .ok()
-                .zip(meta_meta.modified().ok())
-                .is_some_and(|(marker_modified, meta_modified)| marker_modified >= meta_modified)
-            {
-                if let Some(sidecar) = read_sidecar(&marker)? {
-                    return Ok(sidecar.sha256);
-                }
-            }
-        }
+    if marker.is_file()
+        && meta.is_file()
+        && let (Ok(marker_meta), Ok(meta_meta)) = (marker.metadata(), meta.metadata())
+        && marker_meta
+            .modified()
+            .ok()
+            .zip(meta_meta.modified().ok())
+            .is_some_and(|(marker_modified, meta_modified)| marker_modified >= meta_modified)
+        && let Some(sidecar) = read_sidecar(&marker)?
+    {
+        return Ok(sidecar.sha256);
     }
 
     let mut entries = Vec::new();

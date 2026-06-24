@@ -13,14 +13,14 @@ pub mod router_factory;
 pub mod routes;
 pub mod utils;
 
-use axum::{extract::FromRef, Router};
+use axum::{Router, extract::FromRef};
 use axum_session::{Session, SessionStore};
 use axum_session_auth::AuthSession;
 use axum_session_surreal::SessionSurrealPool;
 use common::storage::types::user::User;
 use html_state::HtmlState;
 use router_factory::RouterFactory;
-use surrealdb::{engine::any::Any, Surreal};
+use surrealdb::{Surreal, engine::any::Any};
 
 pub type AuthSessionType = AuthSession<User, String, SessionSurrealPool<Any>, Surreal<Any>>;
 pub type SessionType = Session<SessionSurrealPool<Any>>;

@@ -1,7 +1,7 @@
 use async_openai::types::models::ListModelResponse;
 use axum::{
-    extract::{Query, State},
     Form,
+    extract::{Query, State},
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,8 +18,8 @@ use common::{
     utils::{
         config::AppConfig,
         embedding::{
-            fastembed_model_dimension, is_valid_fastembed_model_code,
-            list_fastembed_embedding_models, EmbeddingBackend, FastEmbedModelOption,
+            EmbeddingBackend, FastEmbedModelOption, fastembed_model_dimension,
+            is_valid_fastembed_model_code, list_fastembed_embedding_models,
         },
     },
 };

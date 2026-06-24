@@ -7,14 +7,14 @@ use chrono::Utc;
 use common::storage::{
     db::SurrealDbClient,
     indexes::maybe_run_scheduled_index_rebuild,
-    types::ingestion_task::{IngestionTask, DEFAULT_LEASE_SECS},
+    types::ingestion_task::{DEFAULT_LEASE_SECS, IngestionTask},
 };
 pub use pipeline::{
-    persist_artifacts, EmbeddedKnowledgeEntity, EmbeddedTextChunk, IngestionConfig,
-    IngestionPipeline, IngestionTuning, PipelineArtifacts,
+    EmbeddedKnowledgeEntity, EmbeddedTextChunk, IngestionConfig, IngestionPipeline,
+    IngestionTuning, PipelineArtifacts, persist_artifacts,
 };
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 

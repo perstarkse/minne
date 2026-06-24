@@ -24,15 +24,15 @@ pub(crate) async fn enforce_system_settings(
         updated_settings.embedding_dimensions = provider_dimension as u32;
         needs_settings_update = true;
     }
-    if let Some(query_override) = config.query_model.as_deref() {
-        if settings.query_model != query_override {
-            info!(
-                model = query_override,
-                "Overriding system query model for this run"
-            );
-            updated_settings.query_model = query_override.to_string();
-            needs_settings_update = true;
-        }
+    if let Some(query_override) = config.query_model.as_deref()
+        && settings.query_model != query_override
+    {
+        info!(
+            model = query_override,
+            "Overriding system query model for this run"
+        );
+        updated_settings.query_model = query_override.to_string();
+        needs_settings_update = true;
     }
     if needs_settings_update {
         settings = SystemSettings::update(db, updated_settings)

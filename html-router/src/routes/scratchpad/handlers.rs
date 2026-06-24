@@ -1,10 +1,10 @@
 use axum::{
+    Form,
     extract::{Path, Query, State},
     http::{HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    Form,
 };
-use axum_htmx::{HxBoosted, HxRequest, HX_TRIGGER};
+use axum_htmx::{HX_TRIGGER, HxBoosted, HxRequest};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ use crate::html_state::HtmlState;
 use crate::middlewares::{
     auth_middleware::RequireUser,
     response_middleware::{
-        template_with_headers, ResponseResult, TemplateResponse, TemplateResult,
+        ResponseResult, TemplateResponse, TemplateResult, template_with_headers,
     },
 };
 use common::storage::types::{

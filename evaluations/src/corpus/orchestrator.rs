@@ -6,14 +6,14 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_openai::Client;
 use chrono::Utc;
 use common::{
     storage::{
         db::SurrealDbClient,
         store::{DynStorage, StorageManager},
-        types::{ingestion_payload::IngestionPayload, ingestion_task::IngestionTask, StoredObject},
+        types::{StoredObject, ingestion_payload::IngestionPayload, ingestion_task::IngestionTask},
     },
     utils::config::{AppConfig, StorageKind},
 };
@@ -31,7 +31,7 @@ use crate::{
 
 use crate::corpus::{
     CorpusCacheConfig, CorpusHandle, CorpusManifest, CorpusMetadata, CorpusQuestion,
-    ParagraphShard, ParagraphShardStore, MANIFEST_VERSION,
+    MANIFEST_VERSION, ParagraphShard, ParagraphShardStore,
 };
 
 const INGESTION_SPEC_VERSION: u32 = 2;

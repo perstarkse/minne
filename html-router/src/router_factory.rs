@@ -1,9 +1,9 @@
-use axum::{extract::FromRef, middleware::from_fn_with_state, Router};
+use axum::{Router, extract::FromRef, middleware::from_fn_with_state};
 use axum_session::SessionLayer;
 use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_surreal::SessionSurrealPool;
 use common::storage::types::user::User;
-use surrealdb::{engine::any::Any, Surreal};
+use surrealdb::{Surreal, engine::any::Any};
 
 use crate::{
     html_state::HtmlState,

@@ -148,20 +148,27 @@ async fn maybe_dump_debug_image(page_index: u32, bytes: &[u8]) -> Result<(), App
 mod tests {
     use super::*;
     use anyhow::{self};
-    use lopdf::dictionary;
     use lopdf::Object;
+    use lopdf::dictionary;
 
     #[test]
     fn test_debug_dump_directory_env_var() -> anyhow::Result<()> {
-        std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
+        // SAFETY: test runs serially; env is restored before return.
+        unsafe {
+            std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
+        }
         assert!(debug_dump_directory().is_none());
 
-        std::env::set_var(DEBUG_IMAGE_ENV_VAR, "/tmp/minne_pdf_debug");
+        unsafe {
+            std::env::set_var(DEBUG_IMAGE_ENV_VAR, "/tmp/minne_pdf_debug");
+        }
         let dir =
             debug_dump_directory().ok_or_else(|| anyhow::anyhow!("expected debug directory"))?;
         assert_eq!(dir, PathBuf::from("/tmp/minne_pdf_debug"));
 
-        std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
+        unsafe {
+            std::env::remove_var(DEBUG_IMAGE_ENV_VAR);
+        }
         Ok(())
     }
 

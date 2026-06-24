@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::IntoResponse,
 };
 use chrono::{DateTime, Utc};
@@ -13,7 +13,7 @@ use crate::{
     middlewares::{
         auth_middleware::RequireUser,
         response_middleware::{
-            template_as_response, ResponseResult, TemplateResponse, TemplateResult,
+            ResponseResult, TemplateResponse, TemplateResult, template_as_response,
         },
     },
     utils::text_content_preview::truncate_text_contents,

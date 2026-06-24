@@ -8,8 +8,8 @@ use crate::storage::{
     db::SurrealDbClient,
     indexes::{ensure_runtime, rebuild},
     types::{
-        knowledge_entity_embedding::KnowledgeEntityEmbedding, system_settings::SystemSettings,
-        text_chunk_embedding::TextChunkEmbedding, EmbeddingRecord,
+        EmbeddingRecord, knowledge_entity_embedding::KnowledgeEntityEmbedding,
+        system_settings::SystemSettings, text_chunk_embedding::TextChunkEmbedding,
     },
 };
 

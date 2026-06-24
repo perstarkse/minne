@@ -1,6 +1,6 @@
 mod handlers;
 
-use axum::{extract::FromRef, routing::get, Router};
+use axum::{Router, extract::FromRef, routing::get};
 use handlers::{
     delete_text_content, patch_text_content, show_content_page, show_content_read_modal,
     show_recent_content, show_text_content_edit_form,

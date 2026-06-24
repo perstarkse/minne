@@ -42,7 +42,7 @@ use tracing::{debug, info, warn};
 use self::{
     context::PipelineContext,
     stages::{enrich, persist, prepare_content, retrieve_related},
-    state::{ready, Enriched, IngestionMachine},
+    state::{Enriched, IngestionMachine, ready},
 };
 
 /// Wall-clock duration of each pre-persistence pipeline stage.
@@ -355,10 +355,10 @@ mod finalize_tests {
     use tokio::time::sleep;
 
     use super::{
+        IngestionPipeline, PipelineServices,
         config::IngestionTuning,
         test_support::setup_db,
-        tests::{pipeline_config, reserve_task, MockServices},
-        IngestionPipeline, PipelineServices,
+        tests::{MockServices, pipeline_config, reserve_task},
     };
 
     #[tokio::test]

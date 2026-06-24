@@ -6,7 +6,7 @@ mod stages;
 pub use config::{RetrievalConfig, RetrievalTuning};
 pub use diagnostics::Diagnostics;
 
-use crate::{round_score, RetrievalOutput, RetrievedEntity};
+use crate::{RetrievalOutput, RetrievedEntity, round_score};
 use async_trait::async_trait;
 use common::{error::AppError, storage::db::SurrealDbClient};
 use std::time::{Duration, Instant};
@@ -188,23 +188,25 @@ pub async fn run_with_embedding_instrumented(
 }
 
 pub fn retrieved_entities_to_json(entities: &[RetrievedEntity]) -> serde_json::Value {
-    serde_json::json!(entities
-        .iter()
-        .map(|entry| {
-            serde_json::json!({
-                "KnowledgeEntity": {
-                    "id": entry.entity.id,
-                    "name": entry.entity.name,
-                    "description": entry.entity.description,
-                    "score": round_score(entry.score),
-                    "chunks": entry.chunks.iter().map(|chunk| {
-                        serde_json::json!({
-                            "score": round_score(chunk.score),
-                            "content": chunk.chunk.chunk
-                        })
-                    }).collect::<Vec<_>>()
-                }
+    serde_json::json!(
+        entities
+            .iter()
+            .map(|entry| {
+                serde_json::json!({
+                    "KnowledgeEntity": {
+                        "id": entry.entity.id,
+                        "name": entry.entity.name,
+                        "description": entry.entity.description,
+                        "score": round_score(entry.score),
+                        "chunks": entry.chunks.iter().map(|chunk| {
+                            serde_json::json!({
+                                "score": round_score(chunk.score),
+                                "content": chunk.chunk.chunk
+                            })
+                        }).collect::<Vec<_>>()
+                    }
+                })
             })
-        })
-        .collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    )
 }
