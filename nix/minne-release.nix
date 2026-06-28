@@ -2,7 +2,14 @@
 {
   lib,
   stdenv,
-  platform ? (if stdenv.isLinux then "linux" else if stdenv.isDarwin then "darwin" else "windows"),
+  platform ? (
+    if stdenv.isLinux then
+      "linux"
+    else if stdenv.isDarwin then
+      "darwin"
+    else
+      "windows"
+  ),
   patchelf ? null,
   xz,
   unzip ? null,
@@ -28,7 +35,11 @@
 }:
 let
   archiveName = "main-${targetTriple}";
-  binaries = ["main" "server" "worker"];
+  binaries = [
+    "main"
+    "server"
+    "worker"
+  ];
 
   copyBinary = ''
     if [ -f "${minne-pkg}/bin/.$b-wrapped" ]; then
@@ -48,10 +59,7 @@ let
   mkLinux =
     let
       isAarch64 = lib.hasSuffix "aarch64-unknown-linux-gnu" targetTriple;
-      dynamicLinker =
-        if isAarch64
-        then "ld-linux-aarch64.so.1"
-        else "ld-linux-x86-64.so.2";
+      dynamicLinker = if isAarch64 then "ld-linux-aarch64.so.1" else "ld-linux-x86-64.so.2";
 
       copySharedLibs = pkg: ''
         if [ -d "${pkg}/lib" ]; then
@@ -63,7 +71,10 @@ let
       pname = "main";
       version = minneVersion;
 
-      nativeBuildInputs = [patchelf xz];
+      nativeBuildInputs = [
+        patchelf
+        xz
+      ];
 
       dontUnpack = true;
       dontStrip = true;
@@ -138,7 +149,7 @@ let
       pname = "main";
       version = minneVersion;
 
-      nativeBuildInputs = [xz];
+      nativeBuildInputs = [ xz ];
 
       dontUnpack = true;
       dontStrip = true;
@@ -202,7 +213,10 @@ let
     pname = "main";
     version = minneVersion;
 
-    nativeBuildInputs = [unzip zip];
+    nativeBuildInputs = [
+      unzip
+      zip
+    ];
 
     dontUnpack = true;
     dontStrip = true;
@@ -243,7 +257,11 @@ let
     };
   };
 in
-if platform == "linux" then mkLinux
-else if platform == "darwin" then mkDarwin
-else if platform == "windows" then mkWindows
-else throw "minne-release: unknown platform ${platform}"
+if platform == "linux" then
+  mkLinux
+else if platform == "darwin" then
+  mkDarwin
+else if platform == "windows" then
+  mkWindows
+else
+  throw "minne-release: unknown platform ${platform}"

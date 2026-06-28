@@ -6,7 +6,8 @@
   cacert,
   writeText,
   writeShellScript,
-}: let
+}:
+let
   cmakeOverride = writeText "override.cmake" ''
     # macOS paths usually start with /Users/*. Unfortunately, clang-cl interprets
     # paths starting with /U as macro undefines, so we need to put a -- before the
@@ -109,14 +110,18 @@
 
     exec "$real_clang_cl" "$@"
   '';
-in {
+in
+{
   inherit clangClWrapper;
 
   xwinCargoCache = stdenv.mkDerivation {
     pname = "cargo-xwin-cache";
     version = "17.2";
 
-    nativeBuildInputs = [xwin cacert];
+    nativeBuildInputs = [
+      xwin
+      cacert
+    ];
 
     preferLocalBuild = true;
     allowSubstitutes = false;
