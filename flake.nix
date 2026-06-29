@@ -9,21 +9,23 @@
     fenix.inputs.nixpkgs.follows = "nixpkgs";
     git-hooks.url = "github:cachix/git-hooks.nix";
     git-hooks.inputs.nixpkgs.follows = "nixpkgs";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
     inputs@{ flake-parts, ... }:
     let
-      ortVersion = "1.23.2";
-      toolchainFile = ./rust-toolchain.toml;
-      rustVersion = (builtins.fromTOML (builtins.readFile toolchainFile)).toolchain.channel;
+      versions = import ./nix/versions.nix;
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
-        ./nix/context.nix
-        ./nix/package.nix
-        ./nix/checks.nix
-        ./nix/dev-shell.nix
+        inputs.treefmt-nix.flakeModule
+        ./nix/modules/context.nix
+        ./nix/modules/packages.nix
+        ./nix/modules/checks.nix
+        ./nix/modules/formatter.nix
+        ./nix/modules/dev-shell.nix
       ];
 
       systems = [
@@ -34,12 +36,17 @@
       ];
 
       _module.args = {
-        inherit ortVersion toolchainFile rustVersion;
+        inherit versions;
       };
 
       flake = {
+        nixosModules = rec {
+          minne = import ./nix/nixos/minne.nix { inherit (inputs) self; };
+          default = minne;
+        };
+
         lib = {
-          inherit ortVersion rustVersion;
+          inherit (versions) ortVersion rustVersion minneVersion;
         };
       };
     };

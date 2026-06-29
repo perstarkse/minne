@@ -1,6 +1,4 @@
-# Offline MSVC CRT + Windows SDK for cross-compiling to x86_64-pc-windows-msvc.
 {
-  lib,
   stdenv,
   xwin,
   cacert,
@@ -9,9 +7,6 @@
 }:
 let
   cmakeOverride = writeText "override.cmake" ''
-    # macOS paths usually start with /Users/*. Unfortunately, clang-cl interprets
-    # paths starting with /U as macro undefines, so we need to put a -- before the
-    # input file path to force it to be treated as a path.
     string(REPLACE "-c <SOURCE>" "-c -- <SOURCE>" CMAKE_C_COMPILE_OBJECT "''${CMAKE_C_COMPILE_OBJECT}")
     string(REPLACE "-c <SOURCE>" "-c -- <SOURCE>" CMAKE_CXX_COMPILE_OBJECT "''${CMAKE_CXX_COMPILE_OBJECT}")
     string(REPLACE "/D" "-D" CMAKE_RC_FLAGS "''${CMAKE_RC_FLAGS_INIT}")

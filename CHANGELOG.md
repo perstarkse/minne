@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Fix: added helpers to deserialize datetime correctly, fixes bug where cant change systemsettings on fresh deployments.
+Infra: nix modularization using flake-parts, added lints and additional checks like statix and deadnix.
 
 ## 1.0.5 (2026-06-24)
 

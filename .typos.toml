@@ -1,0 +1,6 @@
+[files]
+# Vendored/minified and generated assets produce noise, not real typos.
+extend-exclude = [
+  "*.min.js",
+  "html-router/assets/style.css",
+]

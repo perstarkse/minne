@@ -1,4 +1,3 @@
-# Portable release archives for cargo-dist-compatible GitHub Releases layout.
 {
   lib,
   stdenv,

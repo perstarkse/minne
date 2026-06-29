@@ -3,11 +3,13 @@
 .devenv
 node_modules
 config.yaml
+.env.local
 
 
 target
 result
 data
+.data
 database
 
 evaluations/cache/

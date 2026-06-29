@@ -65,7 +65,7 @@ jobs:
       - uses: nix-community/cache-nix-action@v7
         id: xwin-cache
         with:
-          primary-key: nix-Linux-xwin-${{ hashFiles('nix/windows-cross.nix', 'flake.lock') }}
+          primary-key: nix-Linux-xwin-${{ hashFiles('nix/packages/windows-cross.nix', 'flake.lock') }}
           restore-prefixes-first-match: nix-Linux-xwin-
           gc-max-store-size-linux: 8G
 
@@ -275,9 +275,13 @@ jobs:
             ls -la
             exit 1
           fi
+          ARGS=()
+          if [ -n "$PRERELEASE_FLAG" ]; then
+            ARGS+=("$PRERELEASE_FLAG")
+          fi
           gh release create "$TAG" \
             --target "${{ github.sha }}" \
             --title "minne $TAG" \
             --notes-file "$RUNNER_TEMP/notes.txt" \
-            $PRERELEASE_FLAG \
+            "${ARGS[@]}" \
             "${FILES[@]}"

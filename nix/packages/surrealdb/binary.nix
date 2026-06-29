@@ -1,4 +1,3 @@
-# Pinned SurrealDB release binary (avoids building nixpkgs surrealdb from source).
 {
   lib,
   stdenv,
@@ -6,14 +5,16 @@
   autoPatchelfHook,
   openssl,
   rocksdb,
+  surrealdbVersion ? (import ../../versions.nix).surrealdbVersion,
+  surrealdbBinaryHash ? (import ../../versions.nix).surrealdbBinaryHash,
 }:
 stdenv.mkDerivation {
   pname = "surrealdb";
-  version = "2.6.5";
+  version = surrealdbVersion;
 
   src = fetchurl {
-    url = "https://github.com/surrealdb/surrealdb/releases/download/v2.6.5/surreal-v2.6.5.linux-amd64.tgz";
-    hash = "sha256-kp1z9GxPtZ8jeBDm/m2lTBdWBk8+2NfR9qlw6P3zj7A=";
+    url = "https://github.com/surrealdb/surrealdb/releases/download/v${surrealdbVersion}/surreal-v${surrealdbVersion}.linux-amd64.tgz";
+    hash = surrealdbBinaryHash;
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];

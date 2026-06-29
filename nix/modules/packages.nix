@@ -1,9 +1,6 @@
-# Crane packages, release archives, and flake apps.
-{ ... }:
-{
+_: {
   perSystem =
     {
-      pkgs,
       lib,
       minneCtx,
       ...
@@ -11,7 +8,6 @@
     let
       inherit (minneCtx)
         minne-pkg
-        minne-pkg-windows
         minne-release
         minne-release-windows
         dockerImage
@@ -24,11 +20,10 @@
         default = minne-pkg;
       }
       // lib.optionalAttrs (minne-release != null) {
-        minne-release = minne-release;
+        inherit minne-release;
       }
       // lib.optionalAttrs (minne-release-windows != null) {
-        inherit xwinCargoCache;
-        minne-release-windows = minne-release-windows;
+        inherit xwinCargoCache minne-release-windows;
       };
 
       apps = {

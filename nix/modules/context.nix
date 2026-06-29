@@ -1,14 +1,14 @@
-# Evaluates shared build context once per system for downstream flake-parts modules.
 {
   inputs,
-  ortVersion,
-  toolchainFile,
+  versions,
   ...
 }:
 {
   perSystem =
     { system, ... }:
     let
+      inherit (versions) ortVersion;
+
       pkgs = import inputs.nixpkgs {
         inherit system;
         config = {
@@ -19,13 +19,12 @@
     in
     {
       _module.args.pkgs = pkgs;
-      _module.args.minneCtx = import ./minne-lib.nix {
+      _module.args.minneCtx = import ../build/default.nix {
         inherit
           inputs
           pkgs
           system
           ortVersion
-          toolchainFile
           ;
         src = inputs.self;
       };

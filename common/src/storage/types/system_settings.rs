@@ -2,7 +2,9 @@ use chrono::{DateTime, Utc};
 use tracing::warn;
 
 use crate::utils::config::EmbeddingBackend;
-use crate::utils::serde_helpers::deserialize_flexible_id;
+use crate::utils::serde_helpers::{
+    deserialize_flexible_id, deserialize_option_datetime, serialize_option_datetime,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{error::AppError, storage::db::SurrealDbClient, storage::types::StoredObject};
@@ -26,13 +28,21 @@ pub struct SystemSettings {
     pub image_processing_prompt: String,
     pub voice_processing_model: String,
     /// When the maintainer last completed a scheduled `REBUILD INDEX` pass.
-    #[serde(default)]
+    #[serde(
+        default,
+        serialize_with = "serialize_option_datetime",
+        deserialize_with = "deserialize_option_datetime"
+    )]
     pub last_index_rebuild_at: Option<DateTime<Utc>>,
     /// Worker id holding the index-rebuild lease, if any.
     #[serde(default)]
     pub index_rebuild_lease_owner: Option<String>,
     /// Lease expiry for in-flight scheduled index rebuilds.
-    #[serde(default)]
+    #[serde(
+        default,
+        serialize_with = "serialize_option_datetime",
+        deserialize_with = "deserialize_option_datetime"
+    )]
     pub index_rebuild_lease_expires_at: Option<DateTime<Utc>>,
 }
 
