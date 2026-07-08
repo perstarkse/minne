@@ -1,7 +1,4 @@
-{
-  versions,
-  ...
-}:
+{ versions, ... }:
 let
   inherit (versions) ortVersion;
 in
@@ -67,7 +64,7 @@ in
             pname = "minne";
             buildInputs = commonArgs.buildInputs ++ [ pkgs.cacert ];
             SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-certificates.crt";
-            cargoTestExtraArgs = "--lib --bins";
+            cargoTestExtraArgs = "--workspace";
           }
         );
 

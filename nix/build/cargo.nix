@@ -82,7 +82,9 @@ let
           (toString src + "/common/db")
           (toString src + "/html-router/templates")
           (toString src + "/html-router/assets")
-        ];
+          (toString src + "/html-router/tests")
+        ]
+        || lib.hasSuffix ".snap" path;
     };
     strictDeps = true;
 

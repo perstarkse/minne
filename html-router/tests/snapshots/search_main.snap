@@ -1,5 +1,6 @@
 ---
 source: html-router/tests/router_integration.rs
+assertion_line: 316
 expression: main
 ---
 
