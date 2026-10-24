@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Security: updated `webpki-roots` to 1.0.11 in the workspace so the TLS trust
+  store matches the current upstream root set.
+
 Fix: added helpers to deserialize datetime correctly, fixes bug where cant change systemsettings on fresh deployments.
 Infra: nix modularization using flake-parts, added lints and additional checks like statix and deadnix.
 Infra: CI test gate now runs the full workspace suite (`cargo test --workspace`).
