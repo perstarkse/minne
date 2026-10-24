@@ -1,5 +1,5 @@
 {
-  minneVersion = "1.0.5";
+  minneVersion = "1.0.6";
   ortVersion = "1.23.2";
   rustVersion = "1.91.1";
   # Manifest hash for https://static.rust-lang.org/dist/channel-rust-<version>.toml
